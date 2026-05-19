@@ -23,6 +23,56 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum FieldKind {
+    Text,
+    File,
+}
+
+impl Default for FieldKind {
+    fn default() -> Self {
+        FieldKind::Text
+    }
+}
+
+#[derive(Deserialize)]
+struct BodyField {
+    key: String,
+    value: String,
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct MultipartField {
+    key: String,
+    value: String,
+    #[serde(default = "default_true")]
+    enabled: bool,
+    #[serde(default)]
+    kind: FieldKind,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+enum RequestBody {
+    None,
+    Json {
+        text: String,
+    },
+    Text {
+        text: String,
+        content_type: String,
+    },
+    FormUrlencoded {
+        fields: Vec<BodyField>,
+    },
+    Multipart {
+        fields: Vec<MultipartField>,
+    },
+}
+
 fn encode_uri_component(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
     for b in s.bytes() {
@@ -65,6 +115,7 @@ async fn send_request(
     method: String,
     url: String,
     params: Option<Vec<QueryParam>>,
+    body: Option<RequestBody>,
 ) -> Result<HttpResponse, String> {
     let method = Method::from_bytes(method.to_uppercase().as_bytes())
         .map_err(|e| format!("invalid method: {e}"))?;
@@ -79,12 +130,69 @@ async fn send_request(
         .build()
         .map_err(|e| e.to_string())?;
 
+    let mut req = client.request(method, &final_url);
+
+    match body {
+        None | Some(RequestBody::None) => {}
+        Some(RequestBody::Json { text }) => {
+            req = req
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(text);
+        }
+        Some(RequestBody::Text { text, content_type }) => {
+            let ct = if content_type.is_empty() {
+                "text/plain".to_string()
+            } else {
+                content_type
+            };
+            req = req.header(reqwest::header::CONTENT_TYPE, ct).body(text);
+        }
+        Some(RequestBody::FormUrlencoded { fields }) => {
+            let kv: Vec<(String, String)> = fields
+                .into_iter()
+                .filter(|f| f.enabled && !f.key.is_empty())
+                .map(|f| (f.key, f.value))
+                .collect();
+            req = req.form(&kv);
+        }
+        Some(RequestBody::Multipart { fields }) => {
+            let mut form = reqwest::multipart::Form::new();
+            for f in fields {
+                if !f.enabled || f.key.is_empty() {
+                    continue;
+                }
+                match f.kind {
+                    FieldKind::Text => {
+                        form = form.text(f.key, f.value);
+                    }
+                    FieldKind::File => {
+                        if f.value.is_empty() {
+                            continue;
+                        }
+                        let path = std::path::PathBuf::from(&f.value);
+                        let file_name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("file")
+                            .to_string();
+                        let bytes = tokio::fs::read(&path).await.map_err(|e| {
+                            if e.kind() == std::io::ErrorKind::NotFound {
+                                format!("body file not found: {}", f.value)
+                            } else {
+                                format!("failed to read body file {}: {e}", f.value)
+                            }
+                        })?;
+                        let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name);
+                        form = form.part(f.key, part);
+                    }
+                }
+            }
+            req = req.multipart(form);
+        }
+    }
+
     let started = std::time::Instant::now();
-    let resp = client
-        .request(method, &final_url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = req.send().await.map_err(|e| e.to_string())?;
     let status = resp.status().as_u16();
     let headers: Vec<(String, String)> = resp
         .headers()
@@ -95,7 +203,13 @@ async fn send_request(
     let size_bytes = body.as_bytes().len() as u64;
     let duration_ms = started.elapsed().as_millis() as u64;
 
-    Ok(HttpResponse { status, duration_ms, body, headers, size_bytes })
+    Ok(HttpResponse {
+        status,
+        duration_ms,
+        body,
+        headers,
+        size_bytes,
+    })
 }
 
 const SECRET_SERVICE: &str = "com.vento.env";
@@ -209,6 +323,13 @@ pub fn run() {
             INSERT INTO environments (name, is_globals, created_at)
                 SELECT 'Globals', 1, strftime('%s','now')*1000
                 WHERE NOT EXISTS (SELECT 1 FROM environments WHERE is_globals = 1);",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "add_body_columns",
+            sql: "ALTER TABLE saved_requests ADD COLUMN body_type TEXT;
+            ALTER TABLE saved_requests ADD COLUMN body TEXT;",
             kind: MigrationKind::Up,
         },
     ];
