@@ -158,7 +158,7 @@ export function EnvironmentsPanel({
                     setSelectedId(env.id);
                     onOpenEnvironment(env.id, env.name, isGlobals);
                   }}
-                  className="flex-1 truncate text-left"
+                  className="flex-1 text-left"
                 >
                   {env.name}
                 </button>
