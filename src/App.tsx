@@ -444,6 +444,13 @@ export default function App() {
       status = res.status;
       duration = res.duration_ms;
       preview = res.body.slice(0, 500);
+      let bodyViewMode: BodyViewMode = "raw";
+      try {
+        JSON.parse(res.body);
+        bodyViewMode = "json";
+      } catch {
+        // not JSON
+      }
       setTabs((prev) =>
         prev.map((t) =>
           t.id === activeId
@@ -455,6 +462,7 @@ export default function App() {
                 responseSize: res.size_bytes,
                 status,
                 duration_ms: duration,
+                bodyViewMode,
               }
             : t,
         ),
