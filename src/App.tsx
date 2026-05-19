@@ -163,6 +163,37 @@ export default function App() {
     return stored === "horizontal" ? "horizontal" : "vertical";
   });
   const [sidebarWidth, setSidebarWidth] = useState<number>(DEFAULT_SIDEBAR_WIDTH);
+  const handleSidebarResizeStart = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = sidebarWidth;
+
+      const prevCursor = document.body.style.cursor;
+      const prevUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      function onMove(ev: MouseEvent) {
+        const next = Math.min(
+          MAX_SIDEBAR_WIDTH,
+          Math.max(MIN_SIDEBAR_WIDTH, startWidth + (ev.clientX - startX)),
+        );
+        setSidebarWidth(next);
+      }
+
+      function onUp() {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevUserSelect;
+      }
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [sidebarWidth],
+  );
   const tabBarRef = useRef<HTMLDivElement>(null);
   const requestSnapshotsRef = useRef<Map<string, string>>(new Map());
   const saveTimersRef = useRef<Map<string, number>>(new Map());
@@ -467,6 +498,7 @@ export default function App() {
         activeEnvId={activeEnvId}
         activeNavTitle={sidebarNav}
         onActiveNavChange={setSidebarNav}
+        onResizeStart={handleSidebarResizeStart}
       />
       <SidebarInset className="flex flex-col overflow-hidden">
         {/* Top bar */}

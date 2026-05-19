@@ -47,6 +47,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   activeEnvId: number | null;
   activeNavTitle: string;
   onActiveNavChange: (title: string) => void;
+  onResizeStart: (e: React.MouseEvent<HTMLDivElement>) => void;
 };
 
 export function AppSidebar({
@@ -63,6 +64,7 @@ export function AppSidebar({
   activeEnvId,
   activeNavTitle,
   onActiveNavChange,
+  onResizeStart,
   ...props
 }: AppSidebarProps) {
   const [query, setQuery] = React.useState("");
@@ -88,7 +90,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      className="relative overflow-hidden *:data-[sidebar=sidebar]:flex-row"
       {...props}
     >
       <Sidebar
@@ -230,6 +232,13 @@ export function AppSidebar({
           )}
         </SidebarContent>
       </Sidebar>
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        onMouseDown={onResizeStart}
+        className="absolute inset-y-0 -right-0.5 z-20 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-border active:bg-primary/40 md:block group-data-[collapsible=icon]:hidden"
+      />
     </Sidebar>
   );
 }
