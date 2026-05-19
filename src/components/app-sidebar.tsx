@@ -126,7 +126,7 @@ export function AppSidebar({
                         setOpen(true);
                       }}
                       isActive={activeNavTitle === item.title}
-                      className="px-2.5 md:px-2"
+                      className="px-2.5 data-active:bg-primary/8 data-active:text-primary hover:data-active:bg-primary/12 md:px-2"
                     >
                       <item.icon />
                       <span>{item.title}</span>
