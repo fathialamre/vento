@@ -2,6 +2,7 @@ import { BodyTypePills, type BodyTypeId } from "@/components/body/body-type-pill
 import { JsonBodyEditor } from "@/components/body/json-body-editor";
 import { RawTextBodyEditor } from "@/components/body/raw-text-body-editor";
 import { FormBodyEditor } from "@/components/body/form-body-editor";
+import { MultipartBodyEditor } from "@/components/body/multipart-body-editor";
 import { EMPTY_BODY, type RequestBody } from "@/lib/body";
 
 export type BodyEditorProps = {
@@ -60,9 +61,10 @@ export function BodyEditor({ body, onChange }: BodyEditorProps) {
           />
         )}
         {body.type === "multipart" && (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            multipart editor — coming next task.
-          </div>
+          <MultipartBodyEditor
+            fields={body.fields}
+            onChange={(fields) => onChange({ type: "multipart", fields })}
+          />
         )}
       </div>
     </div>
