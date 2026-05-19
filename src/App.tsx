@@ -959,21 +959,43 @@ function HeadersView({ headers }: { headers: [string, string][] }) {
   );
 }
 
-function ResponseView({ raw }: { raw: string }) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
+function ResponseView({ raw, mode }: { raw: string; mode: BodyViewMode }) {
+  if (mode === "json") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return (
+        <pre className="overflow-auto rounded-md border bg-card p-4 font-mono text-sm whitespace-pre-wrap break-words text-foreground">
+          {raw}
+        </pre>
+      );
+    }
+    return (
+      <div className="overflow-auto rounded-md border bg-card p-4">
+        <JsonViewer data={parsed} />
+      </div>
+    );
+  }
+
+  if (mode === "pretty") {
+    let formatted = raw;
+    try {
+      formatted = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      // not JSON — show raw as-is
+    }
     return (
       <pre className="overflow-auto rounded-md border bg-card p-4 font-mono text-sm whitespace-pre-wrap break-words text-foreground">
-        {raw}
+        {formatted}
       </pre>
     );
   }
+
   return (
-    <div className="overflow-auto rounded-md border bg-card p-4">
-      <JsonViewer data={parsed} />
-    </div>
+    <pre className="overflow-auto rounded-md border bg-card p-4 font-mono text-sm whitespace-pre-wrap break-words text-foreground">
+      {raw}
+    </pre>
   );
 }
 
