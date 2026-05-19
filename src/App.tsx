@@ -99,6 +99,8 @@ type RustResponse = {
 
 type ResponseTab = "body" | "headers";
 
+type BodyViewMode = "json" | "pretty" | "raw";
+
 type TabKind = "request" | "settings" | "environment";
 
 type Tab = {
@@ -116,6 +118,7 @@ type Tab = {
   responseHeaders: [string, string][];
   responseSize: number | null;
   responseTab: ResponseTab;
+  bodyViewMode: BodyViewMode;
   error: string;
   loading: boolean;
   status: number | null;
@@ -141,6 +144,7 @@ function newTab(overrides?: Partial<Tab>): Tab {
     responseHeaders: [],
     responseSize: null,
     responseTab: "body",
+    bodyViewMode: "json",
     error: "",
     loading: false,
     status: null,
