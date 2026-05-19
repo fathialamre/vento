@@ -301,7 +301,7 @@ export default function App() {
     });
   }
 
-  async function handleVarClick(name: string, source: "env" | "globals") {
+  async function handleVarClick(_name: string, source: "env" | "globals") {
     if (source === "globals" && globalsId !== null) {
       handleOpenEnvironment(globalsId, "Globals", true);
     } else if (source === "env" && activeEnvId !== null) {
