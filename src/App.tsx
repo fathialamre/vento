@@ -69,7 +69,9 @@ import { BodyEditor } from "@/components/body/body-editor";
 import {
   bodyHasContent,
   EMPTY_BODY,
+  fromPersistedBody,
   resolveBody,
+  toPersistedBody,
   type RequestBody,
 } from "@/lib/body";
 import { listEnvironments } from "@/lib/db";
@@ -247,6 +249,7 @@ export default function App() {
       activeTab.method,
       activeTab.url,
       toPersisted(activeTab.params),
+      activeTab.body,
     ]);
     if (requestSnapshotsRef.current.get(reqId) === sig) return;
 
@@ -255,6 +258,7 @@ export default function App() {
     const snapMethod = activeTab.method;
     const snapUrl = activeTab.url;
     const snapParams = activeTab.params;
+    const snapBody = activeTab.body;
     const timer = window.setTimeout(async () => {
       saveTimersRef.current.delete(reqId);
       try {
@@ -266,6 +270,11 @@ export default function App() {
             snapParams.length > 0
               ? JSON.stringify(toPersisted(snapParams))
               : null,
+          body_type: snapBody.type === "none" ? null : snapBody.type,
+          body:
+            snapBody.type === "none"
+              ? null
+              : JSON.stringify(toPersistedBody(snapBody)),
         });
         requestSnapshotsRef.current.set(reqId, sig);
         setCollectionsRevision((r) => r + 1);
@@ -274,7 +283,13 @@ export default function App() {
       }
     }, 500);
     saveTimersRef.current.set(reqId, timer);
-  }, [activeTab?.requestId, activeTab?.method, activeTab?.url, activeTab?.params]);
+  }, [
+    activeTab?.requestId,
+    activeTab?.method,
+    activeTab?.url,
+    activeTab?.params,
+    activeTab?.body,
+  ]);
 
   function updateActive(partial: Partial<Tab>) {
     setTabs((prev) =>
@@ -354,6 +369,7 @@ export default function App() {
     name?: string;
     requestId?: string;
     params?: string | null;
+    body?: string | null;
   }) {
     const method = HTTP_METHODS.includes(req.method as HttpMethod)
       ? (req.method as HttpMethod)
@@ -370,10 +386,18 @@ export default function App() {
     // If persisted params exist, prefer them; otherwise parse from URL.
     const params =
       persistedParams.length > 0 ? persistedParams : parseUrl(req.url).params;
+    let restoredBody: RequestBody = EMPTY_BODY;
+    if (req.body) {
+      try {
+        restoredBody = fromPersistedBody(JSON.parse(req.body));
+      } catch (e) {
+        console.error("failed to parse saved body, falling back to none", e);
+      }
+    }
     if (req.requestId) {
       requestSnapshotsRef.current.set(
         req.requestId,
-        JSON.stringify([method, req.url, toPersisted(params)]),
+        JSON.stringify([method, req.url, toPersisted(params), restoredBody]),
       );
     }
     addTab({
@@ -382,6 +406,7 @@ export default function App() {
       method,
       url: req.url,
       params,
+      body: restoredBody,
     });
   }
 

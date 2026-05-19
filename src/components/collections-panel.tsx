@@ -65,7 +65,7 @@ type DialogState =
   | null;
 
 type Props = {
-  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null }) => void;
+  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null; body?: string | null }) => void;
   openRequestIds: Set<string>;
   activeRequestId?: string;
   query?: string;
@@ -266,6 +266,8 @@ export function CollectionsPanel({ onLoadRequest, query = "", refreshKey }: Prop
             method,
             url,
             params: null,
+            body_type: null,
+            body: null,
           });
           setDialog(null);
           await refresh();
@@ -632,7 +634,7 @@ function RenameDialog({
 
 function buildTreeData(
   collections: TreeCollection[],
-  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null }) => void,
+  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null; body?: string | null }) => void,
   setSelected: (s: SelectedNode) => void,
 ): TreeDataItem[] {
   return collections.map((c) => ({
@@ -654,7 +656,7 @@ function buildTreeData(
             requestId: r.id,
             name: r.name,
           });
-          onLoadRequest({ method: r.method, url: r.url, name: r.name, requestId: `r:${r.id}`, params: r.params });
+          onLoadRequest({ method: r.method, url: r.url, name: r.name, requestId: `r:${r.id}`, params: r.params, body: r.body });
         },
       })),
     ],
@@ -664,7 +666,7 @@ function buildTreeData(
 function folderToTreeItem(
   f: TreeFolder,
   collectionId: number,
-  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null }) => void,
+  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null; body?: string | null }) => void,
   setSelected: (s: SelectedNode) => void,
 ): TreeDataItem {
   return {
@@ -689,7 +691,7 @@ function folderToTreeItem(
             requestId: r.id,
             name: r.name,
           });
-          onLoadRequest({ method: r.method, url: r.url, name: r.name, requestId: `r:${r.id}`, params: r.params });
+          onLoadRequest({ method: r.method, url: r.url, name: r.name, requestId: `r:${r.id}`, params: r.params, body: r.body });
         },
       })),
     ],

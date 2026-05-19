@@ -82,6 +82,8 @@ export type SavedRequest = {
   url: string;
   created_at: number;
   params: string | null;
+  body_type: string | null;
+  body: string | null;
 };
 
 export type TreeFolder = Folder & {
@@ -150,10 +152,12 @@ export async function createRequest(input: {
   method: string;
   url: string;
   params: string | null;
+  body_type: string | null;
+  body: string | null;
 }): Promise<number> {
   const db = await loadDb();
   const res = await db.execute(
-    "INSERT INTO saved_requests (collection_id, folder_id, name, method, url, created_at, params) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    "INSERT INTO saved_requests (collection_id, folder_id, name, method, url, created_at, params, body_type, body) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     [
       input.collection_id,
       input.folder_id,
@@ -162,6 +166,8 @@ export async function createRequest(input: {
       input.url,
       Date.now(),
       input.params,
+      input.body_type,
+      input.body,
     ],
   );
   return res.lastInsertId ?? 0;
@@ -172,11 +178,13 @@ export async function updateRequest(input: {
   method: string;
   url: string;
   params: string | null;
+  body_type: string | null;
+  body: string | null;
 }): Promise<void> {
   const db = await loadDb();
   await db.execute(
-    "UPDATE saved_requests SET method = $1, url = $2, params = $3 WHERE id = $4",
-    [input.method, input.url, input.params, input.id],
+    "UPDATE saved_requests SET method = $1, url = $2, params = $3, body_type = $4, body = $5 WHERE id = $6",
+    [input.method, input.url, input.params, input.body_type, input.body, input.id],
   );
 }
 
@@ -200,7 +208,7 @@ export async function getCollectionsTree(): Promise<TreeCollection[]> {
       "SELECT id, collection_id, parent_folder_id, name, created_at FROM folders ORDER BY name ASC",
     ),
     db.select<SavedRequest[]>(
-      "SELECT id, collection_id, folder_id, name, method, url, created_at, params FROM saved_requests ORDER BY name ASC",
+      "SELECT id, collection_id, folder_id, name, method, url, created_at, params, body_type, body FROM saved_requests ORDER BY name ASC",
     ),
   ]);
 

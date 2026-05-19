@@ -37,7 +37,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   history: HistoryItem[];
   methodColor: Record<string, string>;
   onSelectHistory: (item: HistoryItem) => void;
-  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null }) => void;
+  onLoadRequest: (req: { method: string; url: string; name?: string; requestId?: string; params?: string | null; body?: string | null }) => void;
   openRequestIds: Set<string>;
   activeRequestId?: string;
   collectionsRevision?: number;
