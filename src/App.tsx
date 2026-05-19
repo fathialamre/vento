@@ -67,6 +67,13 @@ import {
 } from "@/lib/url-params";
 import { listEnvironments } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const HTTP_METHODS = [
   "GET",
@@ -928,6 +935,29 @@ function ResponseBar({
           <span className="text-muted-foreground">{formatBytes(sizeBytes)}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+function BodyToolbar({
+  mode,
+  onChange,
+}: {
+  mode: BodyViewMode;
+  onChange: (m: BodyViewMode) => void;
+}) {
+  return (
+    <div className="flex items-center py-1">
+      <Select value={mode} onValueChange={(v) => onChange(v as BodyViewMode)}>
+        <SelectTrigger size="sm" className="w-[90px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="json">JSON</SelectItem>
+          <SelectItem value="pretty">Pretty</SelectItem>
+          <SelectItem value="raw">Raw</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 }
