@@ -51,11 +51,11 @@ export function ParamsEditor({ params, onChange }: ParamsEditorProps) {
 
   return (
     <div className="overflow-hidden rounded-md border bg-card">
-      <div className="grid grid-cols-[36px_1fr_1fr_1fr_36px] items-center border-b bg-muted/40 text-xs font-medium text-muted-foreground">
-        <div className="py-1.5 text-center">On</div>
-        <div className="px-2 py-1.5">Key</div>
-        <div className="px-2 py-1.5">Value</div>
-        <div className="px-2 py-1.5">Description</div>
+      <div className="sticky top-0 z-10 grid grid-cols-[36px_1fr_1fr_1fr_36px] items-center border-b bg-muted/60 text-xs font-medium text-muted-foreground backdrop-blur">
+        <div className="border-r py-1.5 text-center">On</div>
+        <div className="border-r px-2 py-1.5">Key</div>
+        <div className="border-r px-2 py-1.5">Value</div>
+        <div className="border-r px-2 py-1.5">Description</div>
         <div />
       </div>
       {rows.map((row) => {
@@ -64,30 +64,36 @@ export function ParamsEditor({ params, onChange }: ParamsEditorProps) {
           <ContextMenu key={row.id}>
             <ContextMenuTrigger asChild>
               <div className="group/row grid grid-cols-[36px_1fr_1fr_1fr_36px] items-center border-b border-border/60 last:border-b-0 hover:bg-accent/20">
-                <label className="flex h-8 cursor-pointer items-center justify-center">
+                <label className="flex h-8 cursor-pointer items-center justify-center border-r border-border/60">
                   <RowCheckbox
                     checked={row.enabled}
                     onChange={(v) => updateRow(row.id, { enabled: v })}
                     disabled={isBlankPlaceholder}
                   />
                 </label>
-                <CellInput
-                  value={row.key}
-                  placeholder="key"
-                  onChange={(v) => handleEdit(row.id, { key: v })}
-                />
-                <CellInput
-                  value={row.value}
-                  placeholder="value"
-                  onChange={(v) => handleEdit(row.id, { value: v })}
-                  className={cn(!row.encode && "underline decoration-amber-500 decoration-dotted underline-offset-4")}
-                  title={row.encode ? undefined : "URL encoding disabled — value sent raw"}
-                />
-                <CellInput
-                  value={row.description ?? ""}
-                  placeholder="description"
-                  onChange={(v) => handleEdit(row.id, { description: v })}
-                />
+                <div className="border-r border-border/60">
+                  <CellInput
+                    value={row.key}
+                    placeholder="key"
+                    onChange={(v) => handleEdit(row.id, { key: v })}
+                  />
+                </div>
+                <div className="border-r border-border/60">
+                  <CellInput
+                    value={row.value}
+                    placeholder="value"
+                    onChange={(v) => handleEdit(row.id, { value: v })}
+                    className={cn(!row.encode && "underline decoration-amber-500 decoration-dotted underline-offset-4")}
+                    title={row.encode ? undefined : "URL encoding disabled — value sent raw"}
+                  />
+                </div>
+                <div className="border-r border-border/60">
+                  <CellInput
+                    value={row.description ?? ""}
+                    placeholder="description"
+                    onChange={(v) => handleEdit(row.id, { description: v })}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => deleteRow(row.id)}

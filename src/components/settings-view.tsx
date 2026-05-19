@@ -85,20 +85,18 @@ export function SettingsView({ layoutMode, onLayoutChange }: Props) {
 
 function AboutSection() {
   return (
-    <div className="max-w-md space-y-6">
-      <div className="flex flex-col items-center gap-4 rounded-lg border bg-muted/30 p-8 text-center">
-        <img
-          src="/vento-logo.svg"
-          alt={`${APP_NAME} logo`}
-          className="size-24"
-          draggable={false}
-        />
-        <div className="space-y-1">
-          <h4 className="font-heading text-xl font-semibold">{APP_NAME}</h4>
-          <p className="text-sm text-muted-foreground">Version {APP_VERSION}</p>
-        </div>
-        <p className="text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
+    <div className="flex flex-col items-center gap-4 text-center">
+      <img
+        src="/vento-logo.svg"
+        alt={`${APP_NAME} logo`}
+        className="size-24"
+        draggable={false}
+      />
+      <div className="space-y-1">
+        <h4 className="font-heading text-xl font-semibold">{APP_NAME}</h4>
+        <p className="text-sm text-muted-foreground">Version {APP_VERSION}</p>
       </div>
+      <p className="text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
     </div>
   );
 }

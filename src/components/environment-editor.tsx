@@ -160,11 +160,11 @@ export function EnvironmentEditor({ environmentId, isGlobals, onSaved }: Props) 
           <div className="text-sm text-muted-foreground">Loading…</div>
         ) : (
           <div className="overflow-hidden rounded-md border bg-card">
-            <div className="grid grid-cols-[36px_1fr_2fr_36px_36px] items-center border-b bg-muted/40 text-xs font-medium text-muted-foreground">
-              <div className="py-1.5 text-center">On</div>
-              <div className="px-2 py-1.5">Key</div>
-              <div className="px-2 py-1.5">Value</div>
-              <div className="px-2 py-1.5 text-center">Secret</div>
+            <div className="sticky top-0 z-10 grid grid-cols-[36px_1fr_2fr_56px_36px] items-center border-b bg-muted/60 text-xs font-medium text-muted-foreground backdrop-blur">
+              <div className="border-r py-1.5 text-center">On</div>
+              <div className="border-r px-2 py-1.5">Key</div>
+              <div className="border-r px-2 py-1.5">Value</div>
+              <div className="border-r px-2 py-1.5 text-center">Secret</div>
               <div />
             </div>
             {[
@@ -181,30 +181,34 @@ export function EnvironmentEditor({ environmentId, isGlobals, onSaved }: Props) 
               return (
                 <div
                   key={row.id}
-                  className="group/row grid grid-cols-[36px_1fr_2fr_36px_36px] items-center border-b border-border/60 last:border-b-0 hover:bg-accent/20"
+                  className="group/row grid grid-cols-[36px_1fr_2fr_56px_36px] items-center border-b border-border/60 last:border-b-0 hover:bg-accent/20"
                 >
-                  <label className="flex h-8 cursor-pointer items-center justify-center">
+                  <label className="flex h-8 cursor-pointer items-center justify-center border-r border-border/60">
                     <RowCheckbox
                       checked={row.enabled}
                       disabled={isBlank}
                       onChange={(v) => updateRow(row.id, { enabled: v })}
                     />
                   </label>
-                  <CellInput
-                    value={row.key}
-                    placeholder="key"
-                    onChange={(v) => handleEdit(row.id, { key: v })}
-                  />
-                  <SecretValueInput
-                    value={row.value}
-                    secret={row.secret}
-                    onChange={(v) => handleEdit(row.id, { value: v })}
-                  />
+                  <div className="border-r border-border/60">
+                    <CellInput
+                      value={row.key}
+                      placeholder="key"
+                      onChange={(v) => handleEdit(row.id, { key: v })}
+                    />
+                  </div>
+                  <div className="border-r border-border/60">
+                    <SecretValueInput
+                      value={row.value}
+                      secret={row.secret}
+                      onChange={(v) => handleEdit(row.id, { value: v })}
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => updateRow(row.id, { secret: !row.secret })}
                     disabled={isBlank}
-                    className="flex h-8 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    className="flex h-8 items-center justify-center border-r border-border/60 text-muted-foreground hover:text-foreground disabled:opacity-30"
                     title={row.secret ? "Stored as secret in keyring" : "Mark as secret"}
                   >
                     {row.secret ? (

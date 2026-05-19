@@ -24,6 +24,7 @@ type Props = Omit<
   envMap: VarMap;
   globalsMap: VarMap;
   containerClassName?: string;
+  onVarClick?: (name: string, source: "env" | "globals") => void;
 };
 
 export function VarInput({
@@ -35,6 +36,7 @@ export function VarInput({
   containerClassName,
   onKeyDown,
   onBlur,
+  onVarClick,
   ...rest
 }: Props) {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -43,6 +45,18 @@ export function VarInput({
   const [acOpen, setAcOpen] = React.useState(false);
   const [acIndex, setAcIndex] = React.useState(0);
   const [partial, setPartial] = React.useState("");
+  const [cmdHeld, setCmdHeld] = React.useState(false);
+
+  React.useEffect(() => {
+    function onDown(e: KeyboardEvent) { if (e.metaKey || e.ctrlKey) setCmdHeld(true); }
+    function onUp(e: KeyboardEvent) { if (!e.metaKey && !e.ctrlKey) setCmdHeld(false); }
+    document.addEventListener("keydown", onDown);
+    document.addEventListener("keyup", onUp);
+    return () => {
+      document.removeEventListener("keydown", onDown);
+      document.removeEventListener("keyup", onUp);
+    };
+  }, []);
 
   const allKeys = React.useMemo(() => {
     const s = new Set<string>([
@@ -146,14 +160,60 @@ export function VarInput({
         out.push(<span key={i++}>{value.slice(lastIdx, m.index)}</span>);
       }
       const name = m[1];
-      const exists =
-        Object.prototype.hasOwnProperty.call(envMap, name) ||
-        Object.prototype.hasOwnProperty.call(globalsMap, name);
+      const fromEnv = Object.prototype.hasOwnProperty.call(envMap, name);
+      const fromGlobals = Object.prototype.hasOwnProperty.call(globalsMap, name);
+      const exists = fromEnv || fromGlobals;
       if (exists) {
+        const resolvedValue = envMap[name] ?? globalsMap[name] ?? "";
+        const source = fromEnv ? "env" : "globals";
         out.push(
-          <span key={i++} className="font-bold text-primary">
-            {m[0]}
-          </span>,
+          <Tooltip key={i++}>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "pointer-events-auto font-bold text-primary",
+                  cmdHeld &&
+                    "cursor-pointer underline decoration-primary/60 decoration-dotted underline-offset-4",
+                )}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  inputRef.current?.focus();
+                }}
+                onClick={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && onVarClick) {
+                    e.preventDefault();
+                    onVarClick(name, source);
+                  }
+                }}
+              >
+                {m[0]}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="break-all font-mono text-xs">
+                    {resolvedValue || (
+                      <span className="opacity-50">empty</span>
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1 text-[9px] font-semibold uppercase",
+                      fromEnv
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {fromEnv ? "env" : "glob"}
+                  </span>
+                </div>
+                {onVarClick && (
+                  <span className="text-[10px] opacity-50">⌘/Ctrl click to open</span>
+                )}
+              </div>
+            </TooltipContent>
+          </Tooltip>,
         );
       } else {
         out.push(
@@ -169,10 +229,7 @@ export function VarInput({
                 {m[0]}
               </span>
             </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              className="max-w-xs border border-border bg-popover text-popover-foreground [&>span]:bg-popover [&>span]:fill-popover"
-            >
+            <TooltipContent side="bottom" className="max-w-xs">
               <div className="flex items-start gap-2">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-rose-500" />
                 <div className="flex flex-col gap-0.5">
@@ -194,7 +251,7 @@ export function VarInput({
       out.push(<span key={i++}>{value.slice(lastIdx)}</span>);
     }
     return out;
-  }, [value, envMap, globalsMap]);
+  }, [value, envMap, globalsMap, cmdHeld, onVarClick]);
 
   return (
     <TooltipProvider delayDuration={150}>

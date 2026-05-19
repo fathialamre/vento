@@ -65,6 +65,7 @@ import {
   toPersisted,
   type QueryParam,
 } from "@/lib/url-params";
+import { listEnvironments } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 const HTTP_METHODS = [
@@ -121,6 +122,10 @@ type Tab = {
   duration_ms: number | null;
 };
 
+const MIN_SIDEBAR_WIDTH = 280;
+const MAX_SIDEBAR_WIDTH = 800;
+const DEFAULT_SIDEBAR_WIDTH = 350;
+
 let tabCounter = 0;
 function newTab(overrides?: Partial<Tab>): Tab {
   tabCounter += 1;
@@ -151,12 +156,13 @@ export default function App() {
   const [collectionsRevision, setCollectionsRevision] = useState(0);
   const [environmentsRevision, setEnvironmentsRevision] = useState(0);
   const [sidebarNav, setSidebarNav] = useState<string>("Collections");
-  const { activeEnvId, setActiveEnvId, envMap, globalsMap } =
+  const { activeEnvId, setActiveEnvId, envMap, globalsMap, globalsId } =
     useActiveEnv(environmentsRevision);
   const [layoutMode, setLayoutMode] = useState<"vertical" | "horizontal">(() => {
     const stored = localStorage.getItem("vento:layout-mode");
     return stored === "horizontal" ? "horizontal" : "vertical";
   });
+  const [sidebarWidth, setSidebarWidth] = useState<number>(DEFAULT_SIDEBAR_WIDTH);
   const tabBarRef = useRef<HTMLDivElement>(null);
   const requestSnapshotsRef = useRef<Map<string, string>>(new Map());
   const saveTimersRef = useRef<Map<string, number>>(new Map());
@@ -262,6 +268,18 @@ export default function App() {
       environmentId: envId,
       isGlobals,
     });
+  }
+
+  async function handleVarClick(name: string, source: "env" | "globals") {
+    if (source === "globals" && globalsId !== null) {
+      handleOpenEnvironment(globalsId, "Globals", true);
+    } else if (source === "env" && activeEnvId !== null) {
+      try {
+        const envs = await listEnvironments();
+        const env = envs.find((e) => e.id === activeEnvId);
+        if (env) handleOpenEnvironment(env.id, env.name, false);
+      } catch {}
+    }
   }
 
   function closeTab(id: string) {
@@ -432,7 +450,9 @@ export default function App() {
   }
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "350px" } as React.CSSProperties}>
+    <SidebarProvider
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <AppSidebar
         history={history}
         methodColor={METHOD_COLOR}
@@ -583,6 +603,7 @@ export default function App() {
                 onChange={handleUrlChange}
                 envMap={envMap}
                 globalsMap={globalsMap}
+                onVarClick={handleVarClick}
                 placeholder="https://api.example.com/endpoint"
                 className="h-9 rounded-l-none focus-visible:z-10"
                 containerClassName="flex-1"
