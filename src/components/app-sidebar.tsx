@@ -90,7 +90,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="relative overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      className="relative *:data-[sidebar=sidebar]:flex-row"
       {...props}
     >
       <Sidebar
@@ -213,7 +213,7 @@ export function AppSidebar({
                         {formatRelative(item.sent_at)}
                       </span>
                     </div>
-                    <span className="line-clamp-2 w-full break-all text-xs">
+                    <span className="w-full text-xs">
                       {item.url}
                     </span>
                     {(item.status !== null || item.duration_ms !== null) && (
