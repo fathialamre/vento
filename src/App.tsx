@@ -65,6 +65,11 @@ import {
   toPersisted,
   type QueryParam,
 } from "@/lib/url-params";
+import {
+  EMPTY_BODY,
+  resolveBody,
+  type RequestBody,
+} from "@/lib/body";
 import { listEnvironments } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import {
@@ -120,6 +125,7 @@ type Tab = {
   method: HttpMethod;
   url: string;
   params: QueryParam[];
+  body: RequestBody;
   bottomTab: BottomTab;
   response: string;
   responseHeaders: [string, string][];
@@ -146,6 +152,7 @@ function newTab(overrides?: Partial<Tab>): Tab {
     method: "GET",
     url: "",
     params: [],
+    body: EMPTY_BODY,
     bottomTab: "params",
     response: "",
     responseHeaders: [],
@@ -433,8 +440,13 @@ export default function App() {
           envMap,
           globalsMap,
         );
+      const { body: resolvedBody, unresolved: bodyUnresolved } = resolveBody(
+        tab.body,
+        envMap,
+        globalsMap,
+      );
       const unresolved = Array.from(
-        new Set([...urlUnresolved, ...paramUnresolved]),
+        new Set([...urlUnresolved, ...paramUnresolved, ...bodyUnresolved]),
       );
       if (unresolved.length) {
         console.warn("Unresolved environment vars:", unresolved);
@@ -447,6 +459,7 @@ export default function App() {
           value: resolvedValues[i],
           encode: p.encode,
         })),
+        body: resolvedBody,
       });
       status = res.status;
       duration = res.duration_ms;
