@@ -121,7 +121,7 @@ export function CollectionsPanel({ onLoadRequest, query = "", refreshKey }: Prop
       return (
         <span className="flex flex-1 items-center gap-1.5">
           {Icon && (
-            <Icon className={cn("size-4 shrink-0", isSelected ? "text-accent-foreground" : "text-muted-foreground")} />
+            <Icon className={cn("size-4 shrink-0", isSelected ? "text-primary" : "text-muted-foreground")} />
           )}
           <span className="flex-1 text-sm font-normal">{item.name}</span>
           {method && (
