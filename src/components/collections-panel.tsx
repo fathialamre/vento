@@ -119,11 +119,11 @@ export function CollectionsPanel({ onLoadRequest, query = "", refreshKey }: Prop
       }
 
       return (
-        <span className="flex flex-1 items-center gap-1.5">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
           {Icon && (
             <Icon className={cn("size-4 shrink-0", isSelected ? "text-accent-foreground" : "text-muted-foreground")} />
           )}
-          <span className="flex-1 text-sm font-normal">{item.name}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-normal">{item.name}</span>
           {method && (
             <span className={cn("shrink-0 text-[10px] font-bold", METHOD_COLOR[method] ?? "text-foreground")}>
               {method}
