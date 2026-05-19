@@ -30,7 +30,7 @@ export function RequestTabs({ active, onChange, paramsCount }: RequestTabsProps)
             className={cn(
               "relative flex h-9 items-center gap-1.5 border-b-2 border-transparent px-3 text-xs font-medium transition-colors",
               isActive
-                ? "border-foreground text-foreground"
+                ? "border-primary text-primary"
                 : "text-muted-foreground hover:text-foreground",
               !t.enabled && "cursor-not-allowed opacity-40 hover:text-muted-foreground",
             )}
