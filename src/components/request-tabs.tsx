@@ -6,21 +6,28 @@ export type RequestTabsProps = {
   active: BottomTab;
   onChange: (tab: BottomTab) => void;
   paramsCount: number;
+  bodyActive: boolean;
 };
 
 const TABS: { id: BottomTab; label: string; enabled: boolean }[] = [
   { id: "params", label: "Params", enabled: true },
   { id: "headers", label: "Headers", enabled: false },
-  { id: "body", label: "Body", enabled: false },
+  { id: "body", label: "Body", enabled: true },
   { id: "auth", label: "Auth", enabled: false },
 ];
 
-export function RequestTabs({ active, onChange, paramsCount }: RequestTabsProps) {
+export function RequestTabs({
+  active,
+  onChange,
+  paramsCount,
+  bodyActive,
+}: RequestTabsProps) {
   return (
     <div className="flex items-center gap-0.5 border-b">
       {TABS.map((t) => {
         const isActive = active === t.id;
         const count = t.id === "params" ? paramsCount : 0;
+        const showDot = t.id === "body" && bodyActive;
         return (
           <button
             key={t.id}
@@ -32,7 +39,8 @@ export function RequestTabs({ active, onChange, paramsCount }: RequestTabsProps)
               isActive
                 ? "border-primary text-primary"
                 : "text-muted-foreground hover:text-foreground",
-              !t.enabled && "cursor-not-allowed opacity-40 hover:text-muted-foreground",
+              !t.enabled &&
+                "cursor-not-allowed opacity-40 hover:text-muted-foreground",
             )}
           >
             {t.label}
@@ -40,6 +48,15 @@ export function RequestTabs({ active, onChange, paramsCount }: RequestTabsProps)
               <span className="rounded bg-accent px-1 py-0.5 text-[10px] font-bold text-accent-foreground">
                 {count}
               </span>
+            )}
+            {showDot && (
+              <span
+                aria-hidden
+                className={cn(
+                  "ml-0.5 inline-block size-1.5 rounded-full",
+                  isActive ? "bg-primary" : "bg-muted-foreground",
+                )}
+              />
             )}
           </button>
         );

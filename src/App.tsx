@@ -65,7 +65,9 @@ import {
   toPersisted,
   type QueryParam,
 } from "@/lib/url-params";
+import { BodyEditor } from "@/components/body/body-editor";
 import {
+  bodyHasContent,
   EMPTY_BODY,
   resolveBody,
   type RequestBody,
@@ -691,11 +693,18 @@ export default function App() {
                   active={activeTab.bottomTab ?? "params"}
                   onChange={(t) => updateActive({ bottomTab: t })}
                   paramsCount={(activeTab.params ?? []).filter((p) => p.enabled && p.key).length}
+                  bodyActive={bodyHasContent(activeTab.body)}
                 />
                 {(activeTab.bottomTab ?? "params") === "params" && (
                   <ParamsEditor
                     params={activeTab.params ?? []}
                     onChange={handleParamsChange}
+                  />
+                )}
+                {activeTab.bottomTab === "body" && (
+                  <BodyEditor
+                    body={activeTab.body}
+                    onChange={(b) => updateActive({ body: b })}
                   />
                 )}
               </div>
