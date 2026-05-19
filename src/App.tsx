@@ -704,7 +704,13 @@ export default function App() {
                       onChange={(t) => updateActive({ responseTab: t })}
                     />
                     {(activeTab.responseTab ?? "body") === "body" ? (
-                      <ResponseView raw={activeTab.response} />
+                      <>
+                        <BodyToolbar
+                          mode={activeTab.bodyViewMode}
+                          onChange={(m) => updateActive({ bodyViewMode: m })}
+                        />
+                        <ResponseView raw={activeTab.response} mode={activeTab.bodyViewMode} />
+                      </>
                     ) : (
                       <HeadersView headers={activeTab.responseHeaders} />
                     )}
