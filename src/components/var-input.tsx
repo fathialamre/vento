@@ -171,9 +171,9 @@ export function VarInput({
             <TooltipTrigger asChild>
               <span
                 className={cn(
-                  "pointer-events-auto font-bold text-primary",
+                  "pointer-events-auto font-bold text-emerald-500",
                   cmdHeld &&
-                    "cursor-pointer underline decoration-primary/60 decoration-dotted underline-offset-4",
+                    "cursor-pointer underline decoration-emerald-500/60 decoration-dotted underline-offset-4",
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault();
