@@ -1,5 +1,6 @@
 import { BodyTypePills, type BodyTypeId } from "@/components/body/body-type-pills";
 import { JsonBodyEditor } from "@/components/body/json-body-editor";
+import { RawTextBodyEditor } from "@/components/body/raw-text-body-editor";
 import { EMPTY_BODY, type RequestBody } from "@/lib/body";
 
 export type BodyEditorProps = {
@@ -45,9 +46,11 @@ export function BodyEditor({ body, onChange }: BodyEditorProps) {
           />
         )}
         {body.type === "text" && (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            Text body editor — coming next task.
-          </div>
+          <RawTextBodyEditor
+            text={body.text}
+            contentType={body.contentType}
+            onChange={(next) => onChange({ type: "text", ...next })}
+          />
         )}
         {body.type === "form-urlencoded" && (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
