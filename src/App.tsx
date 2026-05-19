@@ -762,10 +762,10 @@ function TabItem({
       type="button"
       onClick={onActivate}
       className={cn(
-        "group flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+        "group flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-xs font-medium transition-colors",
         isActive
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+          ? "border-primary text-primary"
+          : "border-transparent text-muted-foreground hover:text-foreground",
       )}
     >
       {tab.kind === "settings" ? (
