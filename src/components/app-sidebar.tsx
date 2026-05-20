@@ -90,7 +90,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="relative *:data-[sidebar=sidebar]:flex-row"
+      className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
       {...props}
     >
       <Sidebar
