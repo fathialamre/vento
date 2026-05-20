@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useIsDark } from "@/hooks/use-is-dark";
+import { useEditorPrefs } from "@/hooks/use-editor-prefs";
 
 const CONTENT_TYPES = [
   "text/plain",
@@ -37,12 +38,17 @@ function languageExtension(contentType: string): Extension | null {
   }
 }
 
-const editorTheme = EditorView.theme({
-  "&": { height: "100%", fontSize: "12px" },
-  ".cm-scroller": { fontFamily: "var(--font-mono, ui-monospace, monospace)" },
-  ".cm-content": { padding: "8px 0" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none" },
-});
+function buildEditorTheme(fontSize: number, lineHeight: number) {
+  return EditorView.theme({
+    "&": { height: "100%", fontSize: `${fontSize}px` },
+    ".cm-scroller": {
+      fontFamily: "var(--font-mono, ui-monospace, monospace)",
+      lineHeight: String(lineHeight),
+    },
+    ".cm-content": { padding: "8px 0" },
+    ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+  });
+}
 
 export type RawTextBodyEditorProps = {
   text: string;
@@ -56,13 +62,17 @@ export function RawTextBodyEditor({
   onChange,
 }: RawTextBodyEditorProps) {
   const isDark = useIsDark();
+  const { prefs } = useEditorPrefs();
 
   const extensions = useMemo<Extension[]>(() => {
-    const exts: Extension[] = [editorTheme, EditorView.lineWrapping];
+    const exts: Extension[] = [
+      buildEditorTheme(prefs.fontSize, prefs.lineHeight),
+      EditorView.lineWrapping,
+    ];
     const lang = languageExtension(contentType);
     if (lang) exts.push(lang);
     return exts;
-  }, [contentType]);
+  }, [contentType, prefs.fontSize, prefs.lineHeight]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

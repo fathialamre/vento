@@ -6,6 +6,7 @@ import { EditorView } from "@codemirror/view";
 
 import { Button } from "@/components/ui/button";
 import { useIsDark } from "@/hooks/use-is-dark";
+import { useEditorPrefs } from "@/hooks/use-editor-prefs";
 
 export type JsonBodyEditorProps = {
   text: string;
@@ -62,15 +63,21 @@ const jsonLinter = linter((view) => {
   }
 });
 
-const editorTheme = EditorView.theme({
-  "&": { height: "100%", fontSize: "12px" },
-  ".cm-scroller": { fontFamily: "var(--font-mono, ui-monospace, monospace)" },
-  ".cm-content": { padding: "8px 0" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none" },
-});
+function buildEditorTheme(fontSize: number, lineHeight: number) {
+  return EditorView.theme({
+    "&": { height: "100%", fontSize: `${fontSize}px` },
+    ".cm-scroller": {
+      fontFamily: "var(--font-mono, ui-monospace, monospace)",
+      lineHeight: String(lineHeight),
+    },
+    ".cm-content": { padding: "8px 0" },
+    ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+  });
+}
 
 export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
   const isDark = useIsDark();
+  const { prefs } = useEditorPrefs();
   const [status, setStatus] = useState<ParseStatus>(() => parseStatus(text));
 
   useEffect(() => {
@@ -79,8 +86,14 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
   }, [text]);
 
   const extensions = useMemo(
-    () => [json(), jsonLinter, lintGutter(), editorTheme, EditorView.lineWrapping],
-    [],
+    () => [
+      json(),
+      jsonLinter,
+      lintGutter(),
+      buildEditorTheme(prefs.fontSize, prefs.lineHeight),
+      EditorView.lineWrapping,
+    ],
+    [prefs.fontSize, prefs.lineHeight],
   );
 
   function handleFormat() {

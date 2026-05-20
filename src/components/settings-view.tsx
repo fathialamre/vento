@@ -1,14 +1,32 @@
 import { useState } from "react";
-import { Columns2, Info, Monitor, Moon, Palette, Rows2, Sun } from "lucide-react";
+import {
+  Code2,
+  Columns2,
+  Info,
+  Minus,
+  Monitor,
+  Moon,
+  Palette,
+  Plus,
+  RotateCcw,
+  Rows2,
+  Sun,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button";
+import {
+  FONT_SIZE_RANGE,
+  LINE_HEIGHT_RANGE,
+  useEditorPrefs,
+} from "@/hooks/use-editor-prefs";
 import { cn } from "@/lib/utils";
 
 const APP_VERSION = "0.1.0";
 const APP_NAME = "Vento";
 const APP_DESCRIPTION = "A fast, native API client built with Tauri.";
 
-type SectionId = "appearance" | "about";
+type SectionId = "appearance" | "editor" | "about";
 
 type Section = {
   id: SectionId;
@@ -18,6 +36,7 @@ type Section = {
 
 const SECTIONS: Section[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "editor", label: "Editor", icon: Code2 },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -77,8 +96,139 @@ export function SettingsView({ layoutMode, onLayoutChange }: Props) {
         {activeId === "appearance" && (
           <AppearanceSection layoutMode={layoutMode} onLayoutChange={onLayoutChange} />
         )}
+        {activeId === "editor" && <EditorSection />}
         {activeId === "about" && <AboutSection />}
       </div>
+    </div>
+  );
+}
+
+function EditorSection() {
+  const { prefs, setFontSize, setLineHeight, reset } = useEditorPrefs();
+
+  const previewStyle = {
+    fontSize: `${prefs.fontSize}px`,
+    lineHeight: String(prefs.lineHeight),
+    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+  };
+
+  return (
+    <div className="max-w-md space-y-6">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium">Font size</h4>
+          <span className="text-xs text-muted-foreground">
+            {prefs.fontSize} px
+          </span>
+        </div>
+        <NumericStepper
+          value={prefs.fontSize}
+          min={FONT_SIZE_RANGE.min}
+          max={FONT_SIZE_RANGE.max}
+          step={FONT_SIZE_RANGE.step}
+          onChange={setFontSize}
+          format={(v) => `${v} px`}
+        />
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium">Line height</h4>
+          <span className="text-xs text-muted-foreground">
+            {prefs.lineHeight.toFixed(1)}
+          </span>
+        </div>
+        <NumericStepper
+          value={prefs.lineHeight}
+          min={LINE_HEIGHT_RANGE.min}
+          max={LINE_HEIGHT_RANGE.max}
+          step={LINE_HEIGHT_RANGE.step}
+          onChange={setLineHeight}
+          format={(v) => v.toFixed(1)}
+        />
+      </section>
+
+      <section className="space-y-2">
+        <h4 className="text-sm font-medium">Preview</h4>
+        <div
+          className="overflow-hidden rounded-md border bg-card p-3"
+          style={previewStyle}
+        >
+          {"{\n  \"name\": \"vento\",\n  \"version\": \"0.1.0\"\n}"
+            .split("\n")
+            .map((line, i) => (
+              <div key={i}>{line || " "}</div>
+            ))}
+        </div>
+      </section>
+
+      <div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-8 px-2 text-xs"
+          onClick={reset}
+        >
+          <RotateCcw className="mr-1 size-3.5" />
+          Reset to defaults
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function NumericStepper({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  format: (v: number) => string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        size="icon"
+        variant="outline"
+        className="size-8"
+        onClick={() => onChange(value - step)}
+        disabled={value <= min}
+        aria-label="Decrease"
+      >
+        <Minus className="size-3.5" />
+      </Button>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.currentTarget.value))}
+        className="h-2 flex-1 cursor-pointer accent-primary"
+      />
+      <Button
+        type="button"
+        size="icon"
+        variant="outline"
+        className="size-8"
+        onClick={() => onChange(value + step)}
+        disabled={value >= max}
+        aria-label="Increase"
+      >
+        <Plus className="size-3.5" />
+      </Button>
+      <span className="w-12 text-right font-mono text-xs tabular-nums text-muted-foreground">
+        {format(value)}
+      </span>
     </div>
   );
 }
