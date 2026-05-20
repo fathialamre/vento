@@ -65,13 +65,26 @@ const jsonLinter = linter((view) => {
 
 function buildEditorTheme(fontSize: number, lineHeight: number) {
   return EditorView.theme({
-    "&": { height: "100%", fontSize: `${fontSize}px` },
+    "&": {
+      height: "100%",
+      fontSize: `${fontSize}px`,
+      backgroundColor: "transparent",
+    },
+    "&.cm-focused": { outline: "none" },
     ".cm-scroller": {
       fontFamily: "var(--font-mono, ui-monospace, monospace)",
       lineHeight: String(lineHeight),
     },
-    ".cm-content": { padding: "8px 0" },
-    ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+    ".cm-content": { padding: "8px 0", caretColor: "var(--foreground)" },
+    ".cm-gutters": {
+      backgroundColor: "transparent",
+      border: "none",
+      color: "var(--muted-foreground)",
+    },
+    ".cm-activeLine": { backgroundColor: "transparent" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
+      { backgroundColor: "var(--accent)" },
   });
 }
 
@@ -106,8 +119,8 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-end border-b px-2 py-1">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-card">
+      <div className="flex items-center justify-end border-b bg-card px-2 py-1">
         <Button
           type="button"
           size="sm"
@@ -119,7 +132,7 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
           Format
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden bg-card">
         <CodeMirror
           value={text}
           onChange={onChange}
@@ -136,7 +149,7 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
           className="h-full"
         />
       </div>
-      <div className="border-t px-3 py-1 text-[11px]">
+      <div className="border-t bg-card px-3 py-1 text-[11px]">
         {status.kind === "empty" && (
           <span className="text-muted-foreground">Empty</span>
         )}

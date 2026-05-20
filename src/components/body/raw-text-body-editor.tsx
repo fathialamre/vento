@@ -40,13 +40,26 @@ function languageExtension(contentType: string): Extension | null {
 
 function buildEditorTheme(fontSize: number, lineHeight: number) {
   return EditorView.theme({
-    "&": { height: "100%", fontSize: `${fontSize}px` },
+    "&": {
+      height: "100%",
+      fontSize: `${fontSize}px`,
+      backgroundColor: "transparent",
+    },
+    "&.cm-focused": { outline: "none" },
     ".cm-scroller": {
       fontFamily: "var(--font-mono, ui-monospace, monospace)",
       lineHeight: String(lineHeight),
     },
-    ".cm-content": { padding: "8px 0" },
-    ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+    ".cm-content": { padding: "8px 0", caretColor: "var(--foreground)" },
+    ".cm-gutters": {
+      backgroundColor: "transparent",
+      border: "none",
+      color: "var(--muted-foreground)",
+    },
+    ".cm-activeLine": { backgroundColor: "transparent" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
+      { backgroundColor: "var(--accent)" },
   });
 }
 
@@ -75,8 +88,8 @@ export function RawTextBodyEditor({
   }, [contentType, prefs.fontSize, prefs.lineHeight]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-2 py-1">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-card">
+      <div className="flex items-center gap-2 border-b bg-card px-2 py-1">
         <label className="text-xs text-muted-foreground">Content-Type:</label>
         <Select
           value={contentType}
@@ -94,7 +107,7 @@ export function RawTextBodyEditor({
           </SelectContent>
         </Select>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden bg-card">
         <CodeMirror
           value={text}
           onChange={(v) => onChange({ text: v, contentType })}
