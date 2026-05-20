@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
+import { EditorView } from "@codemirror/view";
+
 import { Button } from "@/components/ui/button";
+import { useIsDark } from "@/hooks/use-is-dark";
 
 export type JsonBodyEditorProps = {
   text: string;
@@ -11,7 +17,7 @@ type ParseStatus =
   | { kind: "valid" }
   | { kind: "invalid"; message: string };
 
-function parse(text: string): ParseStatus {
+function parseStatus(text: string): ParseStatus {
   if (text.trim() === "") return { kind: "empty" };
   try {
     JSON.parse(text);
@@ -21,20 +27,68 @@ function parse(text: string): ParseStatus {
   }
 }
 
+const jsonLinter = linter((view) => {
+  const text = view.state.doc.toString();
+  if (text.trim() === "") return [];
+  try {
+    JSON.parse(text);
+    return [];
+  } catch (e) {
+    const msg = (e as Error).message;
+    let pos = 0;
+    const mPos = msg.match(/position (\d+)/i);
+    if (mPos) {
+      pos = parseInt(mPos[1], 10);
+    } else {
+      const mLineCol = msg.match(/line (\d+) column (\d+)/i);
+      if (mLineCol) {
+        const line = parseInt(mLineCol[1], 10);
+        const col = parseInt(mLineCol[2], 10);
+        try {
+          pos = view.state.doc.line(line).from + (col - 1);
+        } catch {
+          pos = 0;
+        }
+      }
+    }
+    const docLen = view.state.doc.length;
+    const diag: Diagnostic = {
+      from: Math.min(Math.max(0, pos), docLen),
+      to: Math.min(Math.max(0, pos) + 1, docLen),
+      severity: "error",
+      message: msg,
+    };
+    return [diag];
+  }
+});
+
+const editorTheme = EditorView.theme({
+  "&": { height: "100%", fontSize: "12px" },
+  ".cm-scroller": { fontFamily: "var(--font-mono, ui-monospace, monospace)" },
+  ".cm-content": { padding: "8px 0" },
+  ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+});
+
 export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
-  const [status, setStatus] = useState<ParseStatus>(() => parse(text));
+  const isDark = useIsDark();
+  const [status, setStatus] = useState<ParseStatus>(() => parseStatus(text));
 
   useEffect(() => {
-    const id = window.setTimeout(() => setStatus(parse(text)), 300);
+    const id = window.setTimeout(() => setStatus(parseStatus(text)), 300);
     return () => window.clearTimeout(id);
   }, [text]);
+
+  const extensions = useMemo(
+    () => [json(), jsonLinter, lintGutter(), editorTheme, EditorView.lineWrapping],
+    [],
+  );
 
   function handleFormat() {
     try {
       const obj = JSON.parse(text);
       onChange(JSON.stringify(obj, null, 2));
     } catch {
-      // ignore — status line already shows the parse error
+      // status line already shows error
     }
   }
 
@@ -52,14 +106,23 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
           Format
         </Button>
       </div>
-      <textarea
-        value={text}
-        onChange={(e) => onChange(e.currentTarget.value)}
-        spellCheck={false}
-        autoComplete="off"
-        placeholder='{ "key": "value" }'
-        className="flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-5 outline-none focus-visible:ring-0"
-      />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <CodeMirror
+          value={text}
+          onChange={onChange}
+          theme={isDark ? "dark" : "light"}
+          extensions={extensions}
+          basicSetup={{
+            lineNumbers: true,
+            foldGutter: true,
+            highlightActiveLine: true,
+            highlightActiveLineGutter: true,
+            autocompletion: false,
+          }}
+          height="100%"
+          className="h-full"
+        />
+      </div>
       <div className="border-t px-3 py-1 text-[11px]">
         {status.kind === "empty" && (
           <span className="text-muted-foreground">Empty</span>

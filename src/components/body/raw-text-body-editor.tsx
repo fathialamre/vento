@@ -1,3 +1,11 @@
+import { useMemo } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { xml } from "@codemirror/lang-xml";
+import { html } from "@codemirror/lang-html";
+import { javascript } from "@codemirror/lang-javascript";
+import { EditorView } from "@codemirror/view";
+import type { Extension } from "@codemirror/state";
+
 import {
   Select,
   SelectContent,
@@ -5,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useIsDark } from "@/hooks/use-is-dark";
 
 const CONTENT_TYPES = [
   "text/plain",
@@ -13,6 +22,27 @@ const CONTENT_TYPES = [
   "text/html",
   "application/javascript",
 ];
+
+function languageExtension(contentType: string): Extension | null {
+  switch (contentType) {
+    case "text/xml":
+    case "application/xml":
+      return xml();
+    case "text/html":
+      return html();
+    case "application/javascript":
+      return javascript();
+    default:
+      return null;
+  }
+}
+
+const editorTheme = EditorView.theme({
+  "&": { height: "100%", fontSize: "12px" },
+  ".cm-scroller": { fontFamily: "var(--font-mono, ui-monospace, monospace)" },
+  ".cm-content": { padding: "8px 0" },
+  ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+});
 
 export type RawTextBodyEditorProps = {
   text: string;
@@ -25,6 +55,15 @@ export function RawTextBodyEditor({
   contentType,
   onChange,
 }: RawTextBodyEditorProps) {
+  const isDark = useIsDark();
+
+  const extensions = useMemo<Extension[]>(() => {
+    const exts: Extension[] = [editorTheme, EditorView.lineWrapping];
+    const lang = languageExtension(contentType);
+    if (lang) exts.push(lang);
+    return exts;
+  }, [contentType]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-2 py-1">
@@ -45,16 +84,24 @@ export function RawTextBodyEditor({
           </SelectContent>
         </Select>
       </div>
-      <textarea
-        value={text}
-        onChange={(e) =>
-          onChange({ text: e.currentTarget.value, contentType })
-        }
-        spellCheck={false}
-        autoComplete="off"
-        placeholder="raw body"
-        className="flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-5 outline-none focus-visible:ring-0"
-      />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <CodeMirror
+          value={text}
+          onChange={(v) => onChange({ text: v, contentType })}
+          theme={isDark ? "dark" : "light"}
+          extensions={extensions}
+          basicSetup={{
+            lineNumbers: true,
+            foldGutter: true,
+            highlightActiveLine: true,
+            highlightActiveLineGutter: true,
+            autocompletion: false,
+          }}
+          height="100%"
+          className="h-full"
+          placeholder="raw body"
+        />
+      </div>
     </div>
   );
 }
