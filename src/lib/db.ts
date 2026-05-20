@@ -164,10 +164,36 @@ export type TreeCollection = Collection & {
   requests: SavedRequest[];
 };
 
+// Mark a row as deleted (tombstone) instead of physically removing it. Sync
+// needs the row to remain so it can propagate the delete to other devices
+// and so we can restore it on conflict. Hard purge of tombstones happens
+// later (M8 cron). Hard delete is preserved for unsynced tables like history.
+export async function softDelete(
+  table: (typeof SYNCED_TABLES)[number],
+  id: number,
+): Promise<void> {
+  const db = await loadDb();
+  await db.execute(
+    `UPDATE ${table} SET deleted_at = $1, updated_at = $1 WHERE id = $2`,
+    [Date.now(), id],
+  );
+}
+
+export async function restoreSoftDeleted(
+  table: (typeof SYNCED_TABLES)[number],
+  id: number,
+): Promise<void> {
+  const db = await loadDb();
+  await db.execute(
+    `UPDATE ${table} SET deleted_at = NULL, updated_at = $1 WHERE id = $2`,
+    [Date.now(), id],
+  );
+}
+
 export async function listCollections(): Promise<Collection[]> {
   const db = await loadDb();
   return db.select<Collection[]>(
-    "SELECT id, name, created_at FROM collections ORDER BY created_at ASC",
+    "SELECT id, name, created_at FROM collections WHERE deleted_at IS NULL ORDER BY created_at ASC",
   );
 }
 
@@ -186,8 +212,7 @@ export async function renameCollection(id: number, name: string): Promise<void> 
 }
 
 export async function deleteCollection(id: number): Promise<void> {
-  const db = await loadDb();
-  await db.execute("DELETE FROM collections WHERE id = $1", [id]);
+  await softDelete("collections", id);
 }
 
 export async function createFolder(input: {
@@ -209,8 +234,7 @@ export async function renameFolder(id: number, name: string): Promise<void> {
 }
 
 export async function deleteFolder(id: number): Promise<void> {
-  const db = await loadDb();
-  await db.execute("DELETE FROM folders WHERE id = $1", [id]);
+  await softDelete("folders", id);
 }
 
 export async function createRequest(input: {
@@ -262,21 +286,20 @@ export async function renameRequest(id: number, name: string): Promise<void> {
 }
 
 export async function deleteRequest(id: number): Promise<void> {
-  const db = await loadDb();
-  await db.execute("DELETE FROM saved_requests WHERE id = $1", [id]);
+  await softDelete("saved_requests", id);
 }
 
 export async function getCollectionsTree(): Promise<TreeCollection[]> {
   const db = await loadDb();
   const [collections, folders, requests] = await Promise.all([
     db.select<Collection[]>(
-      "SELECT id, name, created_at FROM collections ORDER BY created_at ASC",
+      "SELECT id, name, created_at FROM collections WHERE deleted_at IS NULL ORDER BY created_at ASC",
     ),
     db.select<Folder[]>(
-      "SELECT id, collection_id, parent_folder_id, name, created_at FROM folders ORDER BY name ASC",
+      "SELECT id, collection_id, parent_folder_id, name, created_at FROM folders WHERE deleted_at IS NULL ORDER BY name ASC",
     ),
     db.select<SavedRequest[]>(
-      "SELECT id, collection_id, folder_id, name, method, url, created_at, params, body_type, body FROM saved_requests ORDER BY name ASC",
+      "SELECT id, collection_id, folder_id, name, method, url, created_at, params, body_type, body FROM saved_requests WHERE deleted_at IS NULL ORDER BY name ASC",
     ),
   ]);
 
@@ -341,14 +364,14 @@ export type VariableInput = {
 export async function listEnvironments(): Promise<Environment[]> {
   const db = await loadDb();
   return db.select<Environment[]>(
-    "SELECT id, name, is_globals, created_at FROM environments ORDER BY is_globals DESC, created_at ASC",
+    "SELECT id, name, is_globals, created_at FROM environments WHERE deleted_at IS NULL ORDER BY is_globals DESC, created_at ASC",
   );
 }
 
 export async function getGlobalsEnvironment(): Promise<Environment> {
   const db = await loadDb();
   const rows = await db.select<Environment[]>(
-    "SELECT id, name, is_globals, created_at FROM environments WHERE is_globals = 1 LIMIT 1",
+    "SELECT id, name, is_globals, created_at FROM environments WHERE is_globals = 1 AND deleted_at IS NULL LIMIT 1",
   );
   if (rows.length === 0) {
     throw new Error("Globals environment missing — DB migration not applied?");
@@ -372,7 +395,7 @@ export async function renameEnvironment(id: number, name: string): Promise<void>
   if (!trimmed) throw new Error("Environment name required");
   const db = await loadDb();
   const rows = await db.select<{ is_globals: number }[]>(
-    "SELECT is_globals FROM environments WHERE id = $1",
+    "SELECT is_globals FROM environments WHERE id = $1 AND deleted_at IS NULL",
     [id],
   );
   if (rows[0]?.is_globals === 1) throw new Error("Cannot rename Globals");
@@ -382,22 +405,42 @@ export async function renameEnvironment(id: number, name: string): Promise<void>
 export async function deleteEnvironment(id: number): Promise<void> {
   const db = await loadDb();
   const rows = await db.select<{ is_globals: number }[]>(
-    "SELECT is_globals FROM environments WHERE id = $1",
+    "SELECT is_globals FROM environments WHERE id = $1 AND deleted_at IS NULL",
     [id],
   );
   if (rows[0]?.is_globals === 1) throw new Error("Cannot delete Globals");
+  // Secrets are per-device in OS keychain; soft-deleting the env doesn't drop
+  // them automatically. Wipe keychain entries now since the user is intent on
+  // deletion. If they restore the env later they will re-enter secrets.
   const secrets = await db.select<{ key: string }[]>(
-    "SELECT key FROM env_variables WHERE environment_id = $1 AND secret = 1",
+    "SELECT key FROM env_variables WHERE environment_id = $1 AND secret = 1 AND deleted_at IS NULL",
     [id],
   );
   await Promise.all(secrets.map((r) => secretDelete(id, r.key).catch(() => {})));
-  await db.execute("DELETE FROM environments WHERE id = $1", [id]);
+  // Tombstone the environment itself and all its variables so sync can
+  // propagate the delete and tree views hide them.
+  await db.execute("BEGIN");
+  try {
+    const now = Date.now();
+    await db.execute(
+      "UPDATE env_variables SET deleted_at = $1, updated_at = $1 WHERE environment_id = $2 AND deleted_at IS NULL",
+      [now, id],
+    );
+    await db.execute(
+      "UPDATE environments SET deleted_at = $1, updated_at = $1 WHERE id = $2",
+      [now, id],
+    );
+    await db.execute("COMMIT");
+  } catch (e) {
+    await db.execute("ROLLBACK").catch(() => {});
+    throw e;
+  }
 }
 
 export async function listVariables(environmentId: number): Promise<EnvVariable[]> {
   const db = await loadDb();
   return db.select<EnvVariable[]>(
-    "SELECT id, environment_id, key, value, secret, enabled, position FROM env_variables WHERE environment_id = $1 ORDER BY position ASC, id ASC",
+    "SELECT id, environment_id, key, value, secret, enabled, position FROM env_variables WHERE environment_id = $1 AND deleted_at IS NULL ORDER BY position ASC, id ASC",
     [environmentId],
   );
 }
@@ -407,7 +450,7 @@ export async function duplicateEnvironment(id: number, newName: string): Promise
   const trimmed = newName.trim();
   if (!trimmed) throw new Error("New environment name required");
   const src = await db.select<Environment[]>(
-    "SELECT id, name, is_globals, created_at FROM environments WHERE id = $1",
+    "SELECT id, name, is_globals, created_at FROM environments WHERE id = $1 AND deleted_at IS NULL",
     [id],
   );
   if (src.length === 0) throw new Error("Source environment not found");
@@ -441,7 +484,7 @@ export async function replaceVariables(
 ): Promise<void> {
   const db = await loadDb();
   const prior = await db.select<{ key: string }[]>(
-    "SELECT key FROM env_variables WHERE environment_id = $1 AND secret = 1",
+    "SELECT key FROM env_variables WHERE environment_id = $1 AND secret = 1 AND deleted_at IS NULL",
     [environmentId],
   );
   const nextSecretKeys = new Set(
@@ -453,6 +496,9 @@ export async function replaceVariables(
 
   await db.execute("BEGIN");
   try {
+    // Internal bulk-replace: env_variables aren't yet in the sync write path
+    // (M4 will introduce diff-based updates). For now physically replace so
+    // local-only behavior matches what it was before sync metadata existed.
     await db.execute(
       "DELETE FROM env_variables WHERE environment_id = $1",
       [environmentId],
@@ -506,7 +552,7 @@ export async function buildVarMap(
 export async function countVariablesByEnv(): Promise<Record<number, number>> {
   const db = await loadDb();
   const rows = await db.select<{ environment_id: number; n: number }[]>(
-    "SELECT environment_id, COUNT(*) as n FROM env_variables GROUP BY environment_id",
+    "SELECT environment_id, COUNT(*) as n FROM env_variables WHERE deleted_at IS NULL GROUP BY environment_id",
   );
   const out: Record<number, number> = {};
   for (const r of rows) out[r.environment_id] = r.n;
