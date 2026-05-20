@@ -13,7 +13,7 @@ type JsonViewerProps = {
 export function JsonViewer({ data, rootName = "root", defaultExpanded = true, className }: JsonViewerProps) {
   return (
     <TooltipProvider>
-      <div className={cn("font-mono text-sm", className)}>
+      <div className={cn("font-mono", className)}>
         <JsonNode name={rootName} data={data} isRoot={true} defaultExpanded={defaultExpanded} />
       </div>
     </TooltipProvider>

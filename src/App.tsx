@@ -13,6 +13,7 @@ import { EnvironmentEditor } from "@/components/environment-editor";
 import { ActiveEnvSelect } from "@/components/active-env-select";
 import { VarInput } from "@/components/var-input";
 import { useActiveEnv } from "@/hooks/use-active-env";
+import { useEditorPrefs } from "@/hooks/use-editor-prefs";
 import { resolveVars, resolveVarsInList } from "@/lib/interpolation";
 import {
   AlertCircle,
@@ -1043,19 +1044,31 @@ function HeadersView({ headers }: { headers: [string, string][] }) {
 }
 
 function ResponseView({ raw, mode }: { raw: string; mode: BodyViewMode }) {
+  const { prefs } = useEditorPrefs();
+  const sizeStyle: React.CSSProperties = {
+    fontSize: `${prefs.fontSize}px`,
+    lineHeight: String(prefs.lineHeight),
+  };
+
   if (mode === "json") {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
       return (
-        <pre className="overflow-auto rounded-md border bg-card p-4 font-mono text-sm whitespace-pre-wrap break-words text-foreground">
+        <pre
+          className="overflow-auto rounded-md border bg-card p-4 font-mono whitespace-pre-wrap break-words text-foreground"
+          style={sizeStyle}
+        >
           {raw}
         </pre>
       );
     }
     return (
-      <div className="overflow-auto rounded-md border bg-card p-4">
+      <div
+        className="overflow-auto rounded-md border bg-card p-4"
+        style={sizeStyle}
+      >
         <JsonViewer data={parsed} />
       </div>
     );
@@ -1069,14 +1082,20 @@ function ResponseView({ raw, mode }: { raw: string; mode: BodyViewMode }) {
       // not JSON — show raw as-is
     }
     return (
-      <pre className="overflow-auto rounded-md border bg-card p-4 font-mono text-sm whitespace-pre-wrap break-words text-foreground">
+      <pre
+        className="overflow-auto rounded-md border bg-card p-4 font-mono whitespace-pre-wrap break-words text-foreground"
+        style={sizeStyle}
+      >
         {formatted}
       </pre>
     );
   }
 
   return (
-    <pre className="overflow-auto rounded-md border bg-card p-4 font-mono text-sm whitespace-pre-wrap break-words text-foreground">
+    <pre
+      className="overflow-auto rounded-md border bg-card p-4 font-mono whitespace-pre-wrap break-words text-foreground"
+      style={sizeStyle}
+    >
       {raw}
     </pre>
   );

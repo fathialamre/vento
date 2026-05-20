@@ -114,6 +114,10 @@ function EditorSection() {
 
   return (
     <div className="max-w-md space-y-6">
+      <p className="text-xs text-muted-foreground">
+        Applies to body editors (JSON, raw text) and the JSON / pretty / raw
+        response viewer.
+      </p>
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium">Font size</h4>
