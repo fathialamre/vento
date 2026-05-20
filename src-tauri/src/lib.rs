@@ -433,6 +433,28 @@ pub fn run() {
             CREATE INDEX IF NOT EXISTS idx_env_variables_sync               ON env_variables(sync_state);",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 9,
+            description: "create_local_activity",
+            // Local audit log of every create/update/delete on synced
+            // entities. Lives entirely on device — it powers the activity
+            // drawer (M6) before any cloud sync is wired up and is the
+            // basis for offline-edit replay later. Not synced; the cloud
+            // activity collection mirrors it server-side from M4 onward.
+            sql: "CREATE TABLE IF NOT EXISTS local_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_uuid TEXT,
+                entity_id INTEGER,
+                action TEXT NOT NULL,
+                summary TEXT,
+                actor_user_id TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_local_activity_ts ON local_activity(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_local_activity_entity ON local_activity(entity_uuid, timestamp DESC);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

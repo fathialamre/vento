@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { secretSet, secretGet, secretDelete } from "@/lib/secrets";
 import { newUuid } from "@/lib/uuid";
+import { logActivity, type EntityType } from "@/lib/activity";
 
 const DB_URL = "sqlite:vento.db";
 
@@ -11,6 +12,16 @@ const SYNCED_TABLES = [
   "environments",
   "env_variables",
 ] as const;
+
+type SyncedTable = (typeof SYNCED_TABLES)[number];
+
+const TABLE_TO_ENTITY: Record<SyncedTable, EntityType> = {
+  collections: "collection",
+  folders: "folder",
+  saved_requests: "saved_request",
+  environments: "environment",
+  env_variables: "env_variable",
+};
 
 export type HistoryItem = {
   id: number;
@@ -169,7 +180,7 @@ export type TreeCollection = Collection & {
 // and so we can restore it on conflict. Hard purge of tombstones happens
 // later (M8 cron). Hard delete is preserved for unsynced tables like history.
 export async function softDelete(
-  table: (typeof SYNCED_TABLES)[number],
+  table: SyncedTable,
   id: number,
 ): Promise<void> {
   const db = await loadDb();
@@ -177,10 +188,15 @@ export async function softDelete(
     `UPDATE ${table} SET deleted_at = $1, updated_at = $1 WHERE id = $2`,
     [Date.now(), id],
   );
+  await logActivity(db, {
+    entityType: TABLE_TO_ENTITY[table],
+    entityId: id,
+    action: "delete",
+  });
 }
 
 export async function restoreSoftDeleted(
-  table: (typeof SYNCED_TABLES)[number],
+  table: SyncedTable,
   id: number,
 ): Promise<void> {
   const db = await loadDb();
@@ -188,6 +204,11 @@ export async function restoreSoftDeleted(
     `UPDATE ${table} SET deleted_at = NULL, updated_at = $1 WHERE id = $2`,
     [Date.now(), id],
   );
+  await logActivity(db, {
+    entityType: TABLE_TO_ENTITY[table],
+    entityId: id,
+    action: "restore",
+  });
 }
 
 export async function listCollections(): Promise<Collection[]> {
@@ -203,12 +224,15 @@ export async function createCollection(name: string): Promise<number> {
     "INSERT INTO collections (name, created_at) VALUES ($1, $2)",
     [name, Date.now()],
   );
-  return res.lastInsertId ?? 0;
+  const id = res.lastInsertId ?? 0;
+  await logActivity(db, { entityType: "collection", entityId: id, action: "create", summary: name });
+  return id;
 }
 
 export async function renameCollection(id: number, name: string): Promise<void> {
   const db = await loadDb();
-  await db.execute("UPDATE collections SET name = $1 WHERE id = $2", [name, id]);
+  await db.execute("UPDATE collections SET name = $1, updated_at = $2 WHERE id = $3", [name, Date.now(), id]);
+  await logActivity(db, { entityType: "collection", entityId: id, action: "update", summary: `renamed to ${name}` });
 }
 
 export async function deleteCollection(id: number): Promise<void> {
@@ -225,12 +249,15 @@ export async function createFolder(input: {
     "INSERT INTO folders (collection_id, parent_folder_id, name, created_at) VALUES ($1, $2, $3, $4)",
     [input.collection_id, input.parent_folder_id, input.name, Date.now()],
   );
-  return res.lastInsertId ?? 0;
+  const id = res.lastInsertId ?? 0;
+  await logActivity(db, { entityType: "folder", entityId: id, action: "create", summary: input.name });
+  return id;
 }
 
 export async function renameFolder(id: number, name: string): Promise<void> {
   const db = await loadDb();
-  await db.execute("UPDATE folders SET name = $1 WHERE id = $2", [name, id]);
+  await db.execute("UPDATE folders SET name = $1, updated_at = $2 WHERE id = $3", [name, Date.now(), id]);
+  await logActivity(db, { entityType: "folder", entityId: id, action: "update", summary: `renamed to ${name}` });
 }
 
 export async function deleteFolder(id: number): Promise<void> {
@@ -262,7 +289,9 @@ export async function createRequest(input: {
       input.body,
     ],
   );
-  return res.lastInsertId ?? 0;
+  const id = res.lastInsertId ?? 0;
+  await logActivity(db, { entityType: "saved_request", entityId: id, action: "create", summary: `${input.method} ${input.name}` });
+  return id;
 }
 
 export async function updateRequest(input: {
@@ -275,14 +304,16 @@ export async function updateRequest(input: {
 }): Promise<void> {
   const db = await loadDb();
   await db.execute(
-    "UPDATE saved_requests SET method = $1, url = $2, params = $3, body_type = $4, body = $5 WHERE id = $6",
-    [input.method, input.url, input.params, input.body_type, input.body, input.id],
+    "UPDATE saved_requests SET method = $1, url = $2, params = $3, body_type = $4, body = $5, updated_at = $6 WHERE id = $7",
+    [input.method, input.url, input.params, input.body_type, input.body, Date.now(), input.id],
   );
+  await logActivity(db, { entityType: "saved_request", entityId: input.id, action: "update" });
 }
 
 export async function renameRequest(id: number, name: string): Promise<void> {
   const db = await loadDb();
-  await db.execute("UPDATE saved_requests SET name = $1 WHERE id = $2", [name, id]);
+  await db.execute("UPDATE saved_requests SET name = $1, updated_at = $2 WHERE id = $3", [name, Date.now(), id]);
+  await logActivity(db, { entityType: "saved_request", entityId: id, action: "update", summary: `renamed to ${name}` });
 }
 
 export async function deleteRequest(id: number): Promise<void> {
@@ -387,7 +418,9 @@ export async function createEnvironment(name: string): Promise<number> {
     "INSERT INTO environments (name, is_globals, created_at) VALUES ($1, 0, $2)",
     [trimmed, Date.now()],
   );
-  return res.lastInsertId ?? 0;
+  const id = res.lastInsertId ?? 0;
+  await logActivity(db, { entityType: "environment", entityId: id, action: "create", summary: trimmed });
+  return id;
 }
 
 export async function renameEnvironment(id: number, name: string): Promise<void> {
@@ -399,7 +432,8 @@ export async function renameEnvironment(id: number, name: string): Promise<void>
     [id],
   );
   if (rows[0]?.is_globals === 1) throw new Error("Cannot rename Globals");
-  await db.execute("UPDATE environments SET name = $1 WHERE id = $2", [trimmed, id]);
+  await db.execute("UPDATE environments SET name = $1, updated_at = $2 WHERE id = $3", [trimmed, Date.now(), id]);
+  await logActivity(db, { entityType: "environment", entityId: id, action: "update", summary: `renamed to ${trimmed}` });
 }
 
 export async function deleteEnvironment(id: number): Promise<void> {
@@ -435,6 +469,7 @@ export async function deleteEnvironment(id: number): Promise<void> {
     await db.execute("ROLLBACK").catch(() => {});
     throw e;
   }
+  await logActivity(db, { entityType: "environment", entityId: id, action: "delete" });
 }
 
 export async function listVariables(environmentId: number): Promise<EnvVariable[]> {
@@ -474,6 +509,12 @@ export async function duplicateEnvironment(id: number, newName: string): Promise
       }
     }
   }
+  await logActivity(db, {
+    entityType: "environment",
+    entityId: newId,
+    action: "create",
+    summary: `duplicated from #${id} as ${trimmed}`,
+  });
   return newId;
 }
 
@@ -529,6 +570,12 @@ export async function replaceVariables(
         return secretSet(environmentId, v.key, plaintext).catch(() => {});
       }),
   );
+  await logActivity(db, {
+    entityType: "env_variables_bulk",
+    entityId: environmentId,
+    action: "update",
+    summary: `${vars.filter((v) => v.key.trim() !== "").length} variable(s)`,
+  });
 }
 
 export async function buildVarMap(
