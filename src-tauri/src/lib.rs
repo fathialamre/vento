@@ -404,6 +404,35 @@ pub fn run() {
             ALTER TABLE env_variables ADD COLUMN environment_uuid TEXT;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "add_sync_indexes",
+            // UNIQUE on uuid: SQLite permits multiple NULLs in a UNIQUE
+            // index, so this is safe even before backfill runs; once backfill
+            // completes every row has a uuid and uniqueness is real.
+            // workspace index keyed on (workspace_id, deleted_at) so the
+            // common "list live rows in this workspace" query is one seek.
+            sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_uuid    ON collections(uuid);
+            CREATE INDEX IF NOT EXISTS idx_collections_workspace            ON collections(workspace_id, deleted_at);
+            CREATE INDEX IF NOT EXISTS idx_collections_sync                 ON collections(sync_state);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_uuid              ON folders(uuid);
+            CREATE INDEX IF NOT EXISTS idx_folders_workspace                ON folders(workspace_id, deleted_at);
+            CREATE INDEX IF NOT EXISTS idx_folders_sync                     ON folders(sync_state);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_requests_uuid       ON saved_requests(uuid);
+            CREATE INDEX IF NOT EXISTS idx_saved_requests_workspace         ON saved_requests(workspace_id, deleted_at);
+            CREATE INDEX IF NOT EXISTS idx_saved_requests_sync              ON saved_requests(sync_state);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_environments_uuid         ON environments(uuid);
+            CREATE INDEX IF NOT EXISTS idx_environments_workspace           ON environments(workspace_id, deleted_at);
+            CREATE INDEX IF NOT EXISTS idx_environments_sync                ON environments(sync_state);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_env_variables_uuid        ON env_variables(uuid);
+            CREATE INDEX IF NOT EXISTS idx_env_variables_workspace          ON env_variables(workspace_id, deleted_at);
+            CREATE INDEX IF NOT EXISTS idx_env_variables_sync               ON env_variables(sync_state);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
