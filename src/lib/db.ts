@@ -36,10 +36,12 @@ export function loadDb(): Promise<Database> {
   return dbPromise;
 }
 
-// Populate uuid on rows that pre-date migration 6. Idempotent: only touches
-// rows where uuid IS NULL. Runs once per process, gated by loadDb's promise
-// memoization so it can't race with itself or with any other DB consumer.
+// Populate uuid + uuid foreign keys on rows that pre-date migrations 6/7.
+// Idempotent: only touches rows where the target column IS NULL. Runs once
+// per process, gated by loadDb's promise memoization so it can't race with
+// itself or with any other DB consumer.
 async function backfillUuids(db: Database): Promise<void> {
+  // Phase 1: fill row uuids.
   for (const t of SYNCED_TABLES) {
     const rows = await db.select<{ id: number }[]>(
       `SELECT id FROM ${t} WHERE uuid IS NULL`,
@@ -59,6 +61,34 @@ async function backfillUuids(db: Database): Promise<void> {
       throw e;
     }
   }
+
+  // Phase 2: fill uuid foreign keys from existing int FKs. All target rows
+  // now have a uuid from phase 1.
+  await db.execute(`
+    UPDATE folders
+       SET collection_uuid = (SELECT uuid FROM collections c WHERE c.id = folders.collection_id)
+     WHERE collection_uuid IS NULL
+  `);
+  await db.execute(`
+    UPDATE folders
+       SET parent_folder_uuid = (SELECT uuid FROM folders p WHERE p.id = folders.parent_folder_id)
+     WHERE parent_folder_uuid IS NULL AND parent_folder_id IS NOT NULL
+  `);
+  await db.execute(`
+    UPDATE saved_requests
+       SET collection_uuid = (SELECT uuid FROM collections c WHERE c.id = saved_requests.collection_id)
+     WHERE collection_uuid IS NULL
+  `);
+  await db.execute(`
+    UPDATE saved_requests
+       SET folder_uuid = (SELECT uuid FROM folders f WHERE f.id = saved_requests.folder_id)
+     WHERE folder_uuid IS NULL AND folder_id IS NOT NULL
+  `);
+  await db.execute(`
+    UPDATE env_variables
+       SET environment_uuid = (SELECT uuid FROM environments e WHERE e.id = env_variables.environment_id)
+     WHERE environment_uuid IS NULL
+  `);
 }
 
 export async function insertHistory(input: {

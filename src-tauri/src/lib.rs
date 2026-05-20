@@ -391,6 +391,19 @@ pub fn run() {
             ALTER TABLE env_variables ADD COLUMN base_version INTEGER NOT NULL DEFAULT 0;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "add_uuid_foreign_keys",
+            // Mirror every int FK with a uuid sibling so sync can drop the
+            // int columns later. Values are populated at app boot by the
+            // FK-backfill phase (right after the row uuid backfill).
+            sql: "ALTER TABLE folders ADD COLUMN collection_uuid TEXT;
+            ALTER TABLE folders ADD COLUMN parent_folder_uuid TEXT;
+            ALTER TABLE saved_requests ADD COLUMN collection_uuid TEXT;
+            ALTER TABLE saved_requests ADD COLUMN folder_uuid TEXT;
+            ALTER TABLE env_variables ADD COLUMN environment_uuid TEXT;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
