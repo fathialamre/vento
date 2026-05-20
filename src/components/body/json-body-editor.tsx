@@ -7,6 +7,7 @@ import { EditorView } from "@codemirror/view";
 import { Button } from "@/components/ui/button";
 import { useIsDark } from "@/hooks/use-is-dark";
 import { useEditorPrefs } from "@/hooks/use-editor-prefs";
+import { ventoCmExtras, ventoCmTheme } from "@/components/body/cm-theme";
 
 export type JsonBodyEditorProps = {
   text: string;
@@ -63,31 +64,6 @@ const jsonLinter = linter((view) => {
   }
 });
 
-function buildEditorTheme(fontSize: number, lineHeight: number) {
-  return EditorView.theme({
-    "&": {
-      height: "100%",
-      fontSize: `${fontSize}px`,
-      backgroundColor: "transparent",
-    },
-    "&.cm-focused": { outline: "none" },
-    ".cm-scroller": {
-      fontFamily: "var(--font-mono, ui-monospace, monospace)",
-      lineHeight: String(lineHeight),
-    },
-    ".cm-content": { padding: "8px 0", caretColor: "var(--foreground)" },
-    ".cm-gutters": {
-      backgroundColor: "transparent",
-      border: "none",
-      color: "var(--muted-foreground)",
-    },
-    ".cm-activeLine": { backgroundColor: "transparent" },
-    ".cm-activeLineGutter": { backgroundColor: "transparent" },
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
-      { backgroundColor: "var(--accent)" },
-  });
-}
-
 export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
   const isDark = useIsDark();
   const { prefs } = useEditorPrefs();
@@ -98,15 +74,20 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
     return () => window.clearTimeout(id);
   }, [text]);
 
+  const cmTheme = useMemo(
+    () => ventoCmTheme({ isDark, fontSize: prefs.fontSize, lineHeight: prefs.lineHeight }),
+    [isDark, prefs.fontSize, prefs.lineHeight],
+  );
+
   const extensions = useMemo(
     () => [
       json(),
       jsonLinter,
       lintGutter(),
-      buildEditorTheme(prefs.fontSize, prefs.lineHeight),
+      ventoCmExtras(prefs.lineHeight),
       EditorView.lineWrapping,
     ],
-    [prefs.fontSize, prefs.lineHeight],
+    [prefs.lineHeight],
   );
 
   function handleFormat() {
@@ -136,7 +117,7 @@ export function JsonBodyEditor({ text, onChange }: JsonBodyEditorProps) {
         <CodeMirror
           value={text}
           onChange={onChange}
-          theme={isDark ? "dark" : "light"}
+          theme={cmTheme}
           extensions={extensions}
           basicSetup={{
             lineNumbers: true,

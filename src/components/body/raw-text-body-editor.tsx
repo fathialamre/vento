@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useIsDark } from "@/hooks/use-is-dark";
 import { useEditorPrefs } from "@/hooks/use-editor-prefs";
+import { ventoCmExtras, ventoCmTheme } from "@/components/body/cm-theme";
 
 const CONTENT_TYPES = [
   "text/plain",
@@ -38,31 +39,6 @@ function languageExtension(contentType: string): Extension | null {
   }
 }
 
-function buildEditorTheme(fontSize: number, lineHeight: number) {
-  return EditorView.theme({
-    "&": {
-      height: "100%",
-      fontSize: `${fontSize}px`,
-      backgroundColor: "transparent",
-    },
-    "&.cm-focused": { outline: "none" },
-    ".cm-scroller": {
-      fontFamily: "var(--font-mono, ui-monospace, monospace)",
-      lineHeight: String(lineHeight),
-    },
-    ".cm-content": { padding: "8px 0", caretColor: "var(--foreground)" },
-    ".cm-gutters": {
-      backgroundColor: "transparent",
-      border: "none",
-      color: "var(--muted-foreground)",
-    },
-    ".cm-activeLine": { backgroundColor: "transparent" },
-    ".cm-activeLineGutter": { backgroundColor: "transparent" },
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
-      { backgroundColor: "var(--accent)" },
-  });
-}
-
 export type RawTextBodyEditorProps = {
   text: string;
   contentType: string;
@@ -77,15 +53,20 @@ export function RawTextBodyEditor({
   const isDark = useIsDark();
   const { prefs } = useEditorPrefs();
 
+  const cmTheme = useMemo(
+    () => ventoCmTheme({ isDark, fontSize: prefs.fontSize, lineHeight: prefs.lineHeight }),
+    [isDark, prefs.fontSize, prefs.lineHeight],
+  );
+
   const extensions = useMemo<Extension[]>(() => {
     const exts: Extension[] = [
-      buildEditorTheme(prefs.fontSize, prefs.lineHeight),
+      ventoCmExtras(prefs.lineHeight),
       EditorView.lineWrapping,
     ];
     const lang = languageExtension(contentType);
     if (lang) exts.push(lang);
     return exts;
-  }, [contentType, prefs.fontSize, prefs.lineHeight]);
+  }, [contentType, prefs.lineHeight]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-card">
@@ -111,7 +92,7 @@ export function RawTextBodyEditor({
         <CodeMirror
           value={text}
           onChange={(v) => onChange({ text: v, contentType })}
-          theme={isDark ? "dark" : "light"}
+          theme={cmTheme}
           extensions={extensions}
           basicSetup={{
             lineNumbers: true,
