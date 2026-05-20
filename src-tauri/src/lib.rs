@@ -332,6 +332,65 @@ pub fn run() {
             ALTER TABLE saved_requests ADD COLUMN body TEXT;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "add_sync_metadata",
+            // Sync-ready metadata for every collaboratively edited table.
+            // `uuid` is filled at app boot by `backfillUuids` (cannot be done
+            // in SQL: no UUIDv7 generator inside SQLite).
+            // `sync_state` defaults to 'local' so pre-sync rows stay local-only
+            // until the user explicitly imports them into a workspace.
+            sql: "ALTER TABLE collections ADD COLUMN uuid TEXT;
+            ALTER TABLE collections ADD COLUMN workspace_id TEXT;
+            ALTER TABLE collections ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE collections ADD COLUMN updated_by TEXT;
+            ALTER TABLE collections ADD COLUMN created_by TEXT;
+            ALTER TABLE collections ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE collections ADD COLUMN deleted_at INTEGER;
+            ALTER TABLE collections ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local';
+            ALTER TABLE collections ADD COLUMN base_version INTEGER NOT NULL DEFAULT 0;
+
+            ALTER TABLE folders ADD COLUMN uuid TEXT;
+            ALTER TABLE folders ADD COLUMN workspace_id TEXT;
+            ALTER TABLE folders ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE folders ADD COLUMN updated_by TEXT;
+            ALTER TABLE folders ADD COLUMN created_by TEXT;
+            ALTER TABLE folders ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE folders ADD COLUMN deleted_at INTEGER;
+            ALTER TABLE folders ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local';
+            ALTER TABLE folders ADD COLUMN base_version INTEGER NOT NULL DEFAULT 0;
+
+            ALTER TABLE saved_requests ADD COLUMN uuid TEXT;
+            ALTER TABLE saved_requests ADD COLUMN workspace_id TEXT;
+            ALTER TABLE saved_requests ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE saved_requests ADD COLUMN updated_by TEXT;
+            ALTER TABLE saved_requests ADD COLUMN created_by TEXT;
+            ALTER TABLE saved_requests ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE saved_requests ADD COLUMN deleted_at INTEGER;
+            ALTER TABLE saved_requests ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local';
+            ALTER TABLE saved_requests ADD COLUMN base_version INTEGER NOT NULL DEFAULT 0;
+
+            ALTER TABLE environments ADD COLUMN uuid TEXT;
+            ALTER TABLE environments ADD COLUMN workspace_id TEXT;
+            ALTER TABLE environments ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE environments ADD COLUMN updated_by TEXT;
+            ALTER TABLE environments ADD COLUMN created_by TEXT;
+            ALTER TABLE environments ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE environments ADD COLUMN deleted_at INTEGER;
+            ALTER TABLE environments ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local';
+            ALTER TABLE environments ADD COLUMN base_version INTEGER NOT NULL DEFAULT 0;
+
+            ALTER TABLE env_variables ADD COLUMN uuid TEXT;
+            ALTER TABLE env_variables ADD COLUMN workspace_id TEXT;
+            ALTER TABLE env_variables ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE env_variables ADD COLUMN updated_by TEXT;
+            ALTER TABLE env_variables ADD COLUMN created_by TEXT;
+            ALTER TABLE env_variables ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE env_variables ADD COLUMN deleted_at INTEGER;
+            ALTER TABLE env_variables ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local';
+            ALTER TABLE env_variables ADD COLUMN base_version INTEGER NOT NULL DEFAULT 0;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
