@@ -465,6 +465,22 @@ pub fn run() {
                 .add_migrations("sqlite:vento.db", migrations)
                 .build(),
         )
+        .setup(|app| {
+            // tauri-plugin-sql opens its connection lazily on the first
+            // JS-side Database.load() call, so this setup hook runs strictly
+            // before any of the sync-introducing migrations (6..=9) can
+            // touch the file. A failure to back up is fatal: better the app
+            // refuses to start than silently destroy user data.
+            if let Err(e) = backup_db_pre_m1(app.handle()) {
+                eprintln!("vento: pre-M1 backup failed: {e}");
+                eprintln!(
+                    "vento: refusing to start so migrations can't run on an un-backed-up DB. \
+                     Manually copy vento.db out of the app data dir, then delete this file and relaunch."
+                );
+                return Err(format!("pre-M1 backup failed: {e}").into());
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             send_request,
             secret_set,
@@ -473,4 +489,24 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// One-shot backup of vento.db before any sync-introducing migration touches
+// it. Idempotent via the existence of the destination file: once a
+// `vento.db.backup-pre-m1` exists in the app data dir we never overwrite it
+// (we don't want to clobber a good pre-migration snapshot with a possibly
+// corrupted post-migration one). No-op if vento.db does not yet exist
+// (fresh install — nothing to lose).
+fn backup_db_pre_m1(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    let src = data_dir.join("vento.db");
+    let dst = data_dir.join("vento.db.backup-pre-m1");
+    if !src.exists() || dst.exists() {
+        return Ok(());
+    }
+    std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+    eprintln!("vento: pre-M1 backup written to {}", dst.display());
+    Ok(())
 }
