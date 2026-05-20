@@ -1,7 +1,16 @@
 import Database from "@tauri-apps/plugin-sql";
 import { secretSet, secretGet, secretDelete } from "@/lib/secrets";
+import { newUuid } from "@/lib/uuid";
 
 const DB_URL = "sqlite:vento.db";
+
+const SYNCED_TABLES = [
+  "collections",
+  "folders",
+  "saved_requests",
+  "environments",
+  "env_variables",
+] as const;
 
 export type HistoryItem = {
   id: number;
@@ -18,9 +27,38 @@ let dbPromise: Promise<Database> | null = null;
 
 export function loadDb(): Promise<Database> {
   if (!dbPromise) {
-    dbPromise = Database.load(DB_URL);
+    dbPromise = (async () => {
+      const db = await Database.load(DB_URL);
+      await backfillUuids(db);
+      return db;
+    })();
   }
   return dbPromise;
+}
+
+// Populate uuid on rows that pre-date migration 6. Idempotent: only touches
+// rows where uuid IS NULL. Runs once per process, gated by loadDb's promise
+// memoization so it can't race with itself or with any other DB consumer.
+async function backfillUuids(db: Database): Promise<void> {
+  for (const t of SYNCED_TABLES) {
+    const rows = await db.select<{ id: number }[]>(
+      `SELECT id FROM ${t} WHERE uuid IS NULL`,
+    );
+    if (rows.length === 0) continue;
+    await db.execute("BEGIN");
+    try {
+      for (const r of rows) {
+        await db.execute(`UPDATE ${t} SET uuid = $1 WHERE id = $2`, [
+          newUuid(),
+          r.id,
+        ]);
+      }
+      await db.execute("COMMIT");
+    } catch (e) {
+      await db.execute("ROLLBACK").catch(() => {});
+      throw e;
+    }
+  }
 }
 
 export async function insertHistory(input: {
