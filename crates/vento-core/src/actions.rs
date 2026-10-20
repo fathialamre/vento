@@ -53,7 +53,7 @@ impl ActionId {
             ActionId::Pocket => "Pocket",
             ActionId::Copy => "Copy",
             ActionId::Move => "Move",
-            ActionId::CopyPath => "Copy Path",
+            ActionId::CopyPath => "Copy path",
             ActionId::Terminal => "Terminal",
             ActionId::CopyTo => "Copy to",
         }
@@ -82,7 +82,7 @@ mod tests {
         for a in ActionId::ALL {
             assert_eq!(ActionId::from_key(a.key()), Some(a));
         }
-        assert_eq!(ActionId::CopyPath.label(), "Copy Path");
+        assert_eq!(ActionId::CopyPath.label(), "Copy path");
         assert_eq!(ActionId::from_key("teleport"), None);
     }
 

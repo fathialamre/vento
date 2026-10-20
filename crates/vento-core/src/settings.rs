@@ -20,7 +20,7 @@ pub struct Settings {
     pub trigger: Modifier,
     /// Actions shown on the wheel, in order (unique, at most `MAX_ACTIONS`).
     pub actions: Vec<ActionId>,
-    /// Format used by the Copy Path action.
+    /// Format used by the Copy path action.
     pub copy_path_format: PathFormat,
     /// Bundle id of the terminal app to open; `None` (or an app that is not
     /// installed) means Terminal.app.
@@ -274,6 +274,18 @@ impl Settings {
         self.actions = shown;
         true
     }
+}
+
+/// Moves the item at `from` so it ends up at `to` (clamped to the last
+/// index), shifting the ones in between. Does nothing when `from` is out of
+/// range.
+pub fn move_row<T>(v: &mut Vec<T>, from: usize, to: usize) {
+    if from >= v.len() {
+        return;
+    }
+    let to = to.min(v.len() - 1);
+    let item = v.remove(from);
+    v.insert(to, item);
 }
 
 /// Parses a shortcut such as `"ctrl+alt+p"` into its modifiers and key.
@@ -672,6 +684,20 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn move_row_moves_and_clamps() {
+        let rows = || vec!['a', 'b', 'c', 'd'];
+        let mut v = rows();
+        move_row(&mut v, 0, 2);
+        assert_eq!(v, ['b', 'c', 'a', 'd']);
+        let mut v = rows();
+        move_row(&mut v, 3, 0);
+        assert_eq!(v, ['d', 'a', 'b', 'c']);
+        let mut v = rows();
+        move_row(&mut v, 1, 9);
+        assert_eq!(v, ['a', 'c', 'd', 'b']);
     }
 
     #[test]

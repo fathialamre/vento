@@ -5,19 +5,27 @@
 //! closed panel runs no timers (closing arms one single-shot timer for the
 //! next turn of the event loop).
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::io;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
 use log::{debug, warn};
 use slint::winit_030::winit::event::WindowEvent;
 use slint::winit_030::{EventResult, WinitWindowAccessor};
-use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Timer};
-use vento_core::geometry::{Point, Rect, screen_for};
-use vento_platform::Platform;
+use slint::{
+    CloseRequestResponse, ComponentHandle, LogicalPosition, Model, ModelRc, SharedString, Timer,
+    VecModel,
+};
+use vento_core::geometry::{Layout, Point, Rect, screen_for};
+use vento_core::paths::PathFormat;
+use vento_core::settings::{Settings, move_row};
+use vento_core::trigger::Modifier;
+use vento_platform::{Platform, TerminalApp};
 
 use crate::settings_hub::SettingsHub;
-use crate::ui::SettingsPanel;
+use crate::ui::{ActionRow, Icons, SettingsPanel};
+use crate::wheel::action_icon;
 
 /// Panel width in logical points (matches `settings.slint`).
 const WIDTH: f64 = 340.0;
@@ -31,6 +39,16 @@ const INSET: f64 = 8.0;
 /// it again.
 const REOPEN_GUARD: Duration = Duration::from_millis(500);
 
+/// The choices of the panel's segmented controls, in the order shown.
+const LAYOUTS: [Layout; 2] = [Layout::Honeycomb, Layout::Petals];
+const TRIGGERS: [Modifier; 4] = [
+    Modifier::Ctrl,
+    Modifier::Alt,
+    Modifier::Shift,
+    Modifier::Meta,
+];
+const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
+
 /// Opens, places and closes the settings panel.
 pub struct PanelController {
     platform: Rc<dyn Platform>,
@@ -39,6 +57,10 @@ pub struct PanelController {
     /// Pauses or resumes vento; the panel shows the result through
     /// [`PanelController::set_paused`].
     on_pause: Box<dyn Fn(bool)>,
+    /// The Wheel tab's action rows.
+    actions: Rc<VecModel<ActionRow>>,
+    /// The installed terminals, as the Terminal menu lists them.
+    terminals: RefCell<Vec<TerminalApp>>,
     open: Cell<bool>,
     /// The window became key since it opened, so losing focus now means
     /// the user went elsewhere.
@@ -60,11 +82,15 @@ impl PanelController {
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
         let window = SettingsPanel::new().expect("cannot create the settings panel");
+        let actions = Rc::new(VecModel::default());
+        window.set_actions(ModelRc::from(actions.clone()));
         let panel = Rc::new_cyclic(|this| Self {
             platform,
             hub,
             window,
             on_pause,
+            actions,
+            terminals: RefCell::new(Vec::new()),
             open: Cell::new(false),
             had_focus: Cell::new(false),
             blurred_at: Cell::new(None),
@@ -109,12 +135,115 @@ impl PanelController {
             EventResult::Propagate
         });
         // A saved change clears the load error: drop the notice with it.
+        // A hand edit picked up on opening changes what the controls show.
         let this = self.this.clone();
         self.hub.on_change(Box::new(move |_, _| {
             if let Some(panel) = this.upgrade() {
                 panel.show_notice();
+                panel.show_settings();
             }
         }));
+        self.connect_controls();
+    }
+
+    /// Every control applies its change at once.
+    fn connect_controls(&self) {
+        let this = self.this.clone();
+        self.window.on_layout_chosen(move |i| {
+            if let (Some(panel), Some(layout)) = (this.upgrade(), choice(&LAYOUTS, i)) {
+                panel.apply(|s| s.layout = layout);
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_action_toggled(move |i, on| {
+            if let (Some(panel), Ok(i)) = (this.upgrade(), usize::try_from(i)) {
+                panel.apply(|s| show_action(s, i, on));
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_action_moved(move |from, to| {
+            if let (Some(panel), Ok(from), Ok(to)) =
+                (this.upgrade(), usize::try_from(from), usize::try_from(to))
+            {
+                panel.apply(|s| move_action(s, from, to));
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_trigger_chosen(move |i| {
+            if let (Some(panel), Some(trigger)) = (this.upgrade(), choice(&TRIGGERS, i)) {
+                panel.apply(|s| s.trigger = trigger);
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_terminal_chosen(move |i| {
+            let Some(panel) = this.upgrade() else { return };
+            let id = usize::try_from(i)
+                .ok()
+                .and_then(|i| panel.terminals.borrow().get(i).map(|t| t.id.clone()));
+            if let Some(id) = id {
+                panel.apply(|s| s.terminal = Some(id.clone()));
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_path_format_chosen(move |i| {
+            if let (Some(panel), Some(format)) = (this.upgrade(), choice(&PATH_FORMATS, i)) {
+                panel.apply(|s| s.copy_path_format = format);
+            }
+        });
+    }
+
+    /// Applies `change` to the settings in effect and saves it, unless it
+    /// changes nothing (a refused change included), so an unchanged click
+    /// never replaces the file. A save error shows in the notice. Either way
+    /// the controls then show the settings in effect.
+    fn apply(&self, change: impl Fn(&mut Settings)) {
+        self.hub.refresh_from_disk();
+        let mut changed = self.hub.current();
+        change(&mut changed);
+        if changed != self.hub.current()
+            && let Err(e) = self.hub.update(&change)
+        {
+            warn!("cannot save settings: {e}");
+            self.window.set_notice(save_error_text(&e).into());
+        }
+        self.show_settings();
+    }
+
+    /// Sets every control from the settings in effect.
+    fn show_settings(&self) {
+        let settings = self.hub.current();
+        let icons = self.window.global::<Icons>();
+        let rows: Vec<ActionRow> = settings
+            .action_rows()
+            .into_iter()
+            .map(|(action, shown)| ActionRow {
+                icon: action_icon(&icons, action),
+                label: action.label().into(),
+                shown,
+            })
+            .collect();
+        let shown = rows.iter().filter(|r| r.shown).count();
+        set_rows(&self.actions, rows);
+        self.window
+            .set_shown_actions(i32::try_from(shown).unwrap_or(0));
+        self.window
+            .set_wheel_layout(choice_index(&LAYOUTS, settings.layout));
+        self.window
+            .set_trigger(choice_index(&TRIGGERS, settings.trigger));
+        self.window
+            .set_path_format(choice_index(&PATH_FORMATS, settings.copy_path_format));
+        let terminal = terminal_index(&self.terminals.borrow(), settings.terminal.as_deref());
+        self.window
+            .set_terminal(i32::try_from(terminal).unwrap_or(0));
+    }
+
+    /// Lists the terminals installed now in the Terminal menu.
+    fn load_terminals(&self) {
+        let terminals = self.platform.terminals();
+        let names: Vec<SharedString> = terminals.iter().map(|t| t.name.as_str().into()).collect();
+        self.window
+            .set_terminals(ModelRc::new(VecModel::from(names)));
+        *self.terminals.borrow_mut() = terminals;
     }
 
     /// Opens the panel under `icon` (the menu-bar icon's frame, global
@@ -167,6 +296,8 @@ impl PanelController {
         // Pick up hand edits of the settings file.
         self.hub.refresh_from_disk();
         self.show_notice();
+        self.load_terminals();
+        self.show_settings();
         let height = f64::from(self.window.get_panel_height());
         let (x, y) = panel_position(icon, height, &self.platform.screens());
         self.window
@@ -212,6 +343,65 @@ fn notice_text(error: &str) -> String {
         format!(
             "Your settings file can't be read ({error}); changing a setting here will replace it"
         )
+    }
+}
+
+/// The notice for a change that could not be saved.
+fn save_error_text(error: &io::Error) -> String {
+    format!("Couldn't save settings: {error}")
+}
+
+/// The choice at index `i` of a segmented control; `None` out of range.
+fn choice<T: Copy>(choices: &[T], i: i32) -> Option<T> {
+    usize::try_from(i)
+        .ok()
+        .and_then(|i| choices.get(i).copied())
+}
+
+/// Where `value` is among a segmented control's choices (0 if it is not).
+fn choice_index<T: PartialEq>(choices: &[T], value: T) -> i32 {
+    choices
+        .iter()
+        .position(|c| *c == value)
+        .and_then(|i| i32::try_from(i).ok())
+        .unwrap_or(0)
+}
+
+/// The Terminal menu item for the terminal setting `id`: the first item
+/// when it is unset or not installed.
+fn terminal_index(terminals: &[TerminalApp], id: Option<&str>) -> usize {
+    id.and_then(|id| terminals.iter().position(|t| t.id == id))
+        .unwrap_or(0)
+}
+
+/// Shows or hides the action in row `index` of the Wheel tab. Hiding the
+/// last action shown is refused and changes nothing.
+fn show_action(settings: &mut Settings, index: usize, on: bool) {
+    let mut rows = settings.action_rows();
+    if let Some(row) = rows.get_mut(index) {
+        row.1 = on;
+        settings.set_action_rows(&rows);
+    }
+}
+
+/// Moves the Wheel tab's row `from` to place `to` (clamped to the last).
+fn move_action(settings: &mut Settings, from: usize, to: usize) {
+    let mut rows = settings.action_rows();
+    move_row(&mut rows, from, to);
+    settings.set_action_rows(&rows);
+}
+
+/// Makes `model` hold `rows`, touching only the rows that changed, so a
+/// switch that flips animates instead of its row being rebuilt.
+fn set_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+    if model.row_count() != rows.len() {
+        model.set_vec(rows);
+        return;
+    }
+    for (i, row) in rows.into_iter().enumerate() {
+        if model.row_data(i).as_ref() != Some(&row) {
+            model.set_row_data(i, row);
+        }
     }
 }
 
@@ -320,6 +510,91 @@ mod tests {
         assert!(!reopen_blocked(Some(now), now + REOPEN_GUARD));
         // A clock that went backwards still counts as just now.
         assert!(reopen_blocked(Some(now + Duration::from_secs(1)), now));
+    }
+
+    #[test]
+    fn segmented_choices_map_both_ways() {
+        assert_eq!(choice(&TRIGGERS, 3), Some(Modifier::Meta));
+        assert_eq!(choice(&TRIGGERS, 4), None);
+        assert_eq!(choice(&TRIGGERS, -1), None);
+        assert_eq!(choice_index(&TRIGGERS, Modifier::Alt), 1);
+        assert_eq!(choice_index(&LAYOUTS, Layout::Petals), 1);
+        assert_eq!(choice_index(&PATH_FORMATS, PathFormat::ShellQuoted), 1);
+    }
+
+    #[test]
+    fn terminal_menu_falls_back_to_the_first_item() {
+        let terminals: Vec<TerminalApp> = ["com.apple.Terminal", "com.mitchellh.ghostty"]
+            .into_iter()
+            .map(|id| TerminalApp {
+                id: id.into(),
+                name: id.into(),
+            })
+            .collect();
+        assert_eq!(terminal_index(&terminals, Some("com.mitchellh.ghostty")), 1);
+        assert_eq!(terminal_index(&terminals, None), 0);
+        assert_eq!(terminal_index(&terminals, Some("dev.warp.Warp-Stable")), 0);
+        assert_eq!(terminal_index(&[], None), 0);
+    }
+
+    #[test]
+    fn hiding_the_last_shown_action_changes_nothing() {
+        use vento_core::actions::ActionId;
+        let mut s = Settings {
+            actions: vec![ActionId::Move],
+            ..Settings::default()
+        };
+        let before = s.clone();
+        show_action(&mut s, 0, false);
+        assert_eq!(s, before);
+        // Out of range: nothing either.
+        show_action(&mut s, 9, true);
+        assert_eq!(s, before);
+        // Showing another one keeps its row's place.
+        let copy_to = s
+            .action_rows()
+            .iter()
+            .position(|(a, _)| *a == ActionId::CopyTo)
+            .unwrap();
+        show_action(&mut s, copy_to, true);
+        assert_eq!(s.actions, [ActionId::Move, ActionId::CopyTo]);
+        assert!(!s.hidden_actions.contains(&ActionId::CopyTo));
+        show_action(&mut s, 0, false);
+        assert_eq!(s.actions, [ActionId::CopyTo]);
+    }
+
+    #[test]
+    fn moving_an_action_reorders_the_wheel() {
+        use vento_core::actions::ActionId;
+        let mut s = Settings::default();
+        // Terminal (row 4) to the top.
+        move_action(&mut s, 4, 0);
+        assert_eq!(
+            s.actions,
+            [
+                ActionId::Terminal,
+                ActionId::Pocket,
+                ActionId::Copy,
+                ActionId::Move,
+                ActionId::CopyPath,
+            ]
+        );
+        // A hidden row dragged among the shown ones stays hidden and the
+        // list keeps the shown rows first: it lands first of the hidden.
+        show_action(&mut s, 1, false);
+        assert_eq!(s.hidden_actions, [ActionId::Pocket, ActionId::CopyTo]);
+        move_action(&mut s, 5, 1);
+        assert_eq!(s.hidden_actions, [ActionId::CopyTo, ActionId::Pocket]);
+        assert_eq!(s.actions.len(), 4);
+        let before = s.clone();
+        move_action(&mut s, 9, 0);
+        assert_eq!(s, before);
+    }
+
+    #[test]
+    fn save_error_is_worded_for_the_notice() {
+        let e = io::Error::from(io::ErrorKind::PermissionDenied);
+        assert_eq!(save_error_text(&e), format!("Couldn't save settings: {e}"));
     }
 
     #[test]

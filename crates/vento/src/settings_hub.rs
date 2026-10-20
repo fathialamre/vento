@@ -78,10 +78,6 @@ impl SettingsHub {
     ///
     /// # Errors
     /// If the settings file cannot be written.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the settings panel (a later task) is the caller")
-    )]
     pub fn update(&self, f: impl FnOnce(&mut Settings)) -> io::Result<()> {
         self.refresh_from_disk();
         let old = self.current();

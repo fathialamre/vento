@@ -13,7 +13,12 @@ global PanelIcons {
     out property <image> pause: @image-url("icons/player-pause.svg");
     out property <image> resume: @image-url("icons/player-play.svg");
     out property <image> quit: @image-url("icons/power.svg");
+    out property <image> petals: @image-url("icons/circles.svg");
+    out property <image> grip: @image-url("icons/grip-vertical.svg");
 }
+
+// One action in the Wheel tab's list, shown on the wheel or not.
+export struct ActionRow { icon: image, label: string, shown: bool }
 
 struct TabItem { icon: image, label: string }
 
@@ -193,14 +198,518 @@ component Notice inherits Rectangle {
     }
 }
 
-// The pages; empty for now.
-component WheelTab inherits VerticalLayout { }
+// A small heading over a group of controls.
+component SectionHeading inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    color: Theme.muted;
+}
+
+component Separator inherits Rectangle {
+    height: 1px;
+    background: Theme.separator;
+}
+
+// An on/off switch. It shows `on` as given and asks for the other state
+// when clicked; whoever uses it decides.
+component Switch inherits Rectangle {
+    in property <bool> on;
+    in property <string> label;
+    callback toggled(bool);
+
+    width: 26px;
+    height: 15px;
+    border-radius: self.height / 2;
+    background: self.on ? Theme.accent : Theme.switch-off;
+    animate background { duration: 120ms; }
+    accessible-role: switch;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.on;
+    accessible-action-default => { self.toggled(!self.on); }
+
+    Rectangle {
+        x: root.on ? root.width - self.width - 2px : 2px;
+        y: (root.height - self.height) / 2;
+        width: 11px;
+        height: 11px;
+        border-radius: self.height / 2;
+        background: white;
+        drop-shadow-blur: 1px;
+        drop-shadow-color: #00000033;
+        animate x { duration: 120ms; easing: ease-out; }
+    }
+
+    // A little larger than the track, so it is easy to hit.
+    TouchArea {
+        x: -4px;
+        y: -6px;
+        width: root.width + 8px;
+        height: root.height + 12px;
+        clicked => { root.toggled(!root.on); }
+    }
+}
+
+// A row-height segmented control in the tab bar's style: a rounded track
+// with the chosen item raised on a pill.
+component Segmented inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current;
+    callback chosen(int);
+
+    property <length> pad: 2px;
+    property <length> item-w: (self.width - 2 * self.pad) / max(1, self.items.length);
+
+    height: 28px;
+    border-radius: 8px;
+    background: Theme.surface;
+    accessible-role: radio-group;
+
+    Rectangle {
+        x: root.pad + root.current * root.item-w;
+        y: root.pad;
+        width: root.item-w;
+        height: root.height - 2 * root.pad;
+        border-radius: 6px;
+        background: Theme.selected;
+        drop-shadow-blur: 3px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: Theme.dark ? #00000059 : #0000001f;
+        animate x { duration: 150ms; easing: ease-out; }
+    }
+
+    for item[i] in root.items: Rectangle {
+        property <bool> on: i == root.current;
+        x: root.pad + i * root.item-w;
+        y: root.pad;
+        width: root.item-w;
+        height: root.height - 2 * root.pad;
+        accessible-role: radio-button;
+        accessible-label: item;
+        accessible-checkable: true;
+        accessible-checked: self.on;
+        accessible-action-default => { root.chosen(i); }
+
+        Text {
+            width: 100%;
+            height: 100%;
+            text: item;
+            font-size: 12px;
+            font-weight: on ? 600 : 400;
+            color: on ? Theme.text : Theme.muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        TouchArea {
+            clicked => { root.chosen(i); }
+        }
+    }
+}
+
+// A field showing the chosen item; clicking it opens the list.
+component MenuField inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current;
+    in property <string> label;
+    callback chosen(int);
+
+    property <length> item-h: 26px;
+    property <bool> valid: self.current >= 0 && self.current < self.items.length;
+
+    height: 28px;
+    border-radius: 8px;
+    background: touch.has-hover ? Theme.selected : Theme.surface;
+    accessible-role: combobox;
+    accessible-label: self.label;
+    accessible-value: self.valid ? self.items[self.current] : "";
+    accessible-action-default => { popup.show(); }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+
+        Text {
+            text: root.valid ? root.items[root.current] : "None found";
+            font-size: 13px;
+            color: root.valid ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        // A down chevron.
+        VerticalLayout {
+            alignment: center;
+
+            Path {
+                width: 9px;
+                height: 5px;
+                viewbox-width: 9;
+                viewbox-height: 5;
+                commands: "M 1 0.5 L 4.5 4 L 8 0.5";
+                stroke: Theme.muted;
+                stroke-width: 1.5px;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.items.length > 0;
+        clicked => { popup.show(); }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: root.width;
+        height: root.items.length * root.item-h + 8px;
+
+        Rectangle {
+            background: Theme.selected;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 8px;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: #00000040;
+
+            VerticalLayout {
+                padding: 4px;
+
+                for item[i] in root.items: Rectangle {
+                    height: root.item-h;
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? Theme.surface : transparent;
+                    accessible-role: list-item;
+                    accessible-label: item;
+                    accessible-item-selected: i == root.current;
+                    accessible-action-default => { root.chosen(i); }
+
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        spacing: 6px;
+
+                        // A check mark on the chosen item.
+                        VerticalLayout {
+                            alignment: center;
+
+                            Path {
+                                width: 10px;
+                                height: 8px;
+                                viewbox-width: 10;
+                                viewbox-height: 8;
+                                commands: "M 1 4 L 4 7 L 9 1";
+                                stroke: i == root.current ? Theme.accent : transparent;
+                                stroke-width: 1.5px;
+                            }
+                        }
+
+                        Text {
+                            text: item;
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    item-touch := TouchArea {
+                        clicked => { root.chosen(i); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One wheel layout to choose: its icon above its name, outlined in orange
+// when chosen.
+component LayoutCard inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> chosen;
+    callback clicked();
+
+    height: 64px;
+    border-radius: 10px;
+    background: Theme.surface;
+    border-width: self.chosen ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: radio-button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+
+        HorizontalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 22px;
+                height: 22px;
+                colorize: root.chosen ? Theme.accent : Theme.muted;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: root.chosen ? 600 : 400;
+            color: Theme.text;
+            horizontal-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// The wheel's actions, one row each: a grip to drag the row into a new
+// place, the action's icon and name, and a switch to show or hide it.
+// While a row is dragged it follows the pointer and the rows it passes
+// make room; it drops at the row nearest to where it was let go. The shown
+// rows come first and a row stays among its own kind (switching it on or
+// off moves it between them).
+component ActionList inherits Rectangle {
+    in property <[ActionRow]> rows;
+    // How many of the rows are shown on the wheel (they come first).
+    in property <int> shown-count;
+    callback toggled(int, bool);
+    callback moved(int, int);
+
+    property <length> row-h: 30px;
+    // The row being dragged (-1 for none), how far it has moved, the first
+    // and last place it can go, and the place it would drop at now.
+    property <int> drag-from: -1;
+    property <length> drag-offset;
+    property <int> drag-lo: self.drag-from < self.shown-count ? 0 : self.shown-count;
+    property <int> drag-hi: self.drag-from < self.shown-count
+        ? self.shown-count - 1
+        : self.rows.length - 1;
+    property <int> drag-to: self.drag-from < 0
+        ? -1
+        : clamp(self.drag-from + round(self.drag-offset / self.row-h), self.drag-lo, self.drag-hi);
+
+    height: self.rows.length * self.row-h;
+
+    for row[i] in root.rows: Rectangle {
+        property <bool> dragged: i == root.drag-from;
+        // The place this row takes while another one is dragged past it.
+        property <int> slot: root.drag-from < 0 || self.dragged
+            ? i
+            : i > root.drag-from && i <= root.drag-to
+                ? i - 1
+                : i < root.drag-from && i >= root.drag-to ? i + 1 : i;
+
+        x: 0;
+        y: self.dragged ? i * root.row-h + root.drag-offset : self.slot * root.row-h;
+        z: self.dragged ? 1 : 0;
+        width: root.width;
+        height: root.row-h;
+        border-radius: 6px;
+        background: self.dragged ? Theme.selected : transparent;
+        drop-shadow-blur: self.dragged ? 6px : 0px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: Theme.dark ? #00000066 : #00000026;
+        // Rows making room slide; the dragged row and the drop are immediate.
+        animate y {
+            duration: root.drag-from >= 0 && !self.dragged ? 120ms : 0ms;
+            easing: ease-out;
+        }
+        accessible-role: list-item;
+        accessible-label: row.label;
+
+        HorizontalLayout {
+            padding-left: 2px;
+            padding-right: 6px;
+            spacing: 8px;
+
+            Rectangle {
+                width: 16px;
+
+                Image {
+                    source: PanelIcons.grip;
+                    width: 14px;
+                    height: 14px;
+                    colorize: Theme.muted;
+                }
+
+                TouchArea {
+                    mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down
+                                && event.button == PointerEventButton.left) {
+                            root.drag-from = i;
+                            root.drag-offset = 0;
+                        } else if (root.drag-from == i
+                                && ((event.kind == PointerEventKind.up
+                                        && event.button == PointerEventButton.left)
+                                    || event.kind == PointerEventKind.cancel)) {
+                            let from = root.drag-from;
+                            let to = root.drag-to;
+                            root.drag-from = -1;
+                            root.drag-offset = 0;
+                            if (to != from && event.kind == PointerEventKind.up) {
+                                root.moved(from, to);
+                            }
+                        }
+                    }
+                    // The pointer is measured from where the row is now, so
+                    // the offset grows by how far it is from where it was
+                    // pressed; the row stays within the places it can go.
+                    moved => {
+                        if (root.drag-from == i) {
+                            root.drag-offset = clamp(
+                                root.drag-offset + self.mouse-y - self.pressed-y,
+                                (root.drag-lo - i) * root.row-h,
+                                (root.drag-hi - i) * root.row-h);
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Image {
+                    source: row.icon;
+                    width: 16px;
+                    height: 16px;
+                    colorize: row.shown ? Theme.text : Theme.muted;
+                }
+            }
+
+            Text {
+                text: row.label;
+                font-size: 13px;
+                color: row.shown ? Theme.text : Theme.muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Switch {
+                    on: row.shown;
+                    label: row.label;
+                    toggled(on) => { root.toggled(i, on); }
+                }
+            }
+        }
+    }
+}
+
+component WheelTab inherits VerticalLayout {
+    // 0 Honeycomb, 1 Petals.
+    in property <int> wheel-layout;
+    in property <[ActionRow]> actions;
+    in property <int> shown-actions;
+    callback layout-chosen(int);
+    callback action-toggled(int, bool);
+    callback action-moved(int, int);
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Layout";
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        LayoutCard {
+            preferred-width: 100px;
+            horizontal-stretch: 1;
+            icon: PanelIcons.wheel;
+            label: "Honeycomb";
+            chosen: root.wheel-layout == 0;
+            clicked => { root.layout-chosen(0); }
+        }
+
+        LayoutCard {
+            preferred-width: 100px;
+            horizontal-stretch: 1;
+            icon: PanelIcons.petals;
+            label: "Petals";
+            chosen: root.wheel-layout == 1;
+            clicked => { root.layout-chosen(1); }
+        }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Actions";
+    }
+
+    ActionList {
+        rows: root.actions;
+        shown-count: root.shown-actions;
+        toggled(i, on) => { root.action-toggled(i, on); }
+        moved(from, to) => { root.action-moved(from, to); }
+    }
+}
 
 component MoveTab inherits VerticalLayout { }
 
 component PocketTab inherits VerticalLayout { }
 
-component GeneralTab inherits VerticalLayout { }
+component GeneralTab inherits VerticalLayout {
+    // 0 Control, 1 Option, 2 Shift, 3 Command.
+    in property <int> trigger;
+    in property <[string]> terminals;
+    in property <int> terminal;
+    // 0 Plain, 1 Shell-quoted.
+    in property <int> path-format;
+    callback trigger-chosen(int);
+    callback terminal-chosen(int);
+    callback path-format-chosen(int);
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Trigger";
+    }
+
+    Segmented {
+        items: ["Control", "Option", "Shift", "Command"];
+        current: root.trigger;
+        chosen(i) => { root.trigger-chosen(i); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Terminal";
+    }
+
+    MenuField {
+        label: "Terminal";
+        items: root.terminals;
+        current: root.terminal;
+        chosen(i) => { root.terminal-chosen(i); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Copy path";
+    }
+
+    Segmented {
+        items: ["Plain", "Shell-quoted"];
+        current: root.path-format;
+        chosen(i) => { root.path-format-chosen(i); }
+    }
+}
 
 export component SettingsPanel inherits Window {
     no-frame: true;
@@ -215,6 +724,30 @@ export component SettingsPanel inherits Window {
     in property <bool> paused;
     // Shown above the page when not empty.
     in property <string> notice;
+
+    // The settings in effect, as the controls show them.
+    // 0 Honeycomb, 1 Petals.
+    in property <int> wheel-layout;
+    // The wheel's actions, the shown ones first, and how many are shown.
+    in property <[ActionRow]> actions;
+    in property <int> shown-actions;
+    // 0 Control, 1 Option, 2 Shift, 3 Command.
+    in property <int> trigger;
+    // The installed terminals' names, and the one in use.
+    in property <[string]> terminals;
+    in property <int> terminal;
+    // 0 Plain, 1 Shell-quoted.
+    in property <int> path-format;
+
+    // A control asks for a change; vento applies and saves it and sets the
+    // properties above from the result.
+    callback layout-chosen(int);
+    callback action-toggled(int, bool);
+    // A row of the Wheel tab's list dragged from one place to another.
+    callback action-moved(int, int);
+    callback trigger-chosen(int);
+    callback terminal-chosen(int);
+    callback path-format-chosen(int);
 
     callback pause-clicked();
     callback quit-clicked();
@@ -264,10 +797,25 @@ export component SettingsPanel inherits Window {
                 VerticalLayout {
                     min-height: 120px;
 
-                    if root.tab == 0: WheelTab { }
+                    if root.tab == 0: WheelTab {
+                        wheel-layout: root.wheel-layout;
+                        actions: root.actions;
+                        shown-actions: root.shown-actions;
+                        layout-chosen(i) => { root.layout-chosen(i); }
+                        action-toggled(i, on) => { root.action-toggled(i, on); }
+                        action-moved(from, to) => { root.action-moved(from, to); }
+                    }
                     if root.tab == 1: MoveTab { }
                     if root.tab == 2: PocketTab { }
-                    if root.tab == 3: GeneralTab { }
+                    if root.tab == 3: GeneralTab {
+                        trigger: root.trigger;
+                        terminals: root.terminals;
+                        terminal: root.terminal;
+                        path-format: root.path-format;
+                        trigger-chosen(i) => { root.trigger-chosen(i); }
+                        terminal-chosen(i) => { root.terminal-chosen(i); }
+                        path-format-chosen(i) => { root.path-format-chosen(i); }
+                    }
                 }
 
                 Rectangle {

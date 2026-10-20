@@ -109,6 +109,18 @@ impl State {
     }
 }
 
+/// The icon `action` shows on the wheel and in the settings panel.
+pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
+    match action {
+        ActionId::Pocket => icons.get_pocket(),
+        ActionId::Copy => icons.get_copy(),
+        ActionId::Move => icons.get_move(),
+        ActionId::CopyPath => icons.get_copy_path(),
+        ActionId::Terminal => icons.get_terminal(),
+        ActionId::CopyTo => icons.get_copy_to(),
+    }
+}
+
 /// Radius of the wheel's centre, inside which a drop does nothing.
 fn centre_radius(layout: Layout) -> f32 {
     match layout {
@@ -276,14 +288,7 @@ impl WheelController {
                 r: cell.radius,
                 covered: false,
                 label: action.label().into(),
-                icon: match action {
-                    ActionId::Pocket => icons.get_pocket(),
-                    ActionId::Copy => icons.get_copy(),
-                    ActionId::Move => icons.get_move(),
-                    ActionId::CopyPath => icons.get_copy_path(),
-                    ActionId::Terminal => icons.get_terminal(),
-                    ActionId::CopyTo => icons.get_copy_to(),
-                },
+                icon: action_icon(&icons, *action),
             })
             .collect();
         let (layout, center_r) = match state.settings.layout {
