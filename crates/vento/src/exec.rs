@@ -8,13 +8,23 @@ use std::time::Duration;
 use log::{debug, info, warn};
 use slint::Timer;
 use vento_core::actions::ActionId;
-use vento_core::fileops::{FileOpError, MoveOutcome, MoveRecord, move_items, undo};
+use vento_core::destinations::{RecentDestinations, recent_path};
+use vento_core::fileops::{
+    CopyOutcome, CopyRecord, CopyUndoOutcome, FileOpError, MoveOutcome, MoveRecord, copy_items,
+    move_items, undo, undo_copies,
+};
 use vento_core::geometry::Point;
 use vento_core::paths::format_paths;
 use vento_core::settings::Settings;
 use vento_platform::Platform;
 
 use crate::toast::Toaster;
+use crate::wheel::WheelDrop;
+
+/// `"1 copy"` / `"3 copies"`.
+fn plural_copies(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "copy" } else { "copies" })
+}
 
 /// `"1 item"` / `"3 items"`.
 fn items(n: usize) -> String {
@@ -47,18 +57,54 @@ fn failure_suffix(outcome: &MoveOutcome) -> String {
     suffix
 }
 
-/// Toast text for a finished move.
-fn move_toast_text(outcome: &MoveOutcome) -> String {
-    let dest = &outcome.record.dest;
-    let name = dest.file_name().map_or_else(
+/// The folder's own name, or the whole path for one without a name (`/`).
+fn folder_name(dest: &Path) -> String {
+    dest.file_name().map_or_else(
         || dest.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
-    );
+    )
+}
+
+/// Toast text for a finished move.
+fn move_toast_text(outcome: &MoveOutcome) -> String {
     format!(
-        "Moved {} to {name}{}",
+        "Moved {} to {}{}",
         items(outcome.record.moved.len()),
+        folder_name(&outcome.record.dest),
         failure_suffix(outcome)
     )
+}
+
+/// Toast text for a finished Copy to.
+fn copy_toast_text(outcome: &CopyOutcome) -> String {
+    let mut text = format!(
+        "Copied {} to {}",
+        items(outcome.record.copies.len()),
+        folder_name(&outcome.record.dest)
+    );
+    if !outcome.failed.is_empty() {
+        text.push_str(&format!(" · {} failed", outcome.failed.len()));
+    }
+    text
+}
+
+/// Toast text for a finished undo of a Copy to: what went to the Trash, what
+/// was left because it had changed, and what the Trash refused.
+fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
+    let mut text = format!("Removed {}", plural_copies(outcome.trashed));
+    if !outcome.kept_changed.is_empty() {
+        text.push_str(&format!(", kept {} changed", outcome.kept_changed.len()));
+    }
+    if !outcome.failed.is_empty() {
+        text.push_str(&format!(" · {} failed", outcome.failed.len()));
+    }
+    text
+}
+
+/// Whether a finished move or copy puts its destination in the recent list:
+/// only when at least one item actually went there.
+fn should_remember(moved: usize) -> bool {
+    moved > 0
 }
 
 /// Toast text for a finished undo.
@@ -81,8 +127,17 @@ fn terminal_dir(paths: &[PathBuf]) -> Option<PathBuf> {
     }
 }
 
-/// Callback told whether an undo is available.
-type UndoListener = Box<dyn Fn(bool)>;
+/// What the undo slot would undo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoKind {
+    /// The last move.
+    Move,
+    /// The last Copy to.
+    Copy,
+}
+
+/// Callback told which undo, if any, is available.
+type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 
 /// Toast shown when a move or undo is requested while one is running.
 const BUSY_TEXT: &str = "Busy — a move is still running";
@@ -113,11 +168,34 @@ thread_local! {
     static MAIN_EXECUTOR: RefCell<Weak<Executor>> = const { RefCell::new(Weak::new()) };
 }
 
-/// The most recent move, kept so it can be undone.
-struct LastMove {
-    record: MoveRecord,
-    /// Where toasts about this move are anchored.
+/// What the undo slot holds.
+enum LastOp {
+    Move(MoveRecord),
+    Copy(CopyRecord),
+}
+
+impl LastOp {
+    fn kind(&self) -> UndoKind {
+        match self {
+            LastOp::Move(_) => UndoKind::Move,
+            LastOp::Copy(_) => UndoKind::Copy,
+        }
+    }
+}
+
+/// The most recent move or copy, kept so it can be undone.
+struct Last {
+    op: LastOp,
+    /// Where toasts about this operation are anchored.
     at: Point,
+}
+
+/// Result of the worker's half of undoing a copy: the check of which copies
+/// are still as vento left them, and those to hand to the Trash.
+struct CopyUndoChecked {
+    /// `trashed` here counts the copies in `to_trash`, not yet trashed.
+    outcome: CopyUndoOutcome,
+    to_trash: Vec<PathBuf>,
 }
 
 /// Performs wheel actions and reports their outcome.
@@ -125,27 +203,32 @@ pub struct Executor {
     platform: Rc<dyn Platform>,
     settings: Rc<RefCell<Settings>>,
     toast: Rc<Toaster>,
-    last: RefCell<Option<LastMove>>,
-    /// Whether a move or undo is running on a worker thread.
+    last: RefCell<Option<Last>>,
+    /// Folders recently moved or copied to; saved after each addition.
+    recent: Rc<RefCell<RecentDestinations>>,
+    /// Whether a move, copy or undo is running on a worker thread.
     busy: Cell<bool>,
-    /// Told whether an undo is available whenever that changes.
+    /// Told which undo is available whenever that changes.
     on_undo_changed: RefCell<Option<UndoListener>>,
     this: Weak<Self>,
 }
 
 impl Executor {
     /// `settings` is shared with the rest of the app, so a settings reload is
-    /// seen by the next action. Call on the main thread.
+    /// seen by the next action; `recent` is the list the ring reads. Call on
+    /// the main thread.
     pub fn new(
         platform: Rc<dyn Platform>,
         settings: Rc<RefCell<Settings>>,
         toast: Rc<Toaster>,
+        recent: Rc<RefCell<RecentDestinations>>,
     ) -> Rc<Self> {
         let executor = Rc::new_cyclic(|this| Self {
             platform,
             settings,
             toast,
             last: RefCell::new(None),
+            recent,
             busy: Cell::new(false),
             on_undo_changed: RefCell::new(None),
             this: this.clone(),
@@ -154,8 +237,16 @@ impl Executor {
         executor
     }
 
-    /// Runs `action` on `paths`; toasts anchor at `at`.
-    pub fn run(&self, action: ActionId, paths: Vec<PathBuf>, at: Point) {
+    /// Runs the action of `drop` on its files; toasts anchor at its wheel.
+    /// A Move or Copy to with a destination starts at once; without one the
+    /// folder picker opens first.
+    pub fn run(&self, drop: WheelDrop) {
+        let WheelDrop {
+            action,
+            paths,
+            at,
+            dest,
+        } = drop;
         if paths.is_empty() {
             debug!("{action:?} with no files");
             return;
@@ -164,9 +255,19 @@ impl Executor {
             ActionId::Pocket => {
                 warn!("Pocket is handled by the Pocket controller");
             }
-            ActionId::CopyTo => {
-                warn!("Copy to is not wired yet");
-            }
+            ActionId::Move | ActionId::CopyTo => match dest {
+                Some(dest) => self.transfer(action, paths, dest, at),
+                None => {
+                    // The folder picker is modal: let the wheel finish
+                    // handling the drop before it opens.
+                    let this = self.this.clone();
+                    Timer::single_shot(Duration::ZERO, move || {
+                        if let Some(executor) = this.upgrade() {
+                            executor.transfer_with_picker(action, paths, at);
+                        }
+                    });
+                }
+            },
             ActionId::Copy => {
                 let result = self.platform.copy_files(&paths);
                 self.finish(action, result, at, || {
@@ -194,24 +295,11 @@ impl Executor {
                     )
                 });
             }
-            ActionId::Move => {
-                if self.refuse_if_busy(at) {
-                    return;
-                }
-                // The folder picker is modal: let the wheel finish handling
-                // the drop before it opens.
-                let this = self.this.clone();
-                Timer::single_shot(Duration::ZERO, move || {
-                    if let Some(executor) = this.upgrade() {
-                        executor.move_with_picker(paths, at);
-                    }
-                });
-            }
         }
     }
 
-    /// Starts undoing the last move on a worker thread. Returns `false` if
-    /// there is nothing to undo.
+    /// Starts undoing the last move or copy on a worker thread. Returns
+    /// `false` if there is nothing to undo.
     pub fn undo_last(&self) -> bool {
         let at = match self.last.borrow().as_ref() {
             Some(last) => last.at,
@@ -224,13 +312,21 @@ impl Executor {
             return false;
         };
         self.notify_undo_changed();
+        match last.op {
+            LastOp::Move(record) => self.undo_move(record, at),
+            LastOp::Copy(record) => self.undo_copy(record, at),
+        }
+        true
+    }
+
+    fn undo_move(&self, record: MoveRecord, at: Point) {
         self.toast.show(
-            &format!("Restoring {}…", items(last.record.moved.len())),
+            &format!("Restoring {}…", items(record.moved.len())),
             None,
             at,
         );
-        let record = last.record;
         self.spawn_file_job(
+            ActionId::Move,
             move || {
                 let outcome = undo(&record);
                 (record, outcome)
@@ -238,7 +334,6 @@ impl Executor {
             move |executor, (record, outcome)| executor.undo_finished(&record, outcome, at),
             at,
         );
-        true
     }
 
     fn undo_finished(&self, record: &MoveRecord, outcome: MoveOutcome, at: Point) {
@@ -254,8 +349,8 @@ impl Executor {
             // A move recorded while this undo ran is newer: keep that one.
             let mut last = self.last.borrow_mut();
             if last.is_none() {
-                *last = Some(LastMove {
-                    record: remainder,
+                *last = Some(Last {
+                    op: LastOp::Move(remainder),
                     at,
                 });
             }
@@ -264,8 +359,68 @@ impl Executor {
         self.toast.show(&undo_toast_text(&outcome), None, at);
     }
 
-    /// Registers `f`, called with `has_undo()` after a move records an undo
-    /// and after an undo starts or finishes. Replaces any earlier callback.
+    /// Undoes a Copy to in two steps. The worker finds the copies that are
+    /// still exactly as vento made them (the platform is not `Send`, so it
+    /// cannot trash from there); the main thread then trashes just those.
+    /// Nothing else is re-checked in between.
+    fn undo_copy(&self, record: CopyRecord, at: Point) {
+        self.toast.show(
+            &format!("Removing {}…", plural_copies(record.copies.len())),
+            None,
+            at,
+        );
+        self.spawn_file_job(
+            ActionId::CopyTo,
+            move || {
+                let to_trash = RefCell::new(Vec::new());
+                let outcome = undo_copies(&record, |copy| {
+                    to_trash.borrow_mut().push(copy.to_path_buf());
+                    Ok::<(), String>(())
+                });
+                CopyUndoChecked {
+                    outcome,
+                    to_trash: to_trash.into_inner(),
+                }
+            },
+            move |executor, checked| executor.copy_undo_finished(checked, at),
+            at,
+        );
+    }
+
+    fn copy_undo_finished(&self, checked: CopyUndoChecked, at: Point) {
+        let CopyUndoChecked {
+            mut outcome,
+            to_trash,
+        } = checked;
+        outcome.trashed = 0;
+        for copy in to_trash {
+            match self.platform.trash(&copy) {
+                Ok(()) => outcome.trashed += 1,
+                Err(e) => {
+                    warn!("cannot trash {}: {e}", copy.display());
+                    outcome.failed.push((copy, e.to_string()));
+                }
+            }
+        }
+        for copy in &outcome.kept_changed {
+            info!(
+                "undo: kept {} (changed since it was copied)",
+                copy.display()
+            );
+        }
+        info!(
+            "undo: trashed {}, kept {} changed, {} gone, {} failed",
+            outcome.trashed,
+            outcome.kept_changed.len(),
+            outcome.gone,
+            outcome.failed.len()
+        );
+        self.notify_undo_changed();
+        self.toast.show(&copy_undo_toast_text(&outcome), None, at);
+    }
+
+    /// Registers `f`, called with `has_undo()` after a move or copy records
+    /// an undo and after an undo starts or finishes. Replaces any earlier callback.
     pub fn on_undo_changed(&self, f: UndoListener) {
         *self.on_undo_changed.borrow_mut() = Some(f);
     }
@@ -276,9 +431,9 @@ impl Executor {
         }
     }
 
-    /// Whether there is a move to undo.
-    pub fn has_undo(&self) -> bool {
-        self.last.borrow().is_some()
+    /// What an undo would undo, if anything.
+    pub fn has_undo(&self) -> Option<UndoKind> {
+        self.last.borrow().as_ref().map(|last| last.op.kind())
     }
 
     /// Toasts and returns `true` while a move or undo is running.
@@ -290,22 +445,40 @@ impl Executor {
         self.busy.get()
     }
 
-    fn move_with_picker(&self, paths: Vec<PathBuf>, at: Point) {
+    fn transfer_with_picker(&self, action: ActionId, paths: Vec<PathBuf>, at: Point) {
         let start = paths.first().and_then(|p| p.parent());
         let Some(dest) = self.platform.pick_folder(start) else {
-            debug!("move cancelled");
+            debug!("{action:?} cancelled");
             return;
         };
+        self.transfer(action, paths, dest, at);
+    }
+
+    /// Moves or copies `paths` into `dest` (`action` is `Move` or `CopyTo`)
+    /// on a worker thread.
+    fn transfer(&self, action: ActionId, paths: Vec<PathBuf>, dest: PathBuf, at: Point) {
         if self.refuse_if_busy(at) {
             return;
         }
-        self.toast
-            .show(&format!("Moving {}…", items(paths.len())), None, at);
-        self.spawn_file_job(
-            move || move_items(&paths, &dest),
-            move |executor, outcome| executor.move_finished(outcome, at),
-            at,
-        );
+        if action == ActionId::CopyTo {
+            self.toast
+                .show(&format!("Copying {}…", items(paths.len())), None, at);
+            self.spawn_file_job(
+                action,
+                move || copy_items(&paths, &dest),
+                move |executor, outcome| executor.copy_finished(outcome, at),
+                at,
+            );
+        } else {
+            self.toast
+                .show(&format!("Moving {}…", items(paths.len())), None, at);
+            self.spawn_file_job(
+                action,
+                move || move_items(&paths, &dest),
+                move |executor, outcome| executor.move_finished(outcome, at),
+                at,
+            );
+        }
     }
 
     fn move_finished(&self, outcome: MoveOutcome, at: Point) {
@@ -327,11 +500,39 @@ impl Executor {
             outcome.record.moved.len(),
             outcome.record.dest.display()
         );
+        self.remember(outcome.record.moved.len(), &outcome.record.dest);
         let text = move_toast_text(&outcome);
-        *self.last.borrow_mut() = Some(LastMove {
-            record: outcome.record,
-            at,
-        });
+        self.record_undo(LastOp::Move(outcome.record), text, at);
+    }
+
+    fn copy_finished(&self, outcome: CopyOutcome, at: Point) {
+        for (path, error) in &outcome.failed {
+            warn!("cannot copy {}: {error}", path.display());
+        }
+        if outcome.record.copies.is_empty() {
+            match outcome.failed.first() {
+                Some((_, error)) => self.toast_error(ActionId::CopyTo, &error.to_string(), at),
+                None => {
+                    debug!("nothing to copy");
+                    self.toast.show("Nothing to copy", None, at);
+                }
+            }
+            return;
+        }
+        info!(
+            "copied {} to {}",
+            outcome.record.copies.len(),
+            outcome.record.dest.display()
+        );
+        self.remember(outcome.record.copies.len(), &outcome.record.dest);
+        let text = copy_toast_text(&outcome);
+        self.record_undo(LastOp::Copy(outcome.record), text, at);
+    }
+
+    /// Keeps `op` as the one thing to undo and toasts `text` with an Undo
+    /// button.
+    fn record_undo(&self, op: LastOp, text: String, at: Point) {
+        *self.last.borrow_mut() = Some(Last { op, at });
         self.notify_undo_changed();
         let this = self.this.clone();
         let on_undo: Box<dyn Fn()> = Box::new(move || {
@@ -342,10 +543,24 @@ impl Executor {
         self.toast.show(&text, Some(on_undo), at);
     }
 
+    /// Puts `dest` first in the recent list and saves it, when `done` items
+    /// went there. A failed save is logged, never toasted.
+    fn remember(&self, done: usize, dest: &Path) {
+        if !should_remember(done) {
+            return;
+        }
+        let mut recent = self.recent.borrow_mut();
+        recent.push(dest.to_path_buf());
+        if let Err(e) = recent.save(&recent_path()) {
+            warn!("cannot save the recent folders: {e}");
+        }
+    }
+
     /// Runs `job` on a worker thread, then `done` with its result on the main
     /// thread. Marks the executor busy until `done` runs.
     fn spawn_file_job<T: Send + 'static>(
         &self,
+        action: ActionId,
         job: impl FnOnce() -> T + Send + 'static,
         done: impl FnOnce(&Executor, T) + Send + 'static,
         at: Point,
@@ -362,7 +577,7 @@ impl Executor {
                     executor.busy.set(false);
                     match result {
                         Ok(value) => done(&executor, value),
-                        Err(_) => executor.toast_error(ActionId::Move, "internal error", at),
+                        Err(_) => executor.toast_error(action, "internal error", at),
                     }
                 });
                 if let Err(e) = delivered {
@@ -371,7 +586,7 @@ impl Executor {
             });
         if let Err(e) = spawned {
             self.busy.set(false);
-            self.toast_error(ActionId::Move, &format!("cannot start: {e}"), at);
+            self.toast_error(action, &format!("cannot start: {e}"), at);
         }
     }
 
@@ -402,7 +617,7 @@ impl Executor {
 mod tests {
     use super::*;
     use std::io;
-    use vento_core::fileops::MoveRecord;
+    use vento_core::fileops::{Fingerprint, MoveRecord};
 
     fn p(s: &str) -> PathBuf {
         PathBuf::from(s)
@@ -488,6 +703,61 @@ mod tests {
             undo_toast_text(&outcome(1, vec![(p("/x"), FileOpError::NotFound)])),
             "Restored 1 item · 1 failed"
         );
+    }
+
+    fn copy_outcome(copied: usize, failed: Vec<(PathBuf, FileOpError)>) -> CopyOutcome {
+        CopyOutcome {
+            record: CopyRecord {
+                dest: p("/dest/Photos"),
+                copies: (0..copied)
+                    .map(|i| {
+                        (
+                            p(&format!("/src/{i}")),
+                            p(&format!("/dest/Photos/{i}")),
+                            Fingerprint::Link {
+                                target: p("/t"),
+                                id: Default::default(),
+                            },
+                        )
+                    })
+                    .collect(),
+            },
+            failed,
+        }
+    }
+
+    #[test]
+    fn copy_toast_texts() {
+        assert_eq!(
+            copy_toast_text(&copy_outcome(1, vec![])),
+            "Copied 1 item to Photos"
+        );
+        assert_eq!(
+            copy_toast_text(&copy_outcome(3, vec![])),
+            "Copied 3 items to Photos"
+        );
+        assert_eq!(
+            copy_toast_text(&copy_outcome(2, vec![(p("/src/x"), FileOpError::NotFound)])),
+            "Copied 2 items to Photos · 1 failed"
+        );
+        let undone = |trashed, kept: usize| CopyUndoOutcome {
+            trashed,
+            kept_changed: (0..kept).map(|i| p(&format!("/c/{i}"))).collect(),
+            ..Default::default()
+        };
+        assert_eq!(copy_undo_toast_text(&undone(3, 0)), "Removed 3 copies");
+        assert_eq!(copy_undo_toast_text(&undone(1, 0)), "Removed 1 copy");
+        assert_eq!(
+            copy_undo_toast_text(&undone(2, 1)),
+            "Removed 2 copies, kept 1 changed"
+        );
+    }
+
+    #[test]
+    fn recent_is_updated_only_when_something_moved() {
+        assert!(!should_remember(0));
+        assert!(should_remember(1));
+        assert!(should_remember(7));
     }
 
     fn record(pairs: &[(&str, &str)]) -> MoveRecord {

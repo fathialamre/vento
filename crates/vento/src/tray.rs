@@ -12,7 +12,7 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
-use crate::exec::Executor;
+use crate::exec::{Executor, UndoKind};
 use crate::wheel::WheelController;
 
 /// Side length of the menu-bar icon in pixels.
@@ -123,6 +123,15 @@ fn tray_icon_rgba() -> Vec<u8> {
     rgba
 }
 
+/// The Undo item's text: names the copy when a copy is what would be undone,
+/// and reads "move" when there is nothing to undo.
+fn undo_menu_text(kind: Option<UndoKind>) -> &'static str {
+    match kind {
+        Some(UndoKind::Copy) => "Undo last copy",
+        Some(UndoKind::Move) | None => "Undo last move",
+    }
+}
+
 /// What the tray needs to act on clicks.
 pub struct TrayDeps {
     pub ctrl: Rc<WheelController>,
@@ -150,7 +159,11 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         on_open_panel,
         on_pause,
     } = deps;
-    let undo = MenuItem::new("Undo last move", exec.has_undo(), None);
+    let undo = MenuItem::new(
+        undo_menu_text(exec.has_undo()),
+        exec.has_undo().is_some(),
+        None,
+    );
     let pause = CheckMenuItem::new("Pause vento", true, false, None);
     let open_settings = MenuItem::new("Open settings file", true, None);
     let quit = MenuItem::new("Quit vento", true, None);
@@ -179,7 +192,10 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     // Keep the Undo item in step with the executor, instead of polling it.
     {
         let undo = undo.clone();
-        exec.on_undo_changed(Box::new(move |available| undo.set_enabled(available)));
+        exec.on_undo_changed(Box::new(move |kind| {
+            undo.set_text(undo_menu_text(kind));
+            undo.set_enabled(kind.is_some());
+        }));
     }
 
     // Menu clicks arrive via a handler that may run on any thread: forward
@@ -383,5 +399,12 @@ mod tests {
             .filter(|&x| alpha(&rgba, x, top_row.unwrap()) != 0)
             .count();
         assert!(width >= 6, "top edge is {width} px wide");
+    }
+
+    #[test]
+    fn undo_item_names_what_it_would_undo() {
+        assert_eq!(undo_menu_text(Some(UndoKind::Move)), "Undo last move");
+        assert_eq!(undo_menu_text(Some(UndoKind::Copy)), "Undo last copy");
+        assert_eq!(undo_menu_text(None), "Undo last move");
     }
 }
