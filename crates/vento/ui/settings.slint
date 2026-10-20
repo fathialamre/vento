@@ -1,5 +1,5 @@
 // The settings panel: a solid, frameless window that hangs under the
-// menu-bar icon, with a segmented tab bar, one page per tab and a footer
+// menu-bar icon from a small arrow pointing at it, with a segmented tab bar, one page per tab and a footer
 // with Pause, Quit and Done. It follows the system light or dark appearance
 // through `Theme`.
 
@@ -675,6 +675,119 @@ component GeneralTab inherits VerticalLayout {
     }
 }
 
+// The panel's shape, drawn as one outline so the arrow and the body share
+// a fill and a hairline with no seam: a rounded rectangle below `arrow-h`,
+// and on its top edge an arrow 20px wide whose centre is `arrow-x`, its tip
+// rounded and its base curving into the edge. The outline runs half a
+// pixel inside the element so the whole hairline is drawn.
+component PanelOutline inherits Path {
+    in property <length> arrow-x;
+    in property <length> arrow-h;
+    in property <length> radius;
+
+    // In path units, which are logical pixels here (see the viewbox).
+    property <float> s: 0.5;
+    property <float> w: self.width / 1px - self.s;
+    property <float> h: self.height / 1px - self.s;
+    property <float> top: self.arrow-h / 1px + self.s;
+    property <float> r: self.radius / 1px;
+    property <float> ax: self.arrow-x / 1px;
+    // Half the arrow's base, how far its base curves into the edge, and
+    // where along each side (as a fraction from the tip) the tip's
+    // rounding starts.
+    property <float> half: 10;
+    property <float> blend: 3;
+    property <float> round: 0.25;
+    // The arrow's height in path units, from the top edge to the tip.
+    property <float> rise: self.top - self.s;
+
+    viewbox-x: 0;
+    viewbox-y: 0;
+    viewbox-width: self.width / 1px;
+    viewbox-height: self.height / 1px;
+    fill: Theme.bg;
+    stroke: Theme.border;
+    stroke-width: 1px;
+
+    MoveTo {
+        x: root.ax - root.half - root.blend;
+        y: root.top;
+    }
+    // Into the arrow's left side, tangent to the edge and to the side.
+    QuadraticTo {
+        control-x: root.ax - root.half;
+        control-y: root.top;
+        x: root.ax - root.half + root.blend;
+        y: root.top - root.rise * root.blend / root.half;
+    }
+    LineTo {
+        x: root.ax - root.half * root.round;
+        y: root.s + root.rise * root.round;
+    }
+    // The rounded tip.
+    QuadraticTo {
+        control-x: root.ax;
+        control-y: root.s;
+        x: root.ax + root.half * root.round;
+        y: root.s + root.rise * root.round;
+    }
+    LineTo {
+        x: root.ax + root.half - root.blend;
+        y: root.top - root.rise * root.blend / root.half;
+    }
+    QuadraticTo {
+        control-x: root.ax + root.half;
+        control-y: root.top;
+        x: root.ax + root.half + root.blend;
+        y: root.top;
+    }
+    LineTo {
+        x: root.w - root.r;
+        y: root.top;
+    }
+    ArcTo {
+        x: root.w;
+        y: root.top + root.r;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    LineTo {
+        x: root.w;
+        y: root.h - root.r;
+    }
+    ArcTo {
+        x: root.w - root.r;
+        y: root.h;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    LineTo {
+        x: root.s + root.r;
+        y: root.h;
+    }
+    ArcTo {
+        x: root.s;
+        y: root.h - root.r;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    LineTo {
+        x: root.s;
+        y: root.top + root.r;
+    }
+    ArcTo {
+        x: root.s + root.r;
+        y: root.top;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    Close { }
+}
+
 export component SettingsPanel inherits Window {
     no-frame: true;
     always-on-top: true;
@@ -751,11 +864,21 @@ export component SettingsPanel inherits Window {
     // Done or Esc.
     callback close-requested();
 
-    // The height the panel's content asks for; the window takes it.
-    out property <length> panel-height: layout.preferred-height;
+    // Where the arrow on the top edge points: its centre, from the left
+    // edge. vento sets it so the arrow points at the menu-bar icon.
+    in property <length> arrow-x: self.width / 2;
+
+    // The arrow's height above the body, and the body's corner radius (the
+    // panel code relies on both, and on the arrow's width and blend).
+    property <length> arrow-h: 10px;
+    property <length> radius: 16px;
+
+    // The height the window takes: the arrow above the height the panel's
+    // content asks for.
+    out property <length> window-height: self.arrow-h + layout.preferred-height;
 
     width: 340px;
-    height: self.panel-height;
+    height: self.window-height;
     forward-focus: keys;
 
     // Ends a shortcut recording without a change and gives the keyboard
@@ -782,11 +905,17 @@ export component SettingsPanel inherits Window {
             return reject;
         }
 
+        PanelOutline {
+            width: parent.width;
+            height: parent.height;
+            arrow-x: root.arrow-x;
+            arrow-h: root.arrow-h;
+            radius: root.radius;
+        }
+
         Rectangle {
-            background: Theme.bg;
-            border-radius: 16px;
-            border-width: 1px;
-            border-color: Theme.separator;
+            y: root.arrow-h;
+            height: parent.height - root.arrow-h;
 
             layout := VerticalLayout {
                 padding: 12px;

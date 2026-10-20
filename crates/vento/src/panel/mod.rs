@@ -1,9 +1,11 @@
-//! The settings panel: hangs under the menu-bar icon on a left click and
-//! closes on Esc, Done, a second click on the icon or a click outside.
+//! The settings panel: hangs under the menu-bar icon on a left click, its
+//! arrow pointing at the icon, and closes on Esc, Done, a second click on
+//! the icon or a click in another app. Losing focus alone (⌘-Tab, another
+//! app coming forward, the folder picker) leaves it open.
 //!
 //! The window is created on the first open and only hidden afterwards; a
-//! closed panel runs no timers (closing arms one single-shot timer for the
-//! next turn of the event loop).
+//! closed panel runs no timers and watches no clicks (closing arms one
+//! single-shot timer for the next turn of the event loop).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -39,15 +41,23 @@ use crate::wheel::action_icon;
 
 /// Panel width in logical points (matches `settings.slint`).
 const WIDTH: f64 = 340.0;
-/// Gap between the bottom of the menu-bar icon and the top of the panel.
-const GAP: f64 = 6.0;
+/// Gap between the bottom of the menu-bar icon and the tip of the panel's
+/// arrow (the top of the window).
+const GAP: f64 = 2.0;
 /// The least distance from the panel to the left, right and bottom edges
 /// of the work area.
 const INSET: f64 = 8.0;
-/// A click on the icon this soon after the panel closed for losing focus
-/// is the click that took the focus: it closed the panel and must not open
-/// it again.
-const REOPEN_GUARD: Duration = Duration::from_millis(500);
+/// The panel body's corner radius and the arrow's base width (both match
+/// `settings.slint`).
+const CORNER_RADIUS: f64 = 16.0;
+const ARROW_W: f64 = 20.0;
+/// How far the base of the arrow curves into the top edge on each side
+/// (matches `settings.slint`).
+const ARROW_BLEND: f64 = 3.0;
+/// The least distance from the arrow's centre to either side of the panel:
+/// the rounded corner, half the arrow and the curve that blends it into
+/// the top edge all fit beside it.
+const ARROW_MARGIN: f64 = CORNER_RADIUS + ARROW_W / 2.0 + ARROW_BLEND;
 
 /// The choices of the panel's segmented controls, in the order shown.
 const LAYOUTS: [Layout; 2] = [Layout::Honeycomb, Layout::Petals];
@@ -98,16 +108,8 @@ pub struct PanelController {
     /// The installed terminals, as the Terminal menu lists them.
     terminals: RefCell<Vec<TerminalApp>>,
     open: Cell<bool>,
-    /// The window became key since it opened, so losing focus now means
-    /// the user went elsewhere.
-    had_focus: Cell<bool>,
-    /// The folder picker is up (or has just closed): the focus it takes is
-    /// not the user going elsewhere.
-    picking: Cell<bool>,
     /// The modifier keys held now, for the shortcut recorder.
     modifiers: Cell<ModifiersState>,
-    /// When the panel last closed for losing focus.
-    blurred_at: Cell<Option<Instant>>,
     this: Weak<Self>,
 }
 
@@ -148,10 +150,7 @@ impl PanelController {
             folder_icons: RefCell::new(HashMap::new()),
             terminals: RefCell::new(Vec::new()),
             open: Cell::new(false),
-            had_focus: Cell::new(false),
-            picking: Cell::new(false),
             modifiers: Cell::new(ModifiersState::empty()),
-            blurred_at: Cell::new(None),
             this: this.clone(),
         });
         panel.connect();
@@ -189,7 +188,12 @@ impl PanelController {
                 return EventResult::Propagate;
             };
             match event {
-                WindowEvent::Focused(focused) => panel.focus_changed(*focused),
+                // Back from another app: the click goes on to the control
+                // under it, and the panel is key again for Esc.
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    ..
+                } if !panel.has_focus() => panel.regain_focus(),
                 WindowEvent::ModifiersChanged(modifiers) => panel.modifiers.set(modifiers.state()),
                 WindowEvent::KeyboardInput {
                     event,
@@ -336,16 +340,13 @@ impl PanelController {
         if self.hub.current().pinned_folders.len() >= MAX_PINNED {
             return;
         }
-        // The modal picker takes the key focus; that must not close the
-        // panel. Its focus changes may still be on their way when it
-        // returns, so the panel keeps ignoring focus loss until the next
-        // turn of the event loop, and then takes the focus back.
-        self.picking.set(true);
+        // The modal picker takes the key focus. Its focus changes may still
+        // be on their way when it returns, so the panel takes the focus
+        // back on the next turn of the event loop, for Esc.
         let picked = self.platform.pick_folder(None);
         let this = self.this.clone();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(panel) = this.upgrade() {
-                panel.picking.set(false);
                 panel.regain_focus();
             }
         });
@@ -360,16 +361,15 @@ impl PanelController {
             return;
         }
         self.platform.activate_app();
-        let focused = self
-            .window
+        self.window.window().with_winit_window(|w| w.focus_window());
+    }
+
+    /// Whether the panel is the key window (it takes the keyboard).
+    fn has_focus(&self) -> bool {
+        self.window
             .window()
-            .with_winit_window(|w| {
-                w.focus_window();
-                w.has_focus()
-            })
-            .unwrap_or(false);
-        // Not yet key: the focus event that follows records it.
-        self.had_focus.set(focused);
+            .with_winit_window(|w| w.has_focus())
+            .unwrap_or(true)
     }
 
     /// Forgets every recent folder and saves the empty list. A failed save
@@ -556,12 +556,13 @@ impl PanelController {
     pub fn toggle_at(&self, icon: Rect) {
         if self.is_open() {
             self.close();
-        } else if !reopen_blocked(self.blurred_at.take(), Instant::now()) {
+        } else {
             self.open_at(icon);
         }
     }
 
-    /// Hides the panel and hands focus back to the app that had it.
+    /// Hides the panel, stops watching for clicks outside it and hands
+    /// focus back to the app that had it.
     ///
     /// Focus is handed back on the next turn of the event loop: when the
     /// panel closes because the user clicked into another app, AppKit takes
@@ -572,6 +573,7 @@ impl PanelController {
         if !self.open.replace(false) {
             return;
         }
+        self.platform.stop_watching_outside_clicks();
         if self.window.get_shortcut_recording() {
             self.window.invoke_stop_recording();
         }
@@ -610,12 +612,12 @@ impl PanelController {
         self.load_terminals();
         // Also lists the recent folders as they are now.
         self.show_settings();
-        let height = f64::from(self.window.get_panel_height());
-        let (x, y) = panel_position(icon, height, &self.platform.screens());
+        let height = f64::from(self.window.get_window_height());
+        let Placement { x, y, arrow_x } = panel_position(icon, height, &self.platform.screens());
+        self.window.set_arrow_x(arrow_x as f32);
         self.window
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
-        self.had_focus.set(false);
         self.open.set(true);
         // vento runs as an accessory app: bring it forward so the panel
         // becomes key and takes Esc.
@@ -626,16 +628,24 @@ impl PanelController {
             self.platform.deactivate_app();
             return;
         }
+        self.watch_outside_clicks();
         debug!("panel open at ({x}, {y}) in {:?}", started.elapsed());
     }
 
-    fn focus_changed(&self, focused: bool) {
-        if focused {
-            self.had_focus.set(true);
-        } else if self.is_open() && self.had_focus.get() && !self.picking.get() {
-            self.blurred_at.set(Some(Instant::now()));
-            self.close();
-        }
+    /// Closes the panel on a click in another app or on the desktop, until
+    /// it closes. The close happens on the next turn of the event loop,
+    /// outside AppKit's event monitor that reports the click.
+    fn watch_outside_clicks(&self) {
+        let this = self.this.clone();
+        self.platform.watch_outside_clicks(Box::new(move || {
+            let this = this.clone();
+            Timer::single_shot(Duration::ZERO, move || {
+                if let Some(panel) = this.upgrade() {
+                    debug!("click outside the panel");
+                    panel.close();
+                }
+            });
+        }));
     }
 
     fn show_notice(&self) {
@@ -900,31 +910,37 @@ fn set_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     }
 }
 
-/// Whether a click on the icon at `now` must not open the panel, because
-/// it closed for losing focus at `blurred_at` just before.
-fn reopen_blocked(blurred_at: Option<Instant>, now: Instant) -> bool {
-    blurred_at.is_some_and(|t| now.saturating_duration_since(t) < REOPEN_GUARD)
+/// Where the panel's window goes, in global logical points, and where its
+/// arrow points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Placement {
+    /// The window's top-left corner (the top is the arrow's tip).
+    x: f64,
+    y: f64,
+    /// The arrow's centre, from the window's left edge.
+    arrow_x: f64,
 }
 
-/// Top-left corner of a panel `height` points tall: centred under `icon`,
-/// [`GAP`] below it, and clamped to the icon's screen (the work area that
-/// holds, or is nearest to, the point where the panel's top edge meets its
-/// centre line, just below the menu bar), [`INSET`] in from its left, right
-/// and bottom edges. The top edge needs no inset: the panel hangs from the
-/// menu bar, already [`GAP`] below the icon.
-fn panel_position(icon: Rect, height: f64, screens: &[Rect]) -> (f64, f64) {
+/// Placement of a panel window `height` points tall (the arrow included):
+/// centred under `icon`, its arrow's tip [`GAP`] below it, and clamped to
+/// the icon's screen (the work area that holds, or is nearest to, the point
+/// where the window's top edge meets its centre line, just below the menu
+/// bar), [`INSET`] in from its left, right and bottom edges. The top edge
+/// needs no inset: the panel hangs from the menu bar, already [`GAP`] below
+/// the icon. The arrow points at the icon's centre wherever the body ends
+/// up, but stays [`ARROW_MARGIN`] in from either side.
+fn panel_position(icon: Rect, height: f64, screens: &[Rect]) -> Placement {
     let anchor = Point {
         x: icon.x + icon.w / 2.0,
         y: icon.y + icon.h + GAP,
     };
-    let (x, y) = (anchor.x - WIDTH / 2.0, anchor.y);
-    let Some(screen) = screen_for(anchor, screens) else {
-        return (x, y);
-    };
-    (
-        clamp(x, screen.x + INSET, screen.x + screen.w - WIDTH - INSET),
-        clamp(y, screen.y, screen.y + screen.h - height - INSET),
-    )
+    let (mut x, mut y) = (anchor.x - WIDTH / 2.0, anchor.y);
+    if let Some(screen) = screen_for(anchor, screens) {
+        x = clamp(x, screen.x + INSET, screen.x + screen.w - WIDTH - INSET);
+        y = clamp(y, screen.y, screen.y + screen.h - height - INSET);
+    }
+    let arrow_x = clamp(anchor.x - x, ARROW_MARGIN, WIDTH - ARROW_MARGIN);
+    Placement { x, y, arrow_x }
 }
 
 /// `v` limited to `[lo, hi]`; an empty range (a screen smaller than the
@@ -949,26 +965,58 @@ mod tests {
         h: 875.0,
     };
 
-    #[test]
-    fn panel_hangs_centred_under_the_icon() {
-        let icon = rect(1000.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]), (842.0, 31.0));
+    fn at(x: f64, y: f64, arrow_x: f64) -> Placement {
+        Placement { x, y, arrow_x }
     }
 
     #[test]
-    fn panel_stays_on_the_screen_near_its_edges() {
-        // An icon at the right end of the menu bar.
+    fn panel_hangs_centred_under_the_icon_with_the_arrow_in_the_middle() {
+        // The arrow's tip 2 pt below the icon, the body centred under it.
+        let icon = rect(1000.0, 0.0, 24.0, 25.0);
+        assert_eq!(
+            panel_position(icon, 400.0, &[PRIMARY]),
+            at(842.0, 27.0, WIDTH / 2.0)
+        );
+    }
+
+    #[test]
+    fn arrow_follows_the_icon_when_the_panel_is_clamped_at_the_right_edge() {
+        // Centred, the panel would end at 1482: it is pulled back to end
+        // 8 pt in from the edge, and the arrow moves right to stay on the
+        // icon's centre (1312).
+        let icon = rect(1300.0, 0.0, 24.0, 25.0);
+        assert_eq!(
+            panel_position(icon, 400.0, &[PRIMARY]),
+            at(1092.0, 27.0, 220.0)
+        );
+    }
+
+    #[test]
+    fn arrow_keeps_clear_of_the_corners_when_the_icon_is_at_the_screen_edge() {
+        // An icon at the right end of the menu bar: its centre is 330 pt
+        // into the clamped panel, too close to the rounded corner.
         let icon = rect(1410.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]).0, 1092.0);
+        assert_eq!(
+            panel_position(icon, 400.0, &[PRIMARY]),
+            at(1092.0, 27.0, WIDTH - ARROW_MARGIN)
+        );
         // And one at the far left.
         let icon = rect(4.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]).0, 8.0);
+        assert_eq!(
+            panel_position(icon, 400.0, &[PRIMARY]),
+            at(8.0, 27.0, ARROW_MARGIN)
+        );
+        // Never closer to a corner than its radius plus half the arrow.
+        const { assert!(ARROW_MARGIN >= CORNER_RADIUS + ARROW_W / 2.0) };
+    }
+
+    #[test]
+    fn panel_stays_above_the_bottom_of_the_screen() {
         // Tall enough to reach the bottom: lifted to stay 8 pt above it.
         let icon = rect(700.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 864.0, &[PRIMARY]).1, 28.0);
+        assert_eq!(panel_position(icon, 866.0, &[PRIMARY]).y, 26.0);
         // Too tall for the screen: the top stays below the menu bar.
-        let icon = rect(700.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 2000.0, &[PRIMARY]).1, 25.0);
+        assert_eq!(panel_position(icon, 2000.0, &[PRIMARY]).y, 25.0);
     }
 
     #[test]
@@ -977,8 +1025,8 @@ mod tests {
         // its right edge.
         let second = rect(1440.0, 37.0, 1920.0, 1043.0);
         let icon = rect(3330.0, 0.0, 24.0, 37.0);
-        let at = panel_position(icon, 400.0, &[PRIMARY, second]);
-        assert_eq!(at, (3012.0, 43.0));
+        let placed = panel_position(icon, 400.0, &[PRIMARY, second]);
+        assert_eq!(placed, at(3012.0, 39.0, WIDTH - ARROW_MARGIN));
     }
 
     #[test]
@@ -986,25 +1034,18 @@ mod tests {
         // A wider screen stacked above the primary: its work area ends at
         // y = 0, nearer the icon's centre than the primary's work area is.
         let above = rect(0.0, -1055.0, 1920.0, 1055.0);
-        let icon = rect(1410.0, 0.0, 24.0, 25.0);
-        let at = panel_position(icon, 400.0, &[above, PRIMARY]);
-        assert_eq!(at, (1092.0, 31.0));
+        let icon = rect(1300.0, 0.0, 24.0, 25.0);
+        let placed = panel_position(icon, 400.0, &[above, PRIMARY]);
+        assert_eq!(placed, at(1092.0, 27.0, 220.0));
     }
 
     #[test]
     fn panel_without_screens_hangs_under_the_icon() {
         let icon = rect(100.0, 0.0, 20.0, 24.0);
-        assert_eq!(panel_position(icon, 400.0, &[]), (-60.0, 30.0));
-    }
-
-    #[test]
-    fn a_click_right_after_losing_focus_does_not_reopen() {
-        let now = Instant::now();
-        assert!(!reopen_blocked(None, now));
-        assert!(reopen_blocked(Some(now), now + Duration::from_millis(120)));
-        assert!(!reopen_blocked(Some(now), now + REOPEN_GUARD));
-        // A clock that went backwards still counts as just now.
-        assert!(reopen_blocked(Some(now + Duration::from_secs(1)), now));
+        assert_eq!(
+            panel_position(icon, 400.0, &[]),
+            at(-60.0, 26.0, WIDTH / 2.0)
+        );
     }
 
     #[test]

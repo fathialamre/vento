@@ -17,6 +17,7 @@ use vento_core::trigger::InputSample;
 use crate::{DropCatcher, IslandHome, Platform, PlatformError, RgbaImage, TerminalApp};
 
 mod catcher;
+mod clicks;
 mod clipboard;
 mod icons;
 mod input;
@@ -40,6 +41,8 @@ pub struct MacPlatform {
     /// while it is away, holding the menu to put back (`None` if there was
     /// none).
     suspended_menu: RefCell<Option<Option<Retained<NSMenu>>>>,
+    /// The watch [`Platform::watch_outside_clicks`] runs, while it runs.
+    outside_clicks: RefCell<Option<clicks::ClickMonitor>>,
 }
 
 impl Default for MacPlatform {
@@ -56,6 +59,7 @@ impl MacPlatform {
             _observer: notify::AppObserver::install(),
             previous_app: RefCell::new(None),
             suspended_menu: RefCell::new(None),
+            outside_clicks: RefCell::new(None),
         }
     }
 }
@@ -218,6 +222,28 @@ impl Platform for MacPlatform {
         };
         NSApplication::sharedApplication(mtm).setMainMenu(menu.as_deref());
         log::debug!("app menu restored");
+    }
+
+    fn watch_outside_clicks(&self, f: Box<dyn Fn()>) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("watch_outside_clicks called off the main thread; ignored");
+            return;
+        };
+        // The old monitor goes first, so two never run at once.
+        self.stop_watching_outside_clicks();
+        let monitor = clicks::ClickMonitor::install(mtm, f);
+        *self.outside_clicks.borrow_mut() = monitor;
+    }
+
+    fn stop_watching_outside_clicks(&self) {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("stop_watching_outside_clicks called off the main thread; ignored");
+            return;
+        }
+        // Taken out before it is dropped (which removes it), so nothing is
+        // borrowed while AppKit lets go of the handler.
+        let monitor = self.outside_clicks.borrow_mut().take();
+        drop(monitor);
     }
 
     fn scale_factor_at(&self, p: Point) -> f64 {

@@ -170,6 +170,16 @@ pub trait Platform {
     /// Put back the exact menu bar [`Platform::suspend_app_menu`] took
     /// away; nothing happens when none was taken. Main thread only.
     fn restore_app_menu(&self);
+    /// Call `f` on the main thread for each mouse-button press (left, right
+    /// or other) in another app or on the desktop, until
+    /// [`Platform::stop_watching_outside_clicks`]. Presses in vento's own
+    /// windows and on its menu-bar icon are not reported. Replaces any
+    /// earlier watch. Needs no permission. Main thread only; nothing
+    /// happens where unsupported.
+    fn watch_outside_clicks(&self, f: Box<dyn Fn()>);
+    /// Stop the watch [`Platform::watch_outside_clicks`] started, and drop
+    /// its `f`; nothing happens when none runs. Main thread only.
+    fn stop_watching_outside_clicks(&self);
     /// The backing scale factor (physical pixels per logical point) of the
     /// screen that contains `p`, a global logical point; the primary screen's
     /// when none does. 1.0 where unsupported.

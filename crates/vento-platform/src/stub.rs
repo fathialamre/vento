@@ -99,6 +99,10 @@ impl Platform for StubPlatform {
 
     fn restore_app_menu(&self) {}
 
+    fn watch_outside_clicks(&self, _f: Box<dyn Fn()>) {}
+
+    fn stop_watching_outside_clicks(&self) {}
+
     fn scale_factor_at(&self, _p: Point) -> f64 {
         1.0
     }
@@ -152,6 +156,8 @@ mod tests {
         assert!(!p.screens_changed());
         p.suspend_app_menu();
         p.restore_app_menu();
+        p.watch_outside_clicks(Box::new(|| panic!("the stub reports no clicks")));
+        p.stop_watching_outside_clicks();
         assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
     }
 }
