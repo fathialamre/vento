@@ -565,9 +565,11 @@ export component ReorderRow inherits Rectangle {
     height: self.row-h;
     border-radius: 6px;
     background: self.dragged ? Theme.selected : transparent;
+    // Only the dragged row casts a shadow: a zero-blur shadow still draws a
+    // solid offset copy of the row, which would box every row in.
     drop-shadow-blur: self.dragged ? 6px : 0px;
-    drop-shadow-offset-y: 1px;
-    drop-shadow-color: Theme.dark ? #00000066 : #00000026;
+    drop-shadow-offset-y: self.dragged ? 1px : 0px;
+    drop-shadow-color: !self.dragged ? transparent : Theme.dark ? #00000066 : #00000026;
     // Rows making room slide; the dragged row and the drop are immediate.
     animate y {
         duration: root.drag-from >= 0 && !root.dragged ? 120ms : 0ms;

@@ -115,11 +115,16 @@ component FooterItem inherits Rectangle {
         padding-right: 8px;
         spacing: 6px;
 
-        Image {
-            source: root.icon;
-            width: 16px;
-            height: 16px;
-            colorize: root.tint;
+        // A fixed-size image sits at the top of a row; centre it on the label.
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 16px;
+                height: 16px;
+                colorize: root.tint;
+            }
         }
 
         Text {
@@ -209,7 +214,7 @@ component ActionList inherits Rectangle {
     callback toggled(int, bool);
     callback moved(int, int);
 
-    property <length> row-h: 30px;
+    property <length> row-h: 34px;
     // The row being dragged (-1 for none), how far it has moved, the first
     // and last place it can go, and the place it would drop at now.
     property <int> drag-from: -1;
@@ -387,7 +392,7 @@ component PinnedList inherits Rectangle {
     callback moved(int, int);
     callback unpinned(int);
 
-    property <length> row-h: 30px;
+    property <length> row-h: 34px;
     // The row being dragged (-1 for none), how far it has moved, and the
     // place it would drop at now.
     property <int> drag-from: -1;
