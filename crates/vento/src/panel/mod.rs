@@ -41,9 +41,14 @@ use crate::wheel::action_icon;
 
 /// Panel width in logical points (matches `settings.slint`).
 const WIDTH: f64 = 340.0;
-/// Gap between the bottom of the menu-bar icon and the tip of the panel's
-/// arrow (the top of the window).
-const GAP: f64 = 2.0;
+/// Gap between the bottom of the menu-bar icon and the arrow's visible tip.
+const TIP_GAP: f64 = 2.0;
+/// How far below the top of the window the arrow's visible tip is: the
+/// outline's rounded apex lies 1.75 pt down, its hairline's outer edge half
+/// a point above that (matches `settings.slint`).
+const TIP_INSET: f64 = 1.25;
+/// Gap between the bottom of the menu-bar icon and the top of the window.
+const GAP: f64 = TIP_GAP - TIP_INSET;
 /// The least distance from the panel to the left, right and bottom edges
 /// of the work area.
 const INSET: f64 = 8.0;
@@ -645,6 +650,11 @@ impl PanelController {
                     panel.close();
                 }
             });
+            // A timer started from AppKit's callback does not wake the
+            // event loop by itself; this does, so the panel closes at once.
+            if let Err(e) = slint::invoke_from_event_loop(|| {}) {
+                warn!("cannot wake the event loop: {e}");
+            }
         }));
     }
 
@@ -922,7 +932,8 @@ struct Placement {
 }
 
 /// Placement of a panel window `height` points tall (the arrow included):
-/// centred under `icon`, its arrow's tip [`GAP`] below it, and clamped to
+/// centred under `icon`, its arrow's tip [`TIP_GAP`] below it (the window
+/// [`GAP`] below it), and clamped to
 /// the icon's screen (the work area that holds, or is nearest to, the point
 /// where the window's top edge meets its centre line, just below the menu
 /// bar), [`INSET`] in from its left, right and bottom edges. The top edge
@@ -971,11 +982,12 @@ mod tests {
 
     #[test]
     fn panel_hangs_centred_under_the_icon_with_the_arrow_in_the_middle() {
-        // The arrow's tip 2 pt below the icon, the body centred under it.
+        // The arrow's visible tip 2 pt below the icon (the window 0.75 pt),
+        // the body centred under it.
         let icon = rect(1000.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(842.0, 27.0, WIDTH / 2.0)
+            at(842.0, 25.75, WIDTH / 2.0)
         );
     }
 
@@ -987,7 +999,7 @@ mod tests {
         let icon = rect(1300.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(1092.0, 27.0, 220.0)
+            at(1092.0, 25.75, 220.0)
         );
     }
 
@@ -998,13 +1010,13 @@ mod tests {
         let icon = rect(1410.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(1092.0, 27.0, WIDTH - ARROW_MARGIN)
+            at(1092.0, 25.75, WIDTH - ARROW_MARGIN)
         );
         // And one at the far left.
         let icon = rect(4.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(8.0, 27.0, ARROW_MARGIN)
+            at(8.0, 25.75, ARROW_MARGIN)
         );
         // Never closer to a corner than its radius plus half the arrow.
         const { assert!(ARROW_MARGIN >= CORNER_RADIUS + ARROW_W / 2.0) };
@@ -1014,7 +1026,7 @@ mod tests {
     fn panel_stays_above_the_bottom_of_the_screen() {
         // Tall enough to reach the bottom: lifted to stay 8 pt above it.
         let icon = rect(700.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 866.0, &[PRIMARY]).y, 26.0);
+        assert_eq!(panel_position(icon, 866.5, &[PRIMARY]).y, 25.5);
         // Too tall for the screen: the top stays below the menu bar.
         assert_eq!(panel_position(icon, 2000.0, &[PRIMARY]).y, 25.0);
     }
@@ -1026,7 +1038,7 @@ mod tests {
         let second = rect(1440.0, 37.0, 1920.0, 1043.0);
         let icon = rect(3330.0, 0.0, 24.0, 37.0);
         let placed = panel_position(icon, 400.0, &[PRIMARY, second]);
-        assert_eq!(placed, at(3012.0, 39.0, WIDTH - ARROW_MARGIN));
+        assert_eq!(placed, at(3012.0, 37.75, WIDTH - ARROW_MARGIN));
     }
 
     #[test]
@@ -1036,7 +1048,7 @@ mod tests {
         let above = rect(0.0, -1055.0, 1920.0, 1055.0);
         let icon = rect(1300.0, 0.0, 24.0, 25.0);
         let placed = panel_position(icon, 400.0, &[above, PRIMARY]);
-        assert_eq!(placed, at(1092.0, 27.0, 220.0));
+        assert_eq!(placed, at(1092.0, 25.75, 220.0));
     }
 
     #[test]
@@ -1044,7 +1056,7 @@ mod tests {
         let icon = rect(100.0, 0.0, 20.0, 24.0);
         assert_eq!(
             panel_position(icon, 400.0, &[]),
-            at(-60.0, 26.0, WIDTH / 2.0)
+            at(-60.0, 24.75, WIDTH / 2.0)
         );
     }
 

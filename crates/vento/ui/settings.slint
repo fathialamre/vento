@@ -724,7 +724,8 @@ component PanelOutline inherits Path {
         x: root.ax - root.half * root.round;
         y: root.s + root.rise * root.round;
     }
-    // The rounded tip.
+    // The rounded tip: its apex lies 1.25 below `s`, and the panel code
+    // places the window by that (TIP_INSET).
     QuadraticTo {
         control-x: root.ax;
         control-y: root.s;

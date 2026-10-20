@@ -2,6 +2,7 @@
 //! monitor. Global monitors only observe events sent to other apps, and
 //! mouse events need no Accessibility or Input Monitoring permission.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
 
 use block2::RcBlock;
@@ -22,7 +23,13 @@ impl ClickMonitor {
     pub(crate) fn install(_mtm: MainThreadMarker, f: Box<dyn Fn()>) -> Option<Self> {
         let mask =
             NSEventMask::LeftMouseDown | NSEventMask::RightMouseDown | NSEventMask::OtherMouseDown;
-        let handler = RcBlock::new(move |_event: NonNull<NSEvent>| f());
+        // A panic must not unwind into AppKit through the block: that
+        // aborts vento.
+        let handler = RcBlock::new(move |_event: NonNull<NSEvent>| {
+            if catch_unwind(AssertUnwindSafe(&f)).is_err() {
+                log::error!("outside-click handler panicked");
+            }
+        });
         // AppKit copies the block and keeps it until `removeMonitor`.
         let Some(monitor) = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(mask, &handler)
         else {
