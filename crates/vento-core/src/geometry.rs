@@ -220,10 +220,7 @@ impl WheelGeometry {
     pub fn hit(&self, offset: Vec2) -> Option<usize> {
         match self.layout {
             Layout::Honeycomb => {
-                let w = HEX_SPACING * (3f32.sqrt() / 2.0);
-                let qf = offset.x / w;
-                let rf = offset.y / HEX_SPACING - qf / 2.0;
-                let cell = cube_round(qf, rf);
+                let cell = offset_to_axial(offset);
                 HONEYCOMB_AXIAL[..self.cells.len()]
                     .iter()
                     .position(|&c| c == cell)
@@ -239,6 +236,173 @@ impl WheelGeometry {
             }
         }
     }
+}
+
+/// Cell radius of a ring petal.
+pub const RING_PETAL_RADIUS: f32 = 26.0;
+/// Distance from the wheel centre to the ring petal centres.
+pub const RING_PETAL_ORBIT: f32 = 170.0;
+
+/// Gap between neighbouring ring petals.
+const RING_PETAL_GAP: f32 = 6.0;
+/// Extra reach of a ring petal's hit area beyond its drawn radius.
+const RING_PETAL_HIT_SLACK: f32 = 3.0;
+/// Farthest honeycomb ring (hex distance from the origin) a ring may use.
+const RING_MAX_HEX_DISTANCE: i32 = 4;
+/// Room kept around the outermost ring cell.
+const RING_EXTENT_MARGIN: f32 = 8.0;
+
+/// Hex distance of axial `(q, r)` from the origin.
+fn hex_distance((q, r): (i32, i32)) -> i32 {
+    (q.abs() + r.abs() + (q + r).abs()) / 2
+}
+
+/// The axial honeycomb cell containing `offset`.
+fn offset_to_axial(offset: Vec2) -> (i32, i32) {
+    let w = HEX_SPACING * (3f32.sqrt() / 2.0);
+    let qf = offset.x / w;
+    cube_round(qf, offset.y / HEX_SPACING - qf / 2.0)
+}
+
+/// Whether `cell`, centre and radius, lies entirely inside `bounds`.
+fn fits_in(cell: &Cell, bounds: &Rect) -> bool {
+    let (x, y, r) = (
+        f64::from(cell.center.x),
+        f64::from(cell.center.y),
+        f64::from(cell.radius),
+    );
+    x - r >= bounds.x
+        && x + r <= bounds.x + bounds.w
+        && y - r >= bounds.y
+        && y + r <= bounds.y + bounds.h
+}
+
+/// The destination ring: the cells opened around a source action.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RingGeometry {
+    cells: Vec<Cell>,
+    extent: f32,
+    layout: Layout,
+}
+
+impl RingGeometry {
+    /// The ring cells, in the order they were chosen (nearest the source first).
+    pub fn cells(&self) -> &[Cell] {
+        &self.cells
+    }
+
+    /// Half the side of the window the ring needs: reaches every cell plus a
+    /// margin, and never less than the wheel's own extent.
+    pub fn extent(&self) -> f32 {
+        self.extent
+    }
+
+    /// Index of the ring cell under `offset` (relative to the wheel centre), if any.
+    pub fn hit(&self, offset: Vec2) -> Option<usize> {
+        match self.layout {
+            Layout::Honeycomb => {
+                let target = offset_to_axial(offset);
+                self.cells
+                    .iter()
+                    .position(|c| offset_to_axial(c.center) == target)
+            }
+            Layout::Petals => {
+                let dist = |c: &Cell| (c.center.x - offset.x).hypot(c.center.y - offset.y);
+                self.cells
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| dist(c) <= c.radius + RING_PETAL_HIT_SLACK)
+                    .min_by(|(_, a), (_, b)| dist(a).total_cmp(&dist(b)))
+                    .map(|(i, _)| i)
+            }
+        }
+    }
+}
+
+impl WheelGeometry {
+    /// Places up to `count` ring cells around the action at `source`.
+    ///
+    /// `bounds` is the screen in wheel-centre coordinates (the wheel centre is
+    /// the origin). Cells that do not lie fully inside it are never used, so
+    /// fewer than `count` cells may result.
+    pub fn ring(&self, source: usize, count: usize, bounds: Rect) -> RingGeometry {
+        let cells = match self.layout {
+            Layout::Honeycomb => honeycomb_ring_cells(HONEYCOMB_AXIAL[source], count, &bounds),
+            Layout::Petals => petal_ring_cells(source, self.cells.len(), count, &bounds),
+        };
+        let reach = cells
+            .iter()
+            .map(|c| c.center.x.hypot(c.center.y) + c.radius + RING_EXTENT_MARGIN)
+            .fold(self.extent, f32::max);
+        RingGeometry {
+            cells,
+            extent: reach,
+            layout: self.layout,
+        }
+    }
+}
+
+/// Honeycomb ring cells: closest to the source first, outer cells before inner
+/// ones at equal distance, then by angle away from the source's direction.
+fn honeycomb_ring_cells(source: (i32, i32), count: usize, bounds: &Rect) -> Vec<Cell> {
+    let source_at = axial_to_offset(source.0, source.1);
+    let reach = RING_MAX_HEX_DISTANCE;
+    let mut candidates: Vec<(i32, i32)> = (-reach..=reach)
+        .flat_map(|q| (-reach..=reach).map(move |r| (q, r)))
+        .filter(|&c| (1..=reach).contains(&hex_distance(c)) && c != source)
+        .collect();
+    // Angle between (cell - source) and (source - origin), in milliradians so
+    // mirror-image cells tie and fall through to `(q, r)`.
+    let angle_milli = |c: (i32, i32)| {
+        let at = axial_to_offset(c.0, c.1);
+        let (dx, dy) = (at.x - source_at.x, at.y - source_at.y);
+        let cross = source_at.x * dy - source_at.y * dx;
+        let dot = source_at.x * dx + source_at.y * dy;
+        (cross.abs().atan2(dot) * 1000.0).round() as i32
+    };
+    candidates.sort_by_key(|&c| {
+        let from_source = hex_distance((c.0 - source.0, c.1 - source.1));
+        (
+            from_source,
+            std::cmp::Reverse(hex_distance(c)),
+            angle_milli(c),
+            c.0,
+            c.1,
+        )
+    });
+    candidates
+        .into_iter()
+        .map(|(q, r)| Cell {
+            center: axial_to_offset(q, r),
+            radius: HEX_RADIUS,
+        })
+        .filter(|c| fits_in(c, bounds))
+        .take(count)
+        .collect()
+}
+
+/// Petal ring cells: centred on the source petal's angle, alternating
+/// right (increasing angle) and left, without ever overlapping.
+fn petal_ring_cells(source: usize, actions: usize, count: usize, bounds: &Rect) -> Vec<Cell> {
+    let step = 2.0 * ((2.0 * RING_PETAL_RADIUS + RING_PETAL_GAP) / (2.0 * RING_PETAL_ORBIT)).asin();
+    let centre = 2.0 * PI * source as f32 / actions as f32;
+    // The most petals that fit around the circle without touching.
+    let positions = (2.0 * PI / step).floor() as i32;
+    (0..positions)
+        .map(|n| if n % 2 == 1 { (n + 1) / 2 } else { -(n / 2) })
+        .map(|k| {
+            let theta = centre + k as f32 * step;
+            Cell {
+                center: Vec2 {
+                    x: RING_PETAL_ORBIT * theta.sin(),
+                    y: -RING_PETAL_ORBIT * theta.cos(),
+                },
+                radius: RING_PETAL_RADIUS,
+            }
+        })
+        .filter(|c| fits_in(c, bounds))
+        .take(count)
+        .collect()
 }
 
 /// The screen area that contains `p`, or the one nearest to it (`p` can lie
@@ -501,5 +665,185 @@ mod tests {
         let nums = path_numbers(&rounded_hex_path(5.0));
         // t clamps to 0.5: the first point is the midpoint of the top-right side.
         assert!((nums[0] - 3.5).abs() < 0.01);
+    }
+
+    fn huge() -> Rect {
+        Rect {
+            x: -10_000.,
+            y: -10_000.,
+            w: 20_000.,
+            h: 20_000.,
+        }
+    }
+
+    fn axial_of(c: Vec2) -> (i32, i32) {
+        let w = HEX_SPACING * (3f32.sqrt() / 2.0);
+        let qf = c.x / w;
+        cube_round(qf, c.y / HEX_SPACING - qf / 2.0)
+    }
+
+    fn hex_between(a: (i32, i32), b: (i32, i32)) -> i32 {
+        hex_distance((a.0 - b.0, a.1 - b.1))
+    }
+
+    #[test]
+    fn honeycomb_ring_fills_outward_first() {
+        let g = WheelGeometry::new(Layout::Honeycomb, 6);
+        let ring = g.ring(1, 5, huge());
+        let source = (1, -1);
+        let cells: Vec<_> = ring.cells().iter().map(|c| axial_of(c.center)).collect();
+        assert_eq!(cells.len(), 5);
+        let origin: Vec<_> = cells.iter().map(|&c| hex_distance(c)).collect();
+        assert_eq!(origin, [2, 2, 2, 1, 1]);
+        for &c in &cells {
+            assert_eq!(hex_between(c, source), 1, "{c:?}");
+            assert_ne!(c, (0, 0));
+            assert_ne!(c, source);
+        }
+    }
+
+    #[test]
+    fn honeycomb_ring_spills_to_next_ring() {
+        let g = WheelGeometry::new(Layout::Honeycomb, 6);
+        let ring = g.ring(1, 7, huge());
+        let cells: Vec<_> = ring.cells().iter().map(|c| axial_of(c.center)).collect();
+        assert_eq!(cells.len(), 7);
+        assert_eq!(hex_between(cells[5], (1, -1)), 2);
+        assert_eq!(hex_between(cells[6], (1, -1)), 2);
+    }
+
+    #[test]
+    fn ring_cells_keep_their_radius() {
+        let g = WheelGeometry::new(Layout::Honeycomb, 6);
+        assert!(
+            g.ring(1, 5, huge())
+                .cells()
+                .iter()
+                .all(|c| c.radius == HEX_RADIUS)
+        );
+        let p = WheelGeometry::new(Layout::Petals, 6);
+        assert!(
+            p.ring(0, 5, huge())
+                .cells()
+                .iter()
+                .all(|c| c.radius == RING_PETAL_RADIUS)
+        );
+    }
+
+    #[test]
+    fn ring_hit_finds_each_cell() {
+        for layout in [Layout::Honeycomb, Layout::Petals] {
+            let ring = WheelGeometry::new(layout, 6).ring(2, 7, huge());
+            assert!(!ring.cells().is_empty());
+            for (i, c) in ring.cells().iter().enumerate() {
+                assert_eq!(ring.hit(c.center), Some(i), "{layout:?} {i}");
+            }
+            assert_eq!(ring.hit(v(0., 0.)), None, "{layout:?}");
+        }
+    }
+
+    #[test]
+    fn ring_hit_misses_between_petals() {
+        let ring = WheelGeometry::new(Layout::Petals, 6).ring(0, 3, huge());
+        assert_eq!(
+            ring.hit(v(0., -RING_PETAL_ORBIT + RING_PETAL_RADIUS + 5.)),
+            None
+        );
+        assert_eq!(
+            ring.hit(v(0., -RING_PETAL_ORBIT + RING_PETAL_RADIUS + 2.)),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn ring_cells_stay_on_screen() {
+        let bounds = Rect {
+            x: -120.,
+            y: -400.,
+            w: 520.,
+            h: 800.,
+        };
+        for layout in [Layout::Honeycomb, Layout::Petals] {
+            let ring = WheelGeometry::new(layout, 6).ring(3, 12, bounds);
+            assert!(!ring.cells().is_empty());
+            for c in ring.cells() {
+                assert!(c.center.x - c.radius >= -120., "{layout:?} {c:?}");
+                assert!(c.center.x + c.radius <= 400., "{layout:?} {c:?}");
+                assert!(c.center.y.abs() + c.radius <= 400., "{layout:?} {c:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ring_with_no_room_is_empty() {
+        let tiny = Rect {
+            x: -10.,
+            y: -10.,
+            w: 20.,
+            h: 20.,
+        };
+        let ring = WheelGeometry::new(Layout::Honeycomb, 6).ring(0, 5, tiny);
+        assert!(ring.cells().is_empty());
+        assert_eq!(ring.hit(v(0., 0.)), None);
+    }
+
+    #[test]
+    fn petal_ring_alternates_around_source() {
+        let g = WheelGeometry::new(Layout::Petals, 6);
+        let ring = g.ring(0, 3, huge());
+        let c = ring.cells();
+        assert_eq!(c.len(), 3);
+        assert!(c[0].center.y < 0. && c[0].center.x.abs() < 0.01);
+        assert!(c[1].center.x > 0.);
+        assert!(c[2].center.x < 0.);
+        for cell in c {
+            let d = cell.center.x.hypot(cell.center.y);
+            assert!((d - RING_PETAL_ORBIT).abs() < 0.01, "{d}");
+        }
+    }
+
+    #[test]
+    fn petal_ring_centres_on_the_source_petal() {
+        // Source 1 of 6 sits at 60 degrees, up and to the right.
+        let g = WheelGeometry::new(Layout::Petals, 6);
+        let first = g.ring(1, 1, huge()).cells()[0].center;
+        assert!((first.x - RING_PETAL_ORBIT * (PI / 3.0).sin()).abs() < 0.01);
+        assert!((first.y + RING_PETAL_ORBIT * (PI / 3.0).cos()).abs() < 0.01);
+    }
+
+    #[test]
+    fn petals_never_overlap() {
+        let ring = WheelGeometry::new(Layout::Petals, 6).ring(0, 40, huge());
+        let c = ring.cells();
+        assert!(c.len() >= 12);
+        for i in 0..c.len() {
+            for j in i + 1..c.len() {
+                let d = (c[i].center.x - c[j].center.x).hypot(c[i].center.y - c[j].center.y);
+                assert!(d >= 2.0 * RING_PETAL_RADIUS, "{i} {j} {d}");
+            }
+        }
+    }
+
+    #[test]
+    fn ring_extent_covers_cells() {
+        for layout in [Layout::Honeycomb, Layout::Petals] {
+            let g = WheelGeometry::new(layout, 6);
+            let ring = g.ring(1, 7, huge());
+            for c in ring.cells() {
+                assert!(ring.extent() >= c.center.x.hypot(c.center.y) + c.radius);
+            }
+            assert!(ring.extent() >= g.extent());
+        }
+        let empty = WheelGeometry::new(Layout::Honeycomb, 6).ring(
+            0,
+            5,
+            Rect {
+                x: 0.,
+                y: 0.,
+                w: 1.,
+                h: 1.,
+            },
+        );
+        assert_eq!(empty.extent(), 110.);
     }
 }
