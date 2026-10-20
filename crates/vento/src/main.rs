@@ -87,11 +87,42 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
+    // The Pocket shortcut, registered at startup and again whenever it
+    // changes, and tried by the panel when one is recorded. Registering the
+    // spec already registered does nothing, so a shortcut the panel has
+    // registered is not registered a second time when its change is saved.
+    let shortcut: Rc<RefCell<Option<(String, hotkey::HotkeyHandle)>>> = Rc::new(RefCell::new(None));
+    let register_shortcut = Rc::new({
+        let pocket = Rc::downgrade(&pocket);
+        move |spec: &str| -> Result<(), String> {
+            if shortcut
+                .borrow()
+                .as_ref()
+                .is_some_and(|(registered, _)| registered == spec)
+            {
+                return Ok(());
+            }
+            // Free the old key first, so the same key can be registered again.
+            shortcut.borrow_mut().take();
+            let pocket = pocket.clone();
+            let on_press = Box::new(move || {
+                if let Some(pocket) = pocket.upgrade() {
+                    pocket.toggle_pinned();
+                }
+            });
+            let handle = hotkey::install_hotkey(spec, on_press)?;
+            *shortcut.borrow_mut() = Some((spec.to_owned(), handle));
+            Ok(())
+        }
+    });
     let panel = {
         let pause = pause.clone();
+        let register_shortcut = register_shortcut.clone();
         panel::PanelController::new(
             platform.clone(),
             hub.clone(),
+            recent.clone(),
+            Box::new(move |spec| register_shortcut(spec)),
             Box::new(move |paused| pause.set(paused)),
         )
     };
@@ -118,24 +149,6 @@ fn main() -> Result<(), slint::PlatformError> {
         observer.observe(sample, dragging);
     }));
 
-    // The Pocket shortcut, registered now and again whenever it changes.
-    let shortcut = Rc::new(RefCell::new(None));
-    let register_shortcut = {
-        let pocket = Rc::downgrade(&pocket);
-        move |spec: &str| -> Result<(), String> {
-            // Free the old key first, so the same key can be registered again.
-            shortcut.borrow_mut().take();
-            let pocket = pocket.clone();
-            let on_press = Box::new(move || {
-                if let Some(pocket) = pocket.upgrade() {
-                    pocket.toggle_pinned();
-                }
-            });
-            let handle = hotkey::install_hotkey(spec, on_press)?;
-            *shortcut.borrow_mut() = Some(handle);
-            Ok(())
-        }
-    };
     let apply_shortcut = Rc::new({
         let toaster = toaster.clone();
         let platform = platform.clone();

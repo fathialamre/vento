@@ -47,10 +47,12 @@ pub struct Settings {
 /// The most folders that can be pinned to the move ring.
 pub const MAX_PINNED: usize = 7;
 
-/// Default and bounds of [`Settings::move_hold_ms`].
+/// Default and bounds of [`Settings::move_hold_ms`], and the step it moves
+/// in.
 const DEFAULT_MOVE_HOLD_MS: u32 = 400;
-const MIN_MOVE_HOLD_MS: u32 = 200;
-const MAX_MOVE_HOLD_MS: u32 = 1000;
+pub const MIN_MOVE_HOLD_MS: u32 = 200;
+pub const MAX_MOVE_HOLD_MS: u32 = 1000;
+pub const MOVE_HOLD_STEP_MS: u32 = 100;
 
 fn default_pocket_shortcut() -> String {
     "ctrl+alt+p".to_owned()
@@ -340,6 +342,21 @@ pub fn is_reserved_shortcut(spec: &str) -> bool {
         || (only(false, false, true, true) && matches!(key, '3' | '4' | '5'))
 }
 
+/// How macOS writes the shortcut `spec`: its modifiers as symbols in the
+/// order ⌃⌥⇧⌘, then the key upper-cased (`"ctrl+alt+p"` → `"⌃⌥P"`). `None`
+/// when it does not parse.
+pub fn shortcut_symbols(spec: &str) -> Option<String> {
+    let (m, key) = parse_shortcut(spec)?;
+    let mut text = String::new();
+    for (held, symbol) in [(m.ctrl, '⌃'), (m.alt, '⌥'), (m.shift, '⇧'), (m.meta, '⌘')] {
+        if held {
+            text.push(symbol);
+        }
+    }
+    text.push(key.to_ascii_uppercase());
+    Some(text)
+}
+
 /// Location of the settings file.
 pub fn settings_path() -> PathBuf {
     match ProjectDirs::from("", "", "vento") {
@@ -465,6 +482,25 @@ mod tests {
     #[test]
     fn parse_shortcut_requires_a_modifier() {
         assert_eq!(parse_shortcut("p"), None);
+    }
+
+    #[test]
+    fn shortcut_symbols() {
+        assert_eq!(
+            super::shortcut_symbols("ctrl+alt+p").as_deref(),
+            Some("⌃⌥P")
+        );
+        assert_eq!(
+            super::shortcut_symbols("cmd+shift+7").as_deref(),
+            Some("⇧⌘7")
+        );
+        // Always in the macOS order ⌃⌥⇧⌘, whatever order the spec uses.
+        assert_eq!(
+            super::shortcut_symbols("meta+shift+alt+ctrl+k").as_deref(),
+            Some("⌃⌥⇧⌘K")
+        );
+        assert_eq!(super::shortcut_symbols("ctrl+p+q"), None);
+        assert_eq!(super::shortcut_symbols("p"), None);
     }
 
     #[test]

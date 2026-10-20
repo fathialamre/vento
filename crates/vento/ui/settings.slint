@@ -5,20 +5,18 @@
 
 import { Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
-
-// Tabler Icons (MIT, see icons/LICENSE-tabler), embedded at build time.
-global PanelIcons {
-    out property <image> wheel: @image-url("icons/hexagons.svg");
-    out property <image> general: @image-url("icons/settings.svg");
-    out property <image> pause: @image-url("icons/player-pause.svg");
-    out property <image> resume: @image-url("icons/player-play.svg");
-    out property <image> quit: @image-url("icons/power.svg");
-    out property <image> petals: @image-url("icons/circles.svg");
-    out property <image> grip: @image-url("icons/grip-vertical.svg");
-}
+import {
+    PanelIcons, SectionHeading, Separator, Switch, SwitchRow, Segmented, MenuField, LayoutCard,
+    TextButton, IconButton, Stepper, ShortcutField, ReorderRow, DragGrip,
+} from "controls.slint";
 
 // One action in the Wheel tab's list, shown on the wheel or not.
 export struct ActionRow { icon: image, label: string, shown: bool }
+
+// One folder in the Move tab: its Finder icon (when `has-icon`), its name,
+// where it is (its parent folder, the home folder as ~) and whether it is
+// missing on disk.
+export struct FolderRow { icon: image, has-icon: bool, name: string, place: string, missing: bool }
 
 struct TabItem { icon: image, label: string }
 
@@ -198,279 +196,6 @@ component Notice inherits Rectangle {
     }
 }
 
-// A small heading over a group of controls.
-component SectionHeading inherits Text {
-    font-size: 11px;
-    font-weight: 600;
-    color: Theme.muted;
-}
-
-component Separator inherits Rectangle {
-    height: 1px;
-    background: Theme.separator;
-}
-
-// An on/off switch. It shows `on` as given and asks for the other state
-// when clicked; whoever uses it decides.
-component Switch inherits Rectangle {
-    in property <bool> on;
-    in property <string> label;
-    callback toggled(bool);
-
-    width: 26px;
-    height: 15px;
-    border-radius: self.height / 2;
-    background: self.on ? Theme.accent : Theme.switch-off;
-    animate background { duration: 120ms; }
-    accessible-role: switch;
-    accessible-label: self.label;
-    accessible-checkable: true;
-    accessible-checked: self.on;
-    accessible-action-default => { self.toggled(!self.on); }
-
-    Rectangle {
-        x: root.on ? root.width - self.width - 2px : 2px;
-        y: (root.height - self.height) / 2;
-        width: 11px;
-        height: 11px;
-        border-radius: self.height / 2;
-        background: white;
-        drop-shadow-blur: 1px;
-        drop-shadow-color: #00000033;
-        animate x { duration: 120ms; easing: ease-out; }
-    }
-
-    // A little larger than the track, so it is easy to hit.
-    TouchArea {
-        x: -4px;
-        y: -6px;
-        width: root.width + 8px;
-        height: root.height + 12px;
-        clicked => { root.toggled(!root.on); }
-    }
-}
-
-// A row-height segmented control in the tab bar's style: a rounded track
-// with the chosen item raised on a pill.
-component Segmented inherits Rectangle {
-    in property <[string]> items;
-    in property <int> current;
-    callback chosen(int);
-
-    property <length> pad: 2px;
-    property <length> item-w: (self.width - 2 * self.pad) / max(1, self.items.length);
-
-    height: 28px;
-    border-radius: 8px;
-    background: Theme.surface;
-    accessible-role: radio-group;
-
-    Rectangle {
-        x: root.pad + root.current * root.item-w;
-        y: root.pad;
-        width: root.item-w;
-        height: root.height - 2 * root.pad;
-        border-radius: 6px;
-        background: Theme.selected;
-        drop-shadow-blur: 3px;
-        drop-shadow-offset-y: 1px;
-        drop-shadow-color: Theme.dark ? #00000059 : #0000001f;
-        animate x { duration: 150ms; easing: ease-out; }
-    }
-
-    for item[i] in root.items: Rectangle {
-        property <bool> on: i == root.current;
-        x: root.pad + i * root.item-w;
-        y: root.pad;
-        width: root.item-w;
-        height: root.height - 2 * root.pad;
-        accessible-role: radio-button;
-        accessible-label: item;
-        accessible-checkable: true;
-        accessible-checked: self.on;
-        accessible-action-default => { root.chosen(i); }
-
-        Text {
-            width: 100%;
-            height: 100%;
-            text: item;
-            font-size: 12px;
-            font-weight: on ? 600 : 400;
-            color: on ? Theme.text : Theme.muted;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-
-        TouchArea {
-            clicked => { root.chosen(i); }
-        }
-    }
-}
-
-// A field showing the chosen item; clicking it opens the list.
-component MenuField inherits Rectangle {
-    in property <[string]> items;
-    in property <int> current;
-    in property <string> label;
-    callback chosen(int);
-
-    property <length> item-h: 26px;
-    property <bool> valid: self.current >= 0 && self.current < self.items.length;
-
-    height: 28px;
-    border-radius: 8px;
-    background: touch.has-hover ? Theme.selected : Theme.surface;
-    accessible-role: combobox;
-    accessible-label: self.label;
-    accessible-value: self.valid ? self.items[self.current] : "";
-    accessible-action-default => { popup.show(); }
-
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 6px;
-
-        Text {
-            text: root.valid ? root.items[root.current] : "None found";
-            font-size: 13px;
-            color: root.valid ? Theme.text : Theme.muted;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            overflow: elide;
-        }
-
-        // A down chevron.
-        VerticalLayout {
-            alignment: center;
-
-            Path {
-                width: 9px;
-                height: 5px;
-                viewbox-width: 9;
-                viewbox-height: 5;
-                commands: "M 1 0.5 L 4.5 4 L 8 0.5";
-                stroke: Theme.muted;
-                stroke-width: 1.5px;
-            }
-        }
-    }
-
-    touch := TouchArea {
-        enabled: root.items.length > 0;
-        clicked => { popup.show(); }
-    }
-
-    popup := PopupWindow {
-        x: 0;
-        y: root.height + 4px;
-        width: root.width;
-        height: root.items.length * root.item-h + 8px;
-
-        Rectangle {
-            background: Theme.selected;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.separator;
-            drop-shadow-blur: 8px;
-            drop-shadow-offset-y: 2px;
-            drop-shadow-color: #00000040;
-
-            VerticalLayout {
-                padding: 4px;
-
-                for item[i] in root.items: Rectangle {
-                    height: root.item-h;
-                    border-radius: 6px;
-                    background: item-touch.has-hover ? Theme.surface : transparent;
-                    accessible-role: list-item;
-                    accessible-label: item;
-                    accessible-item-selected: i == root.current;
-                    accessible-action-default => { root.chosen(i); }
-
-                    HorizontalLayout {
-                        padding-left: 6px;
-                        spacing: 6px;
-
-                        // A check mark on the chosen item.
-                        VerticalLayout {
-                            alignment: center;
-
-                            Path {
-                                width: 10px;
-                                height: 8px;
-                                viewbox-width: 10;
-                                viewbox-height: 8;
-                                commands: "M 1 4 L 4 7 L 9 1";
-                                stroke: i == root.current ? Theme.accent : transparent;
-                                stroke-width: 1.5px;
-                            }
-                        }
-
-                        Text {
-                            text: item;
-                            font-size: 13px;
-                            color: Theme.text;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    item-touch := TouchArea {
-                        clicked => { root.chosen(i); }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// One wheel layout to choose: its icon above its name, outlined in orange
-// when chosen.
-component LayoutCard inherits Rectangle {
-    in property <image> icon;
-    in property <string> label;
-    in property <bool> chosen;
-    callback clicked();
-
-    height: 64px;
-    border-radius: 10px;
-    background: Theme.surface;
-    border-width: self.chosen ? 2px : 0px;
-    border-color: Theme.accent;
-    accessible-role: radio-button;
-    accessible-label: self.label;
-    accessible-checkable: true;
-    accessible-checked: self.chosen;
-    accessible-action-default => { self.clicked(); }
-
-    VerticalLayout {
-        alignment: center;
-        spacing: 6px;
-
-        HorizontalLayout {
-            alignment: center;
-
-            Image {
-                source: root.icon;
-                width: 22px;
-                height: 22px;
-                colorize: root.chosen ? Theme.accent : Theme.muted;
-            }
-        }
-
-        Text {
-            text: root.label;
-            font-size: 12px;
-            font-weight: root.chosen ? 600 : 400;
-            color: Theme.text;
-            horizontal-alignment: center;
-        }
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-    }
-}
-
 // The wheel's actions, one row each: a grip to drag the row into a new
 // place, the action's icon and name, and a switch to show or hide it.
 // While a row is dragged it follows the pointer and the rows it passes
@@ -499,30 +224,13 @@ component ActionList inherits Rectangle {
 
     height: self.rows.length * self.row-h;
 
-    for row[i] in root.rows: Rectangle {
-        property <bool> dragged: i == root.drag-from;
-        // The place this row takes while another one is dragged past it.
-        property <int> slot: root.drag-from < 0 || self.dragged
-            ? i
-            : i > root.drag-from && i <= root.drag-to
-                ? i - 1
-                : i < root.drag-from && i >= root.drag-to ? i + 1 : i;
-
-        x: 0;
-        y: self.dragged ? i * root.row-h + root.drag-offset : self.slot * root.row-h;
-        z: self.dragged ? 1 : 0;
+    for row[i] in root.rows: ReorderRow {
+        index: i;
+        drag-from: root.drag-from;
+        drag-to: root.drag-to;
+        drag-offset: root.drag-offset;
+        row-h: root.row-h;
         width: root.width;
-        height: root.row-h;
-        border-radius: 6px;
-        background: self.dragged ? Theme.selected : transparent;
-        drop-shadow-blur: self.dragged ? 6px : 0px;
-        drop-shadow-offset-y: 1px;
-        drop-shadow-color: Theme.dark ? #00000066 : #00000026;
-        // Rows making room slide; the dragged row and the drop are immediate.
-        animate y {
-            duration: root.drag-from >= 0 && !self.dragged ? 120ms : 0ms;
-            easing: ease-out;
-        }
         accessible-role: list-item;
         accessible-label: row.label;
 
@@ -531,48 +239,15 @@ component ActionList inherits Rectangle {
             padding-right: 6px;
             spacing: 8px;
 
-            Rectangle {
-                width: 16px;
-
-                Image {
-                    source: PanelIcons.grip;
-                    width: 14px;
-                    height: 14px;
-                    colorize: Theme.muted;
-                }
-
-                TouchArea {
-                    mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
-                    pointer-event(event) => {
-                        if (event.kind == PointerEventKind.down
-                                && event.button == PointerEventButton.left) {
-                            root.drag-from = i;
-                            root.drag-offset = 0;
-                        } else if (root.drag-from == i
-                                && ((event.kind == PointerEventKind.up
-                                        && event.button == PointerEventButton.left)
-                                    || event.kind == PointerEventKind.cancel)) {
-                            let from = root.drag-from;
-                            let to = root.drag-to;
-                            root.drag-from = -1;
-                            root.drag-offset = 0;
-                            if (to != from && event.kind == PointerEventKind.up) {
-                                root.moved(from, to);
-                            }
-                        }
-                    }
-                    // The pointer is measured from where the row is now, so
-                    // the offset grows by how far it is from where it was
-                    // pressed; the row stays within the places it can go.
-                    moved => {
-                        if (root.drag-from == i) {
-                            root.drag-offset = clamp(
-                                root.drag-offset + self.mouse-y - self.pressed-y,
-                                (root.drag-lo - i) * root.row-h,
-                                (root.drag-hi - i) * root.row-h);
-                        }
-                    }
-                }
+            DragGrip {
+                index: i;
+                row-h: root.row-h;
+                lo: root.drag-lo;
+                hi: root.drag-hi;
+                drop-to: root.drag-to;
+                drag-from <=> root.drag-from;
+                drag-offset <=> root.drag-offset;
+                moved(from, to) => { root.moved(from, to); }
             }
 
             VerticalLayout {
@@ -658,9 +333,287 @@ component WheelTab inherits VerticalLayout {
     }
 }
 
-component MoveTab inherits VerticalLayout { }
+// A folder's icon and name, with where it is after them in a dimmer
+// colour; dimmed as a whole when the folder is missing.
+component FolderLabel inherits HorizontalLayout {
+    in property <FolderRow> folder;
 
-component PocketTab inherits VerticalLayout { }
+    spacing: 8px;
+
+    VerticalLayout {
+        alignment: center;
+
+        if root.folder.has-icon: Image {
+            source: root.folder.icon;
+            width: 16px;
+            height: 16px;
+            opacity: root.folder.missing ? 0.4 : 1;
+        }
+        if !root.folder.has-icon: Image {
+            source: PanelIcons.folder;
+            width: 16px;
+            height: 16px;
+            colorize: Theme.muted;
+            opacity: root.folder.missing ? 0.4 : 1;
+        }
+    }
+
+    // The name keeps to its own width, up to most of the row (the panel is
+    // 340 px wide); where it is takes the rest.
+    Text {
+        text: root.folder.name;
+        font-size: 13px;
+        color: root.folder.missing ? Theme.muted : Theme.text;
+        vertical-alignment: center;
+        horizontal-stretch: 0;
+        max-width: 170px;
+        overflow: elide;
+    }
+
+    Text {
+        text: root.folder.missing ? "Missing" : root.folder.place;
+        font-size: 11px;
+        color: Theme.muted;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+        overflow: elide;
+    }
+}
+
+// The pinned folders, in ring order: a grip to drag a row into a new
+// place, the folder, and a button to unpin it.
+component PinnedList inherits Rectangle {
+    in property <[FolderRow]> rows;
+    callback moved(int, int);
+    callback unpinned(int);
+
+    property <length> row-h: 30px;
+    // The row being dragged (-1 for none), how far it has moved, and the
+    // place it would drop at now.
+    property <int> drag-from: -1;
+    property <length> drag-offset;
+    property <int> drag-to: self.drag-from < 0
+        ? -1
+        : clamp(self.drag-from + round(self.drag-offset / self.row-h), 0, self.rows.length - 1);
+
+    height: self.rows.length * self.row-h;
+
+    for row[i] in root.rows: ReorderRow {
+        index: i;
+        drag-from: root.drag-from;
+        drag-to: root.drag-to;
+        drag-offset: root.drag-offset;
+        row-h: root.row-h;
+        width: root.width;
+        accessible-role: list-item;
+        accessible-label: row.name;
+
+        HorizontalLayout {
+            padding-left: 2px;
+            padding-right: 2px;
+            spacing: 8px;
+
+            DragGrip {
+                index: i;
+                row-h: root.row-h;
+                lo: 0;
+                hi: root.rows.length - 1;
+                drop-to: root.drag-to;
+                drag-from <=> root.drag-from;
+                drag-offset <=> root.drag-offset;
+                moved(from, to) => { root.moved(from, to); }
+            }
+
+            FolderLabel {
+                folder: row;
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                IconButton {
+                    icon: Icons.remove;
+                    label: "Unpin " + row.name;
+                    clicked => { root.unpinned(i); }
+                }
+            }
+        }
+    }
+}
+
+// What a list with no rows shows instead.
+component EmptyLine inherits Text {
+    height: 30px;
+    font-size: 12px;
+    color: Theme.muted;
+    vertical-alignment: center;
+}
+
+component MoveTab inherits VerticalLayout {
+    in property <[FolderRow]> pinned;
+    in property <bool> pinned-full;
+    in property <[FolderRow]> recent;
+    in property <bool> can-pin;
+    in property <string> hold;
+    in property <bool> hold-can-decrease;
+    in property <bool> hold-can-increase;
+    callback add-folder();
+    callback pinned-moved(int, int);
+    callback unpinned(int);
+    callback recent-pinned(int);
+    callback recent-cleared();
+    callback hold-stepped(int);
+
+    spacing: 8px;
+
+    HorizontalLayout {
+        SectionHeading {
+            text: "Pinned";
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        TextButton {
+            label: root.pinned-full ? "Up to 7 folders" : "Add folder";
+            icon: PanelIcons.add;
+            has-icon: !root.pinned-full;
+            enabled: !root.pinned-full;
+            clicked => { root.add-folder(); }
+        }
+    }
+
+    if root.pinned.length == 0: EmptyLine {
+        text: "No pinned folders";
+    }
+
+    if root.pinned.length > 0: PinnedList {
+        rows: root.pinned;
+        moved(from, to) => { root.pinned-moved(from, to); }
+        unpinned(i) => { root.unpinned(i); }
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        SectionHeading {
+            text: "Recent";
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        TextButton {
+            label: "Clear";
+            enabled: root.recent.length > 0;
+            clicked => { root.recent-cleared(); }
+        }
+    }
+
+    if root.recent.length == 0: EmptyLine {
+        text: "No recent folders";
+    }
+
+    if root.recent.length > 0: VerticalLayout {
+        for row[i] in root.recent: Rectangle {
+            height: 30px;
+            accessible-role: list-item;
+            accessible-label: row.name;
+
+            HorizontalLayout {
+                padding-left: 2px;
+                padding-right: 2px;
+                spacing: 8px;
+
+                FolderLabel {
+                    folder: row;
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+
+                    IconButton {
+                        icon: Icons.pin;
+                        label: "Pin " + row.name;
+                        enabled: root.can-pin;
+                        clicked => { root.recent-pinned(i); }
+                    }
+                }
+            }
+        }
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            text: "Hold on Move";
+            font-size: 13px;
+            color: Theme.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        Stepper {
+            text: root.hold;
+            label: "Hold on Move";
+            can-decrease: root.hold-can-decrease;
+            can-increase: root.hold-can-increase;
+            decrease => { root.hold-stepped(-1); }
+            increase => { root.hold-stepped(1); }
+        }
+    }
+}
+
+component PocketTab inherits VerticalLayout {
+    // The Pocket shortcut as symbols, and why the last one recorded was
+    // refused (empty when it was not).
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    in-out property <bool> recording;
+    in property <bool> remove-after-drop;
+    in property <bool> keep-copies;
+    callback recording-cancelled();
+    callback remove-after-drop-toggled(bool);
+    callback keep-copies-toggled(bool);
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Shortcut";
+    }
+
+    ShortcutField {
+        text: root.shortcut;
+        label: "Pocket shortcut";
+        recording <=> root.recording;
+        started => { root.shortcut-error = ""; }
+        cancelled => { root.recording-cancelled(); }
+    }
+
+    if root.shortcut-error != "": Text {
+        text: root.shortcut-error;
+        font-size: 12px;
+        color: Theme.danger;
+        wrap: word-wrap;
+    }
+
+    Separator { }
+
+    SwitchRow {
+        label: "Remove after drag-out";
+        on: root.remove-after-drop;
+        toggled(on) => { root.remove-after-drop-toggled(on); }
+    }
+
+    SwitchRow {
+        label: "Keep a copy";
+        on: root.keep-copies;
+        toggled(on) => { root.keep-copies-toggled(on); }
+    }
+}
 
 component GeneralTab inherits VerticalLayout {
     // 0 Control, 1 Option, 2 Shift, 3 Command.
@@ -738,6 +691,22 @@ export component SettingsPanel inherits Window {
     in property <int> terminal;
     // 0 Plain, 1 Shell-quoted.
     in property <int> path-format;
+    // The pinned folders in ring order, and whether there is room for more.
+    in property <[FolderRow]> pinned;
+    in property <bool> pinned-full;
+    // The recent folders the ring shows now (pinned ones left out).
+    in property <[FolderRow]> recent;
+    // The hold delay as shown ("400 ms"), and whether it can go down or up.
+    in property <string> hold;
+    in property <bool> hold-can-decrease;
+    in property <bool> hold-can-increase;
+    // The Pocket shortcut as symbols, and why a recorded one was refused.
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    // The shortcut field is waiting for a key combination.
+    in-out property <bool> shortcut-recording;
+    in property <bool> remove-after-drop;
+    in property <bool> keep-copies;
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
@@ -748,6 +717,17 @@ export component SettingsPanel inherits Window {
     callback trigger-chosen(int);
     callback terminal-chosen(int);
     callback path-format-chosen(int);
+    // "Add folder": vento shows the folder picker.
+    callback add-folder();
+    callback pinned-moved(int, int);
+    callback unpinned(int);
+    // A recent folder's pin button.
+    callback recent-pinned(int);
+    callback recent-cleared();
+    // The hold delay's − (-1) or + (1).
+    callback hold-stepped(int);
+    callback remove-after-drop-toggled(bool);
+    callback keep-copies-toggled(bool);
 
     callback pause-clicked();
     callback quit-clicked();
@@ -760,6 +740,20 @@ export component SettingsPanel inherits Window {
     width: 340px;
     height: self.panel-height;
     forward-focus: keys;
+
+    // Ends a shortcut recording without a change and gives the keyboard
+    // back to the panel, so Esc closes it again.
+    public function stop-recording() {
+        root.shortcut-recording = false;
+        keys.focus();
+    }
+
+    // Leaving the Pocket tab removes the field that was recording.
+    changed tab => {
+        if (root.shortcut-recording) {
+            root.stop-recording();
+        }
+    }
 
     keys := FocusScope {
         key-pressed(event) => {
@@ -805,8 +799,31 @@ export component SettingsPanel inherits Window {
                         action-toggled(i, on) => { root.action-toggled(i, on); }
                         action-moved(from, to) => { root.action-moved(from, to); }
                     }
-                    if root.tab == 1: MoveTab { }
-                    if root.tab == 2: PocketTab { }
+                    if root.tab == 1: MoveTab {
+                        pinned: root.pinned;
+                        pinned-full: root.pinned-full;
+                        recent: root.recent;
+                        can-pin: !root.pinned-full;
+                        hold: root.hold;
+                        hold-can-decrease: root.hold-can-decrease;
+                        hold-can-increase: root.hold-can-increase;
+                        add-folder => { root.add-folder(); }
+                        pinned-moved(from, to) => { root.pinned-moved(from, to); }
+                        unpinned(i) => { root.unpinned(i); }
+                        recent-pinned(i) => { root.recent-pinned(i); }
+                        recent-cleared => { root.recent-cleared(); }
+                        hold-stepped(step) => { root.hold-stepped(step); }
+                    }
+                    if root.tab == 2: PocketTab {
+                        shortcut: root.shortcut;
+                        shortcut-error <=> root.shortcut-error;
+                        recording <=> root.shortcut-recording;
+                        remove-after-drop: root.remove-after-drop;
+                        keep-copies: root.keep-copies;
+                        recording-cancelled => { root.stop-recording(); }
+                        remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
+                        keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
+                    }
                     if root.tab == 3: GeneralTab {
                         trigger: root.trigger;
                         terminals: root.terminals;

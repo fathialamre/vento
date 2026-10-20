@@ -6,25 +6,35 @@
 //! next turn of the event loop).
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
 use log::{debug, warn};
-use slint::winit_030::winit::event::WindowEvent;
+use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
+use slint::winit_030::winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{
-    CloseRequestResponse, ComponentHandle, LogicalPosition, Model, ModelRc, SharedString, Timer,
-    VecModel,
+    CloseRequestResponse, ComponentHandle, Image, LogicalPosition, Model, ModelRc, SharedString,
+    Timer, VecModel,
+};
+use vento_core::destinations::{
+    RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
 use vento_core::geometry::{Layout, Point, Rect, screen_for};
 use vento_core::paths::PathFormat;
-use vento_core::settings::{Settings, move_row};
+use vento_core::settings::{
+    MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, Settings,
+    is_reserved_shortcut, move_row, parse_shortcut, shortcut_symbols,
+};
 use vento_core::trigger::Modifier;
 use vento_platform::{Platform, TerminalApp};
 
+use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
-use crate::ui::{ActionRow, Icons, SettingsPanel};
+use crate::ui::{ActionRow, FolderRow, Icons, SettingsPanel};
 use crate::wheel::action_icon;
 
 /// Panel width in logical points (matches `settings.slint`).
@@ -49,6 +59,17 @@ const TRIGGERS: [Modifier; 4] = [
 ];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
 
+/// Size of the Finder icons in the Move tab, in points.
+const FOLDER_ICON_PX: u32 = 16;
+
+/// Why a recorded shortcut was refused.
+const NOT_A_SHORTCUT: &str = "Use a modifier with a letter or digit";
+const RESERVED_SHORTCUT: &str = "macOS uses this shortcut";
+
+/// Registers a Pocket shortcut in place of the current one, or says why it
+/// cannot be registered.
+pub type TryShortcut = Box<dyn Fn(&str) -> Result<(), String>>;
+
 /// Opens, places and closes the settings panel.
 pub struct PanelController {
     platform: Rc<dyn Platform>,
@@ -57,42 +78,78 @@ pub struct PanelController {
     /// Pauses or resumes vento; the panel shows the result through
     /// [`PanelController::set_paused`].
     on_pause: Box<dyn Fn(bool)>,
+    /// Folders recently moved or copied to, shared with the wheel and the
+    /// executor.
+    recent: Rc<RefCell<RecentDestinations>>,
+    /// Registers a new Pocket shortcut (freeing the old one first).
+    try_shortcut: TryShortcut,
+    /// The home folder, shown as `~` in folder places.
+    home: Option<PathBuf>,
     /// The Wheel tab's action rows.
     actions: Rc<VecModel<ActionRow>>,
+    /// The Move tab's pinned and recent folder rows, and the folders the
+    /// recent rows stand for.
+    pinned: Rc<VecModel<FolderRow>>,
+    recent_rows: Rc<VecModel<FolderRow>>,
+    recent_paths: RefCell<Vec<PathBuf>>,
+    /// Finder icons of the listed folders, by path (`None`: it has none).
+    folder_icons: RefCell<HashMap<PathBuf, Option<Image>>>,
     /// The installed terminals, as the Terminal menu lists them.
     terminals: RefCell<Vec<TerminalApp>>,
     open: Cell<bool>,
     /// The window became key since it opened, so losing focus now means
     /// the user went elsewhere.
     had_focus: Cell<bool>,
+    /// The folder picker is up (or has just closed): the focus it takes is
+    /// not the user going elsewhere.
+    picking: Cell<bool>,
+    /// The modifier keys held now, for the shortcut recorder.
+    modifiers: Cell<ModifiersState>,
     /// When the panel last closed for losing focus.
     blurred_at: Cell<Option<Instant>>,
     this: Weak<Self>,
 }
 
 impl PanelController {
-    /// Creates the (hidden) panel. `on_pause` is called with the state the
-    /// Pause item asks for.
+    /// Creates the (hidden) panel. `recent` is the recent-folders list the
+    /// wheel and the executor share; `try_shortcut` registers a recorded
+    /// Pocket shortcut; `on_pause` is called with the state the Pause item
+    /// asks for.
     ///
     /// # Panics
     /// If the Slint window cannot be created.
     pub fn new(
         platform: Rc<dyn Platform>,
         hub: Rc<SettingsHub>,
+        recent: Rc<RefCell<RecentDestinations>>,
+        try_shortcut: TryShortcut,
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
         let window = SettingsPanel::new().expect("cannot create the settings panel");
         let actions = Rc::new(VecModel::default());
         window.set_actions(ModelRc::from(actions.clone()));
+        let pinned = Rc::new(VecModel::default());
+        window.set_pinned(ModelRc::from(pinned.clone()));
+        let recent_rows = Rc::new(VecModel::default());
+        window.set_recent(ModelRc::from(recent_rows.clone()));
         let panel = Rc::new_cyclic(|this| Self {
             platform,
             hub,
             window,
             on_pause,
+            recent,
+            try_shortcut,
+            home: std::env::var_os("HOME").map(PathBuf::from),
             actions,
+            pinned,
+            recent_rows,
+            recent_paths: RefCell::new(Vec::new()),
+            folder_icons: RefCell::new(HashMap::new()),
             terminals: RefCell::new(Vec::new()),
             open: Cell::new(false),
             had_focus: Cell::new(false),
+            picking: Cell::new(false),
+            modifiers: Cell::new(ModifiersState::empty()),
             blurred_at: Cell::new(None),
             this: this.clone(),
         });
@@ -127,10 +184,18 @@ impl PanelController {
         });
         let this = self.this.clone();
         self.window.window().on_winit_window_event(move |_, event| {
-            if let WindowEvent::Focused(focused) = event
-                && let Some(panel) = this.upgrade()
-            {
-                panel.focus_changed(*focused);
+            let Some(panel) = this.upgrade() else {
+                return EventResult::Propagate;
+            };
+            match event {
+                WindowEvent::Focused(focused) => panel.focus_changed(*focused),
+                WindowEvent::ModifiersChanged(modifiers) => panel.modifiers.set(modifiers.state()),
+                WindowEvent::KeyboardInput {
+                    event,
+                    is_synthetic: false,
+                    ..
+                } if panel.window.get_shortcut_recording() => return panel.shortcut_key(event),
+                _ => {}
             }
             EventResult::Propagate
         });
@@ -190,6 +255,176 @@ impl PanelController {
                 panel.apply(|s| s.copy_path_format = format);
             }
         });
+        self.connect_move_tab();
+        let this = self.this.clone();
+        self.window.on_remove_after_drop_toggled(move |on| {
+            if let Some(panel) = this.upgrade() {
+                panel.apply(|s| s.pocket_remove_after_drop = on);
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_keep_copies_toggled(move |on| {
+            if let Some(panel) = this.upgrade() {
+                panel.apply(|s| s.pocket_keep_copies = on);
+            }
+        });
+    }
+
+    fn connect_move_tab(&self) {
+        let this = self.this.clone();
+        self.window.on_add_folder(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.add_folder();
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_pinned_moved(move |from, to| {
+            if let (Some(panel), Ok(from), Ok(to)) =
+                (this.upgrade(), usize::try_from(from), usize::try_from(to))
+            {
+                panel.apply(|s| move_row(&mut s.pinned_folders, from, to));
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_unpinned(move |i| {
+            if let (Some(panel), Ok(i)) = (this.upgrade(), usize::try_from(i)) {
+                panel.apply(|s| unpin_folder(s, i));
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_recent_pinned(move |i| {
+            let Some(panel) = this.upgrade() else { return };
+            let folder = usize::try_from(i)
+                .ok()
+                .and_then(|i| panel.recent_paths.borrow().get(i).cloned());
+            if let Some(folder) = folder {
+                panel.apply(|s| pin_folder(s, &folder));
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_recent_cleared(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.clear_recent();
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_hold_stepped(move |steps| {
+            if let Some(panel) = this.upgrade() {
+                panel.apply(|s| step_hold(s, steps));
+            }
+        });
+    }
+
+    /// Shows the folder picker and pins the folder chosen. Does nothing
+    /// when the pinned list is full.
+    fn add_folder(&self) {
+        if self.hub.current().pinned_folders.len() >= MAX_PINNED {
+            return;
+        }
+        // The modal picker takes the key focus; that must not close the
+        // panel. Its focus changes may still be on their way when it
+        // returns, so the panel keeps ignoring focus loss until the next
+        // turn of the event loop, and then takes the focus back.
+        self.picking.set(true);
+        let picked = self.platform.pick_folder(None);
+        let this = self.this.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            if let Some(panel) = this.upgrade() {
+                panel.picking.set(false);
+                panel.regain_focus();
+            }
+        });
+        if let Some(folder) = picked {
+            self.apply(|s| pin_folder(s, &folder));
+        }
+    }
+
+    /// Makes the open panel the key window again.
+    fn regain_focus(&self) {
+        if !self.is_open() {
+            return;
+        }
+        self.platform.activate_app();
+        let focused = self
+            .window
+            .window()
+            .with_winit_window(|w| {
+                w.focus_window();
+                w.has_focus()
+            })
+            .unwrap_or(false);
+        // Not yet key: the focus event that follows records it.
+        self.had_focus.set(focused);
+    }
+
+    /// Forgets every recent folder and saves the empty list. A failed save
+    /// is logged.
+    fn clear_recent(&self) {
+        {
+            let mut recent = self.recent.borrow_mut();
+            recent.clear();
+            if let Err(e) = recent.save(&recent_path()) {
+                warn!("cannot save the recent folders: {e}");
+            }
+        }
+        self.show_folders(&self.hub.current());
+    }
+
+    /// A key press while the shortcut field records: a combination ends the
+    /// recording, and the panel's own key handling never sees it. Esc (the
+    /// field cancels) and modifier keys (it keeps listening) go on to the
+    /// field.
+    fn shortcut_key(&self, event: &KeyEvent) -> EventResult {
+        if event.state != ElementState::Pressed {
+            return EventResult::Propagate;
+        }
+        match key_press(self.modifiers.get(), event.physical_key) {
+            KeyPress::Cancel | KeyPress::Modifier => EventResult::Propagate,
+            KeyPress::Combo(spec) => {
+                if !event.repeat {
+                    self.record_shortcut(&spec);
+                }
+                EventResult::PreventDefault
+            }
+        }
+    }
+
+    /// Ends the recording with `spec`: registers it and, once that worked,
+    /// saves it. A combination that is invalid, reserved by macOS or cannot
+    /// be registered is refused with the reason under the field; the old
+    /// shortcut is then registered again and stays saved.
+    fn record_shortcut(&self, spec: &str) {
+        self.window.invoke_stop_recording();
+        if let Some(reason) = shortcut_refusal(spec) {
+            debug!("shortcut {spec:?} refused: {reason}");
+            self.window.set_shortcut_error(reason.into());
+            return;
+        }
+        self.hub.refresh_from_disk();
+        let old = self.hub.current().pocket_shortcut;
+        if let Err(reason) = (self.try_shortcut)(spec) {
+            warn!("pocket shortcut {spec:?} refused: {reason}");
+            self.restore_shortcut(&old);
+            self.window.set_shortcut_error(reason.into());
+            return;
+        }
+        self.window.set_shortcut_error(SharedString::new());
+        if spec != old
+            && let Err(e) = self.hub.update(|s| s.pocket_shortcut = spec.to_owned())
+        {
+            warn!("cannot save settings: {e}");
+            self.window.set_notice(save_error_text(&e).into());
+            self.restore_shortcut(&old);
+        }
+        self.show_settings();
+    }
+
+    /// Registers `spec`, the shortcut in effect, again after another one was
+    /// tried in its place.
+    fn restore_shortcut(&self, spec: &str) {
+        if let Err(e) = (self.try_shortcut)(spec) {
+            warn!("pocket shortcut {spec:?} unavailable: {e}");
+        }
     }
 
     /// Applies `change` to the settings in effect and saves it, unless it
@@ -235,6 +470,76 @@ impl PanelController {
         let terminal = terminal_index(&self.terminals.borrow(), settings.terminal.as_deref());
         self.window
             .set_terminal(i32::try_from(terminal).unwrap_or(0));
+        self.show_folders(&settings);
+        let hold = settings.move_hold_ms;
+        self.window.set_hold(format!("{hold} ms").into());
+        self.window.set_hold_can_decrease(hold > MIN_MOVE_HOLD_MS);
+        self.window.set_hold_can_increase(hold < MAX_MOVE_HOLD_MS);
+        let shortcut = shortcut_symbols(&settings.pocket_shortcut)
+            .unwrap_or_else(|| settings.pocket_shortcut.clone());
+        self.window.set_shortcut(shortcut.into());
+        self.window
+            .set_remove_after_drop(settings.pocket_remove_after_drop);
+        self.window.set_keep_copies(settings.pocket_keep_copies);
+    }
+
+    /// Lists the pinned folders (a missing one too, dimmed, so it can be
+    /// unpinned) and the recent ones the ring would show now.
+    fn show_folders(&self, settings: &Settings) {
+        let pinned = &settings.pinned_folders;
+        let recent: Vec<PathBuf> =
+            ring_destinations(self.recent.borrow().items(), pinned, folder_exists)
+                .into_iter()
+                .filter(|d| !d.pinned)
+                .map(|d| d.path)
+                .collect();
+        let pinned_rows = pinned
+            .iter()
+            .map(|p| self.folder_row(p, folder_exists(p)))
+            .collect();
+        let recent_rows = recent.iter().map(|p| self.folder_row(p, true)).collect();
+        self.folder_icons
+            .borrow_mut()
+            .retain(|p, _| pinned.contains(p) || recent.contains(p));
+        set_rows(&self.pinned, pinned_rows);
+        set_rows(&self.recent_rows, recent_rows);
+        *self.recent_paths.borrow_mut() = recent;
+        self.window.set_pinned_full(pinned.len() >= MAX_PINNED);
+    }
+
+    fn folder_row(&self, folder: &Path, exists: bool) -> FolderRow {
+        let icon = if exists {
+            self.folder_icon(folder)
+        } else {
+            None
+        };
+        FolderRow {
+            has_icon: icon.is_some(),
+            icon: icon.unwrap_or_default(),
+            name: display_name(folder).into(),
+            place: folder
+                .parent()
+                .map(|p| display_path(p, self.home.as_deref()))
+                .unwrap_or_default()
+                .into(),
+            missing: !exists,
+        }
+    }
+
+    /// The Finder icon of `folder`, fetched once and then kept.
+    fn folder_icon(&self, folder: &Path) -> Option<Image> {
+        if let Some(icon) = self.folder_icons.borrow().get(folder) {
+            return icon.clone();
+        }
+        let icon = self
+            .platform
+            .file_icon(folder, FOLDER_ICON_PX)
+            .as_ref()
+            .and_then(to_image);
+        self.folder_icons
+            .borrow_mut()
+            .insert(folder.to_path_buf(), icon.clone());
+        icon
     }
 
     /// Lists the terminals installed now in the Terminal menu.
@@ -267,6 +572,9 @@ impl PanelController {
         if !self.open.replace(false) {
             return;
         }
+        if self.window.get_shortcut_recording() {
+            self.window.invoke_stop_recording();
+        }
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the settings panel: {e}");
         }
@@ -296,7 +604,9 @@ impl PanelController {
         // Pick up hand edits of the settings file.
         self.hub.refresh_from_disk();
         self.show_notice();
+        self.window.set_shortcut_error(SharedString::new());
         self.load_terminals();
+        // Also lists the recent folders as they are now.
         self.show_settings();
         let height = f64::from(self.window.get_panel_height());
         let (x, y) = panel_position(icon, height, &self.platform.screens());
@@ -320,7 +630,7 @@ impl PanelController {
     fn focus_changed(&self, focused: bool) {
         if focused {
             self.had_focus.set(true);
-        } else if self.is_open() && self.had_focus.get() {
+        } else if self.is_open() && self.had_focus.get() && !self.picking.get() {
             self.blurred_at.set(Some(Instant::now()));
             self.close();
         }
@@ -389,6 +699,137 @@ fn move_action(settings: &mut Settings, from: usize, to: usize) {
     let mut rows = settings.action_rows();
     move_row(&mut rows, from, to);
     settings.set_action_rows(&rows);
+}
+
+/// Pins `folder` at the end of the pinned list, unless it is pinned
+/// already or the list is full.
+fn pin_folder(settings: &mut Settings, folder: &Path) {
+    let pinned = &mut settings.pinned_folders;
+    if pinned.len() < MAX_PINNED && !pinned.iter().any(|p| p == folder) {
+        pinned.push(folder.to_path_buf());
+    }
+}
+
+/// Unpins the folder in row `index` of the pinned list.
+fn unpin_folder(settings: &mut Settings, index: usize) {
+    if index < settings.pinned_folders.len() {
+        settings.pinned_folders.remove(index);
+    }
+}
+
+/// Moves the hold delay `steps` steps up (or down, when negative), within
+/// its bounds.
+fn step_hold(settings: &mut Settings, steps: i32) {
+    let ms = i64::from(settings.move_hold_ms) + i64::from(steps) * i64::from(MOVE_HOLD_STEP_MS);
+    let ms = ms.clamp(i64::from(MIN_MOVE_HOLD_MS), i64::from(MAX_MOVE_HOLD_MS));
+    settings.move_hold_ms = u32::try_from(ms).unwrap_or(settings.move_hold_ms);
+}
+
+/// What a key pressed while recording a shortcut means.
+#[derive(Debug, PartialEq)]
+enum KeyPress {
+    /// Esc: the recording ends without a change.
+    Cancel,
+    /// A modifier key: keep listening.
+    Modifier,
+    /// Any other key, with the modifiers held, as a shortcut spec (see
+    /// [`parse_shortcut`]). A key that is not an ASCII letter or digit
+    /// gives a spec that does not parse.
+    Combo(String),
+}
+
+/// What pressing `key` with `modifiers` held means to the recorder. The key
+/// is taken by its place on the keyboard, as the hot key is registered,
+/// so Option, which changes the character typed, does not change it.
+fn key_press(modifiers: ModifiersState, key: PhysicalKey) -> KeyPress {
+    let code = match key {
+        PhysicalKey::Code(KeyCode::Escape) => return KeyPress::Cancel,
+        PhysicalKey::Code(
+            KeyCode::ShiftLeft
+            | KeyCode::ShiftRight
+            | KeyCode::ControlLeft
+            | KeyCode::ControlRight
+            | KeyCode::AltLeft
+            | KeyCode::AltRight
+            | KeyCode::SuperLeft
+            | KeyCode::SuperRight
+            | KeyCode::Meta
+            | KeyCode::Hyper
+            | KeyCode::Fn
+            | KeyCode::FnLock
+            | KeyCode::CapsLock,
+        ) => return KeyPress::Modifier,
+        PhysicalKey::Code(code) => Some(code),
+        PhysicalKey::Unidentified(_) => None,
+    };
+    let mut parts: Vec<String> = [
+        (modifiers.control_key(), "ctrl"),
+        (modifiers.alt_key(), "alt"),
+        (modifiers.shift_key(), "shift"),
+        (modifiers.super_key(), "cmd"),
+    ]
+    .into_iter()
+    .filter(|(held, _)| *held)
+    .map(|(_, name)| name.to_owned())
+    .collect();
+    // "?" stands for a key a shortcut cannot use.
+    parts.push(code.and_then(key_char).unwrap_or('?').to_string());
+    KeyPress::Combo(parts.join("+"))
+}
+
+/// The lower-case letter or the digit of a letter or digit key.
+fn key_char(code: KeyCode) -> Option<char> {
+    const KEYS: [(KeyCode, char); 36] = [
+        (KeyCode::KeyA, 'a'),
+        (KeyCode::KeyB, 'b'),
+        (KeyCode::KeyC, 'c'),
+        (KeyCode::KeyD, 'd'),
+        (KeyCode::KeyE, 'e'),
+        (KeyCode::KeyF, 'f'),
+        (KeyCode::KeyG, 'g'),
+        (KeyCode::KeyH, 'h'),
+        (KeyCode::KeyI, 'i'),
+        (KeyCode::KeyJ, 'j'),
+        (KeyCode::KeyK, 'k'),
+        (KeyCode::KeyL, 'l'),
+        (KeyCode::KeyM, 'm'),
+        (KeyCode::KeyN, 'n'),
+        (KeyCode::KeyO, 'o'),
+        (KeyCode::KeyP, 'p'),
+        (KeyCode::KeyQ, 'q'),
+        (KeyCode::KeyR, 'r'),
+        (KeyCode::KeyS, 's'),
+        (KeyCode::KeyT, 't'),
+        (KeyCode::KeyU, 'u'),
+        (KeyCode::KeyV, 'v'),
+        (KeyCode::KeyW, 'w'),
+        (KeyCode::KeyX, 'x'),
+        (KeyCode::KeyY, 'y'),
+        (KeyCode::KeyZ, 'z'),
+        (KeyCode::Digit0, '0'),
+        (KeyCode::Digit1, '1'),
+        (KeyCode::Digit2, '2'),
+        (KeyCode::Digit3, '3'),
+        (KeyCode::Digit4, '4'),
+        (KeyCode::Digit5, '5'),
+        (KeyCode::Digit6, '6'),
+        (KeyCode::Digit7, '7'),
+        (KeyCode::Digit8, '8'),
+        (KeyCode::Digit9, '9'),
+    ];
+    KEYS.iter().find(|(k, _)| *k == code).map(|(_, c)| *c)
+}
+
+/// Why the recorded shortcut `spec` is refused before trying to register
+/// it, or `None` when it may be tried.
+fn shortcut_refusal(spec: &str) -> Option<&'static str> {
+    if parse_shortcut(spec).is_none() {
+        Some(NOT_A_SHORTCUT)
+    } else if is_reserved_shortcut(spec) {
+        Some(RESERVED_SHORTCUT)
+    } else {
+        None
+    }
 }
 
 /// Makes `model` hold `rows`, touching only the rows that changed, so a
@@ -589,6 +1030,80 @@ mod tests {
         let before = s.clone();
         move_action(&mut s, 9, 0);
         assert_eq!(s, before);
+    }
+
+    #[test]
+    fn pinning_refuses_a_duplicate_and_stops_at_seven() {
+        let mut s = Settings::default();
+        pin_folder(&mut s, Path::new("/a"));
+        pin_folder(&mut s, Path::new("/a"));
+        assert_eq!(s.pinned_folders, [PathBuf::from("/a")]);
+        for i in 1..10 {
+            pin_folder(&mut s, &PathBuf::from(format!("/f{i}")));
+        }
+        assert_eq!(s.pinned_folders.len(), MAX_PINNED);
+        assert_eq!(s.pinned_folders.last(), Some(&PathBuf::from("/f6")));
+        unpin_folder(&mut s, 0);
+        assert_eq!(s.pinned_folders.first(), Some(&PathBuf::from("/f1")));
+        let before = s.clone();
+        unpin_folder(&mut s, 9);
+        assert_eq!(s, before);
+    }
+
+    #[test]
+    fn hold_steps_by_100_within_200_to_1000() {
+        let mut s = Settings::default();
+        step_hold(&mut s, 1);
+        assert_eq!(s.move_hold_ms, 500);
+        step_hold(&mut s, -1);
+        step_hold(&mut s, -1);
+        assert_eq!(s.move_hold_ms, 300);
+        step_hold(&mut s, -5);
+        assert_eq!(s.move_hold_ms, MIN_MOVE_HOLD_MS);
+        step_hold(&mut s, 20);
+        assert_eq!(s.move_hold_ms, MAX_MOVE_HOLD_MS);
+    }
+
+    #[test]
+    fn recorder_reads_the_key_by_its_place_with_the_modifiers_held() {
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        let key = |code| PhysicalKey::Code(code);
+        assert_eq!(
+            key_press(ctrl_alt, key(KeyCode::KeyK)),
+            KeyPress::Combo("ctrl+alt+k".into())
+        );
+        let all = ctrl_alt | ModifiersState::SHIFT | ModifiersState::SUPER;
+        assert_eq!(
+            key_press(all, key(KeyCode::Digit7)),
+            KeyPress::Combo("ctrl+alt+shift+cmd+7".into())
+        );
+        assert_eq!(
+            key_press(ModifiersState::SUPER, key(KeyCode::KeyQ)),
+            KeyPress::Combo("cmd+q".into())
+        );
+        assert_eq!(key_press(ctrl_alt, key(KeyCode::Escape)), KeyPress::Cancel);
+        assert_eq!(
+            key_press(ModifiersState::CONTROL, key(KeyCode::AltLeft)),
+            KeyPress::Modifier
+        );
+        // Keys a shortcut cannot use give a spec that does not parse.
+        let KeyPress::Combo(f1) = key_press(ctrl_alt, key(KeyCode::F1)) else {
+            panic!("F1 is a combination");
+        };
+        assert!(parse_shortcut(&f1).is_none());
+        let KeyPress::Combo(bare) = key_press(ModifiersState::empty(), key(KeyCode::KeyP)) else {
+            panic!("P is a combination");
+        };
+        assert!(parse_shortcut(&bare).is_none());
+    }
+
+    #[test]
+    fn refused_shortcuts_say_why() {
+        assert_eq!(shortcut_refusal("ctrl+alt+k"), None);
+        assert_eq!(shortcut_refusal("p"), Some(NOT_A_SHORTCUT));
+        assert_eq!(shortcut_refusal("ctrl+alt+?"), Some(NOT_A_SHORTCUT));
+        assert_eq!(shortcut_refusal("cmd+q"), Some(RESERVED_SHORTCUT));
+        assert_eq!(shortcut_refusal("cmd+shift+4"), Some(RESERVED_SHORTCUT));
     }
 
     #[test]

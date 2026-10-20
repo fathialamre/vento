@@ -1,0 +1,634 @@
+// The settings panel's controls, shared by its tabs. All of them take
+// their colours from `Theme`, so they follow the system light or dark
+// appearance.
+
+import { Theme } from "theme.slint";
+
+// Tabler Icons (MIT, see icons/LICENSE-tabler), embedded at build time.
+export global PanelIcons {
+    out property <image> wheel: @image-url("icons/hexagons.svg");
+    out property <image> general: @image-url("icons/settings.svg");
+    out property <image> pause: @image-url("icons/player-pause.svg");
+    out property <image> resume: @image-url("icons/player-play.svg");
+    out property <image> quit: @image-url("icons/power.svg");
+    out property <image> petals: @image-url("icons/circles.svg");
+    out property <image> grip: @image-url("icons/grip-vertical.svg");
+    out property <image> add: @image-url("icons/plus.svg");
+    out property <image> folder: @image-url("icons/folder.svg");
+}
+
+// A small heading over a group of controls.
+export component SectionHeading inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    color: Theme.muted;
+}
+
+export component Separator inherits Rectangle {
+    height: 1px;
+    background: Theme.separator;
+}
+
+// An on/off switch. It shows `on` as given and asks for the other state
+// when clicked; whoever uses it decides.
+export component Switch inherits Rectangle {
+    in property <bool> on;
+    in property <string> label;
+    callback toggled(bool);
+
+    width: 26px;
+    height: 15px;
+    border-radius: self.height / 2;
+    background: self.on ? Theme.accent : Theme.switch-off;
+    animate background { duration: 120ms; }
+    accessible-role: switch;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.on;
+    accessible-action-default => { self.toggled(!self.on); }
+
+    Rectangle {
+        x: root.on ? root.width - self.width - 2px : 2px;
+        y: (root.height - self.height) / 2;
+        width: 11px;
+        height: 11px;
+        border-radius: self.height / 2;
+        background: white;
+        drop-shadow-blur: 1px;
+        drop-shadow-color: #00000033;
+        animate x { duration: 120ms; easing: ease-out; }
+    }
+
+    // A little larger than the track, so it is easy to hit.
+    TouchArea {
+        x: -4px;
+        y: -6px;
+        width: root.width + 8px;
+        height: root.height + 12px;
+        clicked => { root.toggled(!root.on); }
+    }
+}
+
+// A setting's name on the left and its switch on the right.
+export component SwitchRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <bool> on;
+    callback toggled(bool);
+
+    height: 28px;
+    spacing: 8px;
+
+    Text {
+        text: root.label;
+        font-size: 13px;
+        color: Theme.text;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+
+    VerticalLayout {
+        alignment: center;
+
+        Switch {
+            on: root.on;
+            label: root.label;
+            toggled(on) => { root.toggled(on); }
+        }
+    }
+}
+
+// A row-height segmented control in the tab bar's style: a rounded track
+// with the chosen item raised on a pill.
+export component Segmented inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current;
+    callback chosen(int);
+
+    property <length> pad: 2px;
+    property <length> item-w: (self.width - 2 * self.pad) / max(1, self.items.length);
+
+    height: 28px;
+    border-radius: 8px;
+    background: Theme.surface;
+    accessible-role: radio-group;
+
+    Rectangle {
+        x: root.pad + root.current * root.item-w;
+        y: root.pad;
+        width: root.item-w;
+        height: root.height - 2 * root.pad;
+        border-radius: 6px;
+        background: Theme.selected;
+        drop-shadow-blur: 3px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: Theme.dark ? #00000059 : #0000001f;
+        animate x { duration: 150ms; easing: ease-out; }
+    }
+
+    for item[i] in root.items: Rectangle {
+        property <bool> on: i == root.current;
+        x: root.pad + i * root.item-w;
+        y: root.pad;
+        width: root.item-w;
+        height: root.height - 2 * root.pad;
+        accessible-role: radio-button;
+        accessible-label: item;
+        accessible-checkable: true;
+        accessible-checked: self.on;
+        accessible-action-default => { root.chosen(i); }
+
+        Text {
+            width: 100%;
+            height: 100%;
+            text: item;
+            font-size: 12px;
+            font-weight: on ? 600 : 400;
+            color: on ? Theme.text : Theme.muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        TouchArea {
+            clicked => { root.chosen(i); }
+        }
+    }
+}
+
+// A field showing the chosen item; clicking it opens the list.
+export component MenuField inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current;
+    in property <string> label;
+    callback chosen(int);
+
+    property <length> item-h: 26px;
+    property <bool> valid: self.current >= 0 && self.current < self.items.length;
+
+    height: 28px;
+    border-radius: 8px;
+    background: touch.has-hover ? Theme.selected : Theme.surface;
+    accessible-role: combobox;
+    accessible-label: self.label;
+    accessible-value: self.valid ? self.items[self.current] : "";
+    accessible-action-default => { popup.show(); }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+
+        Text {
+            text: root.valid ? root.items[root.current] : "None found";
+            font-size: 13px;
+            color: root.valid ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        // A down chevron.
+        VerticalLayout {
+            alignment: center;
+
+            Path {
+                width: 9px;
+                height: 5px;
+                viewbox-width: 9;
+                viewbox-height: 5;
+                commands: "M 1 0.5 L 4.5 4 L 8 0.5";
+                stroke: Theme.muted;
+                stroke-width: 1.5px;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.items.length > 0;
+        clicked => { popup.show(); }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: root.width;
+        height: root.items.length * root.item-h + 8px;
+
+        Rectangle {
+            background: Theme.selected;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 8px;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: #00000040;
+
+            VerticalLayout {
+                padding: 4px;
+
+                for item[i] in root.items: Rectangle {
+                    height: root.item-h;
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? Theme.surface : transparent;
+                    accessible-role: list-item;
+                    accessible-label: item;
+                    accessible-item-selected: i == root.current;
+                    accessible-action-default => { root.chosen(i); }
+
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        spacing: 6px;
+
+                        // A check mark on the chosen item.
+                        VerticalLayout {
+                            alignment: center;
+
+                            Path {
+                                width: 10px;
+                                height: 8px;
+                                viewbox-width: 10;
+                                viewbox-height: 8;
+                                commands: "M 1 4 L 4 7 L 9 1";
+                                stroke: i == root.current ? Theme.accent : transparent;
+                                stroke-width: 1.5px;
+                            }
+                        }
+
+                        Text {
+                            text: item;
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    item-touch := TouchArea {
+                        clicked => { root.chosen(i); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One wheel layout to choose: its icon above its name, outlined in orange
+// when chosen.
+export component LayoutCard inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> chosen;
+    callback clicked();
+
+    height: 64px;
+    border-radius: 10px;
+    background: Theme.surface;
+    border-width: self.chosen ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: radio-button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+
+        HorizontalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 22px;
+                height: 22px;
+                colorize: root.chosen ? Theme.accent : Theme.muted;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: root.chosen ? 600 : 400;
+            color: Theme.text;
+            horizontal-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// A quiet button: an optional icon and a word, highlighted on hover. A
+// disabled one shows its label muted and does nothing.
+export component TextButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 24px;
+    border-radius: 6px;
+    background: self.enabled && touch.has-hover ? Theme.surface : transparent;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 4px;
+
+        if root.has-icon: VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 14px;
+                height: 14px;
+                colorize: root.enabled ? Theme.text : Theme.muted;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            color: root.enabled ? Theme.text : Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A small square button showing only an icon; `label` names it for
+// assistive technology.
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: self.enabled && touch.has-hover ? Theme.surface : transparent;
+    opacity: self.enabled ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    Image {
+        source: root.icon;
+        width: 14px;
+        height: 14px;
+        colorize: root.enabled && touch.has-hover ? Theme.text : Theme.muted;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One of a stepper's two buttons, drawing − or +.
+component StepButton inherits Rectangle {
+    in property <bool> plus;
+    in property <string> label;
+    in property <bool> enabled;
+    callback clicked();
+
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: self.enabled && touch.has-hover ? Theme.selected : Theme.surface;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    Path {
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        commands: root.plus ? "M 1 5 L 9 5 M 5 1 L 5 9" : "M 1 5 L 9 5";
+        stroke: root.enabled ? Theme.text : Theme.muted;
+        stroke-width: 1.5px;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A value with a − button before it and a + button after it.
+export component Stepper inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> label;
+    in property <bool> can-decrease;
+    in property <bool> can-increase;
+    callback decrease();
+    callback increase();
+
+    spacing: 4px;
+
+    StepButton {
+        plus: false;
+        label: "Less " + root.label;
+        enabled: root.can-decrease;
+        clicked => { root.decrease(); }
+    }
+
+    Text {
+        min-width: 56px;
+        text: root.text;
+        font-size: 13px;
+        color: Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-label: root.label;
+        accessible-value: root.text;
+    }
+
+    StepButton {
+        plus: true;
+        label: "More " + root.label;
+        enabled: root.can-increase;
+        clicked => { root.increase(); }
+    }
+}
+
+// A field showing a keyboard shortcut. Clicking it starts recording: it
+// then reads "Press a shortcut…" and takes the keyboard, so no other key
+// handling in the panel reacts; Esc, a second click or losing focus
+// cancels. vento reads the combination itself and ends the recording.
+export component ShortcutField inherits Rectangle {
+    // The shortcut as symbols, e.g. "⌃⌥P".
+    in property <string> text;
+    in property <string> label;
+    in-out property <bool> recording;
+    callback started();
+    callback cancelled();
+
+    height: 28px;
+    border-radius: 8px;
+    background: self.recording || touch.has-hover ? Theme.selected : Theme.surface;
+    border-width: self.recording ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-value: self.recording ? "Press a shortcut…" : self.text;
+    accessible-action-default => { root.start(); }
+
+    function start() {
+        root.recording = true;
+        scope.focus();
+        root.started();
+    }
+
+    Text {
+        text: root.recording ? "Press a shortcut…" : root.text;
+        font-size: 13px;
+        color: root.recording ? Theme.muted : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    scope := FocusScope {
+        key-pressed(event) => {
+            if (!root.recording) {
+                return reject;
+            }
+            if (event.text == Key.Escape) {
+                root.cancelled();
+            }
+            return accept;
+        }
+        changed has-focus => {
+            if (!self.has-focus && root.recording) {
+                root.cancelled();
+            }
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            if (root.recording) {
+                root.cancelled();
+            } else {
+                root.start();
+            }
+        }
+    }
+}
+
+// A row of a list whose rows can be dragged into a new order. While row
+// `drag-from` is dragged it follows the pointer, raised, and the rows it
+// passes slide aside to make room for it at `drag-to`.
+export component ReorderRow inherits Rectangle {
+    in property <int> index;
+    in property <int> drag-from;
+    in property <int> drag-to;
+    in property <length> drag-offset;
+    in property <length> row-h;
+
+    property <bool> dragged: self.index == self.drag-from;
+    // The place this row takes while another one is dragged past it.
+    property <int> slot: self.drag-from < 0 || self.dragged
+        ? self.index
+        : self.index > self.drag-from && self.index <= self.drag-to
+            ? self.index - 1
+            : self.index < self.drag-from && self.index >= self.drag-to ? self.index + 1 : self.index;
+
+    x: 0;
+    y: self.dragged ? self.index * self.row-h + self.drag-offset : self.slot * self.row-h;
+    z: self.dragged ? 1 : 0;
+    height: self.row-h;
+    border-radius: 6px;
+    background: self.dragged ? Theme.selected : transparent;
+    drop-shadow-blur: self.dragged ? 6px : 0px;
+    drop-shadow-offset-y: 1px;
+    drop-shadow-color: Theme.dark ? #00000066 : #00000026;
+    // Rows making room slide; the dragged row and the drop are immediate.
+    animate y {
+        duration: root.drag-from >= 0 && !root.dragged ? 120ms : 0ms;
+        easing: ease-out;
+    }
+}
+
+// The grip a `ReorderRow` is dragged by. The list keeps the drag state
+// (`drag-from`, `drag-offset`), shared by all its grips; a grip starts a
+// drag of its row, moves it within `lo`…`hi`, and on release reports
+// `moved(from, to)` when the row would land somewhere new (`drop-to`).
+export component DragGrip inherits Rectangle {
+    in property <int> index;
+    in property <length> row-h;
+    // The first and last place the row can go, and where it would drop now.
+    in property <int> lo;
+    in property <int> hi;
+    in property <int> drop-to;
+    in-out property <int> drag-from;
+    in-out property <length> drag-offset;
+    callback moved(int, int);
+
+    width: 16px;
+
+    Image {
+        source: PanelIcons.grip;
+        width: 14px;
+        height: 14px;
+        colorize: Theme.muted;
+    }
+
+    TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down
+                    && event.button == PointerEventButton.left) {
+                root.drag-from = root.index;
+                root.drag-offset = 0;
+            } else if (root.drag-from == root.index
+                    && ((event.kind == PointerEventKind.up
+                            && event.button == PointerEventButton.left)
+                        || event.kind == PointerEventKind.cancel)) {
+                let from = root.drag-from;
+                let to = root.drop-to;
+                root.drag-from = -1;
+                root.drag-offset = 0;
+                if (to != from && event.kind == PointerEventKind.up) {
+                    root.moved(from, to);
+                }
+            }
+        }
+        // The pointer is measured from where the row is now, so the offset
+        // grows by how far it is from where it was pressed; the row stays
+        // within the places it can go.
+        moved => {
+            if (root.drag-from == root.index) {
+                root.drag-offset = clamp(
+                    root.drag-offset + self.mouse-y - self.pressed-y,
+                    (root.lo - root.index) * root.row-h,
+                    (root.hi - root.index) * root.row-h);
+            }
+        }
+    }
+}
