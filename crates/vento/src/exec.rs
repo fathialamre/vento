@@ -89,7 +89,8 @@ fn copy_toast_text(outcome: &CopyOutcome) -> String {
 }
 
 /// Toast text for a finished undo of a Copy to: what went to the Trash, what
-/// was left because it had changed, and what the Trash refused.
+/// was left because it had changed, what was no longer there (renamed or
+/// deleted since), and what the Trash refused.
 fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
     if outcome.trashed == 0 && outcome.kept_changed.is_empty() && outcome.failed.is_empty() {
         return "Nothing left to remove".into();
@@ -97,6 +98,9 @@ fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
     let mut text = format!("Removed {}", plural_copies(outcome.trashed));
     if !outcome.kept_changed.is_empty() {
         text.push_str(&format!(", kept {} changed", outcome.kept_changed.len()));
+    }
+    if outcome.gone > 0 {
+        text.push_str(&format!(", {} no longer there", outcome.gone));
     }
     if !outcome.failed.is_empty() {
         text.push_str(&format!(" · {} failed", outcome.failed.len()));
@@ -791,6 +795,22 @@ mod tests {
         assert_eq!(
             copy_undo_toast_text(&undone(2, 1)),
             "Removed 2 copies, kept 1 changed"
+        );
+        // Copies renamed or deleted since: said so after the rest.
+        assert_eq!(
+            copy_undo_toast_text(&CopyUndoOutcome {
+                gone: 2,
+                ..undone(1, 0)
+            }),
+            "Removed 1 copy, 2 no longer there"
+        );
+        assert_eq!(
+            copy_undo_toast_text(&CopyUndoOutcome {
+                gone: 1,
+                failed: vec![(p("/c/f"), "denied".into())],
+                ..undone(0, 1)
+            }),
+            "Removed 0 copies, kept 1 changed, 1 no longer there · 1 failed"
         );
     }
 

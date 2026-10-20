@@ -17,7 +17,8 @@ use slint::{
 };
 use vento_core::actions::ActionId;
 use vento_core::destinations::{
-    Destination, RecentDestinations, cell_labels, display_path, folder_exists, ring_destinations,
+    Destination, LABEL_CHARS, PETAL_LABEL_CHARS, RecentDestinations, cell_labels, display_path,
+    fit_path, folder_exists, ring_destinations,
 };
 use vento_core::geometry::{
     self, HEX_CORNER_RADIUS, HEX_RADIUS, Layout, PETAL_DEAD_ZONE, Point, Rect, RingGeometry, Vec2,
@@ -48,6 +49,9 @@ const FOLDER_ICON_PX: u32 = 40;
 /// Size of the destination label under the ring (as drawn in `wheel.slint`).
 const DEST_LABEL_W: f32 = 280.0;
 const DEST_LABEL_H: f32 = 44.0;
+/// The most characters of a folder's path the destination label shows (its
+/// 10 px line is about 228 px wide); longer paths lose leading folders.
+const DEST_PATH_CHARS: usize = 36;
 /// Space between the lowest cell and the destination label.
 const DEST_LABEL_GAP: f32 = 24.0;
 /// Room kept between the destination label and the screen or window edge.
@@ -85,27 +89,56 @@ struct OpenRing {
 }
 
 impl State {
-    /// What the cursor at `offset` from the centre is over; ring cells come
-    /// first, as they may sit where wheel actions are drawn.
+    /// What the cursor at `offset` from the centre is over.
     fn classify(&self, offset: Vec2) -> Hover {
-        if let Some(d) = self.ring.as_ref().and_then(|r| r.geometry.hit(offset)) {
-            return Hover::Destination(d);
-        }
-        if let Some(i) = self
-            .geometry
-            .hit(offset)
-            .filter(|&i| i < self.settings.actions.len())
-        {
-            return Hover::Action(i);
-        }
-        let distance = offset.x.hypot(offset.y);
-        if distance < centre_radius(self.settings.layout) {
-            return Hover::Centre;
-        }
-        match &self.ring {
-            Some(ring) if distance <= ring.geometry.extent() => Hover::Gap,
-            _ => Hover::Outside,
-        }
+        let ring = self.ring.as_ref().map(|r| (r.source, &r.geometry));
+        classify(
+            &self.geometry,
+            self.settings.layout,
+            self.settings.actions.len(),
+            ring,
+            offset,
+        )
+    }
+}
+
+/// What the cursor at `offset` from the centre is over, on a wheel laid out
+/// as `wheel` (`layout`) with `actions` actions and, while one is open, the
+/// ring `(source, ring)`. Ring cells come first, as they may sit where wheel
+/// actions are drawn.
+///
+/// A petal's hit area is its whole sector, out to `PETAL_MAX_REACH`.
+/// While a ring is open, the other petals count only inside their drawn
+/// circle, so a straight path from the source to a side ring petal, which
+/// crosses a neighbour's sector, does not close the ring.
+fn classify(
+    wheel: &WheelGeometry,
+    layout: Layout,
+    actions: usize,
+    ring: Option<(usize, &RingGeometry)>,
+    offset: Vec2,
+) -> Hover {
+    if let Some(d) = ring.and_then(|(_, r)| r.hit(offset)) {
+        return Hover::Destination(d);
+    }
+    let on_drawn_petal = |i: usize| {
+        let cell = &wheel.cells()[i];
+        (offset.x - cell.center.x).hypot(offset.y - cell.center.y) <= cell.radius
+    };
+    let counts = |i: usize| match (layout, ring) {
+        (Layout::Petals, Some((source, _))) => i == source || on_drawn_petal(i),
+        _ => true,
+    };
+    if let Some(i) = wheel.hit(offset).filter(|&i| i < actions && counts(i)) {
+        return Hover::Action(i);
+    }
+    let distance = offset.x.hypot(offset.y);
+    if distance < centre_radius(layout) {
+        return Hover::Centre;
+    }
+    match ring {
+        Some((_, ring)) if distance <= ring.extent() => Hover::Gap,
+        _ => Hover::Outside,
     }
 }
 
@@ -368,7 +401,9 @@ impl WheelController {
                     (event, machine.drag_in_progress())
                 };
                 self.handle(event, started);
-                if self.machine.borrow().is_open() {
+                // After the release (the grace period and the drop batch),
+                // the ring neither opens nor closes.
+                if dragging && self.machine.borrow().is_open() {
                     self.ring_tick(started);
                 }
                 if let Some(listener) = &*self.sample_listener.borrow() {
@@ -474,8 +509,8 @@ impl WheelController {
         };
         self.window.set_dest_verb(verb.into());
         self.window.set_dest_name(folder_name(path).into());
-        self.window
-            .set_dest_path(display_path(path, self.home.as_deref()).into());
+        let shown = fit_path(&display_path(path, self.home.as_deref()), DEST_PATH_CHARS);
+        self.window.set_dest_path(shown.into());
         self.window.set_dest_icon(self.folder_icon(path));
     }
 
@@ -550,7 +585,11 @@ impl WheelController {
             return;
         }
         dests.truncate(ring.cells().len());
-        let labels = cell_labels(&dests);
+        let label_chars = match self.state.borrow().settings.layout {
+            Layout::Honeycomb => LABEL_CHARS,
+            Layout::Petals => PETAL_LABEL_CHARS,
+        };
+        let labels = cell_labels(&dests, label_chars);
         let cells: Vec<RingCell> = ring
             .cells()
             .iter()
@@ -828,6 +867,92 @@ mod tests {
             w: 1440.0,
             h: 900.0,
         }
+    }
+
+    /// Points along the straight segment from `a` to `b`, both included.
+    fn segment(a: Vec2, b: Vec2, steps: usize) -> impl Iterator<Item = Vec2> {
+        (0..=steps).map(move |n| {
+            let t = n as f32 / steps as f32;
+            Vec2 {
+                x: a.x + (b.x - a.x) * t,
+                y: a.y + (b.y - a.y) * t,
+            }
+        })
+    }
+
+    #[test]
+    fn petals_straight_path_to_a_side_ring_petal_keeps_the_ring() {
+        let wheel = WheelGeometry::new(Layout::Petals, 6);
+        let everywhere = Rect {
+            x: -1e6,
+            y: -1e6,
+            w: 2e6,
+            h: 2e6,
+        };
+        let ring = wheel.ring(0, 5, everywhere);
+        assert_eq!(ring.cells().len(), 5);
+        let from = wheel.cells()[0].center;
+        // Cells alternate right and left: k = 0, +1, -1, +2, -2.
+        for target in [3, 4] {
+            let to = ring.cells()[target].center;
+            let mut tracker = RingTracker::new(Duration::ZERO, |i| i == 0);
+            let t0 = Instant::now();
+            assert_eq!(tracker.feed(Hover::Action(0), t0), RingEvent::Open(0));
+            for at in segment(from, to, 400) {
+                let hover = classify(&wheel, Layout::Petals, 6, Some((0, &ring)), at);
+                assert!(
+                    matches!(hover, Hover::Action(0) | Hover::Destination(_) | Hover::Gap),
+                    "{hover:?} at {at:?} towards ring cell {target}"
+                );
+                assert_eq!(tracker.feed(hover, t0), RingEvent::None, "at {at:?}");
+            }
+            assert_eq!(
+                classify(&wheel, Layout::Petals, 6, Some((0, &ring)), to),
+                Hover::Destination(target)
+            );
+        }
+    }
+
+    #[test]
+    fn petals_with_a_ring_still_reach_a_neighbour_inside_its_petal() {
+        let wheel = WheelGeometry::new(Layout::Petals, 6);
+        let everywhere = Rect {
+            x: -1e6,
+            y: -1e6,
+            w: 2e6,
+            h: 2e6,
+        };
+        let ring = wheel.ring(0, 5, everywhere);
+        let open = Some((0, &ring));
+        let neighbour = wheel.cells()[1];
+        assert_eq!(
+            classify(&wheel, Layout::Petals, 6, open, neighbour.center),
+            Hover::Action(1)
+        );
+        // In petal 1's sector but outside its circle: a gap while the ring is
+        // open, the action while it is not.
+        let beside = Vec2 {
+            x: neighbour.center.x,
+            y: neighbour.center.y - neighbour.radius - 2.0,
+        };
+        assert_eq!(
+            classify(&wheel, Layout::Petals, 6, None, beside),
+            Hover::Action(1)
+        );
+        assert_eq!(
+            classify(&wheel, Layout::Petals, 6, open, beside),
+            Hover::Gap
+        );
+        // The source petal keeps its whole sector.
+        let source = wheel.cells()[0].center;
+        let off_source = Vec2 {
+            x: source.x + 45.0,
+            y: source.y,
+        };
+        assert_eq!(
+            classify(&wheel, Layout::Petals, 6, open, off_source),
+            Hover::Action(0)
+        );
     }
 
     #[test]

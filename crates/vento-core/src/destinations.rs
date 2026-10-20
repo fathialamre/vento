@@ -12,8 +12,11 @@ use serde::{Deserialize, Serialize};
 pub const RING_RECENT: usize = 5;
 /// How many recent destinations are remembered.
 pub const RECENT_KEEP: usize = 15;
-/// Width of one line of a cell label, in characters.
+/// Width of one line of a honeycomb ring cell label, in characters.
 pub const LABEL_CHARS: usize = 10;
+/// Width of one line of a petal ring cell label, in characters (petals are
+/// narrower and drawn in smaller type).
+pub const PETAL_LABEL_CHARS: usize = 6;
 
 /// Newest on-disk format this build understands.
 const FORMAT_VERSION: u32 = 1;
@@ -188,9 +191,10 @@ fn folder_name(path: &Path) -> String {
     }
 }
 
-/// Labels for the cells, in the order of `dests`. Folders whose names are
-/// equal ignoring case show their parent folder as well.
-pub fn cell_labels(dests: &[Destination]) -> Vec<CellLabel> {
+/// Labels for the cells, in the order of `dests`, each line at most `chars`
+/// characters. Folders whose names are equal ignoring case show their
+/// parent folder as well.
+pub fn cell_labels(dests: &[Destination], chars: usize) -> Vec<CellLabel> {
     let names: Vec<String> = dests.iter().map(|d| folder_name(&d.path)).collect();
     let lowered: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
     dests
@@ -205,25 +209,25 @@ pub fn cell_labels(dests: &[Destination]) -> Vec<CellLabel> {
             if duplicated {
                 let parent = d.path.parent().map_or_else(|| "/".to_owned(), folder_name);
                 CellLabel {
-                    line1: middle_ellipsis(name, LABEL_CHARS),
-                    line2: Some(middle_ellipsis(&parent, LABEL_CHARS)),
+                    line1: middle_ellipsis(name, chars),
+                    line2: Some(middle_ellipsis(&parent, chars)),
                     line2_dim: true,
                 }
             } else {
-                split_name(name)
+                split_name(name, chars)
             }
         })
         .collect()
 }
 
-/// Lays a unique name out on one or two lines.
-fn split_name(name: &str) -> CellLabel {
+/// Lays a unique name out on one or two lines of at most `chars` characters.
+fn split_name(name: &str, chars: usize) -> CellLabel {
     let one_line = |text: String| CellLabel {
         line1: text,
         line2: None,
         line2_dim: false,
     };
-    if name.chars().count() <= LABEL_CHARS {
+    if name.chars().count() <= chars {
         return one_line(name.to_owned());
     }
     let words: Vec<&str> = name.split_whitespace().collect();
@@ -235,7 +239,7 @@ fn split_name(name: &str) -> CellLabel {
         } else {
             line1.chars().count() + 1 + word.chars().count()
         };
-        if joined > LABEL_CHARS {
+        if joined > chars {
             break;
         }
         if !line1.is_empty() {
@@ -246,12 +250,12 @@ fn split_name(name: &str) -> CellLabel {
     }
     if taken == 0 {
         // No space, or the first word alone is too long.
-        return one_line(middle_ellipsis(name, LABEL_CHARS));
+        return one_line(middle_ellipsis(name, chars));
     }
     let rest = words[taken..].join(" ");
     CellLabel {
         line1,
-        line2: Some(middle_ellipsis(&rest, LABEL_CHARS)),
+        line2: Some(middle_ellipsis(&rest, chars)),
         line2_dim: false,
     }
 }
@@ -269,6 +273,39 @@ pub fn middle_ellipsis(s: &str, max: usize) -> String {
     let head: String = s.chars().take(lead).collect();
     let end: String = s.chars().skip(count - tail).collect();
     format!("{}…{}", head.trim_end(), end.trim_start())
+}
+
+/// Shortens the displayed path `display` (as made by [`display_path`]) to
+/// at most `max_chars` characters, keeping its end: whole components after
+/// `~` or the root give way to `…`.
+pub fn fit_path(display: &str, max_chars: usize) -> String {
+    let len = |s: &str| s.chars().count();
+    if len(display) <= max_chars {
+        return display.to_owned();
+    }
+    // `~/a/b` splits into `~`, `a`, `b`; `/a/b` into ``, `a`, `b`.
+    let Some((head, rest)) = display.split_once('/') else {
+        return middle_ellipsis(display, max_chars);
+    };
+    let parts: Vec<&str> = rest.split('/').collect();
+    let last = parts[parts.len() - 1];
+    if parts.len() == 1 {
+        let room = max_chars.saturating_sub(len(head) + 1);
+        return format!("{head}/{}", middle_ellipsis(last, room));
+    }
+    let prefix = format!("{head}/…/");
+    let room = max_chars.saturating_sub(len(&prefix));
+    if len(last) > room {
+        return format!("{prefix}{}", middle_ellipsis(last, room));
+    }
+    // Keep as many whole trailing components as fit after the prefix.
+    let mut kept = len(last);
+    let mut first = parts.len() - 1;
+    while first > 1 && kept + 1 + len(parts[first - 1]) <= room {
+        first -= 1;
+        kept += 1 + len(parts[first]);
+    }
+    format!("{prefix}{}", parts[first..].join("/"))
 }
 
 /// `path` for display: the `home` prefix becomes `~`.
@@ -353,11 +390,14 @@ mod tests {
 
     #[test]
     fn labels_short_long_and_duplicates() {
-        let labels = cell_labels(&[
-            dest("/x/Downloads"),
-            dest("/x/Client Invoices 2026"),
-            dest("/x/ScreenRecordings2026"),
-        ]);
+        let labels = cell_labels(
+            &[
+                dest("/x/Downloads"),
+                dest("/x/Client Invoices 2026"),
+                dest("/x/ScreenRecordings2026"),
+            ],
+            LABEL_CHARS,
+        );
         assert_eq!(labels[0].line1, "Downloads");
         assert_eq!(labels[0].line2, None);
         assert_eq!(labels[1].line1, "Client");
@@ -366,13 +406,86 @@ mod tests {
         assert_eq!(labels[2].line1, "Scre…s2026");
         assert_eq!(labels[2].line2, None);
 
-        let dup = cell_labels(&[dest("/w/site-v2/Assets"), dest("/w/app-ios/assets")]);
+        let dup = cell_labels(
+            &[dest("/w/site-v2/Assets"), dest("/w/app-ios/assets")],
+            LABEL_CHARS,
+        );
         assert_eq!(dup[0].line1, "Assets");
         assert_eq!(dup[0].line2.as_deref(), Some("site-v2"));
         assert!(dup[0].line2_dim);
         assert_eq!(dup[1].line1, "assets");
         assert_eq!(dup[1].line2.as_deref(), Some("app-ios"));
         assert!(dup[1].line2_dim);
+    }
+
+    #[test]
+    fn petal_labels_use_the_narrower_budget() {
+        let labels = cell_labels(
+            &[
+                dest("/x/Downloads"),
+                dest("/x/Client Invoices 2026"),
+                dest("/x/Work"),
+            ],
+            PETAL_LABEL_CHARS,
+        );
+        assert_eq!(labels[0].line1, "Do…ads");
+        assert_eq!(labels[0].line2, None);
+        assert_eq!(labels[1].line1, "Client");
+        assert_eq!(labels[1].line2.as_deref(), Some("In…026"));
+        assert_eq!(labels[2].line1, "Work");
+
+        let dup = cell_labels(
+            &[dest("/w/site-v2/Assets"), dest("/w/app-ios/assets")],
+            PETAL_LABEL_CHARS,
+        );
+        assert_eq!(dup[0].line1, "Assets");
+        assert_eq!(dup[0].line2.as_deref(), Some("si…-v2"));
+        assert_eq!(dup[1].line2.as_deref(), Some("ap…ios"));
+        for label in labels.iter().chain(&dup) {
+            assert!(label.line1.chars().count() <= PETAL_LABEL_CHARS);
+            let line2 = label.line2.as_deref().unwrap_or("");
+            assert!(line2.chars().count() <= PETAL_LABEL_CHARS);
+        }
+    }
+
+    #[test]
+    fn fit_path_short_is_unchanged() {
+        assert_eq!(fit_path("~/Projects/a", 36), "~/Projects/a");
+        assert_eq!(fit_path("~", 36), "~");
+        assert_eq!(fit_path("/opt/a", 36), "/opt/a");
+        let exact = "~/0123456789/0123456789/0123456789/";
+        assert_eq!(fit_path(exact, exact.chars().count()), exact);
+    }
+
+    #[test]
+    fn fit_path_keeps_the_tail_components() {
+        let long = "~/Library/Mobile Documents/com~apple~CloudDocs/Work/Clients/Acme/Assets";
+        assert_eq!(fit_path(long, 36), "~/…/Work/Clients/Acme/Assets");
+        assert_eq!(fit_path(long, 24), "~/…/Clients/Acme/Assets");
+        assert_eq!(fit_path(long, 10), "~/…/Assets");
+        assert_eq!(
+            fit_path("/Volumes/Backup/Archive/2026/Clients/Acme", 20),
+            "/…/2026/Clients/Acme"
+        );
+        for max in 8..long.chars().count() {
+            assert!(fit_path(long, max).chars().count() <= max, "max {max}");
+        }
+    }
+
+    #[test]
+    fn fit_path_shortens_one_huge_last_component() {
+        let huge = format!("~/Work/{}", "x".repeat(30) + "-final-2026");
+        let got = fit_path(&huge, 20);
+        assert_eq!(got.chars().count(), 20);
+        assert!(got.starts_with("~/…/xxxxxxx"), "{got}");
+        assert!(got.ends_with("l-2026"), "{got}");
+        // With nothing before it to drop, no `…/` is added.
+        let only = format!("~/{}", "y".repeat(40));
+        let got = fit_path(&only, 20);
+        assert_eq!(got.chars().count(), 20);
+        assert!(got.starts_with("~/yyy"), "{got}");
+        // No separator at all: cut in the middle.
+        assert_eq!(fit_path("abcdefghijklmnop", 10), "abcd…lmnop");
     }
 
     #[test]

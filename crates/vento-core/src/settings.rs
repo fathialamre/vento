@@ -1,5 +1,6 @@
 //! User settings stored as TOML.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
@@ -155,8 +156,10 @@ impl From<RawSettings> for Settings {
                 hidden_actions.push(id);
             }
         }
+        let home = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf());
         let mut pinned_folders: Vec<PathBuf> = Vec::new();
         for folder in raw.pinned_folders {
+            let folder = expand_home(folder, home.as_deref());
             if !pinned_folders.contains(&folder) {
                 pinned_folders.push(folder);
             }
@@ -178,6 +181,16 @@ impl From<RawSettings> for Settings {
             move_hold_ms,
             hidden_actions,
         }
+    }
+}
+
+/// `path` with a leading `~` (alone or followed by `/`) replaced by `home`,
+/// as in a hand-written settings file. Other paths, and every path when
+/// `home` is unknown, come back as they are.
+fn expand_home(path: PathBuf, home: Option<&Path>) -> PathBuf {
+    match (home, path.strip_prefix("~")) {
+        (Some(home), Ok(rest)) => home.join(rest),
+        _ => path,
     }
 }
 
@@ -229,21 +242,31 @@ impl Settings {
     }
 
     /// Writes settings to `path`, creating the parent folder if needed. The
-    /// text goes to `settings.toml.tmp` beside the file first and is renamed
-    /// into place, so a crash never leaves a half-written file.
+    /// text goes to `<name>.tmp` beside the file first, is flushed to disk
+    /// and renamed into place, so a crash never leaves a half-written file.
+    /// When `path` is a symlink, the file it points to is the one replaced,
+    /// so the link stays.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         let text = toml::to_string_pretty(&RawSettings::from(self))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        if let Some(parent) = path.parent() {
+        // Missing (or a dangling link): write `path` itself.
+        let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let mut tmp = path.as_os_str().to_owned();
+        let mut tmp = target.as_os_str().to_owned();
         tmp.push(".tmp");
         let tmp = PathBuf::from(tmp);
-        std::fs::write(&tmp, text)?;
-        std::fs::rename(&tmp, path).inspect_err(|_| {
+        let written = (|| {
+            let mut file = std::fs::File::create(&tmp)?;
+            file.write_all(text.as_bytes())?;
+            file.sync_all()?;
+            std::fs::rename(&tmp, &target)
+        })();
+        if written.is_err() {
             let _ = std::fs::remove_file(&tmp);
-        })
+        }
+        written
     }
 
     /// Every action with whether it is shown on the wheel: the shown ones in
@@ -734,6 +757,53 @@ mod tests {
         let mut v = rows();
         move_row(&mut v, 1, 9);
         assert_eq!(v, ['a', 'c', 'd', 'b']);
+    }
+
+    #[test]
+    fn pinned_folders_expand_a_leading_tilde() {
+        let home = directories::BaseDirs::new()
+            .expect("a home folder")
+            .home_dir()
+            .to_path_buf();
+        let (_dir, p) = write_temp(&format!(
+            "pinned_folders = [\"~/Work\", \"~\", \"{}\", \"~other/x\", \"/a/~/b\"]\n",
+            home.join("Work").display()
+        ));
+        let want = [
+            home.join("Work"),
+            home.clone(),
+            PathBuf::from("~other/x"),
+            PathBuf::from("/a/~/b"),
+        ];
+        assert_eq!(Settings::load(&p).pinned_folders, want);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_keeps_a_symlinked_file_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let real_dir = dir.path().join("dotfiles");
+        std::fs::create_dir(&real_dir).unwrap();
+        let real = real_dir.join("vento.toml");
+        std::fs::write(&real, "layout = \"petals\"\n").unwrap();
+        let link = dir.path().join("settings.toml");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let s = Settings {
+            move_hold_ms: 700,
+            ..Settings::default()
+        };
+        s.save(&link).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(Settings::try_load(&real).unwrap(), s);
+        assert_eq!(Settings::try_load(&link).unwrap(), s);
+        assert!(!real_dir.join("vento.toml.tmp").exists());
+        assert!(!dir.path().join("settings.toml.tmp").exists());
     }
 
     #[test]
