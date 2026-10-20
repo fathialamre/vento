@@ -3,7 +3,7 @@
 use objc2::{MainThreadMarker, sel};
 use objc2_app_kit::{NSApplication, NSScreen};
 use objc2_foundation::NSObjectProtocol;
-use vento_core::geometry::Rect;
+use vento_core::geometry::{Point, Rect};
 
 use crate::IslandHome;
 
@@ -47,6 +47,38 @@ pub(super) fn screens() -> Vec<Rect> {
             )
         })
         .collect()
+}
+
+/// The backing scale of the screen whose full frame (menu bar included)
+/// contains `p`, in global logical top-left-origin coordinates; the primary
+/// screen's when none does.
+pub(super) fn scale_factor_at(p: Point) -> f64 {
+    let Some(mtm) = MainThreadMarker::new() else {
+        log::warn!("scale_factor_at() called off the main thread; returning 1.0");
+        return 1.0;
+    };
+    let primary_h = primary_height(mtm);
+    let all = NSScreen::screens(mtm);
+    let hit = all.iter().find(|s| {
+        let f = s.frame();
+        frame_contains(
+            flip_rect(
+                primary_h,
+                f.origin.x,
+                f.origin.y,
+                f.size.width,
+                f.size.height,
+            ),
+            p,
+        )
+    });
+    hit.or_else(|| all.firstObject())
+        .map_or(1.0, |s| s.backingScaleFactor())
+}
+
+/// Whether `p` is inside `r` (left and top edges included).
+fn frame_contains(r: Rect, p: Point) -> bool {
+    p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h
 }
 
 /// The notch between the two menu-bar halves of `screen`, `top_inset` high.
@@ -178,6 +210,20 @@ mod tests {
         let screen = r(0.0, 0.0, 1440.0, 900.0);
         let empty = r(0.0, 0.0, 0.0, 0.0);
         assert!(notch_rect(screen, empty, empty, 38.0).is_none());
+    }
+
+    #[test]
+    fn frame_contains_includes_top_left_and_excludes_bottom_right() {
+        let r = Rect {
+            x: -100.0,
+            y: 0.0,
+            w: 100.0,
+            h: 50.0,
+        };
+        assert!(frame_contains(r, Point { x: -100.0, y: 0.0 }));
+        assert!(frame_contains(r, Point { x: -1.0, y: 10.0 }));
+        assert!(!frame_contains(r, Point { x: 0.0, y: 10.0 }));
+        assert!(!frame_contains(r, Point { x: -50.0, y: 50.0 }));
     }
 
     #[test]

@@ -90,6 +90,14 @@ impl Platform for StubPlatform {
     }
 
     fn on_terminate(&self, _f: Box<dyn Fn()>) {}
+
+    fn activate_app(&self) {}
+
+    fn deactivate_app(&self) {}
+
+    fn scale_factor_at(&self, _p: Point) -> f64 {
+        1.0
+    }
 }
 
 #[cfg(test)]
@@ -138,5 +146,6 @@ mod tests {
             Err(PlatformError::Unsupported)
         ));
         assert!(!p.screens_changed());
+        assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
     }
 }

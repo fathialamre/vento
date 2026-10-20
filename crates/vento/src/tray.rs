@@ -1,17 +1,18 @@
-//! Menu-bar icon: undo, pause, settings file access and quit.
+//! Menu-bar icon: a left click opens the panel, a right click shows the menu
+//! with undo, pause, settings file access and quit.
 
 use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
 
-use log::{debug, warn};
+use log::warn;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
 use crate::exec::Executor;
-use crate::toast::Toaster;
 use crate::wheel::WheelController;
 
 /// Side length of the menu-bar icon in pixels.
@@ -22,10 +23,60 @@ const HEX_RADIUS: f32 = 8.0;
 /// Acts on a clicked menu item.
 type Dispatch = Box<dyn Fn(&MenuId)>;
 
+/// Opens the panel for a left click on the icon, given the icon's frame in
+/// physical pixels.
+type PanelDispatch = Box<dyn Fn(tray_icon::Rect)>;
+
 thread_local! {
     /// Acts on a clicked menu item; lives on the main thread, which owns the
     /// non-`Send` wheel and executor.
     static DISPATCH: RefCell<Option<Dispatch>> = const { RefCell::new(None) };
+    /// Acts on a left click on the icon; lives on the main thread too.
+    static PANEL_DISPATCH: RefCell<Option<PanelDispatch>> = const { RefCell::new(None) };
+}
+
+/// How far above a screen's work area (which starts below the menu bar) the
+/// icon's centre may lie and still count as on that screen.
+const MENU_BAR_SLACK: f64 = 80.0;
+
+/// The icon's frame in global logical points, from its frame in physical
+/// pixels.
+///
+/// The pixels are the icon's logical frame times the backing scale of the
+/// screen it is on, so each screen is tried with its own scale (from
+/// `scale_at`, given a point on that screen): the first screen the scaled
+/// frame lands on wins. Work areas start below the menu bar, where the icon
+/// is, so the icon may lie above the work area by [`MENU_BAR_SLACK`]. With no
+/// match the first screen's scale is used.
+fn icon_frame(
+    physical: &tray_icon::Rect,
+    screens: &[Rect],
+    scale_at: &dyn Fn(Point) -> f64,
+) -> Rect {
+    let scaled = |scale: f64| Rect {
+        x: physical.position.x / scale,
+        y: physical.position.y / scale,
+        w: f64::from(physical.size.width) / scale,
+        h: f64::from(physical.size.height) / scale,
+    };
+    let centre_of = |r: &Rect| Point {
+        x: r.x + r.w / 2.0,
+        y: r.y + r.h / 2.0,
+    };
+    for screen in screens {
+        let frame = scaled(scale_at(centre_of(screen)));
+        let c = centre_of(&frame);
+        if c.x >= screen.x
+            && c.x < screen.x + screen.w
+            && c.y >= screen.y - MENU_BAR_SLACK
+            && c.y < screen.y + screen.h
+        {
+            return frame;
+        }
+    }
+    screens
+        .first()
+        .map_or_else(|| scaled(1.0), |s| scaled(scale_at(centre_of(s))))
 }
 
 /// Keeps the menu-bar icon alive.
@@ -56,18 +107,15 @@ fn tray_icon_rgba() -> Vec<u8> {
     rgba
 }
 
-/// What the tray needs to act on menu clicks.
+/// What the tray needs to act on clicks.
 pub struct TrayDeps {
     pub ctrl: Rc<WheelController>,
     pub exec: Rc<Executor>,
-    /// The settings copy the executor reads; a reload writes into it.
-    pub shared: Rc<RefCell<Settings>>,
-    /// Shows reload errors.
-    pub toast: Rc<Toaster>,
+    /// Places the icon on its screen.
     pub platform: Rc<dyn Platform>,
-    /// Applies reloaded settings to what the tray doesn't own (the Pocket
-    /// shortcut).
-    pub on_reload: Box<dyn Fn(&Settings)>,
+    /// Opens the panel under the icon; given the icon's frame in global
+    /// logical points.
+    pub on_open_panel: Box<dyn Fn(Rect)>,
     /// Tells what the tray doesn't own (the Pocket) that vento was paused
     /// or unpaused.
     pub on_pause: Box<dyn Fn(bool)>,
@@ -82,16 +130,13 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let TrayDeps {
         ctrl,
         exec,
-        shared,
-        toast,
         platform,
-        on_reload,
+        on_open_panel,
         on_pause,
     } = deps;
     let undo = MenuItem::new("Undo last move", exec.has_undo(), None);
     let pause = CheckMenuItem::new("Pause vento", true, false, None);
     let open_settings = MenuItem::new("Open settings file", true, None);
-    let reload = MenuItem::new("Reload settings", true, None);
     let quit = MenuItem::new("Quit vento", true, None);
 
     let menu = Menu::new();
@@ -100,7 +145,6 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         &pause,
         &PredefinedMenuItem::separator(),
         &open_settings,
-        &reload,
         &PredefinedMenuItem::separator(),
         &quit,
     ])
@@ -112,6 +156,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         .with_icon_templated(icon)
         .with_tooltip("vento")
         .with_menu(Box::new(menu))
+        .with_menu_on_left_click(false)
         .build()
         .expect("cannot create the menu-bar icon");
 
@@ -132,8 +177,6 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 on_pause(pause.is_checked());
             } else if id == open_settings.id() {
                 open_settings_file();
-            } else if id == reload.id() {
-                reload_settings(&ctrl, &shared, &toast, platform.as_ref(), &*on_reload);
             } else if id == quit.id()
                 && let Err(e) = slint::quit_event_loop()
             {
@@ -151,6 +194,37 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             });
         }) {
             warn!("cannot deliver menu event: {e}");
+        }
+    }));
+
+    // A left click on the icon opens the panel. Same forwarding as the menu:
+    // only the (Send) frame crosses to the main thread.
+    PANEL_DISPATCH.with(|slot| {
+        *slot.borrow_mut() = Some(Box::new(move |physical: tray_icon::Rect| {
+            let frame = icon_frame(&physical, &platform.screens(), &|p| {
+                platform.scale_factor_at(p)
+            });
+            on_open_panel(frame);
+        }));
+    });
+    TrayIconEvent::set_event_handler(Some(|event: TrayIconEvent| {
+        let TrayIconEvent::Click {
+            rect,
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        } = event
+        else {
+            return;
+        };
+        if let Err(e) = slint::invoke_from_event_loop(move || {
+            PANEL_DISPATCH.with(|slot| {
+                if let Some(dispatch) = slot.borrow().as_ref() {
+                    dispatch(rect);
+                }
+            });
+        }) {
+            warn!("cannot deliver tray click: {e}");
         }
     }));
 
@@ -172,36 +246,53 @@ fn open_settings_file() {
     }
 }
 
-/// Re-reads the settings file and applies it to the wheel, the executor and
-/// (through `on_reload`) the Pocket shortcut.
-/// An unreadable or invalid file keeps the current settings and says why in a
-/// toast near the cursor (the menu bar).
-fn reload_settings(
-    ctrl: &WheelController,
-    shared: &RefCell<Settings>,
-    toast: &Toaster,
-    platform: &dyn Platform,
-    on_reload: &dyn Fn(&Settings),
-) {
-    let path = settings_path();
-    match Settings::try_load(&path) {
-        Ok(loaded) => {
-            debug!("settings reloaded");
-            *shared.borrow_mut() = loaded.clone();
-            on_reload(&loaded);
-            ctrl.apply_settings(loaded);
-        }
-        Err(e) => {
-            warn!("settings not reloaded from {}: {e}", path.display());
-            let at = platform.sample_input().cursor;
-            toast.show(&format!("Settings not reloaded: {e}"), None, at);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn physical(x: f64, y: f64, w: u32, h: u32) -> tray_icon::Rect {
+        tray_icon::Rect {
+            position: tray_icon::dpi::PhysicalPosition::new(x, y),
+            size: tray_icon::dpi::PhysicalSize::new(w, h),
+        }
+    }
+
+    fn screen(x: f64, y: f64, w: f64, h: f64) -> Rect {
+        Rect { x, y, w, h }
+    }
+
+    #[test]
+    fn icon_frame_divides_by_the_screens_scale() {
+        // A retina screen with a 25 pt menu bar; the icon is 36 px wide.
+        let screens = [screen(0.0, 25.0, 1440.0, 875.0)];
+        let f = icon_frame(&physical(2800.0, 0.0, 36, 48), &screens, &|_| 2.0);
+        assert_eq!((f.x, f.y, f.w, f.h), (1400.0, 0.0, 18.0, 24.0));
+    }
+
+    #[test]
+    fn icon_frame_uses_the_scale_of_the_screen_it_lands_on() {
+        // A retina primary and a 1x screen to its right.
+        let screens = [
+            screen(0.0, 25.0, 1440.0, 875.0),
+            screen(1440.0, 25.0, 1920.0, 1055.0),
+        ];
+        let scale = |p: Point| if p.x < 1440.0 { 2.0 } else { 1.0 };
+        // Divided by 2 this would be at 1500 pt: off the primary screen.
+        let f = icon_frame(&physical(3000.0, 0.0, 24, 24), &screens, &scale);
+        assert_eq!((f.x, f.y, f.w, f.h), (3000.0, 0.0, 24.0, 24.0));
+        // On the primary screen the first match wins.
+        let f = icon_frame(&physical(2000.0, 0.0, 36, 48), &screens, &scale);
+        assert_eq!((f.x, f.w), (1000.0, 18.0));
+    }
+
+    #[test]
+    fn icon_frame_without_a_match_uses_the_first_screens_scale() {
+        let screens = [screen(0.0, 25.0, 1440.0, 875.0)];
+        let f = icon_frame(&physical(9000.0, 0.0, 36, 48), &screens, &|_| 2.0);
+        assert_eq!((f.x, f.w), (4500.0, 18.0));
+        let f = icon_frame(&physical(9000.0, 0.0, 36, 48), &[], &|_| 2.0);
+        assert_eq!((f.x, f.w), (9000.0, 36.0));
+    }
 
     fn alpha(rgba: &[u8], x: usize, y: usize) -> u8 {
         rgba[(y * ICON_SIZE as usize + x) * 4 + 3]

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-use vento_core::geometry::Rect;
+use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
 use crate::{DropCatcher, IslandHome, Platform, PlatformError, RgbaImage, TerminalApp};
@@ -138,5 +138,26 @@ impl Platform for MacPlatform {
 
     fn on_terminate(&self, f: Box<dyn Fn()>) {
         notify::on_terminate(f);
+    }
+
+    fn activate_app(&self) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("activate_app called off the main thread; ignored");
+            return;
+        };
+        screens::activate_app(mtm);
+    }
+
+    fn deactivate_app(&self) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("deactivate_app called off the main thread; ignored");
+            return;
+        };
+        // Hiding the app hands focus to the previous one.
+        NSApplication::sharedApplication(mtm).hide(None);
+    }
+
+    fn scale_factor_at(&self, p: Point) -> f64 {
+        screens::scale_factor_at(p)
     }
 }

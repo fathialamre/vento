@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use vento_core::geometry::Rect;
+use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
 mod stub;
@@ -154,6 +154,16 @@ pub trait Platform {
     /// when the system ends it (log out, shut down). Replaces any earlier
     /// `f`.
     fn on_terminate(&self, f: Box<dyn Fn()>);
+    /// Bring vento to the front so a window of its own can take keystrokes.
+    /// Main thread only.
+    fn activate_app(&self);
+    /// Hand focus back to the app that was in front before
+    /// [`Platform::activate_app`]. Main thread only.
+    fn deactivate_app(&self);
+    /// The backing scale factor (physical pixels per logical point) of the
+    /// screen that contains `p`, a global logical point; the primary screen's
+    /// when none does. 1.0 where unsupported.
+    fn scale_factor_at(&self, p: Point) -> f64;
 }
 
 /// The platform implementation for the running OS.

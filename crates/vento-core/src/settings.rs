@@ -308,6 +308,26 @@ pub fn parse_shortcut(s: &str) -> Option<(Modifiers, char)> {
     Some((modifiers, key.to_ascii_lowercase()))
 }
 
+/// Whether macOS keeps `spec` for itself: Cmd alone (quit, hide, copy and
+/// the like), Cmd+Shift+3/4/5 (screenshots), or Shift alone (typing a capital
+/// letter). A spec that does not parse is not reserved; it is simply invalid.
+pub fn is_reserved_shortcut(spec: &str) -> bool {
+    let Some((m, key)) = parse_shortcut(spec) else {
+        return false;
+    };
+    let only = |ctrl, alt, shift, meta| {
+        m == Modifiers {
+            ctrl,
+            alt,
+            shift,
+            meta,
+        }
+    };
+    only(false, false, false, true)
+        || only(false, false, true, false)
+        || (only(false, false, true, true) && matches!(key, '3' | '4' | '5'))
+}
+
 /// Location of the settings file.
 pub fn settings_path() -> PathBuf {
     match ProjectDirs::from("", "", "vento") {
@@ -417,6 +437,16 @@ mod tests {
     fn parse_shortcut_rejects_bad() {
         for bad in ["", "ctrl+", "ctrl+pp", "hyper+p", "ctrl+é", "+p", "ctrl++p"] {
             assert_eq!(parse_shortcut(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn reserved_shortcuts() {
+        for reserved in ["cmd+q", "cmd+shift+4", "shift+a", "meta+h", "cmd+shift+3"] {
+            assert!(is_reserved_shortcut(reserved), "{reserved:?}");
+        }
+        for free in ["ctrl+alt+p", "cmd+alt+p", "cmd+shift+a", "ctrl+p", "bogus"] {
+            assert!(!is_reserved_shortcut(free), "{free:?}");
         }
     }
 

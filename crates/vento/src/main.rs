@@ -8,6 +8,8 @@ mod hotkey;
 #[cfg(target_os = "macos")]
 mod pocket;
 #[cfg(target_os = "macos")]
+mod settings_hub;
+#[cfg(target_os = "macos")]
 mod toast;
 #[cfg(target_os = "macos")]
 mod tray;
@@ -27,16 +29,20 @@ fn main() -> Result<(), slint::PlatformError> {
     use std::time::Duration;
 
     use vento_core::actions::ActionId;
-    use vento_core::settings::{Settings, settings_path};
+    use vento_core::settings::settings_path;
 
     /// How long the island stays open to confirm an add from the wheel.
     const POCKET_CONFIRM: Duration = Duration::from_millis(1500);
 
     env_logger::init();
     select_backend()?;
-    let settings = Settings::load(&settings_path());
-    // One copy for the executor; the wheel keeps its own through its constructor.
-    let shared = Rc::new(RefCell::new(settings.clone()));
+    let hub = settings_hub::SettingsHub::new(settings_path());
+    if let Some(reason) = hub.load_error() {
+        log::warn!("settings file not loaded, using the defaults: {reason}");
+    }
+    // The copy the executor and the Pocket read; the wheel keeps its own
+    // through its constructor and its hub listener.
+    let shared = hub.shared();
     let platform = vento_platform::current();
     let toaster = toast::Toaster::new(platform.clone());
     let executor = exec::Executor::new(platform.clone(), shared.clone(), toaster.clone());
@@ -45,13 +51,15 @@ fn main() -> Result<(), slint::PlatformError> {
     let drop_pocket = pocket.clone();
     let controller = wheel::WheelController::new(
         platform.clone(),
-        settings,
+        hub.current(),
         Box::new(move |action, paths, at| match action {
             ActionId::Pocket => drop_pocket.add(paths, POCKET_CONFIRM),
             _ => drop_executor.run(action, paths, at),
         }),
     );
     controller.start();
+    let wheel = controller.clone();
+    hub.on_change(Box::new(move |_old, new| wheel.apply_settings(new.clone())));
 
     pocket.start();
     // Files waiting for the Trash go now when vento quits, also when the
@@ -67,13 +75,11 @@ fn main() -> Result<(), slint::PlatformError> {
         observer.observe(sample, dragging);
     }));
 
-    // The Pocket shortcut, registered now and again on every settings reload.
+    // The Pocket shortcut, registered now and again whenever it changes.
     let shortcut = Rc::new(RefCell::new(None));
     let register_shortcut = {
         let pocket = Rc::downgrade(&pocket);
-        let toaster = toaster.clone();
-        let platform = platform.clone();
-        move |spec: &str| {
+        move |spec: &str| -> Result<(), String> {
             // Free the old key first, so the same key can be registered again.
             shortcut.borrow_mut().take();
             let pocket = pocket.clone();
@@ -82,31 +88,54 @@ fn main() -> Result<(), slint::PlatformError> {
                     pocket.toggle_pinned();
                 }
             });
-            match hotkey::install_hotkey(spec, on_press) {
-                Ok(handle) => *shortcut.borrow_mut() = Some(handle),
-                Err(reason) => {
-                    log::warn!("pocket shortcut {spec:?} unavailable: {reason}");
-                    let at = platform.sample_input().cursor;
-                    toaster.show(&format!("Pocket shortcut unavailable: {reason}"), None, at);
-                }
-            }
+            let handle = hotkey::install_hotkey(spec, on_press)?;
+            *shortcut.borrow_mut() = Some(handle);
+            Ok(())
         }
     };
+    let apply_shortcut = Rc::new({
+        let toaster = toaster.clone();
+        let platform = platform.clone();
+        move |spec: &str| {
+            if let Err(reason) = register_shortcut(spec) {
+                log::warn!("pocket shortcut {spec:?} unavailable: {reason}");
+                let at = platform.sample_input().cursor;
+                toaster.show(&format!("Pocket shortcut unavailable: {reason}"), None, at);
+            }
+        }
+    });
+    {
+        let apply_shortcut = apply_shortcut.clone();
+        hub.on_change(Box::new(move |old, new| {
+            if old.pocket_shortcut != new.pocket_shortcut {
+                apply_shortcut(&new.pocket_shortcut);
+            }
+        }));
+    }
 
     // The menu-bar icon needs the running event loop, and lives as long as the app.
     let tray_handle = Rc::new(RefCell::new(None));
     let keep = tray_handle.clone();
     let paused_pocket = Rc::downgrade(&pocket);
     slint::Timer::single_shot(Duration::ZERO, move || {
-        let spec = shared.borrow().pocket_shortcut.clone();
-        register_shortcut(&spec);
+        apply_shortcut(&hub.current().pocket_shortcut);
+        let panel_platform = platform.clone();
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             ctrl: controller,
             exec: executor,
-            shared,
-            toast: toaster,
             platform,
-            on_reload: Box::new(move |settings| register_shortcut(&settings.pocket_shortcut)),
+            // Task 9 opens the panel here; for now, pick up hand edits of
+            // the settings file and say if the file is broken.
+            on_open_panel: Box::new(move |icon| {
+                let before = hub.load_error();
+                hub.refresh_from_disk();
+                let after = hub.load_error();
+                if let Some(reason) = after.filter(|a| before.as_ref() != Some(a)) {
+                    let at = panel_platform.sample_input().cursor;
+                    toaster.show(&format!("Settings not loaded: {reason}"), None, at);
+                }
+                log::debug!("open panel at {icon:?}");
+            }),
             on_pause: Box::new(move |paused| {
                 if let Some(pocket) = paused_pocket.upgrade() {
                     pocket.set_paused(paused);
