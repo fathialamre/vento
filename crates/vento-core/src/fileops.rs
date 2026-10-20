@@ -4,6 +4,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// Why a single item could not be moved.
 #[derive(thiserror::Error, Debug)]
@@ -173,6 +174,171 @@ pub fn copy_into(src: &Path, dir: &Path) -> Result<PathBuf, FileOpError> {
         remove_any(&partial);
         FileOpError::Io(e)
     })
+}
+
+/// What a copy looked like right after vento made it, so undo can tell
+/// whether it has been touched since.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fingerprint {
+    /// A regular (or other non-folder, non-link) file.
+    File {
+        /// Size in bytes.
+        len: u64,
+        /// Last modification time.
+        modified: SystemTime,
+    },
+    /// A folder: every entry below it as `(path relative to the folder, size,
+    /// modification time)`, sorted by path.
+    Dir(Vec<(PathBuf, u64, SystemTime)>),
+    /// A symlink, identified by its target; never followed.
+    Link(PathBuf),
+}
+
+impl Fingerprint {
+    /// Fingerprints `path` without following symlinks.
+    ///
+    /// Any error (a missing entry, an unreadable folder) is returned rather
+    /// than skipped, so callers can treat "could not tell" as "changed".
+    pub fn of(path: &Path) -> io::Result<Fingerprint> {
+        let meta = fs::symlink_metadata(path)?;
+        let kind = meta.file_type();
+        if kind.is_symlink() {
+            Ok(Fingerprint::Link(fs::read_link(path)?))
+        } else if kind.is_dir() {
+            let mut entries = Vec::new();
+            collect_entries(path, Path::new(""), &mut entries)?;
+            entries.sort();
+            Ok(Fingerprint::Dir(entries))
+        } else {
+            Ok(Fingerprint::File {
+                len: meta.len(),
+                modified: meta.modified()?,
+            })
+        }
+    }
+}
+
+/// Appends every entry below `dir` to `out` as `(relative path, size, mtime)`.
+/// Symlinks are listed as themselves and not followed.
+fn collect_entries(
+    dir: &Path,
+    rel: &Path,
+    out: &mut Vec<(PathBuf, u64, SystemTime)>,
+) -> io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let meta = fs::symlink_metadata(&path)?;
+        let rel_path = rel.join(entry.file_name());
+        out.push((rel_path.clone(), meta.len(), meta.modified()?));
+        if meta.is_dir() {
+            collect_entries(&path, &rel_path, out)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copies made by one Copy to action: what undo needs to recognise them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyRecord {
+    /// Destination folder the items were copied into.
+    pub dest: PathBuf,
+    /// `(source, copy, fingerprint taken right after the copy)` per item.
+    pub copies: Vec<(PathBuf, PathBuf, Fingerprint)>,
+}
+
+/// Result of a batch copy: what was copied and what failed.
+#[derive(Debug)]
+pub struct CopyOutcome {
+    /// Copies that were made and fingerprinted.
+    pub record: CopyRecord,
+    /// Items that were not copied, with the reason.
+    pub failed: Vec<(PathBuf, FileOpError)>,
+}
+
+/// Copies `paths` into `dest` under free names, never overwriting.
+///
+/// One item failing does not stop the others. A copy that was made and
+/// verified but could not be fingerprinted is reported as failed and left in
+/// place; it is not recorded, so undo never touches it.
+pub fn copy_items(paths: &[PathBuf], dest: &Path) -> CopyOutcome {
+    let mut copies = Vec::new();
+    let mut failed = Vec::new();
+    for path in paths {
+        let copy = match copy_into(path, dest) {
+            Ok(copy) => copy,
+            Err(e) => {
+                failed.push((path.clone(), e));
+                continue;
+            }
+        };
+        match Fingerprint::of(&copy) {
+            Ok(fingerprint) => copies.push((path.clone(), copy, fingerprint)),
+            Err(e) => {
+                log::warn!(
+                    "copied {} to {} but could not fingerprint it: {e}",
+                    path.display(),
+                    copy.display()
+                );
+                failed.push((path.clone(), FileOpError::Io(e)));
+            }
+        }
+    }
+    CopyOutcome {
+        record: CopyRecord {
+            dest: dest.to_path_buf(),
+            copies,
+        },
+        failed,
+    }
+}
+
+/// Result of undoing a Copy to.
+#[derive(Debug, Default)]
+pub struct CopyUndoOutcome {
+    /// Copies handed to the trash.
+    pub trashed: usize,
+    /// Copies left in place because they changed since vento made them (or
+    /// could not be checked).
+    pub kept_changed: Vec<PathBuf>,
+    /// Copies that no longer exist.
+    pub gone: usize,
+    /// Copies the trash refused, with its message.
+    pub failed: Vec<(PathBuf, String)>,
+}
+
+/// Sends the copies in `record` to the trash, but only those still exactly as
+/// vento left them.
+///
+/// Only the `trash` closure ever removes anything; sources are never touched
+/// and symlinks are never followed. A copy that cannot be fingerprinted counts
+/// as changed and is kept.
+pub fn undo_copies<E: std::fmt::Display>(
+    record: &CopyRecord,
+    trash: impl Fn(&Path) -> Result<(), E>,
+) -> CopyUndoOutcome {
+    let mut out = CopyUndoOutcome::default();
+    for (_, copy, recorded) in &record.copies {
+        match fs::symlink_metadata(copy) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                out.gone += 1;
+                continue;
+            }
+            Err(_) => {
+                out.kept_changed.push(copy.clone());
+                continue;
+            }
+            Ok(_) => {}
+        }
+        match Fingerprint::of(copy) {
+            Ok(now) if now == *recorded => match trash(copy) {
+                Ok(()) => out.trashed += 1,
+                Err(e) => out.failed.push((copy.clone(), e.to_string())),
+            },
+            _ => out.kept_changed.push(copy.clone()),
+        }
+    }
+    out
 }
 
 /// Moves `paths` into `dest`, renaming on conflict and never overwriting.
@@ -1166,5 +1332,221 @@ mod tests {
         assert!(matches!(err, FileOpError::Io(e) if e.kind() == io::ErrorKind::PermissionDenied));
         assert_eq!(names(&dest), ["keep.txt"]);
         assert_eq!(read(&from.join("one.txt")), "one");
+    }
+
+    /// Paths handed to the trash closure by `undo_copies`, in call order.
+    fn undo_into_log(record: &CopyRecord) -> (CopyUndoOutcome, Vec<PathBuf>) {
+        let log = std::cell::RefCell::new(Vec::new());
+        let out = undo_copies(record, |p: &Path| -> Result<(), String> {
+            log.borrow_mut().push(p.to_path_buf());
+            Ok(())
+        });
+        (out, log.into_inner())
+    }
+
+    /// One file and one folder copied into a fresh `dst`.
+    fn copied_file_and_folder(d: &Path) -> (PathBuf, PathBuf, PathBuf, CopyOutcome) {
+        let (src_dir, dest) = src_and_dest(d);
+        make_tree(&src_dir);
+        let file = d.join("f.txt");
+        write(&file, "F");
+        let out = copy_items(&[file.clone(), src_dir.clone()], &dest);
+        (file, src_dir, dest, out)
+    }
+
+    #[test]
+    fn copy_items_records_fingerprints() {
+        let d = tempdir().unwrap();
+        let (file, src_dir, dest, out) = copied_file_and_folder(d.path());
+
+        assert!(out.failed.is_empty());
+        assert_eq!(out.record.dest, dest);
+        assert_eq!(out.record.copies.len(), 2);
+        let (s0, c0, f0) = &out.record.copies[0];
+        assert_eq!((s0, c0), (&file, &dest.join("f.txt")));
+        assert_eq!(f0, &Fingerprint::of(c0).unwrap());
+        assert!(matches!(f0, Fingerprint::File { len: 1, .. }));
+        let (s1, c1, f1) = &out.record.copies[1];
+        assert_eq!((s1, c1), (&src_dir, &dest.join("src")));
+        assert_eq!(f1, &Fingerprint::of(c1).unwrap());
+        let Fingerprint::Dir(entries) = f1 else {
+            panic!("a folder copy gets a Dir fingerprint");
+        };
+        let rel: Vec<&Path> = entries.iter().map(|(p, _, _)| p.as_path()).collect();
+        assert_eq!(
+            rel,
+            [
+                Path::new("one.txt"),
+                Path::new("sub"),
+                Path::new("sub").join("two.txt").as_path()
+            ]
+        );
+    }
+
+    #[test]
+    fn copy_items_reports_a_failed_item_and_keeps_the_rest() {
+        let d = tempdir().unwrap();
+        let (_, dest) = src_and_dest(d.path());
+        let ok = d.path().join("ok.txt");
+        write(&ok, "ok");
+        let missing = d.path().join("missing.txt");
+        let out = copy_items(&[missing.clone(), ok], &dest);
+        assert_eq!(out.record.copies.len(), 1);
+        assert_eq!(out.failed.len(), 1);
+        assert_eq!(out.failed[0].0, missing);
+        assert!(matches!(out.failed[0].1, FileOpError::NotFound));
+    }
+
+    #[test]
+    fn undo_trashes_unchanged_copies() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.trashed, 2);
+        assert!(undone.kept_changed.is_empty() && undone.failed.is_empty());
+        assert_eq!(undone.gone, 0);
+        assert_eq!(trashed, [dest.join("f.txt"), dest.join("src")]);
+    }
+
+    #[test]
+    fn undo_keeps_an_edited_copy() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+        let copy = dest.join("f.txt");
+        let mut f = fs::OpenOptions::new().append(true).open(&copy).unwrap();
+        io::Write::write_all(&mut f, b"more").unwrap();
+        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+            .unwrap();
+        drop(f);
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, std::slice::from_ref(&copy));
+        assert_eq!(undone.trashed, 1);
+        assert_eq!(trashed, [dest.join("src")]);
+        assert_eq!(read(&copy), "Fmore");
+    }
+
+    #[test]
+    fn undo_keeps_a_same_size_edit_with_a_later_mtime() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+        let copy = dest.join("f.txt");
+        write(&copy, "G");
+        let f = fs::OpenOptions::new().write(true).open(&copy).unwrap();
+        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+            .unwrap();
+        drop(f);
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, [copy]);
+        assert_eq!(trashed, [dest.join("src")]);
+    }
+
+    #[test]
+    fn undo_keeps_a_folder_with_a_new_file() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+        let copy = dest.join("src");
+        write(&copy.join("sub").join("new.txt"), "n");
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, std::slice::from_ref(&copy));
+        assert_eq!(trashed, [dest.join("f.txt")]);
+        assert_eq!(read(&copy.join("sub").join("new.txt")), "n");
+    }
+
+    #[test]
+    fn undo_keeps_a_folder_with_a_removed_file() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+        fs::remove_file(dest.join("src").join("one.txt")).unwrap();
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, [dest.join("src")]);
+        assert_eq!(trashed, [dest.join("f.txt")]);
+    }
+
+    #[test]
+    fn undo_counts_a_removed_copy_as_gone() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+        fs::remove_file(dest.join("f.txt")).unwrap();
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.gone, 1);
+        assert_eq!(undone.trashed, 1);
+        assert!(undone.kept_changed.is_empty() && undone.failed.is_empty());
+        assert_eq!(trashed, [dest.join("src")]);
+    }
+
+    #[test]
+    fn undo_never_touches_sources() {
+        let d = tempdir().unwrap();
+        let (file, src_dir, _, out) = copied_file_and_folder(d.path());
+        let before = (
+            Fingerprint::of(&file).unwrap(),
+            Fingerprint::of(&src_dir).unwrap(),
+        );
+
+        let (_, trashed) = undo_into_log(&out.record);
+
+        assert!(trashed.iter().all(|p| p != &file && p != &src_dir));
+        assert_eq!(Fingerprint::of(&file).unwrap(), before.0);
+        assert_eq!(Fingerprint::of(&src_dir).unwrap(), before.1);
+        assert_eq!(read(&file), "F");
+    }
+
+    #[test]
+    fn undo_reports_a_trash_failure_and_continues() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+
+        let undone = undo_copies(&out.record, |p: &Path| -> Result<(), String> {
+            if p.ends_with("f.txt") {
+                Err("no trash".to_string())
+            } else {
+                Ok(())
+            }
+        });
+
+        assert_eq!(undone.trashed, 1);
+        assert_eq!(
+            undone.failed,
+            [(dest.join("f.txt"), "no trash".to_string())]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fingerprint_of_a_symlink_is_its_target_and_is_not_followed() {
+        let d = tempdir().unwrap();
+        let link = d.path().join("l");
+        std::os::unix::fs::symlink("/nonexistent/target", &link).unwrap();
+        assert_eq!(
+            Fingerprint::of(&link).unwrap(),
+            Fingerprint::Link(PathBuf::from("/nonexistent/target"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn undo_keeps_a_copy_it_cannot_fingerprint() {
+        let d = tempdir().unwrap();
+        let (_, _, dest, out) = copied_file_and_folder(d.path());
+        set_mode(&dest.join("src").join("sub"), 0o000); // cannot be walked
+
+        let (undone, trashed) = undo_into_log(&out.record);
+        set_mode(&dest.join("src").join("sub"), 0o755);
+
+        assert_eq!(undone.kept_changed, [dest.join("src")]);
+        assert_eq!(trashed, [dest.join("f.txt")]);
+        assert_eq!(read(&dest.join("src").join("sub").join("two.txt")), "two!");
     }
 }
