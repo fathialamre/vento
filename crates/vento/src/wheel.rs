@@ -172,6 +172,8 @@ impl WheelController {
                     ActionId::Move => icons.get_move(),
                     ActionId::CopyPath => icons.get_copy_path(),
                     ActionId::Terminal => icons.get_terminal(),
+                    // Placeholder until Copy to gets its own icon.
+                    ActionId::CopyTo => icons.get_copy(),
                 },
             })
             .collect();

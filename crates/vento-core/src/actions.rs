@@ -13,9 +13,28 @@ pub enum ActionId {
     CopyPath,
     /// Open a terminal at the dragged files' location.
     Terminal,
+    /// Copy the dragged files to a chosen folder.
+    CopyTo,
 }
 
 impl ActionId {
+    /// Every action, in the order the settings list offers the ones not yet
+    /// placed.
+    pub const ALL: [ActionId; 6] = [
+        ActionId::Pocket,
+        ActionId::Copy,
+        ActionId::Move,
+        ActionId::CopyPath,
+        ActionId::Terminal,
+        ActionId::CopyTo,
+    ];
+
+    /// Whether the action opens the folder ring when the pointer rests on its
+    /// cell.
+    pub fn takes_ring(self) -> bool {
+        matches!(self, ActionId::Move | ActionId::CopyTo)
+    }
+
     /// Stable key used in the settings file.
     pub fn key(self) -> &'static str {
         match self {
@@ -24,6 +43,7 @@ impl ActionId {
             ActionId::Move => "move",
             ActionId::CopyPath => "copy_path",
             ActionId::Terminal => "terminal",
+            ActionId::CopyTo => "copy_to",
         }
     }
 
@@ -35,6 +55,7 @@ impl ActionId {
             ActionId::Move => "Move",
             ActionId::CopyPath => "Copy Path",
             ActionId::Terminal => "Terminal",
+            ActionId::CopyTo => "Copy to",
         }
     }
 
@@ -46,6 +67,7 @@ impl ActionId {
             "move" => Some(ActionId::Move),
             "copy_path" => Some(ActionId::CopyPath),
             "terminal" => Some(ActionId::Terminal),
+            "copy_to" => Some(ActionId::CopyTo),
             _ => None,
         }
     }
@@ -57,13 +79,7 @@ mod tests {
 
     #[test]
     fn keys_and_labels_roundtrip() {
-        for a in [
-            ActionId::Pocket,
-            ActionId::Copy,
-            ActionId::Move,
-            ActionId::CopyPath,
-            ActionId::Terminal,
-        ] {
+        for a in ActionId::ALL {
             assert_eq!(ActionId::from_key(a.key()), Some(a));
         }
         assert_eq!(ActionId::CopyPath.label(), "Copy Path");
@@ -75,5 +91,16 @@ mod tests {
         assert_eq!(ActionId::Pocket.key(), "pocket");
         assert_eq!(ActionId::Pocket.label(), "Pocket");
         assert_eq!(ActionId::from_key("pocket"), Some(ActionId::Pocket));
+    }
+
+    #[test]
+    fn copy_to_key_label_and_ring() {
+        assert_eq!(ActionId::CopyTo.key(), "copy_to");
+        assert_eq!(ActionId::CopyTo.label(), "Copy to");
+        let ringed: Vec<_> = ActionId::ALL
+            .into_iter()
+            .filter(|a| a.takes_ring())
+            .collect();
+        assert_eq!(ringed, [ActionId::Move, ActionId::CopyTo]);
     }
 }

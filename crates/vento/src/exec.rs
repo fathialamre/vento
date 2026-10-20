@@ -164,6 +164,9 @@ impl Executor {
             ActionId::Pocket => {
                 warn!("Pocket is handled by the Pocket controller");
             }
+            ActionId::CopyTo => {
+                warn!("Copy to is not wired yet");
+            }
             ActionId::Copy => {
                 let result = self.platform.copy_files(&paths);
                 self.finish(action, result, at, || {

@@ -32,7 +32,25 @@ pub struct Settings {
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].
     pub pocket_shortcut: String,
+    /// Folders pinned to the move ring, in order (unique, at most
+    /// [`MAX_PINNED`]).
+    pub pinned_folders: Vec<PathBuf>,
+    /// How long the pointer must rest on Move or Copy to before its ring
+    /// opens, in milliseconds (200 to 1000, in steps of 100).
+    pub move_hold_ms: u32,
+    /// Actions the user turned off. They keep their place in the settings
+    /// list but are not on the wheel; an action is never in both this and
+    /// `actions`.
+    pub hidden_actions: Vec<ActionId>,
 }
+
+/// The most folders that can be pinned to the move ring.
+pub const MAX_PINNED: usize = 7;
+
+/// Default and bounds of [`Settings::move_hold_ms`].
+const DEFAULT_MOVE_HOLD_MS: u32 = 400;
+const MIN_MOVE_HOLD_MS: u32 = 200;
+const MAX_MOVE_HOLD_MS: u32 = 1000;
 
 fn default_pocket_shortcut() -> String {
     "ctrl+alt+p".to_owned()
@@ -59,6 +77,9 @@ impl Default for Settings {
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
             pocket_shortcut: default_pocket_shortcut(),
+            pinned_folders: Vec::new(),
+            move_hold_ms: DEFAULT_MOVE_HOLD_MS,
+            hidden_actions: Vec::new(),
         }
     }
 }
@@ -76,6 +97,9 @@ struct RawSettings {
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
     pocket_shortcut: String,
+    pinned_folders: Vec<PathBuf>,
+    move_hold_ms: u32,
+    hidden_actions: Vec<String>,
 }
 
 impl Default for RawSettings {
@@ -95,6 +119,13 @@ impl From<&Settings> for RawSettings {
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
             pocket_shortcut: s.pocket_shortcut.clone(),
+            pinned_folders: s.pinned_folders.clone(),
+            move_hold_ms: s.move_hold_ms,
+            hidden_actions: s
+                .hidden_actions
+                .iter()
+                .map(|a| a.key().to_owned())
+                .collect(),
         }
     }
 }
@@ -111,6 +142,27 @@ impl From<RawSettings> for Settings {
         if actions.is_empty() {
             actions = default_actions();
         }
+        // An action listed as both shown and hidden counts as shown.
+        let mut hidden_actions: Vec<ActionId> = Vec::new();
+        for id in raw
+            .hidden_actions
+            .iter()
+            .filter_map(|k| ActionId::from_key(k))
+        {
+            if !actions.contains(&id) && !hidden_actions.contains(&id) {
+                hidden_actions.push(id);
+            }
+        }
+        let mut pinned_folders: Vec<PathBuf> = Vec::new();
+        for folder in raw.pinned_folders {
+            if !pinned_folders.contains(&folder) {
+                pinned_folders.push(folder);
+            }
+        }
+        pinned_folders.truncate(MAX_PINNED);
+        // Round to the nearest 100 (halves up), then keep within bounds.
+        let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
+            .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
         Settings {
             layout: raw.layout,
             trigger: raw.trigger,
@@ -120,6 +172,9 @@ impl From<RawSettings> for Settings {
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
             pocket_shortcut: raw.pocket_shortcut,
+            pinned_folders,
+            move_hold_ms,
+            hidden_actions,
         }
     }
 }
@@ -171,14 +226,53 @@ impl Settings {
         })
     }
 
-    /// Writes settings to `path`, creating the parent folder if needed.
+    /// Writes settings to `path`, creating the parent folder if needed. The
+    /// text goes to `settings.toml.tmp` beside the file first and is renamed
+    /// into place, so a crash never leaves a half-written file.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         let text = toml::to_string_pretty(&RawSettings::from(self))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, text)
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
+        std::fs::write(&tmp, text)?;
+        std::fs::rename(&tmp, path).inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
+    }
+
+    /// Every action with whether it is shown on the wheel: the shown ones in
+    /// wheel order, then the hidden ones, then any action in neither list
+    /// (for example one added by a newer version), each exactly once.
+    pub fn action_rows(&self) -> Vec<(ActionId, bool)> {
+        let mut rows: Vec<(ActionId, bool)> = self.actions.iter().map(|a| (*a, true)).collect();
+        for id in self.hidden_actions.iter().chain(&ActionId::ALL) {
+            if !rows.iter().any(|(a, _)| a == id) {
+                rows.push((*id, false));
+            }
+        }
+        rows
+    }
+
+    /// Stores `rows` (as returned by [`Settings::action_rows`], possibly
+    /// reordered or toggled): the shown rows become `actions`, the others
+    /// `hidden_actions`. Returns `false` and changes nothing when no row is
+    /// shown or more than [`MAX_ACTIONS`] are.
+    pub fn set_action_rows(&mut self, rows: &[(ActionId, bool)]) -> bool {
+        let shown: Vec<ActionId> = rows.iter().filter(|(_, on)| *on).map(|(a, _)| *a).collect();
+        if shown.is_empty() || shown.len() > MAX_ACTIONS {
+            return false;
+        }
+        self.hidden_actions = rows
+            .iter()
+            .filter(|(_, on)| !*on)
+            .map(|(a, _)| *a)
+            .collect();
+        self.actions = shown;
+        true
     }
 }
 
@@ -432,5 +526,131 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    fn write_temp(text: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(&p, text).unwrap();
+        (dir, p)
+    }
+
+    #[test]
+    fn old_file_without_new_keys_loads_defaults() {
+        let (_dir, p) = write_temp("layout = \"petals\"\n");
+        let s = Settings::try_load(&p).unwrap();
+        assert!(s.pinned_folders.is_empty());
+        assert_eq!(s.move_hold_ms, 400);
+        assert!(s.hidden_actions.is_empty());
+        assert_eq!(s.action_rows().last(), Some(&(ActionId::CopyTo, false)));
+    }
+
+    #[test]
+    fn hold_is_clamped_and_rounded() {
+        for (raw, want) in [
+            (50, 200),
+            (1234, 1000),
+            (449, 400),
+            (450, 500),
+            (u32::MAX, 1000),
+        ] {
+            let (_dir, p) = write_temp(&format!("move_hold_ms = {raw}\n"));
+            assert_eq!(Settings::load(&p).move_hold_ms, want, "{raw}");
+        }
+    }
+
+    #[test]
+    fn pinned_folders_dedupe_and_cap() {
+        let (_dir, p) = write_temp(
+            "pinned_folders = [\"/a\", \"/b\", \"/a\", \"/c\", \"/d\", \"/e\", \"/f\", \"/g\", \"/h\", \"/i\"]\n",
+        );
+        let want: Vec<PathBuf> = ["/a", "/b", "/c", "/d", "/e", "/f", "/g"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        assert_eq!(Settings::load(&p).pinned_folders, want);
+    }
+
+    #[test]
+    fn action_in_both_lists_counts_as_shown() {
+        let (_dir, p) = write_temp(
+            "actions = [\"move\"]\nhidden_actions = [\"move\", \"copy\", \"copy\", \"teleport\"]\n",
+        );
+        let s = Settings::load(&p);
+        assert_eq!(s.actions, [ActionId::Move]);
+        assert_eq!(s.hidden_actions, [ActionId::Copy]);
+    }
+
+    #[test]
+    fn action_rows_shown_then_hidden_then_new() {
+        let (_dir, p) =
+            write_temp("actions = [\"move\", \"copy\"]\nhidden_actions = [\"terminal\"]\n");
+        assert_eq!(
+            Settings::load(&p).action_rows(),
+            [
+                (ActionId::Move, true),
+                (ActionId::Copy, true),
+                (ActionId::Terminal, false),
+                (ActionId::Pocket, false),
+                (ActionId::CopyPath, false),
+                (ActionId::CopyTo, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn set_action_rows_round_trips_and_keeps_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let mut s = Settings::default();
+        let rows = [
+            (ActionId::Terminal, true),
+            (ActionId::Move, true),
+            (ActionId::Copy, true),
+            (ActionId::CopyTo, false),
+            (ActionId::Pocket, false),
+            (ActionId::CopyPath, false),
+        ];
+        assert!(s.set_action_rows(&rows));
+        assert_eq!(s.action_rows(), rows);
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p).action_rows(), rows);
+    }
+
+    #[test]
+    fn set_action_rows_refuses_all_hidden() {
+        let mut s = Settings::default();
+        let rows: Vec<_> = s
+            .action_rows()
+            .into_iter()
+            .map(|(a, _)| (a, false))
+            .collect();
+        assert!(!s.set_action_rows(&rows));
+        assert_eq!(s, Settings::default());
+    }
+
+    #[test]
+    fn new_settings_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            pinned_folders: vec![PathBuf::from("/Users/x/Projects"), PathBuf::from("/tmp")],
+            move_hold_ms: 700,
+            hidden_actions: vec![ActionId::Terminal],
+            actions: vec![ActionId::Pocket, ActionId::CopyTo],
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn save_is_atomic() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        Settings::default().save(&p).unwrap();
+        Settings::default().save(&p).unwrap();
+        assert!(!dir.path().join("settings.toml.tmp").exists());
+        assert_eq!(Settings::try_load(&p).unwrap(), Settings::default());
     }
 }
