@@ -162,6 +162,14 @@ pub trait Platform {
     /// nothing happens when another app already took focus. Main thread
     /// only.
     fn deactivate_app(&self);
+    /// Take the app's menu bar away, so its key equivalents (⌘Q, ⌘H, …)
+    /// reach vento's key window as ordinary key presses. Kept until
+    /// [`Platform::restore_app_menu`]; calling it again meanwhile does
+    /// nothing. Main thread only; nothing happens where unsupported.
+    fn suspend_app_menu(&self);
+    /// Put back the exact menu bar [`Platform::suspend_app_menu`] took
+    /// away; nothing happens when none was taken. Main thread only.
+    fn restore_app_menu(&self);
     /// The backing scale factor (physical pixels per logical point) of the
     /// screen that contains `p`, a global logical point; the primary screen's
     /// when none does. 1.0 where unsupported.

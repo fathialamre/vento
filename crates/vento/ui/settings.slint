@@ -454,6 +454,8 @@ component MoveTab inherits VerticalLayout {
     in property <[FolderRow]> pinned;
     in property <bool> pinned-full;
     in property <[FolderRow]> recent;
+    // The recent history holds folders, shown or not.
+    in property <bool> has-history;
     in property <bool> can-pin;
     in property <string> hold;
     in property <bool> hold-can-decrease;
@@ -504,7 +506,7 @@ component MoveTab inherits VerticalLayout {
 
         TextButton {
             label: "Clear";
-            enabled: root.recent.length > 0;
+            enabled: root.has-history;
             clicked => { root.recent-cleared(); }
         }
     }
@@ -575,6 +577,7 @@ component PocketTab inherits VerticalLayout {
     in-out property <bool> recording;
     in property <bool> remove-after-drop;
     in property <bool> keep-copies;
+    callback recording-started();
     callback recording-cancelled();
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
@@ -589,7 +592,10 @@ component PocketTab inherits VerticalLayout {
         text: root.shortcut;
         label: "Pocket shortcut";
         recording <=> root.recording;
-        started => { root.shortcut-error = ""; }
+        started => {
+            root.shortcut-error = "";
+            root.recording-started();
+        }
         cancelled => { root.recording-cancelled(); }
     }
 
@@ -694,8 +700,10 @@ export component SettingsPanel inherits Window {
     // The pinned folders in ring order, and whether there is room for more.
     in property <[FolderRow]> pinned;
     in property <bool> pinned-full;
-    // The recent folders the ring shows now (pinned ones left out).
+    // The recent folders the ring shows now (pinned ones left out), and
+    // whether the history behind them holds any folder.
     in property <[FolderRow]> recent;
+    in property <bool> recent-history;
     // The hold delay as shown ("400 ms"), and whether it can go down or up.
     in property <string> hold;
     in property <bool> hold-can-decrease;
@@ -728,6 +736,10 @@ export component SettingsPanel inherits Window {
     callback hold-stepped(int);
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
+    // The shortcut field started recording, and the recording ended (each
+    // way it can end goes through `stop-recording`).
+    callback shortcut-recording-started();
+    callback shortcut-recording-stopped();
 
     callback pause-clicked();
     callback quit-clicked();
@@ -746,6 +758,7 @@ export component SettingsPanel inherits Window {
     public function stop-recording() {
         root.shortcut-recording = false;
         keys.focus();
+        root.shortcut-recording-stopped();
     }
 
     // Leaving the Pocket tab removes the field that was recording.
@@ -803,6 +816,7 @@ export component SettingsPanel inherits Window {
                         pinned: root.pinned;
                         pinned-full: root.pinned-full;
                         recent: root.recent;
+                        has-history: root.recent-history;
                         can-pin: !root.pinned-full;
                         hold: root.hold;
                         hold-can-decrease: root.hold-can-decrease;
@@ -820,6 +834,7 @@ export component SettingsPanel inherits Window {
                         recording <=> root.shortcut-recording;
                         remove-after-drop: root.remove-after-drop;
                         keep-copies: root.keep-copies;
+                        recording-started => { root.shortcut-recording-started(); }
                         recording-cancelled => { root.stop-recording(); }
                         remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
                         keep-copies-toggled(on) => { root.keep-copies-toggled(on); }

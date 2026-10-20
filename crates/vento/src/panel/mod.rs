@@ -29,7 +29,7 @@ use vento_core::settings::{
     MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, Settings,
     is_reserved_shortcut, move_row, parse_shortcut, shortcut_symbols,
 };
-use vento_core::trigger::Modifier;
+use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
 
 use crate::pocket::{display_name, to_image};
@@ -65,6 +65,7 @@ const FOLDER_ICON_PX: u32 = 16;
 /// Why a recorded shortcut was refused.
 const NOT_A_SHORTCUT: &str = "Use a modifier with a letter or digit";
 const RESERVED_SHORTCUT: &str = "macOS uses this shortcut";
+const UNUSABLE_SHORTCUT: &str = "This shortcut can't be used";
 
 /// Registers a Pocket shortcut in place of the current one, or says why it
 /// cannot be registered.
@@ -268,6 +269,20 @@ impl PanelController {
                 panel.apply(|s| s.pocket_keep_copies = on);
             }
         });
+        // While recording, the menu bar is away, so ⌘Q and ⌘H reach the
+        // recorder instead of quitting or hiding vento.
+        let this = self.this.clone();
+        self.window.on_shortcut_recording_started(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.platform.suspend_app_menu();
+            }
+        });
+        let this = self.this.clone();
+        self.window.on_shortcut_recording_stopped(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.platform.restore_app_menu();
+            }
+        });
     }
 
     fn connect_move_tab(&self) {
@@ -389,42 +404,25 @@ impl PanelController {
         }
     }
 
-    /// Ends the recording with `spec`: registers it and, once that worked,
-    /// saves it. A combination that is invalid, reserved by macOS or cannot
-    /// be registered is refused with the reason under the field; the old
-    /// shortcut is then registered again and stays saved.
+    /// Ends the recording with `spec` and applies it the way
+    /// [`apply_shortcut`] says: the reason a refused one was refused shows
+    /// under the field, a failed save in the notice.
     fn record_shortcut(&self, spec: &str) {
         self.window.invoke_stop_recording();
-        if let Some(reason) = shortcut_refusal(spec) {
-            debug!("shortcut {spec:?} refused: {reason}");
-            self.window.set_shortcut_error(reason.into());
-            return;
-        }
         self.hub.refresh_from_disk();
         let old = self.hub.current().pocket_shortcut;
-        if let Err(reason) = (self.try_shortcut)(spec) {
-            warn!("pocket shortcut {spec:?} refused: {reason}");
-            self.restore_shortcut(&old);
-            self.window.set_shortcut_error(reason.into());
-            return;
-        }
-        self.window.set_shortcut_error(SharedString::new());
-        if spec != old
-            && let Err(e) = self.hub.update(|s| s.pocket_shortcut = spec.to_owned())
-        {
-            warn!("cannot save settings: {e}");
-            self.window.set_notice(save_error_text(&e).into());
-            self.restore_shortcut(&old);
+        let outcome = apply_shortcut(spec, &old, &*self.try_shortcut, |spec| {
+            self.hub.update(|s| s.pocket_shortcut = spec.to_owned())
+        });
+        match outcome {
+            ShortcutOutcome::Applied => self.window.set_shortcut_error(SharedString::new()),
+            ShortcutOutcome::Refused(reason) => self.window.set_shortcut_error(reason.into()),
+            ShortcutOutcome::NotSaved(e) => {
+                self.window.set_shortcut_error(SharedString::new());
+                self.window.set_notice(save_error_text(&e).into());
+            }
         }
         self.show_settings();
-    }
-
-    /// Registers `spec`, the shortcut in effect, again after another one was
-    /// tried in its place.
-    fn restore_shortcut(&self, spec: &str) {
-        if let Err(e) = (self.try_shortcut)(spec) {
-            warn!("pocket shortcut {spec:?} unavailable: {e}");
-        }
     }
 
     /// Applies `change` to the settings in effect and saves it, unless it
@@ -504,6 +502,8 @@ impl PanelController {
         set_rows(&self.pinned, pinned_rows);
         set_rows(&self.recent_rows, recent_rows);
         *self.recent_paths.borrow_mut() = recent;
+        self.window
+            .set_recent_history(!self.recent.borrow().items().is_empty());
         self.window.set_pinned_full(pinned.len() >= MAX_PINNED);
     }
 
@@ -575,6 +575,8 @@ impl PanelController {
         if self.window.get_shortcut_recording() {
             self.window.invoke_stop_recording();
         }
+        // Whatever happened to the recording, the menu bar comes back.
+        self.platform.restore_app_menu();
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the settings panel: {e}");
         }
@@ -821,15 +823,67 @@ fn key_char(code: KeyCode) -> Option<char> {
 }
 
 /// Why the recorded shortcut `spec` is refused before trying to register
-/// it, or `None` when it may be tried.
+/// it, or `None` when it may be tried. Shift alone only types a capital, so
+/// it is not a modifier for this.
 fn shortcut_refusal(spec: &str) -> Option<&'static str> {
-    if parse_shortcut(spec).is_none() {
-        Some(NOT_A_SHORTCUT)
-    } else if is_reserved_shortcut(spec) {
-        Some(RESERVED_SHORTCUT)
-    } else {
-        None
+    let shift_only = Modifiers {
+        shift: true,
+        ..Modifiers::default()
+    };
+    match parse_shortcut(spec) {
+        None => Some(NOT_A_SHORTCUT),
+        Some((m, _)) if m == shift_only => Some(NOT_A_SHORTCUT),
+        Some(_) if is_reserved_shortcut(spec) => Some(RESERVED_SHORTCUT),
+        Some(_) => None,
     }
+}
+
+/// How applying a recorded shortcut ended.
+#[derive(Debug)]
+enum ShortcutOutcome {
+    /// It is registered and saved (or was the one saved already).
+    Applied,
+    /// It was refused, for the reason shown under the field; the old one is
+    /// registered again and stays saved.
+    Refused(&'static str),
+    /// It could not be saved; the old one is registered again.
+    NotSaved(io::Error),
+}
+
+/// Applies the recorded shortcut `spec` in place of `old`: refuses one that
+/// is invalid or reserved without trying it; otherwise registers it with
+/// `register` (which frees the old key first) and saves it with `save` only
+/// once that worked, and only if it differs from `old`. When registering or
+/// saving fails, `old` is registered again. The raw reason a registration
+/// failed only goes to the log.
+fn apply_shortcut(
+    spec: &str,
+    old: &str,
+    register: &dyn Fn(&str) -> Result<(), String>,
+    save: impl FnOnce(&str) -> io::Result<()>,
+) -> ShortcutOutcome {
+    let restore = || {
+        if let Err(e) = register(old) {
+            warn!("pocket shortcut {old:?} unavailable: {e}");
+        }
+    };
+    if let Some(reason) = shortcut_refusal(spec) {
+        debug!("shortcut {spec:?} refused: {reason}");
+        return ShortcutOutcome::Refused(reason);
+    }
+    if let Err(reason) = register(spec) {
+        warn!("pocket shortcut {spec:?} refused: {reason}");
+        restore();
+        return ShortcutOutcome::Refused(UNUSABLE_SHORTCUT);
+    }
+    if spec != old
+        && let Err(e) = save(spec)
+    {
+        warn!("cannot save settings: {e}");
+        restore();
+        return ShortcutOutcome::NotSaved(e);
+    }
+    ShortcutOutcome::Applied
 }
 
 /// Makes `model` hold `rows`, touching only the rows that changed, so a
@@ -1102,8 +1156,89 @@ mod tests {
         assert_eq!(shortcut_refusal("ctrl+alt+k"), None);
         assert_eq!(shortcut_refusal("p"), Some(NOT_A_SHORTCUT));
         assert_eq!(shortcut_refusal("ctrl+alt+?"), Some(NOT_A_SHORTCUT));
+        assert_eq!(shortcut_refusal("shift+k"), Some(NOT_A_SHORTCUT));
         assert_eq!(shortcut_refusal("cmd+q"), Some(RESERVED_SHORTCUT));
+        assert_eq!(shortcut_refusal("cmd+h"), Some(RESERVED_SHORTCUT));
         assert_eq!(shortcut_refusal("cmd+shift+4"), Some(RESERVED_SHORTCUT));
+    }
+
+    /// Runs [`apply_shortcut`] with a register that fails for the specs in
+    /// `unregistrable` and a save that fails when `save_fails`, and returns
+    /// the outcome with every call made, in order.
+    fn apply_with_fakes(
+        spec: &str,
+        old: &str,
+        unregistrable: &[&str],
+        save_fails: bool,
+    ) -> (ShortcutOutcome, Vec<String>) {
+        let calls = RefCell::new(Vec::new());
+        let register = |s: &str| {
+            calls.borrow_mut().push(format!("register {s}"));
+            if unregistrable.contains(&s) {
+                Err("already taken".to_owned())
+            } else {
+                Ok(())
+            }
+        };
+        let save = |s: &str| {
+            calls.borrow_mut().push(format!("save {s}"));
+            if save_fails {
+                Err(io::Error::from(io::ErrorKind::PermissionDenied))
+            } else {
+                Ok(())
+            }
+        };
+        let outcome = apply_shortcut(spec, old, &register, save);
+        (outcome, calls.into_inner())
+    }
+
+    #[test]
+    fn a_shortcut_is_saved_only_after_it_registered() {
+        let (outcome, calls) = apply_with_fakes("ctrl+alt+k", "ctrl+alt+p", &[], false);
+        assert!(matches!(outcome, ShortcutOutcome::Applied));
+        assert_eq!(calls, ["register ctrl+alt+k", "save ctrl+alt+k"]);
+        // The one saved already: registered (a no-op for the real one), not
+        // saved again.
+        let (outcome, calls) = apply_with_fakes("ctrl+alt+p", "ctrl+alt+p", &[], false);
+        assert!(matches!(outcome, ShortcutOutcome::Applied));
+        assert_eq!(calls, ["register ctrl+alt+p"]);
+    }
+
+    #[test]
+    fn a_refused_shortcut_is_never_tried() {
+        let (outcome, calls) = apply_with_fakes("cmd+q", "ctrl+alt+p", &[], false);
+        assert!(matches!(
+            outcome,
+            ShortcutOutcome::Refused(RESERVED_SHORTCUT)
+        ));
+        assert!(calls.is_empty());
+        let (outcome, calls) = apply_with_fakes("ctrl+alt+?", "ctrl+alt+p", &[], false);
+        assert!(matches!(outcome, ShortcutOutcome::Refused(NOT_A_SHORTCUT)));
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn a_shortcut_that_cannot_register_brings_the_old_one_back_unsaved() {
+        let (outcome, calls) = apply_with_fakes("ctrl+alt+k", "ctrl+alt+p", &["ctrl+alt+k"], false);
+        assert!(matches!(
+            outcome,
+            ShortcutOutcome::Refused(UNUSABLE_SHORTCUT)
+        ));
+        assert_eq!(calls, ["register ctrl+alt+k", "register ctrl+alt+p"]);
+    }
+
+    #[test]
+    fn a_failed_save_brings_the_old_shortcut_back() {
+        let (outcome, calls) = apply_with_fakes("ctrl+alt+k", "ctrl+alt+p", &[], true);
+        assert!(matches!(outcome, ShortcutOutcome::NotSaved(_)));
+        assert_eq!(
+            calls,
+            [
+                "register ctrl+alt+k",
+                "save ctrl+alt+k",
+                "register ctrl+alt+p"
+            ]
+        );
     }
 
     #[test]

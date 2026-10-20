@@ -95,6 +95,10 @@ impl Platform for StubPlatform {
 
     fn deactivate_app(&self) {}
 
+    fn suspend_app_menu(&self) {}
+
+    fn restore_app_menu(&self) {}
+
     fn scale_factor_at(&self, _p: Point) -> f64 {
         1.0
     }
@@ -146,6 +150,8 @@ mod tests {
             Err(PlatformError::Unsupported)
         ));
         assert!(!p.screens_changed());
+        p.suspend_app_menu();
+        p.restore_app_menu();
         assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
     }
 }

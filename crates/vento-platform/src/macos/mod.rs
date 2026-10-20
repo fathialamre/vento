@@ -8,7 +8,7 @@ use std::rc::Rc;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy,
+    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy, NSMenu,
     NSRunningApplication, NSWorkspace,
 };
 use vento_core::geometry::{Point, Rect};
@@ -36,6 +36,10 @@ pub struct MacPlatform {
     /// The app that was in front when vento last brought itself forward,
     /// given focus back by [`Platform::deactivate_app`].
     previous_app: RefCell<Option<Retained<NSRunningApplication>>>,
+    /// The menu bar taken away by [`Platform::suspend_app_menu`]: `Some`
+    /// while it is away, holding the menu to put back (`None` if there was
+    /// none).
+    suspended_menu: RefCell<Option<Option<Retained<NSMenu>>>>,
 }
 
 impl Default for MacPlatform {
@@ -51,6 +55,7 @@ impl MacPlatform {
             catcher: OnceCell::new(),
             _observer: notify::AppObserver::install(),
             previous_app: RefCell::new(None),
+            suspended_menu: RefCell::new(None),
         }
     }
 }
@@ -186,6 +191,33 @@ impl Platform for MacPlatform {
             }
             _ => app.deactivate(),
         }
+    }
+
+    fn suspend_app_menu(&self) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("suspend_app_menu called off the main thread; ignored");
+            return;
+        };
+        let mut suspended = self.suspended_menu.borrow_mut();
+        if suspended.is_some() {
+            return;
+        }
+        let app = NSApplication::sharedApplication(mtm);
+        *suspended = Some(app.mainMenu());
+        app.setMainMenu(None);
+        log::debug!("app menu suspended");
+    }
+
+    fn restore_app_menu(&self) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("restore_app_menu called off the main thread; ignored");
+            return;
+        };
+        let Some(menu) = self.suspended_menu.borrow_mut().take() else {
+            return;
+        };
+        NSApplication::sharedApplication(mtm).setMainMenu(menu.as_deref());
+        log::debug!("app menu restored");
     }
 
     fn scale_factor_at(&self, p: Point) -> f64 {
