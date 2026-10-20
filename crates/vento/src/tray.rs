@@ -39,17 +39,25 @@ thread_local! {
 /// icon's centre may lie and still count as on that screen.
 const MENU_BAR_SLACK: f64 = 80.0;
 
+/// How far outside the icon's frame the cursor may be and still count as on
+/// it, in points.
+const CURSOR_SLACK: f64 = 2.0;
+
 /// The icon's frame in global logical points, from its frame in physical
 /// pixels.
 ///
 /// The pixels are the icon's logical frame times the backing scale of the
-/// screen it is on, so each screen is tried with its own scale (from
-/// `scale_at`, given a point on that screen): the first screen the scaled
-/// frame lands on wins. Work areas start below the menu bar, where the icon
-/// is, so the icon may lie above the work area by [`MENU_BAR_SLACK`]. With no
-/// match the first screen's scale is used.
+/// screen it is on. The cursor is on the icon when it is clicked, so the
+/// scale at the cursor (`scale_at`, given a global logical point) is tried
+/// first; it is believed when the frame it gives holds the cursor. That
+/// settles screens of different scales, where one pixel value can be a valid
+/// position on two of them. Otherwise each screen is tried with its own scale
+/// and the first one the frame lands on wins. Work areas start below the menu
+/// bar, where the icon is, so the icon may lie above the work area by
+/// [`MENU_BAR_SLACK`]. With no match the first screen's scale is used.
 fn icon_frame(
     physical: &tray_icon::Rect,
+    cursor: Point,
     screens: &[Rect],
     scale_at: &dyn Fn(Point) -> f64,
 ) -> Rect {
@@ -63,6 +71,14 @@ fn icon_frame(
         x: r.x + r.w / 2.0,
         y: r.y + r.h / 2.0,
     };
+    let at_cursor = scaled(scale_at(cursor));
+    if cursor.x >= at_cursor.x - CURSOR_SLACK
+        && cursor.x <= at_cursor.x + at_cursor.w + CURSOR_SLACK
+        && cursor.y >= at_cursor.y - CURSOR_SLACK
+        && cursor.y <= at_cursor.y + at_cursor.h + CURSOR_SLACK
+    {
+        return at_cursor;
+    }
     for screen in screens {
         let frame = scaled(scale_at(centre_of(screen)));
         let c = centre_of(&frame);
@@ -201,7 +217,8 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     // only the (Send) frame crosses to the main thread.
     PANEL_DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |physical: tray_icon::Rect| {
-            let frame = icon_frame(&physical, &platform.screens(), &|p| {
+            let cursor = platform.sample_input().cursor;
+            let frame = icon_frame(&physical, cursor, &platform.screens(), &|p| {
                 platform.scale_factor_at(p)
             });
             on_open_panel(frame);
@@ -257,6 +274,12 @@ mod tests {
         }
     }
 
+    /// A cursor that is nowhere near any icon, so the screen search decides.
+    const FAR: Point = Point {
+        x: -5000.0,
+        y: -5000.0,
+    };
+
     fn screen(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }
     }
@@ -265,7 +288,7 @@ mod tests {
     fn icon_frame_divides_by_the_screens_scale() {
         // A retina screen with a 25 pt menu bar; the icon is 36 px wide.
         let screens = [screen(0.0, 25.0, 1440.0, 875.0)];
-        let f = icon_frame(&physical(2800.0, 0.0, 36, 48), &screens, &|_| 2.0);
+        let f = icon_frame(&physical(2800.0, 0.0, 36, 48), FAR, &screens, &|_| 2.0);
         assert_eq!((f.x, f.y, f.w, f.h), (1400.0, 0.0, 18.0, 24.0));
     }
 
@@ -278,19 +301,52 @@ mod tests {
         ];
         let scale = |p: Point| if p.x < 1440.0 { 2.0 } else { 1.0 };
         // Divided by 2 this would be at 1500 pt: off the primary screen.
-        let f = icon_frame(&physical(3000.0, 0.0, 24, 24), &screens, &scale);
+        let f = icon_frame(&physical(3000.0, 0.0, 24, 24), FAR, &screens, &scale);
         assert_eq!((f.x, f.y, f.w, f.h), (3000.0, 0.0, 24.0, 24.0));
         // On the primary screen the first match wins.
-        let f = icon_frame(&physical(2000.0, 0.0, 36, 48), &screens, &scale);
+        let f = icon_frame(&physical(2000.0, 0.0, 36, 48), FAR, &screens, &scale);
         assert_eq!((f.x, f.w), (1000.0, 18.0));
+    }
+
+    #[test]
+    fn icon_frame_trusts_the_cursor_in_the_ambiguous_range() {
+        // A 2x primary (1440 pt) beside a 1x screen. The pixel position 2000
+        // is valid on both: 1000 pt on the primary, 2000 pt on the 1x screen.
+        let screens = [
+            screen(0.0, 25.0, 1440.0, 875.0),
+            screen(1440.0, 25.0, 1920.0, 1055.0),
+        ];
+        let scale = |p: Point| if p.x < 1440.0 { 2.0 } else { 1.0 };
+        let icon = physical(2000.0, 0.0, 24, 24);
+        // The click was on the 1x screen's menu bar.
+        let on_second = Point { x: 2010.0, y: 12.0 };
+        let f = icon_frame(&icon, on_second, &screens, &scale);
+        assert_eq!((f.x, f.w), (2000.0, 24.0));
+        // The click was on the primary's menu bar.
+        let on_first = Point { x: 1005.0, y: 6.0 };
+        let f = icon_frame(&physical(2000.0, 0.0, 36, 48), on_first, &screens, &scale);
+        assert_eq!((f.x, f.w), (1000.0, 18.0));
+    }
+
+    #[test]
+    fn icon_frame_ignores_a_cursor_that_is_not_on_the_icon() {
+        let screens = [
+            screen(0.0, 25.0, 1440.0, 875.0),
+            screen(1440.0, 25.0, 1920.0, 1055.0),
+        ];
+        let scale = |p: Point| if p.x < 1440.0 { 2.0 } else { 1.0 };
+        // The cursor moved away: the screen search still finds the icon.
+        let away = Point { x: 700.0, y: 400.0 };
+        let f = icon_frame(&physical(3000.0, 0.0, 24, 24), away, &screens, &scale);
+        assert_eq!((f.x, f.w), (3000.0, 24.0));
     }
 
     #[test]
     fn icon_frame_without_a_match_uses_the_first_screens_scale() {
         let screens = [screen(0.0, 25.0, 1440.0, 875.0)];
-        let f = icon_frame(&physical(9000.0, 0.0, 36, 48), &screens, &|_| 2.0);
+        let f = icon_frame(&physical(9000.0, 0.0, 36, 48), FAR, &screens, &|_| 2.0);
         assert_eq!((f.x, f.w), (4500.0, 18.0));
-        let f = icon_frame(&physical(9000.0, 0.0, 36, 48), &[], &|_| 2.0);
+        let f = icon_frame(&physical(9000.0, 0.0, 36, 48), FAR, &[], &|_| 2.0);
         assert_eq!((f.x, f.w), (9000.0, 36.0));
     }
 

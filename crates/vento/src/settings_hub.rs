@@ -30,6 +30,8 @@ impl SettingsHub {
     /// the defaults stay in memory and the reason is kept for
     /// [`SettingsHub::load_error`].
     pub fn new(path: PathBuf) -> Rc<Self> {
+        // Before the read, so a write in between counts as not yet seen.
+        let seen_mtime = Cell::new(modified(&path));
         let (settings, error) = match Settings::try_load(&path) {
             Ok(settings) => (settings, None),
             Err(e) => {
@@ -37,7 +39,6 @@ impl SettingsHub {
                 (Settings::default(), Some(e.to_string()))
             }
         };
-        let seen_mtime = Cell::new(modified(&path));
         Rc::new(SettingsHub {
             path,
             shared: Rc::new(RefCell::new(settings)),
@@ -70,7 +71,10 @@ impl SettingsHub {
     }
 
     /// Applies `f` to a copy of the settings, saves it, makes it current and
-    /// tells the listeners. On a save error nothing changes.
+    /// tells the listeners. A hand edit made since the last read is picked up
+    /// first, so it is not overwritten; if that file is invalid, `f` is
+    /// applied to the current settings and replaces the file. On a save error
+    /// nothing changes.
     ///
     /// # Errors
     /// If the settings file cannot be written.
@@ -79,6 +83,7 @@ impl SettingsHub {
         expect(dead_code, reason = "the settings panel (a later task) is the caller")
     )]
     pub fn update(&self, f: impl FnOnce(&mut Settings)) -> io::Result<()> {
+        self.refresh_from_disk();
         let old = self.current();
         let mut new = old.clone();
         f(&mut new);
@@ -201,6 +206,30 @@ mod tests {
         let shared = hub.shared();
         hub.update(|s| s.move_hold_ms = 600).unwrap();
         assert_eq!(shared.borrow().move_hold_ms, 600);
+    }
+
+    #[test]
+    fn update_keeps_a_hand_edit_made_since_the_last_read() {
+        let (_dir, path) = temp_file(Some("layout = \"honeycomb\"\n"));
+        let hub = SettingsHub::new(path.clone());
+        rewrite(&path, "layout = \"petals\"\nmove_hold_ms = 800\n", 5);
+        hub.update(|s| s.pocket_keep_copies = true).unwrap();
+        let saved = Settings::try_load(&path).unwrap();
+        assert_eq!(saved.layout, Layout::Petals);
+        assert_eq!(saved.move_hold_ms, 800);
+        assert!(saved.pocket_keep_copies);
+    }
+
+    #[test]
+    fn update_over_an_invalid_hand_edit_replaces_it() {
+        let (_dir, path) = temp_file(Some("layout = \"petals\"\n"));
+        let hub = SettingsHub::new(path.clone());
+        rewrite(&path, "layout = \n", 5);
+        hub.update(|s| s.pocket_keep_copies = true).unwrap();
+        assert!(hub.load_error().is_none());
+        let saved = Settings::try_load(&path).unwrap();
+        assert_eq!(saved.layout, Layout::Petals, "in-memory settings are kept");
+        assert!(saved.pocket_keep_copies);
     }
 
     #[test]
