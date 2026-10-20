@@ -176,8 +176,43 @@ pub fn copy_into(src: &Path, dir: &Path) -> Result<PathBuf, FileOpError> {
     })
 }
 
+/// Which file on disk an entry is: `(device, inode)` on unix. Two different
+/// files can share size and modification time (a copy keeps its source's
+/// mtime), but never this. Targets without file ids carry `()`, so only the
+/// size/time/target checks apply there.
+#[cfg(unix)]
+pub type FileId = (u64, u64);
+/// See the unix definition; other targets have no file id.
+#[cfg(not(unix))]
+pub type FileId = ();
+
+#[cfg(unix)]
+fn file_id(meta: &fs::Metadata) -> FileId {
+    use std::os::unix::fs::MetadataExt;
+    (meta.dev(), meta.ino())
+}
+
+#[cfg(not(unix))]
+fn file_id(_meta: &fs::Metadata) -> FileId {}
+
+/// One entry below a fingerprinted folder.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EntryPrint {
+    /// Path relative to the folder.
+    pub path: PathBuf,
+    /// Size in bytes.
+    pub len: u64,
+    /// Last modification time.
+    pub modified: SystemTime,
+    /// Which file this is.
+    pub id: FileId,
+    /// Target, for a symlink; `None` for anything else.
+    pub link: Option<PathBuf>,
+}
+
 /// What a copy looked like right after vento made it, so undo can tell
-/// whether it has been touched since.
+/// whether it has been touched since, or replaced by something else (such as
+/// the user's own original moved into its place).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fingerprint {
     /// A regular (or other non-folder, non-link) file.
@@ -186,12 +221,23 @@ pub enum Fingerprint {
         len: u64,
         /// Last modification time.
         modified: SystemTime,
+        /// Which file this is.
+        id: FileId,
     },
-    /// A folder: every entry below it as `(path relative to the folder, size,
-    /// modification time)`, sorted by path.
-    Dir(Vec<(PathBuf, u64, SystemTime)>),
-    /// A symlink, identified by its target; never followed.
-    Link(PathBuf),
+    /// A folder: its own identity and every entry below it, sorted by path.
+    Dir {
+        /// Which folder this is.
+        id: FileId,
+        /// Every entry below the folder.
+        entries: Vec<EntryPrint>,
+    },
+    /// A symlink, identified by its target and itself; never followed.
+    Link {
+        /// Where it points.
+        target: PathBuf,
+        /// Which link this is.
+        id: FileId,
+    },
 }
 
 impl Fingerprint {
@@ -202,35 +248,47 @@ impl Fingerprint {
     pub fn of(path: &Path) -> io::Result<Fingerprint> {
         let meta = fs::symlink_metadata(path)?;
         let kind = meta.file_type();
+        let id = file_id(&meta);
         if kind.is_symlink() {
-            Ok(Fingerprint::Link(fs::read_link(path)?))
+            Ok(Fingerprint::Link {
+                target: fs::read_link(path)?,
+                id,
+            })
         } else if kind.is_dir() {
             let mut entries = Vec::new();
             collect_entries(path, Path::new(""), &mut entries)?;
             entries.sort();
-            Ok(Fingerprint::Dir(entries))
+            Ok(Fingerprint::Dir { id, entries })
         } else {
             Ok(Fingerprint::File {
                 len: meta.len(),
                 modified: meta.modified()?,
+                id,
             })
         }
     }
 }
 
-/// Appends every entry below `dir` to `out` as `(relative path, size, mtime)`.
-/// Symlinks are listed as themselves and not followed.
-fn collect_entries(
-    dir: &Path,
-    rel: &Path,
-    out: &mut Vec<(PathBuf, u64, SystemTime)>,
-) -> io::Result<()> {
+/// Appends every entry below `dir` to `out`. Symlinks are listed as
+/// themselves (with their target) and not followed.
+fn collect_entries(dir: &Path, rel: &Path, out: &mut Vec<EntryPrint>) -> io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         let meta = fs::symlink_metadata(&path)?;
         let rel_path = rel.join(entry.file_name());
-        out.push((rel_path.clone(), meta.len(), meta.modified()?));
+        let link = if meta.file_type().is_symlink() {
+            Some(fs::read_link(&path)?)
+        } else {
+            None
+        };
+        out.push(EntryPrint {
+            path: rel_path.clone(),
+            len: meta.len(),
+            modified: meta.modified()?,
+            id: file_id(&meta),
+            link,
+        });
         if meta.is_dir() {
             collect_entries(&path, &rel_path, out)?;
         }
@@ -1369,10 +1427,10 @@ mod tests {
         let (s1, c1, f1) = &out.record.copies[1];
         assert_eq!((s1, c1), (&src_dir, &dest.join("src")));
         assert_eq!(f1, &Fingerprint::of(c1).unwrap());
-        let Fingerprint::Dir(entries) = f1 else {
+        let Fingerprint::Dir { entries, .. } = f1 else {
             panic!("a folder copy gets a Dir fingerprint");
         };
-        let rel: Vec<&Path> = entries.iter().map(|(p, _, _)| p.as_path()).collect();
+        let rel: Vec<&Path> = entries.iter().map(|e| e.path.as_path()).collect();
         assert_eq!(
             rel,
             [
@@ -1531,7 +1589,10 @@ mod tests {
         std::os::unix::fs::symlink("/nonexistent/target", &link).unwrap();
         assert_eq!(
             Fingerprint::of(&link).unwrap(),
-            Fingerprint::Link(PathBuf::from("/nonexistent/target"))
+            Fingerprint::Link {
+                target: PathBuf::from("/nonexistent/target"),
+                id: file_id(&fs::symlink_metadata(&link).unwrap()),
+            }
         );
     }
 
@@ -1541,12 +1602,92 @@ mod tests {
         let d = tempdir().unwrap();
         let (_, _, dest, out) = copied_file_and_folder(d.path());
         set_mode(&dest.join("src").join("sub"), 0o000); // cannot be walked
+        let walk_fails = Fingerprint::of(&dest.join("src")).is_err();
 
         let (undone, trashed) = undo_into_log(&out.record);
         set_mode(&dest.join("src").join("sub"), 0o755);
+        assert!(walk_fails, "the walk must really fail for this test");
 
         assert_eq!(undone.kept_changed, [dest.join("src")]);
         assert_eq!(trashed, [dest.join("f.txt")]);
         assert_eq!(read(&dest.join("src").join("sub").join("two.txt")), "two!");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn undo_keeps_a_source_moved_into_the_copys_place() {
+        let d = tempdir().unwrap();
+        let (_, dest) = src_and_dest(d.path());
+        let file = d.path().join("report.pdf");
+        write(&file, "R");
+        let out = copy_items(std::slice::from_ref(&file), &dest);
+        let copy = dest.join("report.pdf");
+        assert_eq!(out.record.copies[0].1, copy);
+        // The copy shares its source's size and mtime; only its identity differs.
+        assert_eq!(fs::metadata(&copy).unwrap().len(), 1);
+        fs::remove_file(&copy).unwrap();
+        fs::rename(&file, &copy).unwrap();
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, std::slice::from_ref(&copy));
+        assert_eq!(undone.trashed, 0);
+        assert!(trashed.is_empty(), "trash must not be called");
+        assert_eq!(read(&copy), "R");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn undo_keeps_a_source_folder_moved_into_the_copys_place() {
+        let d = tempdir().unwrap();
+        let (src_dir, dest) = src_and_dest(d.path());
+        fs::create_dir(&src_dir).unwrap();
+        write(&src_dir.join("one.txt"), "one"); // flat: no subfolder mtimes to differ
+        let out = copy_items(std::slice::from_ref(&src_dir), &dest);
+        let copy = dest.join("src");
+        fs::remove_dir_all(&copy).unwrap();
+        fs::rename(&src_dir, &copy).unwrap();
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, std::slice::from_ref(&copy));
+        assert!(trashed.is_empty(), "trash must not be called");
+        assert_eq!(read(&copy.join("one.txt")), "one");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn undo_keeps_a_symlink_moved_into_the_copys_place() {
+        let d = tempdir().unwrap();
+        let (_, dest) = src_and_dest(d.path());
+        let link = d.path().join("l");
+        std::os::unix::fs::symlink("/nonexistent/target", &link).unwrap();
+        let out = copy_items(std::slice::from_ref(&link), &dest);
+        let copy = dest.join("l");
+        fs::remove_file(&copy).unwrap();
+        fs::rename(&link, &copy).unwrap();
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, [copy]);
+        assert!(trashed.is_empty(), "trash must not be called");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn undo_keeps_a_folder_whose_inner_link_was_retargeted() {
+        let d = tempdir().unwrap();
+        let (src_dir, dest) = src_and_dest(d.path());
+        fs::create_dir(&src_dir).unwrap();
+        std::os::unix::fs::symlink("/one", src_dir.join("l")).unwrap();
+        let out = copy_items(std::slice::from_ref(&src_dir), &dest);
+        let inner = dest.join("src").join("l");
+        fs::remove_file(&inner).unwrap();
+        std::os::unix::fs::symlink("/two", &inner).unwrap();
+
+        let (undone, trashed) = undo_into_log(&out.record);
+
+        assert_eq!(undone.kept_changed, [dest.join("src")]);
+        assert!(trashed.is_empty());
     }
 }
