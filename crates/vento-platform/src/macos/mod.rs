@@ -152,8 +152,9 @@ impl Platform for MacPlatform {
             log::warn!("activate_app called off the main thread; ignored");
             return;
         };
-        // Remember who had focus, unless that is vento itself (already in
-        // front), which keeps the app remembered before.
+        // Remember who had focus. When that is vento itself (already in
+        // front), whatever was remembered stays; `deactivate_app` always
+        // takes it, so nothing is handed focus twice.
         let me = NSRunningApplication::currentApplication().processIdentifier();
         if let Some(front) = NSWorkspace::sharedWorkspace().frontmostApplication()
             && front.processIdentifier() != me

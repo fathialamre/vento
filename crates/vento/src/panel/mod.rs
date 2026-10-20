@@ -2,7 +2,8 @@
 //! closes on Esc, Done, a second click on the icon or a click outside.
 //!
 //! The window is created on the first open and only hidden afterwards; a
-//! closed panel runs no timers.
+//! closed panel runs no timers (closing arms one single-shot timer for the
+//! next turn of the event loop).
 
 use std::cell::Cell;
 use std::rc::{Rc, Weak};
@@ -11,7 +12,7 @@ use std::time::{Duration, Instant};
 use log::{debug, warn};
 use slint::winit_030::winit::event::WindowEvent;
 use slint::winit_030::{EventResult, WinitWindowAccessor};
-use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition};
+use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Timer};
 use vento_core::geometry::{Point, Rect, screen_for};
 use vento_platform::Platform;
 
@@ -22,6 +23,9 @@ use crate::ui::SettingsPanel;
 const WIDTH: f64 = 340.0;
 /// Gap between the bottom of the menu-bar icon and the top of the panel.
 const GAP: f64 = 6.0;
+/// The least distance from the panel to the left, right and bottom edges
+/// of the work area.
+const INSET: f64 = 8.0;
 /// A click on the icon this soon after the panel closed for losing focus
 /// is the click that took the focus: it closed the panel and must not open
 /// it again.
@@ -124,6 +128,12 @@ impl PanelController {
     }
 
     /// Hides the panel and hands focus back to the app that had it.
+    ///
+    /// Focus is handed back on the next turn of the event loop: when the
+    /// panel closes because the user clicked into another app, AppKit takes
+    /// the key window away before vento stops being active, and only once
+    /// that is over can `deactivate_app` see that focus is already
+    /// elsewhere and leave it there.
     pub fn close(&self) {
         if !self.open.replace(false) {
             return;
@@ -131,7 +141,15 @@ impl PanelController {
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the settings panel: {e}");
         }
-        self.platform.deactivate_app();
+        let this = self.this.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            // Reopened in the meantime: vento keeps the focus.
+            if let Some(panel) = this.upgrade()
+                && !panel.is_open()
+            {
+                panel.platform.deactivate_app();
+            }
+        });
         debug!("panel closed");
     }
 
@@ -183,10 +201,18 @@ impl PanelController {
     }
 }
 
-/// The notice for a settings file that could not be loaded, given why
-/// (e.g. `"line 3: expected ="`).
+/// The notice for a settings file that could not be loaded, given why: a
+/// parse error (`"line 3: expected ="`) or a read error.
 fn notice_text(error: &str) -> String {
-    format!("Your settings file has an error on {error}; changing a setting here will replace it")
+    if error.starts_with("line ") {
+        format!(
+            "Your settings file has an error on {error}; changing a setting here will replace it"
+        )
+    } else {
+        format!(
+            "Your settings file can't be read ({error}); changing a setting here will replace it"
+        )
+    }
 }
 
 /// Whether a click on the icon at `now` must not open the panel, because
@@ -198,7 +224,9 @@ fn reopen_blocked(blurred_at: Option<Instant>, now: Instant) -> bool {
 /// Top-left corner of a panel `height` points tall: centred under `icon`,
 /// [`GAP`] below it, and clamped to the icon's screen (the work area that
 /// holds, or is nearest to, the point where the panel's top edge meets its
-/// centre line, just below the menu bar).
+/// centre line, just below the menu bar), [`INSET`] in from its left, right
+/// and bottom edges. The top edge needs no inset: the panel hangs from the
+/// menu bar, already [`GAP`] below the icon.
 fn panel_position(icon: Rect, height: f64, screens: &[Rect]) -> (f64, f64) {
     let anchor = Point {
         x: icon.x + icon.w / 2.0,
@@ -209,8 +237,8 @@ fn panel_position(icon: Rect, height: f64, screens: &[Rect]) -> (f64, f64) {
         return (x, y);
     };
     (
-        clamp(x, screen.x, screen.x + screen.w - WIDTH),
-        clamp(y, screen.y, screen.y + screen.h - height),
+        clamp(x, screen.x + INSET, screen.x + screen.w - WIDTH - INSET),
+        clamp(y, screen.y, screen.y + screen.h - height - INSET),
     )
 }
 
@@ -246,10 +274,13 @@ mod tests {
     fn panel_stays_on_the_screen_near_its_edges() {
         // An icon at the right end of the menu bar.
         let icon = rect(1410.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]).0, 1100.0);
+        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]).0, 1092.0);
         // And one at the far left.
         let icon = rect(4.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]).0, 0.0);
+        assert_eq!(panel_position(icon, 400.0, &[PRIMARY]).0, 8.0);
+        // Tall enough to reach the bottom: lifted to stay 8 pt above it.
+        let icon = rect(700.0, 0.0, 24.0, 25.0);
+        assert_eq!(panel_position(icon, 864.0, &[PRIMARY]).1, 28.0);
         // Too tall for the screen: the top stays below the menu bar.
         let icon = rect(700.0, 0.0, 24.0, 25.0);
         assert_eq!(panel_position(icon, 2000.0, &[PRIMARY]).1, 25.0);
@@ -262,7 +293,7 @@ mod tests {
         let second = rect(1440.0, 37.0, 1920.0, 1043.0);
         let icon = rect(3330.0, 0.0, 24.0, 37.0);
         let at = panel_position(icon, 400.0, &[PRIMARY, second]);
-        assert_eq!(at, (3020.0, 43.0));
+        assert_eq!(at, (3012.0, 43.0));
     }
 
     #[test]
@@ -272,7 +303,7 @@ mod tests {
         let above = rect(0.0, -1055.0, 1920.0, 1055.0);
         let icon = rect(1410.0, 0.0, 24.0, 25.0);
         let at = panel_position(icon, 400.0, &[above, PRIMARY]);
-        assert_eq!(at, (1100.0, 31.0));
+        assert_eq!(at, (1092.0, 31.0));
     }
 
     #[test]
@@ -296,6 +327,10 @@ mod tests {
         assert_eq!(
             notice_text("line 3: expected ="),
             "Your settings file has an error on line 3: expected =; changing a setting here will replace it"
+        );
+        assert_eq!(
+            notice_text("Permission denied (os error 13)"),
+            "Your settings file can't be read (Permission denied (os error 13)); changing a setting here will replace it"
         );
     }
 }

@@ -85,18 +85,26 @@ component TabBar inherits Rectangle {
     }
 }
 
-// A quiet footer item: an icon and a word, highlighted on hover.
+// A quiet footer item: an icon and a word, highlighted on hover. A
+// toggleable item that is on is tinted orange.
 component FooterItem inherits Rectangle {
     in property <image> icon;
     in property <string> label;
-    in property <color> tint: Theme.muted;
+    in property <bool> toggleable;
+    in property <bool> toggled;
     callback clicked();
+
+    property <color> tint: self.toggled ? Theme.accent : (touch.has-hover ? Theme.text : Theme.muted);
 
     height: 28px;
     border-radius: 6px;
-    background: touch.has-hover ? Theme.surface : transparent;
+    background: self.toggled
+        ? (touch.has-hover ? #ff6a1a38 : #ff6a1a24)
+        : (touch.has-hover ? Theme.surface : transparent);
     accessible-role: button;
     accessible-label: self.label;
+    accessible-checkable: self.toggleable;
+    accessible-checked: self.toggled;
     accessible-action-default => { self.clicked(); }
 
     HorizontalLayout {
@@ -108,13 +116,13 @@ component FooterItem inherits Rectangle {
             source: root.icon;
             width: 16px;
             height: 16px;
-            colorize: touch.has-hover ? Theme.text : root.tint;
+            colorize: root.tint;
         }
 
         Text {
             text: root.label;
             font-size: 13px;
-            color: touch.has-hover ? Theme.text : root.tint;
+            color: root.tint;
             vertical-alignment: center;
         }
     }
@@ -203,7 +211,7 @@ export component SettingsPanel inherits Window {
 
     // The selected tab: 0 Wheel, 1 Move, 2 Pocket, 3 General.
     in-out property <int> tab;
-    // vento is paused: the Pause item offers to resume.
+    // vento is paused: the Pause item shows as on.
     in property <bool> paused;
     // Shown above the page when not empty.
     in property <string> notice;
@@ -272,8 +280,9 @@ export component SettingsPanel inherits Window {
 
                     FooterItem {
                         icon: root.paused ? PanelIcons.resume : PanelIcons.pause;
-                        label: root.paused ? "Resume" : "Pause";
-                        tint: root.paused ? Theme.accent : Theme.muted;
+                        label: "Pause";
+                        toggleable: true;
+                        toggled: root.paused;
                         clicked => { root.pause-clicked(); }
                     }
 
