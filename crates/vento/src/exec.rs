@@ -91,6 +91,9 @@ fn copy_toast_text(outcome: &CopyOutcome) -> String {
 /// Toast text for a finished undo of a Copy to: what went to the Trash, what
 /// was left because it had changed, and what the Trash refused.
 fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
+    if outcome.trashed == 0 && outcome.kept_changed.is_empty() && outcome.failed.is_empty() {
+        return "Nothing left to remove".into();
+    }
     let mut text = format!("Removed {}", plural_copies(outcome.trashed));
     if !outcome.kept_changed.is_empty() {
         text.push_str(&format!(", kept {} changed", outcome.kept_changed.len()));
@@ -101,10 +104,30 @@ fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
     text
 }
 
-/// Whether a finished move or copy puts its destination in the recent list:
-/// only when at least one item actually went there.
-fn should_remember(moved: usize) -> bool {
-    moved > 0
+/// What a finished move or copy leads to.
+#[derive(Debug, PartialEq, Eq)]
+enum AfterTransfer {
+    /// Nothing went through and something failed: toast this reason; the
+    /// destination is not remembered and there is nothing to undo.
+    Error(String),
+    /// Nothing went through and nothing failed (every item was already
+    /// there): toast that; nothing is remembered.
+    Nothing,
+    /// At least one item went through: remember the destination, keep the
+    /// undo and toast the outcome.
+    Done,
+}
+
+/// Decides what follows a move or copy that handled `done` items, the first
+/// failure being `first_error` (if any).
+fn after_transfer(done: usize, first_error: Option<String>) -> AfterTransfer {
+    if done > 0 {
+        AfterTransfer::Done
+    } else if let Some(reason) = first_error {
+        AfterTransfer::Error(reason)
+    } else {
+        AfterTransfer::Nothing
+    }
 }
 
 /// Toast text for a finished undo.
@@ -139,8 +162,8 @@ pub enum UndoKind {
 /// Callback told which undo, if any, is available.
 type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 
-/// Toast shown when a move or undo is requested while one is running.
-const BUSY_TEXT: &str = "Busy — a move is still running";
+/// Toast shown when a move, copy or undo is requested while one is running.
+const BUSY_TEXT: &str = "Busy — still working";
 
 /// What is left to undo after `outcome`, the undo of `record`: the items that
 /// failed to go back, so the undo can be retried. An original that was copied
@@ -258,6 +281,9 @@ impl Executor {
             ActionId::Move | ActionId::CopyTo => match dest {
                 Some(dest) => self.transfer(action, paths, dest, at),
                 None => {
+                    if self.refuse_if_busy(at) {
+                        return;
+                    }
                     // The folder picker is modal: let the wheel finish
                     // handling the drop before it opens.
                     let this = self.this.clone();
@@ -485,22 +511,25 @@ impl Executor {
         for (path, error) in &outcome.failed {
             warn!("cannot move {}: {error}", path.display());
         }
-        if outcome.record.moved.is_empty() {
-            match outcome.failed.first() {
-                Some((_, error)) => self.toast_error(ActionId::Move, &error.to_string(), at),
-                None => {
-                    debug!("nothing to move");
-                    self.toast.show("Nothing to move", None, at);
-                }
+        let first_error = outcome.failed.first().map(|(_, e)| e.to_string());
+        match after_transfer(outcome.record.moved.len(), first_error) {
+            AfterTransfer::Error(reason) => {
+                self.toast_error(ActionId::Move, &reason, at);
+                return;
             }
-            return;
+            AfterTransfer::Nothing => {
+                debug!("nothing to move");
+                self.toast.show("Nothing to move", None, at);
+                return;
+            }
+            AfterTransfer::Done => {}
         }
         info!(
             "moved {} to {}",
             outcome.record.moved.len(),
             outcome.record.dest.display()
         );
-        self.remember(outcome.record.moved.len(), &outcome.record.dest);
+        self.remember(&outcome.record.dest);
         let text = move_toast_text(&outcome);
         self.record_undo(LastOp::Move(outcome.record), text, at);
     }
@@ -509,22 +538,25 @@ impl Executor {
         for (path, error) in &outcome.failed {
             warn!("cannot copy {}: {error}", path.display());
         }
-        if outcome.record.copies.is_empty() {
-            match outcome.failed.first() {
-                Some((_, error)) => self.toast_error(ActionId::CopyTo, &error.to_string(), at),
-                None => {
-                    debug!("nothing to copy");
-                    self.toast.show("Nothing to copy", None, at);
-                }
+        let first_error = outcome.failed.first().map(|(_, e)| e.to_string());
+        match after_transfer(outcome.record.copies.len(), first_error) {
+            AfterTransfer::Error(reason) => {
+                self.toast_error(ActionId::CopyTo, &reason, at);
+                return;
             }
-            return;
+            AfterTransfer::Nothing => {
+                debug!("nothing to copy");
+                self.toast.show("Nothing to copy", None, at);
+                return;
+            }
+            AfterTransfer::Done => {}
         }
         info!(
             "copied {} to {}",
             outcome.record.copies.len(),
             outcome.record.dest.display()
         );
-        self.remember(outcome.record.copies.len(), &outcome.record.dest);
+        self.remember(&outcome.record.dest);
         let text = copy_toast_text(&outcome);
         self.record_undo(LastOp::Copy(outcome.record), text, at);
     }
@@ -543,12 +575,9 @@ impl Executor {
         self.toast.show(&text, Some(on_undo), at);
     }
 
-    /// Puts `dest` first in the recent list and saves it, when `done` items
-    /// went there. A failed save is logged, never toasted.
-    fn remember(&self, done: usize, dest: &Path) {
-        if !should_remember(done) {
-            return;
-        }
+    /// Puts `dest` first in the recent list and saves it. A failed save is
+    /// logged, never toasted.
+    fn remember(&self, dest: &Path) {
         let mut recent = self.recent.borrow_mut();
         recent.push(dest.to_path_buf());
         if let Err(e) = recent.save(&recent_path()) {
@@ -746,6 +775,18 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(copy_undo_toast_text(&undone(3, 0)), "Removed 3 copies");
+        // Every copy already gone: nothing was removed, kept or refused.
+        assert_eq!(
+            copy_undo_toast_text(&CopyUndoOutcome {
+                gone: 2,
+                ..Default::default()
+            }),
+            "Nothing left to remove"
+        );
+        assert_eq!(
+            copy_undo_toast_text(&undone(0, 1)),
+            "Removed 0 copies, kept 1 changed"
+        );
         assert_eq!(copy_undo_toast_text(&undone(1, 0)), "Removed 1 copy");
         assert_eq!(
             copy_undo_toast_text(&undone(2, 1)),
@@ -755,9 +796,19 @@ mod tests {
 
     #[test]
     fn recent_is_updated_only_when_something_moved() {
-        assert!(!should_remember(0));
-        assert!(should_remember(1));
-        assert!(should_remember(7));
+        // Failures and nothing done: an error, nothing remembered.
+        assert_eq!(
+            after_transfer(0, Some("not found".into())),
+            AfterTransfer::Error("not found".into())
+        );
+        // Everything was already there: nothing to remember either.
+        assert_eq!(after_transfer(0, None), AfterTransfer::Nothing);
+        // Something went through, even with failures beside it.
+        assert_eq!(after_transfer(1, None), AfterTransfer::Done);
+        assert_eq!(
+            after_transfer(3, Some("not found".into())),
+            AfterTransfer::Done
+        );
     }
 
     fn record(pairs: &[(&str, &str)]) -> MoveRecord {
