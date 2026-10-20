@@ -5,7 +5,7 @@ trigger modifier (it must be pressed after the drag has started) and a wheel
 of actions appears under the cursor; release the mouse over an action to run
 it. Releasing anywhere outside the wheel leaves the drop to whatever is
 underneath. Esc cancels (if your macOS allows reading key state without extra
-permission). Built with Rust and Slint.
+permission).
 
 vento is **macOS only for now**. The core and platform crates are checked
 for Windows and Linux targets (the platform crate is a stub there, so the wheel
@@ -61,8 +61,9 @@ vento lives in the menu bar.
 
 The settings panel writes this file; you can also edit it by hand, and vento
 picks up your edit when the panel next opens or changes something. All keys are
-optional; omitted keys use their defaults. If the file cannot be parsed, or any
-value is outside the spellings listed below, the whole file is rejected: at
+optional; omitted keys use their defaults. If the file cannot be parsed, or a
+value has the wrong type or a spelling not listed below (for `layout`,
+`trigger` or `copy_path_format`, say), the whole file is rejected: at
 startup all defaults apply and a warning is logged; while vento runs the current
 settings stay and the panel shows the reason. Unknown or duplicate action names
 are dropped individually. Values shown are the defaults, except `terminal`,
@@ -80,14 +81,14 @@ trigger = "ctrl"
 # or "copy_to" to show it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
-# Actions turned off in the panel; they keep their place in the panel's list
+# Actions turned off in the panel (the panel lists them below the shown ones)
 hidden_actions = []
 
-# Folders pinned to the Move and Copy to ring, in order (at most 7)
+# Folders pinned to the Move and Copy to ring, in order; only the first 7 count
 pinned_folders = []
 
-# How long to hold on Move or Copy to before the ring opens, in milliseconds:
-# 200 to 1000, in steps of 100
+# How long to hold on Move or Copy to before the ring opens, in milliseconds.
+# Other values are rounded to the nearest 100 and kept between 200 and 1000.
 move_hold_ms = 400
 
 # "plain" or "shell_quoted" (single-quoted for POSIX shells)
