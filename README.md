@@ -11,7 +11,24 @@ vento is **macOS only for now**. The core and platform crates are checked
 for Windows and Linux targets (the platform crate is a stub there, so the wheel
 does nothing); full CI runs on all three systems once the repo has a remote.
 
-Actions: Pocket, Copy, Move (with undo), Copy Path, Terminal.
+Actions: Pocket, Copy, Move (with undo), Copy to (with undo), Copy path,
+Terminal.
+
+## Move and Copy to
+
+Release on **Move** (or **Copy to**) and a folder picker opens. To skip the
+picker, hold the pointer on the action for a moment (400 ms by default) and a
+ring of folders opens around it: the five most recent destinations first, then
+your pinned folders. Release on a folder to move (or copy) the files straight
+there. Folders that no longer exist are left out of the ring.
+
+Both actions remember where files went. **Undo last move** (or **Undo last
+copy**) in the menu puts the files back; undoing a copy only trashes copies
+vento made that have not changed since.
+
+Pin the folders you use most in the settings panel's Move tab with **Add
+folder**, or pin one from the recent list; up to seven fit. The same tab sets how
+long the hold takes (200 to 1000 ms) and clears the recent list.
 
 ## Requirements
 
@@ -27,19 +44,29 @@ Neither Accessibility nor Input Monitoring permission is required.
 cargo run -p vento --release
 ```
 
-vento lives in the menu bar; use the tray menu to pause it, undo the last move,
-or reload settings.
+vento lives in the menu bar.
+
+- **Left click** the icon to open the settings panel. Its tabs are Wheel
+  (layout, which actions show and in what order), Move (pinned and recent
+  folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
+  copy) and General (trigger, terminal, Copy path format); Pause and Quit are at
+  the bottom. It follows the system light or dark appearance. Changes apply and
+  are saved at once.
+- **Right click** for the menu: Undo last move/copy, Pause, Open settings file,
+  Quit.
 
 ## Settings
 
 `~/Library/Application Support/vento/settings.toml`
 
-All keys are optional; omitted keys use their defaults. If the file cannot be
-parsed, or any value is outside the spellings listed below, the whole file is
-rejected: at startup all defaults apply and a warning is logged; on
-**Reload settings** the current settings stay and a toast shows the reason.
-Unknown or duplicate action names are dropped individually. Values shown are the defaults, except
-`terminal`, which is an example.
+The settings panel writes this file; you can also edit it by hand, and vento
+picks up your edit when the panel next opens or changes something. All keys are
+optional; omitted keys use their defaults. If the file cannot be parsed, or any
+value is outside the spellings listed below, the whole file is rejected: at
+startup all defaults apply and a warning is logged; while vento runs the current
+settings stay and the panel shows the reason. Unknown or duplicate action names
+are dropped individually. Values shown are the defaults, except `terminal`,
+which is an example.
 
 ```toml
 # "honeycomb" or "petals"
@@ -49,8 +76,19 @@ layout = "honeycomb"
 trigger = "ctrl"
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal". A file that already lists `actions` must add "pocket" to show it.
+# "terminal", "copy_to". A file that already lists `actions` must add "pocket"
+# or "copy_to" to show it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
+
+# Actions turned off in the panel; they keep their place in the panel's list
+hidden_actions = []
+
+# Folders pinned to the Move and Copy to ring, in order (at most 7)
+pinned_folders = []
+
+# How long to hold on Move or Copy to before the ring opens, in milliseconds:
+# 200 to 1000, in steps of 100
+move_hold_ms = 400
 
 # "plain" or "shell_quoted" (single-quoted for POSIX shells)
 copy_path_format = "plain"
