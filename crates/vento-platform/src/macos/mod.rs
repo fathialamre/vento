@@ -1,13 +1,16 @@
 //! macOS [`Platform`] built on AppKit, with no Accessibility or Input
 //! Monitoring permission needed.
 
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy,
+    NSRunningApplication, NSWorkspace,
+};
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
@@ -30,6 +33,9 @@ pub struct MacPlatform {
     catcher: OnceCell<Rc<catcher::MacDropCatcher>>,
     /// Listens for screen changes and termination while vento runs.
     _observer: Retained<notify::AppObserver>,
+    /// The app that was in front when vento last brought itself forward,
+    /// given focus back by [`Platform::deactivate_app`].
+    previous_app: RefCell<Option<Retained<NSRunningApplication>>>,
 }
 
 impl Default for MacPlatform {
@@ -44,6 +50,7 @@ impl MacPlatform {
             drag: input::DragPasteboardCache::default(),
             catcher: OnceCell::new(),
             _observer: notify::AppObserver::install(),
+            previous_app: RefCell::new(None),
         }
     }
 }
@@ -145,6 +152,14 @@ impl Platform for MacPlatform {
             log::warn!("activate_app called off the main thread; ignored");
             return;
         };
+        // Remember who had focus, unless that is vento itself (already in
+        // front), which keeps the app remembered before.
+        let me = NSRunningApplication::currentApplication().processIdentifier();
+        if let Some(front) = NSWorkspace::sharedWorkspace().frontmostApplication()
+            && front.processIdentifier() != me
+        {
+            *self.previous_app.borrow_mut() = Some(front);
+        }
         screens::activate_app(mtm);
     }
 
@@ -153,8 +168,23 @@ impl Platform for MacPlatform {
             log::warn!("deactivate_app called off the main thread; ignored");
             return;
         };
-        // Hiding the app hands focus to the previous one.
-        NSApplication::sharedApplication(mtm).hide(None);
+        let app = NSApplication::sharedApplication(mtm);
+        let previous = self.previous_app.borrow_mut().take();
+        // The user already went to another app (clicked outside): leave
+        // focus where it is.
+        if !app.isActive() {
+            return;
+        }
+        // Not `hide`: that would also hide the Pocket island and keep the
+        // wheel from showing until vento is next activated.
+        match previous {
+            Some(previous) if !previous.isTerminated() => {
+                if !previous.activateWithOptions(NSApplicationActivationOptions::empty()) {
+                    app.deactivate();
+                }
+            }
+            _ => app.deactivate(),
+        }
     }
 
     fn scale_factor_at(&self, p: Point) -> f64 {

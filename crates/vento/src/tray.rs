@@ -13,7 +13,7 @@ use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
 use crate::exec::{Executor, UndoKind};
-use crate::wheel::WheelController;
+use crate::pause::PauseSwitch;
 
 /// Side length of the menu-bar icon in pixels.
 const ICON_SIZE: u32 = 18;
@@ -134,16 +134,14 @@ fn undo_menu_text(kind: Option<UndoKind>) -> &'static str {
 
 /// What the tray needs to act on clicks.
 pub struct TrayDeps {
-    pub ctrl: Rc<WheelController>,
     pub exec: Rc<Executor>,
     /// Places the icon on its screen.
     pub platform: Rc<dyn Platform>,
     /// Opens the panel under the icon; given the icon's frame in global
     /// logical points.
     pub on_open_panel: Box<dyn Fn(Rect)>,
-    /// Tells what the tray doesn't own (the Pocket) that vento was paused
-    /// or unpaused.
-    pub on_pause: Box<dyn Fn(bool)>,
+    /// Whether vento is paused, shared with the panel's Pause.
+    pub pause: Rc<PauseSwitch>,
 }
 
 /// Creates the menu-bar icon. Call on the main thread once the event loop is
@@ -153,25 +151,24 @@ pub struct TrayDeps {
 /// If the icon or the menu cannot be created.
 pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let TrayDeps {
-        ctrl,
         exec,
         platform,
         on_open_panel,
-        on_pause,
+        pause,
     } = deps;
     let undo = MenuItem::new(
         undo_menu_text(exec.has_undo()),
         exec.has_undo().is_some(),
         None,
     );
-    let pause = CheckMenuItem::new("Pause vento", true, false, None);
+    let pause_item = CheckMenuItem::new("Pause vento", true, pause.is_paused(), None);
     let open_settings = MenuItem::new("Open settings file", true, None);
     let quit = MenuItem::new("Quit vento", true, None);
 
     let menu = Menu::new();
     menu.append_items(&[
         &undo,
-        &pause,
+        &pause_item,
         &PredefinedMenuItem::separator(),
         &open_settings,
         &PredefinedMenuItem::separator(),
@@ -198,15 +195,20 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }));
     }
 
+    // Keep the Pause item in step with the panel's Pause.
+    {
+        let pause_item = pause_item.clone();
+        pause.on_change(Box::new(move |paused| pause_item.set_checked(paused)));
+    }
+
     // Menu clicks arrive via a handler that may run on any thread: forward
     // only the (Send) item id to the main thread and act on it there.
     DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |id: &MenuId| {
             if id == undo.id() {
                 exec.undo_last();
-            } else if id == pause.id() {
-                ctrl.set_paused(pause.is_checked());
-                on_pause(pause.is_checked());
+            } else if id == pause_item.id() {
+                pause.set(pause_item.is_checked());
             } else if id == open_settings.id() {
                 open_settings_file();
             } else if id == quit.id()

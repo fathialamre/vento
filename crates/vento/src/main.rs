@@ -6,6 +6,10 @@ mod exec;
 #[cfg(target_os = "macos")]
 mod hotkey;
 #[cfg(target_os = "macos")]
+mod panel;
+#[cfg(target_os = "macos")]
+mod pause;
+#[cfg(target_os = "macos")]
 mod pocket;
 #[cfg(target_os = "macos")]
 mod settings_hub;
@@ -71,6 +75,35 @@ fn main() -> Result<(), slint::PlatformError> {
     let wheel = controller.clone();
     hub.on_change(Box::new(move |_old, new| wheel.apply_settings(new.clone())));
 
+    // Pausing, from the tray or the panel, pauses the wheel and the Pocket.
+    let pause = pause::PauseSwitch::new();
+    {
+        let wheel = controller.clone();
+        let pocket = Rc::downgrade(&pocket);
+        pause.on_change(Box::new(move |paused| {
+            wheel.set_paused(paused);
+            if let Some(pocket) = pocket.upgrade() {
+                pocket.set_paused(paused);
+            }
+        }));
+    }
+    let panel = {
+        let pause = pause.clone();
+        panel::PanelController::new(
+            platform.clone(),
+            hub.clone(),
+            Box::new(move |paused| pause.set(paused)),
+        )
+    };
+    {
+        let panel = Rc::downgrade(&panel);
+        pause.on_change(Box::new(move |paused| {
+            if let Some(panel) = panel.upgrade() {
+                panel.set_paused(paused);
+            }
+        }));
+    }
+
     pocket.start();
     // Files waiting for the Trash go now when vento quits, also when the
     // system ends it (log out, shut down).
@@ -126,31 +159,13 @@ fn main() -> Result<(), slint::PlatformError> {
     // The menu-bar icon needs the running event loop, and lives as long as the app.
     let tray_handle = Rc::new(RefCell::new(None));
     let keep = tray_handle.clone();
-    let paused_pocket = Rc::downgrade(&pocket);
     slint::Timer::single_shot(Duration::ZERO, move || {
         apply_shortcut(&hub.current().pocket_shortcut);
-        let panel_platform = platform.clone();
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
-            ctrl: controller,
             exec: executor,
             platform,
-            // Task 9 opens the panel here; for now, pick up hand edits of
-            // the settings file and say if the file is broken.
-            on_open_panel: Box::new(move |icon| {
-                let before = hub.load_error();
-                hub.refresh_from_disk();
-                let after = hub.load_error();
-                if let Some(reason) = after.filter(|a| before.as_ref() != Some(a)) {
-                    let at = panel_platform.sample_input().cursor;
-                    toaster.show(&format!("Settings not loaded: {reason}"), None, at);
-                }
-                log::debug!("open panel at {icon:?}");
-            }),
-            on_pause: Box::new(move |paused| {
-                if let Some(pocket) = paused_pocket.upgrade() {
-                    pocket.set_paused(paused);
-                }
-            }),
+            on_open_panel: Box::new(move |icon| panel.toggle_at(icon)),
+            pause,
         }));
     });
     let result = slint::run_event_loop_until_quit();

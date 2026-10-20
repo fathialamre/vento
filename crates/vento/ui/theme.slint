@@ -1,0 +1,19 @@
+// The settings panel's colours, dark or light with the system appearance.
+// Orange is the accent in both; the wheel and the Pocket keep their own
+// dark look.
+
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    in-out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    out property <color> bg: root.dark ? #1f1f22 : #f6f6f7;
+    out property <color> surface: root.dark ? #2b2b2f : #e7e7ea;
+    out property <color> selected: root.dark ? #3a3a40 : #ffffff;
+    out property <color> text: root.dark ? #f2f2f3 : #1d1d1f;
+    out property <color> muted: root.dark ? #9a9aa2 : #6e6e73;
+    out property <color> separator: root.dark ? #ffffff14 : #0000000f;
+    out property <color> switch-off: root.dark ? #4a4a50 : #c9c9ce;
+    out property <color> danger: root.dark ? #ff7b72 : #d93a2f;
+    out property <color> accent: #ff6a1a;
+}

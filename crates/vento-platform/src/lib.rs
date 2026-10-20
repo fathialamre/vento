@@ -158,7 +158,9 @@ pub trait Platform {
     /// Main thread only.
     fn activate_app(&self);
     /// Hand focus back to the app that was in front before
-    /// [`Platform::activate_app`]. Main thread only.
+    /// [`Platform::activate_app`], without hiding vento's other windows;
+    /// nothing happens when another app already took focus. Main thread
+    /// only.
     fn deactivate_app(&self);
     /// The backing scale factor (physical pixels per logical point) of the
     /// screen that contains `p`, a global logical point; the primary screen's

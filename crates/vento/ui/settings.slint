@@ -1,0 +1,297 @@
+// The settings panel: a solid, frameless window that hangs under the
+// menu-bar icon, with a segmented tab bar, one page per tab and a footer
+// with Pause, Quit and Done. It follows the system light or dark appearance
+// through `Theme`.
+
+import { Theme } from "theme.slint";
+import { Icons } from "wheel.slint";
+
+// Tabler Icons (MIT, see icons/LICENSE-tabler), embedded at build time.
+global PanelIcons {
+    out property <image> wheel: @image-url("icons/hexagons.svg");
+    out property <image> general: @image-url("icons/settings.svg");
+    out property <image> pause: @image-url("icons/player-pause.svg");
+    out property <image> resume: @image-url("icons/player-play.svg");
+    out property <image> quit: @image-url("icons/power.svg");
+}
+
+struct TabItem { icon: image, label: string }
+
+// A segmented control: a rounded track with the selected tab raised on a
+// pill; each tab is an icon above a short label.
+component TabBar inherits Rectangle {
+    in property <[TabItem]> tabs;
+    in-out property <int> current;
+
+    property <length> pad: 3px;
+    property <length> tab-w: (self.width - 2 * self.pad) / max(1, self.tabs.length);
+    property <length> tab-h: self.height - 2 * self.pad;
+
+    height: 46px;
+    border-radius: 10px;
+    background: Theme.surface;
+
+    Rectangle {
+        x: root.pad + root.current * root.tab-w;
+        y: root.pad;
+        width: root.tab-w;
+        height: root.tab-h;
+        border-radius: 8px;
+        background: Theme.selected;
+        drop-shadow-blur: 3px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: Theme.dark ? #00000059 : #0000001f;
+        animate x { duration: 150ms; easing: ease-out; }
+    }
+
+    for item[i] in root.tabs: Rectangle {
+        property <bool> on: i == root.current;
+        x: root.pad + i * root.tab-w;
+        y: root.pad;
+        width: root.tab-w;
+        height: root.tab-h;
+        accessible-role: tab;
+        accessible-label: item.label;
+        accessible-item-selected: self.on;
+        accessible-action-default => { root.current = i; }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+
+            HorizontalLayout {
+                alignment: center;
+
+                Image {
+                    source: item.icon;
+                    width: 16px;
+                    height: 16px;
+                    colorize: on ? Theme.text : Theme.muted;
+                }
+            }
+
+            Text {
+                text: item.label;
+                font-size: 11px;
+                font-weight: on ? 600 : 400;
+                color: on ? Theme.text : Theme.muted;
+                horizontal-alignment: center;
+            }
+        }
+
+        TouchArea {
+            clicked => { root.current = i; }
+        }
+    }
+}
+
+// A quiet footer item: an icon and a word, highlighted on hover.
+component FooterItem inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <color> tint: Theme.muted;
+    callback clicked();
+
+    height: 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.surface : transparent;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        spacing: 6px;
+
+        Image {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            colorize: touch.has-hover ? Theme.text : root.tint;
+        }
+
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: touch.has-hover ? Theme.text : root.tint;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// The one prominent button.
+component DoneButton inherits Rectangle {
+    callback clicked();
+
+    height: 28px;
+    border-radius: 8px;
+    background: touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent);
+    accessible-role: button;
+    accessible-label: "Done";
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+
+        Text {
+            text: "Done";
+            font-size: 13px;
+            font-weight: 600;
+            color: white;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// Why the settings file was not loaded.
+component Notice inherits Rectangle {
+    in property <string> text;
+
+    border-radius: 8px;
+    background: Theme.surface;
+
+    HorizontalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        VerticalLayout {
+            alignment: start;
+
+            Image {
+                source: Icons.missing;
+                width: 14px;
+                height: 14px;
+                colorize: Theme.danger;
+            }
+        }
+
+        Text {
+            text: root.text;
+            font-size: 12px;
+            color: Theme.text;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// The pages; empty for now.
+component WheelTab inherits VerticalLayout { }
+
+component MoveTab inherits VerticalLayout { }
+
+component PocketTab inherits VerticalLayout { }
+
+component GeneralTab inherits VerticalLayout { }
+
+export component SettingsPanel inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    title: "vento settings";
+    default-font-size: 13px;
+
+    // The selected tab: 0 Wheel, 1 Move, 2 Pocket, 3 General.
+    in-out property <int> tab;
+    // vento is paused: the Pause item offers to resume.
+    in property <bool> paused;
+    // Shown above the page when not empty.
+    in property <string> notice;
+
+    callback pause-clicked();
+    callback quit-clicked();
+    // Done or Esc.
+    callback close-requested();
+
+    // The height the panel's content asks for; the window takes it.
+    out property <length> panel-height: layout.preferred-height;
+
+    width: 340px;
+    height: self.panel-height;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-requested();
+                return accept;
+            }
+            return reject;
+        }
+
+        Rectangle {
+            background: Theme.bg;
+            border-radius: 16px;
+            border-width: 1px;
+            border-color: Theme.separator;
+
+            layout := VerticalLayout {
+                padding: 12px;
+                spacing: 12px;
+
+                TabBar {
+                    current <=> root.tab;
+                    tabs: [
+                        { icon: PanelIcons.wheel, label: "Wheel" },
+                        { icon: Icons.move, label: "Move" },
+                        { icon: Icons.pocket, label: "Pocket" },
+                        { icon: PanelIcons.general, label: "General" },
+                    ];
+                }
+
+                if root.notice != "": Notice {
+                    text: root.notice;
+                }
+
+                VerticalLayout {
+                    min-height: 120px;
+
+                    if root.tab == 0: WheelTab { }
+                    if root.tab == 1: MoveTab { }
+                    if root.tab == 2: PocketTab { }
+                    if root.tab == 3: GeneralTab { }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Theme.separator;
+                }
+
+                HorizontalLayout {
+                    spacing: 4px;
+
+                    FooterItem {
+                        icon: root.paused ? PanelIcons.resume : PanelIcons.pause;
+                        label: root.paused ? "Resume" : "Pause";
+                        tint: root.paused ? Theme.accent : Theme.muted;
+                        clicked => { root.pause-clicked(); }
+                    }
+
+                    FooterItem {
+                        icon: PanelIcons.quit;
+                        label: "Quit";
+                        clicked => { root.quit-clicked(); }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    DoneButton {
+                        clicked => { root.close-requested(); }
+                    }
+                }
+            }
+        }
+    }
+}
