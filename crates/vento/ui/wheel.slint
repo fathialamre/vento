@@ -1,9 +1,25 @@
 // The actions wheel: a frameless, transparent, always-on-top window that
-// draws one cell per action around the dragged file.
+// draws one cell per action around the dragged file, and the destination
+// ring around Move or Copy to.
 
 export enum WheelLayout { honeycomb, petals }
 
-export struct WheelCell { x: length, y: length, r: length, label: string, icon: image }
+// Cell positions are offsets from the wheel centre (the window centre), so
+// the window can grow for the ring without moving the wheel.
+// `covered`: a ring cell sits on this cell while the ring is open.
+export struct WheelCell { x: length, y: length, r: length, label: string, icon: image, covered: bool }
+
+// One folder on the destination ring; `line2` is empty for a one-line label.
+export struct RingCell {
+    x: length,
+    y: length,
+    r: length,
+    icon: image,
+    line1: string,
+    line2: string,
+    line2-dim: bool,
+    pinned: bool,
+}
 
 // Tabler Icons (MIT, see icons/LICENSE-tabler), embedded at build time.
 export global Icons {
@@ -19,6 +35,8 @@ export global Icons {
     out property <image> trash: @image-url("icons/trash.svg");
     out property <image> drop: @image-url("icons/download.svg");
     out property <image> undo: @image-url("icons/arrow-back-up.svg");
+    out property <image> copy-to: @image-url("icons/copy-plus.svg");
+    out property <image> pin: @image-url("icons/pin.svg");
 }
 
 export component Wheel inherits Window {
@@ -38,22 +56,52 @@ export component Wheel inherits Window {
     // Off while the wheel is reset on dismiss, so no stale highlight animates.
     in property <bool> animate-hover: true;
 
+    // The destination ring: its cells, the action it opened from (-1 while
+    // closed) and the hovered destination (-1 for none).
+    in property <[RingCell]> ring-cells;
+    in property <int> ring-source: -1;
+    in property <int> ring-hot: -1;
+    // The label under the wheel while a destination is hot.
+    in property <string> dest-verb;
+    in property <string> dest-name;
+    in property <string> dest-path;
+    in property <image> dest-icon;
+    // Top-left of that label, as an offset from the wheel centre.
+    in property <length> dest-x;
+    in property <length> dest-y;
+
     width: size;
     height: size;
 
     property <color> idle: #1d1d21e8;
     property <color> accent: #ff6a1a;
+    property <color> hot-border: #ffb48a;
+    property <color> border: #ffffff26;
+    property <color> source-fill: #2a2a30;
     property <color> centre-fill: #0a0a0cf0;
+    property <length> cx: root.width / 2;
+    property <length> cy: root.height / 2;
+    property <bool> ring-open: root.ring-source >= 0;
 
     for cell[i] in root.cells: Rectangle {
         property <bool> hot: i == root.highlighted;
+        // The action whose ring is open, drawn as the ring's source.
+        property <bool> source: i == root.ring-source && !hot;
         property <float> scale: hot ? 1.12 : 1.0;
-        property <color> fill: hot ? root.accent : root.idle;
+        property <color> fill: hot ? root.accent : source ? root.source-fill : root.idle;
+        property <color> edge: hot ? root.hot-border : source ? root.accent : root.border;
+        property <length> edge-width: source ? 1.5px : 1px;
         animate scale { duration: root.animate-hover ? 90ms : 0ms; easing: ease-out; }
         animate fill { duration: root.animate-hover ? 90ms : 0ms; easing: ease-out; }
 
-        x: cell.x - cell.r;
-        y: cell.y - cell.r;
+        // While the ring is open the other actions fade, and those under a
+        // ring cell are not drawn at all.
+        visible: !(root.ring-open && cell.covered);
+        opacity: !root.ring-open || i == root.ring-source ? 1.0 : 0.2;
+        animate opacity { duration: root.animate-hover ? 120ms : 0ms; easing: ease-out; }
+
+        x: root.cx + cell.x - cell.r;
+        y: root.cy + cell.y - cell.r;
         width: 2 * cell.r;
         height: 2 * cell.r;
 
@@ -69,8 +117,8 @@ export component Wheel inherits Window {
             viewbox-height: 3.4641016;
             commands: root.hex-path;
             fill: fill;
-            stroke: hot ? #ffb48a : #ffffff26;
-            stroke-width: 1px;
+            stroke: edge;
+            stroke-width: edge-width;
         }
 
         if root.layout == WheelLayout.petals: Rectangle {
@@ -80,8 +128,8 @@ export component Wheel inherits Window {
             y: (parent.height - self.height) / 2;
             border-radius: self.width / 2;
             background: fill;
-            border-width: 1px;
-            border-color: hot ? #ffb48a : #ffffff26;
+            border-width: edge-width;
+            border-color: edge;
         }
 
         property <length> icon-size: min(18px, cell.r * 0.48);
@@ -107,6 +155,99 @@ export component Wheel inherits Window {
             wrap: word-wrap;
             horizontal-alignment: center;
             vertical-alignment: top;
+        }
+    }
+
+    // The destination ring: the folder's own icon and its name on each cell.
+    for dest[j] in root.ring-cells: Rectangle {
+        property <bool> hot: j == root.ring-hot;
+        property <float> scale: hot ? 1.12 : 1.0;
+        property <color> fill: hot ? root.accent : root.idle;
+        animate scale { duration: root.animate-hover ? 90ms : 0ms; easing: ease-out; }
+        animate fill { duration: root.animate-hover ? 90ms : 0ms; easing: ease-out; }
+
+        x: root.cx + dest.x - dest.r;
+        y: root.cy + dest.y - dest.r;
+        width: 2 * dest.r;
+        height: 2 * dest.r;
+
+        if root.layout == WheelLayout.honeycomb: Path {
+            width: 2 * dest.r * scale;
+            height: 1.7320508 * dest.r * scale;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 4;
+            viewbox-height: 3.4641016;
+            commands: root.hex-path;
+            fill: fill;
+            stroke: hot ? root.hot-border : root.border;
+            stroke-width: 1px;
+        }
+
+        if root.layout == WheelLayout.petals: Rectangle {
+            width: 2 * dest.r * scale;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: self.width / 2;
+            background: fill;
+            border-width: 1px;
+            border-color: hot ? root.hot-border : root.border;
+        }
+
+        // Petals are smaller than hexagons: a smaller icon and type.
+        property <bool> roomy: dest.r > 30px;
+        property <length> icon-size: roomy ? 24px : 16px;
+        property <length> type-size: roomy ? 11px : 9px;
+        property <length> line-height: type-size + 2px;
+        property <length> stack: icon-size + 2px + (dest.line2 == "" ? 1 : 2) * line-height;
+        property <length> stack-top: (self.height - stack) / 2;
+
+        Image {
+            source: dest.icon;
+            width: icon-size;
+            height: icon-size;
+            x: (parent.width - self.width) / 2;
+            y: stack-top;
+        }
+
+        Text {
+            text: dest.line1;
+            x: 4px;
+            y: stack-top + icon-size + 2px;
+            width: parent.width - 8px;
+            height: line-height;
+            color: white;
+            font-size: type-size;
+            font-weight: 600;
+            overflow: elide;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        if dest.line2 != "": Text {
+            text: dest.line2;
+            x: 4px;
+            y: stack-top + icon-size + 2px + line-height;
+            width: parent.width - 8px;
+            height: line-height;
+            color: dest.line2-dim ? #ffffff8c : white;
+            font-size: type-size;
+            font-weight: dest.line2-dim ? 400 : 600;
+            overflow: elide;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        if dest.pinned: Image {
+            source: Icons.pin;
+            colorize: #ffffffb0;
+            width: 11px;
+            height: 11px;
+            x: parent.width / 2 + dest.r * 0.32;
+            y: parent.height / 2 - dest.r * 0.68;
         }
     }
 
@@ -154,6 +295,65 @@ export component Wheel inherits Window {
             wrap: word-wrap;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+
+    // While a destination is hot: where the files will go, in full.
+    if root.ring-hot >= 0: Rectangle {
+        x: root.cx + root.dest-x;
+        y: root.cy + root.dest-y;
+        width: 280px;
+        height: 44px;
+        border-radius: 10px;
+        background: root.centre-fill;
+        border-width: 1px;
+        border-color: root.border;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            alignment: stretch;
+
+            VerticalLayout {
+                alignment: center;
+                Image {
+                    source: root.dest-icon;
+                    width: 24px;
+                    height: 24px;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                horizontal-stretch: 1;
+
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: root.dest-verb;
+                        color: #ffffffb0;
+                        font-size: 12px;
+                        horizontal-stretch: 0;
+                    }
+                    Text {
+                        text: root.dest-name;
+                        color: white;
+                        font-size: 12px;
+                        font-weight: 600;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                Text {
+                    text: root.dest-path;
+                    color: #ffffff8c;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+            }
         }
     }
 }

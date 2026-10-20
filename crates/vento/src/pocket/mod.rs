@@ -105,7 +105,7 @@ pub(super) fn display_name(path: &Path) -> String {
 }
 
 /// A Slint image of `icon`, or `None` if its buffer doesn't match its size.
-fn to_image(icon: &RgbaImage) -> Option<Image> {
+pub(crate) fn to_image(icon: &RgbaImage) -> Option<Image> {
     let len = icon.width as usize * icon.height as usize * 4;
     if len == 0 || icon.pixels.len() != len {
         return None;

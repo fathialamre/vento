@@ -29,6 +29,7 @@ fn main() -> Result<(), slint::PlatformError> {
     use std::time::Duration;
 
     use vento_core::actions::ActionId;
+    use vento_core::destinations::{RecentDestinations, recent_path};
     use vento_core::settings::settings_path;
 
     /// How long the island stays open to confirm an add from the wheel.
@@ -47,14 +48,24 @@ fn main() -> Result<(), slint::PlatformError> {
     let toaster = toast::Toaster::new(platform.clone());
     let executor = exec::Executor::new(platform.clone(), shared.clone(), toaster.clone());
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
+    // Folders recently moved or copied to: the wheel's ring reads them.
+    let recent = Rc::new(RefCell::new(RecentDestinations::load(&recent_path())));
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
     let controller = wheel::WheelController::new(
         platform.clone(),
         hub.current(),
-        Box::new(move |action, paths, at| match action {
-            ActionId::Pocket => drop_pocket.add(paths, POCKET_CONFIRM),
-            _ => drop_executor.run(action, paths, at),
+        recent.clone(),
+        Box::new(move |drop: wheel::WheelDrop| match drop.action {
+            ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
+            _ => {
+                if let Some(dest) = &drop.dest {
+                    // The executor does not take a destination yet: the
+                    // folder picker opens instead.
+                    log::debug!("dropped on ring folder {}", dest.display());
+                }
+                drop_executor.run(drop.action, drop.paths, drop.at);
+            }
         }),
     );
     controller.start();
