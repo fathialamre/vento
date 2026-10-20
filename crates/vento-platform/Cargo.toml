@@ -1,0 +1,48 @@
+[package]
+name = "vento-platform"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+rust-version = "1.88"
+
+[dependencies]
+vento-core = { path = "../vento-core" }
+thiserror = "2"
+log = "0.4"
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSURL",
+    "NSArray",
+    "NSData",
+    "NSDictionary",
+    "NSValue",
+    "NSRunLoop",
+    "NSFileManager",
+    "NSError",
+    "NSNotification",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSEvent",
+    "NSPasteboard",
+    "NSScreen",
+    "NSApplication",
+    "NSRunningApplication",
+    "NSResponder",
+    "NSWorkspace",
+    "NSImage",
+    "NSBitmapImageRep",
+    "NSImageRep",
+    "NSGraphicsContext",
+    "NSGraphics",
+    "NSWindow",
+    "NSView",
+    "NSPanel",
+    "NSDragging",
+    "NSColor",
+] }
+objc2-core-graphics = { version = "0.3", features = ["CGEventSource"] }
+rfd = "0.17"

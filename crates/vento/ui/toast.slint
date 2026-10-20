@@ -1,0 +1,68 @@
+// The result toast: a small frameless, always-on-top pill with a message and
+// an optional "Undo" button.
+
+export component Toast inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+
+    in property <string> message;
+    in property <bool> can-undo;
+    callback undo-clicked();
+
+    width: 300px;
+    height: 56px;
+
+    Rectangle {
+        background: #1d1d21f2;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: #ffffff26;
+
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            padding-right: 8px;
+            spacing: 8px;
+
+            Text {
+                text: root.message;
+                color: white;
+                font-size: 13px;
+                // Up to three lines; the failure count and error reason are the
+                // important part, so wrap first and elide only as a fallback.
+                wrap: word-wrap;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            if root.can-undo: Rectangle {
+                width: 56px;
+                // Shrink vertically so the hit area is a pill inside the toast.
+                property <bool> hovered: touch.has-hover;
+
+                Rectangle {
+                    y: 11px;
+                    height: parent.height - 22px;
+                    border-radius: 8px;
+                    background: touch.pressed ? #cc5414 : (parent.hovered ? #ff8040 : #ff6a1a);
+
+                    Text {
+                        text: "Undo";
+                        color: white;
+                        font-size: 13px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch := TouchArea {
+                    clicked => { root.undo-clicked(); }
+                }
+            }
+        }
+    }
+}
