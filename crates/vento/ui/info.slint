@@ -1,0 +1,292 @@
+// The info window: a small, solid, frameless window shown under the pointer
+// after files are dropped on the wheel's Info cell. It shows the dropped
+// item's name and size (live while a folder is still being counted), a card of
+// details, and for a folder the biggest things inside as bars. It follows the
+// system light or dark appearance through `Theme`.
+
+import { Theme } from "theme.slint";
+import { Icons } from "wheel.slint";
+import { SectionHeading, Separator, TextButton } from "controls.slint";
+
+// One line of the details card: what it is and its value.
+export struct InfoDetail { label: string, value: string }
+
+// One of the biggest things inside a folder: its name, its size as shown and
+// its share of the biggest one, from 0 to 1.
+export struct InfoBar { name: string, size: string, share: float }
+
+// The prominent "Done" button.
+component DoneButton inherits Rectangle {
+    callback clicked();
+
+    height: 24px;
+    border-radius: 7px;
+    background: touch.pressed ? #cc5414 : (touch.has-hover ? #ff8040 : Theme.accent);
+    accessible-role: button;
+    accessible-label: "Done";
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+
+        Text {
+            text: "Done";
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// One of the biggest things: the name on the left, the size on the right and
+// a thin bar under them filled to the share.
+component BarRow inherits VerticalLayout {
+    in property <string> name;
+    in property <string> size;
+    in property <float> share;
+
+    spacing: 4px;
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            text: root.name;
+            font-size: 12px;
+            color: Theme.text;
+            overflow: elide;
+        }
+
+        Text {
+            text: root.size;
+            font-size: 12px;
+            font-weight: 700;
+            color: Theme.text;
+            horizontal-alignment: right;
+        }
+    }
+
+    track := Rectangle {
+        height: 5px;
+        border-radius: 2.5px;
+        background: Theme.surface;
+
+        Rectangle {
+            x: 0px;
+            width: max(0, min(1, root.share)) * track.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+}
+
+export component InfoWindow inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    title: "vento info";
+    default-font-size: 13px;
+
+    // `icon` and `title` are the Window's own properties, used here for the
+    // item: its Finder icon, shown when `has-icon` (otherwise the stack icon,
+    // which stands for several items), and its name or how many items there
+    // are. The title starts as "vento info" until vento sets it.
+    in property <bool> has-icon;
+    // The total size as shown; it grows while a folder is counted.
+    in property <string> size;
+    // A line under the header, like "Counting..."; hidden when empty.
+    in property <string> status;
+    // The details card's rows.
+    in property <[InfoDetail]> details;
+    // A muted line at the end of the details card; hidden when empty.
+    in property <string> note;
+    // The biggest things inside, biggest first; the card is hidden when empty.
+    in property <[InfoBar]> biggest;
+    // The folder holds nothing: "Empty folder" shows in place of the card.
+    in property <bool> empty-folder;
+
+    // "Show in Finder": vento reveals the items, then closes the window.
+    callback reveal-clicked();
+    // Done or Esc.
+    callback close-requested();
+
+    // The height the window takes: the height the content asks for.
+    out property <length> window-height: layout.preferred-height;
+
+    width: 300px;
+    height: self.window-height;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-requested();
+                return accept;
+            }
+            return reject;
+        }
+
+        Rectangle {
+            background: Theme.bg;
+            border-radius: 16px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            layout := VerticalLayout {
+                padding: 14px;
+                spacing: 10px;
+
+                // Icon, name and size.
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        Image {
+                            source: root.has-icon ? root.icon : Icons.pocket;
+                            width: 32px;
+                            height: 32px;
+                            colorize: root.has-icon ? transparent : Theme.muted;
+                        }
+                    }
+
+                    Text {
+                        text: root.title;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: root.size;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.text;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if root.status != "": HorizontalLayout {
+                    spacing: 6px;
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 3px;
+                            background: Theme.accent;
+                        }
+                    }
+
+                    Text {
+                        text: root.status;
+                        font-size: 12px;
+                        color: Theme.muted;
+                        overflow: elide;
+                    }
+                }
+
+                // The details.
+                Rectangle {
+                    background: Theme.card;
+                    border-radius: 10px;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+
+                    VerticalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+
+                        for detail[i] in root.details: VerticalLayout {
+                            if i > 0: Separator { }
+
+                            HorizontalLayout {
+                                padding-top: 6px;
+                                padding-bottom: 6px;
+                                spacing: 12px;
+
+                                Text {
+                                    text: detail.label;
+                                    font-size: 12px;
+                                    color: Theme.muted;
+                                }
+
+                                Text {
+                                    text: detail.value;
+                                    font-size: 12px;
+                                    color: Theme.text;
+                                    horizontal-alignment: right;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        if root.note != "": Text {
+                            text: root.note;
+                            font-size: 11px;
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                // The biggest things inside a folder.
+                if root.biggest.length > 0: Rectangle {
+                    background: Theme.card;
+                    border-radius: 10px;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+
+                        SectionHeading { text: "Biggest inside"; }
+
+                        for bar in root.biggest: BarRow {
+                            name: bar.name;
+                            size: bar.size;
+                            share: bar.share;
+                        }
+                    }
+                }
+
+                if root.empty-folder: Text {
+                    text: "Empty folder";
+                    font-size: 12px;
+                    color: Theme.muted;
+                }
+
+                // The footer.
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    TextButton {
+                        label: "Show in Finder";
+                        clicked => { root.reveal-clicked(); }
+                    }
+
+                    DoneButton {
+                        clicked => { root.close-requested(); }
+                    }
+                }
+            }
+        }
+    }
+}
