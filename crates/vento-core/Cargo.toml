@@ -17,6 +17,7 @@ zip = { version = "9", default-features = false, features = ["aes-crypto", "defl
 fs4 = "1"
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["aes256", "bzip2", "ppmd"] }
 rars = { version = "0.11", default-features = false, features = ["encryption"] }
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3"

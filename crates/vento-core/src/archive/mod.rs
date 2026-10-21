@@ -4,6 +4,7 @@
 mod compress;
 mod detect;
 mod entries;
+mod extract;
 mod job;
 mod rar_read;
 mod sevenz_read;
@@ -17,4 +18,6 @@ pub use detect::{
     Format, Plan, archive_stem, detect, plan, rar_first_volume, rar_volumes, zip_name,
 };
 pub use entries::extract_one;
+pub use extract::{BatchOutcome, PasswordAsk, extract_batch};
 pub use job::{ArchiveError, Made, Progress, ProgressSnapshot};
+pub use zeroize::Zeroizing;

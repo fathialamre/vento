@@ -188,42 +188,17 @@ mod tests {
     use crate::archive::detect::Format;
     use crate::archive::entries::extract_one;
     use crate::archive::job::Progress;
-    use crate::archive::test_support::{listing, no_mark, tree};
+    use crate::archive::test_support::{
+        ZipEntry as E, listing, make_encrypted, make_zip, no_mark, stored, tree,
+    };
     use crate::fileops::{Fingerprint, partial_name};
     use std::ffi::OsStr;
     use std::fs;
-    use std::io::{self, Write};
+    use std::io;
     use std::path::PathBuf;
     use std::sync::Mutex;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-    use zip::write::SimpleFileOptions;
-    use zip::{AesMode, CompressionMethod, ZipWriter};
-
-    /// One entry of a test zip.
-    enum E<'a> {
-        File(&'a str, &'a [u8]),
-        Dir(&'a str),
-        Link(&'a str, &'a str),
-    }
-
-    fn stored() -> SimpleFileOptions {
-        SimpleFileOptions::default().compression_method(CompressionMethod::Stored)
-    }
-
-    fn make_zip(path: &Path, entries: &[E]) {
-        let mut zip = ZipWriter::new(File::create(path).unwrap());
-        for entry in entries {
-            match entry {
-                E::File(name, data) => {
-                    zip.start_file(*name, stored()).unwrap();
-                    zip.write_all(data).unwrap();
-                }
-                E::Dir(name) => zip.add_directory(*name, stored()).unwrap(),
-                E::Link(name, target) => zip.add_symlink(*name, *target, stored()).unwrap(),
-            }
-        }
-        zip.finish().unwrap();
-    }
+    use zip::ZipWriter;
 
     fn extract(archive: &Path) -> Result<crate::archive::Made, ArchiveError> {
         extract_one(archive, Format::Zip, None, &Progress::new(), &no_mark)
@@ -435,17 +410,6 @@ mod tests {
         assert!(matches!(extract(&empty), Err(ArchiveError::Empty)));
         assert!(matches!(extract(&sidecars), Err(ArchiveError::Empty)));
         assert_eq!(listing(dir.path()), ["Empty.zip", "Mac.zip"]);
-    }
-
-    fn make_encrypted(path: &Path) {
-        let mut zip = ZipWriter::new(File::create(path).unwrap());
-        zip.start_file(
-            "secret.txt",
-            SimpleFileOptions::default().with_aes_encryption(AesMode::Aes256, "hunter2"),
-        )
-        .unwrap();
-        zip.write_all(b"top secret").unwrap();
-        zip.finish().unwrap();
     }
 
     #[test]
