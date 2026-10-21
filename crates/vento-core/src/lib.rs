@@ -11,4 +11,5 @@ pub mod pocket_content;
 pub mod pocket_zone;
 pub mod ring;
 pub mod settings;
+pub mod sizes;
 pub mod trigger;
