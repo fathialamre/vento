@@ -12,7 +12,7 @@ for Windows and Linux targets (the platform crate is a stub there, so the wheel
 does nothing); full CI runs on all three systems once the repo has a remote.
 
 Actions: Pocket, Copy, Move (with undo), Copy to (with undo), Archive (with
-undo, off by default), Copy path, Terminal.
+undo, off by default), Copy path, Terminal, Info (off by default).
 
 ## Move and Copy to
 
@@ -59,6 +59,14 @@ an archive only when both its extension and its contents say so, so dropping a
 
 Archive is off by default: switch it on in the settings panel's Wheel tab, where
 it is listed with the hidden actions.
+
+## Info
+
+Release on **Info** to open a window with the size of what you dragged. A
+folder is counted live: its size and the three biggest things inside it update
+while vento counts. The window has **Show in Finder** and **Done**; Esc or a
+click outside also closes it. Info is off by default: add it from the settings
+panel's Wheel tab.
 
 ## Requirements
 
@@ -115,8 +123,8 @@ layout = "honeycomb"
 trigger = "ctrl"
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to", "archive". A file that already lists `actions` must add
-# "pocket", "copy_to" or "archive" to show it.
+# "terminal", "copy_to", "archive", "info". A file that already lists `actions`
+# must add "pocket", "copy_to", "archive" or "info" to show it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
 # Actions turned off in the panel (the panel lists them below the shown ones)
