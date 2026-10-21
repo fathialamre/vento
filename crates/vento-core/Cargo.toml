@@ -12,6 +12,7 @@ toml = "1"
 directories = "6"
 log = "0.4"
 thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zip = { version = "9", default-features = false, features = ["aes-crypto", "deflate", "deflate64", "bzip2", "lzma", "zstd", "time"] }
 
 [dev-dependencies]

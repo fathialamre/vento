@@ -7,8 +7,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use zip::result::ZipError;
-use zip::write::SimpleFileOptions;
+use chrono::{Datelike, Timelike};
+use zip::result::{ZipError, ZipResult};
+use zip::write::{FullFileOptions, SimpleFileOptions};
 use zip::{CompressionMethod, DateTime, ZipWriter};
 
 use super::job::{ArchiveError, Counting, Made, Progress};
@@ -17,6 +18,11 @@ use crate::fileops::{Fingerprint, numbered_name, place_partial, remove_any};
 
 /// Macs scatter these through folders; they carry nothing worth archiving.
 const DS_STORE: &str = ".DS_Store";
+
+/// Header id of the Info-ZIP extended timestamp extra field.
+const EXTENDED_TIMESTAMP: u16 = 0x5455;
+/// Flags byte of that field: only the modified time follows.
+const EXTENDED_TIMESTAMP_MODIFIED: u8 = 0x01;
 
 /// Zips `paths` into `dir` under `name` (or the next free `name (2)`, ...).
 ///
@@ -95,7 +101,7 @@ struct Item {
     name: String,
     kind: Kind,
     mode: Option<u32>,
-    modified: DateTime,
+    modified: Option<SystemTime>,
 }
 
 impl Item {
@@ -150,9 +156,7 @@ fn walk(
     }
     let meta = fs::symlink_metadata(path)?;
     let kind = meta.file_type();
-    let modified = meta
-        .modified()
-        .map_or_else(|_| DateTime::default(), dos_time);
+    let modified = meta.modified().ok();
     let mode = unix_mode(&meta);
     if kind.is_symlink() {
         let target = fs::read_link(path)?.to_string_lossy().into_owned();
@@ -227,12 +231,7 @@ fn write_item(
     item: &Item,
     progress: &Progress,
 ) -> Result<(), ArchiveError> {
-    let mut options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Deflated)
-        .last_modified_time(item.modified);
-    if let Some(mode) = item.mode {
-        options = options.unix_permissions(mode);
-    }
+    let mut options = file_options(item).map_err(zip_error)?;
     match &item.kind {
         Kind::Dir => zip.add_directory(&item.name, options).map_err(zip_error),
         Kind::Link { target } => zip
@@ -262,49 +261,55 @@ fn zip_error(error: ZipError) -> ArchiveError {
     }
 }
 
-/// The zip timestamp (UTC, 2 s resolution) for `time`; the zip default when it
-/// falls outside what zip can store (before 1980, after 2107).
+/// Options for one entry: deflate, permissions, and the modified time in both
+/// forms zip readers look for.
+///
+/// The DOS date and time field has no time zone and is read as local time, so it
+/// is written in local time. The Info-ZIP extended timestamp field holds exact
+/// UTC seconds and is preferred by extractors that understand it.
+fn file_options(item: &Item) -> ZipResult<FullFileOptions<'static, 'static>> {
+    let mut options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    if let Some(mode) = item.mode {
+        options = options.unix_permissions(mode);
+    }
+    let mut options = options.into_full_options();
+    if let Some(modified) = item.modified {
+        options = options.last_modified_time(dos_time(modified));
+        if let Ok(seconds) = i32::try_from(unix_seconds(modified)) {
+            let mut data = vec![EXTENDED_TIMESTAMP_MODIFIED];
+            data.extend_from_slice(&seconds.to_le_bytes());
+            options.add_extra_field(EXTENDED_TIMESTAMP, data, false)?;
+        }
+    }
+    Ok(options)
+}
+
+/// Whole seconds since the Unix epoch, negative before it.
+fn unix_seconds(time: SystemTime) -> i64 {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => i64::try_from(after.as_secs()).unwrap_or(i64::MAX),
+        Err(before) => -i64::try_from(before.duration().as_secs()).unwrap_or(i64::MAX),
+    }
+}
+
+/// The zip DOS timestamp (local time, 2 s resolution) for `time`; the zip
+/// default when it falls outside what the format can store (1980 to 2107).
 fn dos_time(time: SystemTime) -> DateTime {
-    let Ok(since_epoch) = time.duration_since(UNIX_EPOCH) else {
-        return DateTime::default();
-    };
-    let seconds = since_epoch.as_secs();
-    let (year, month, day) = civil_from_days((seconds / 86_400) as i64);
-    let of_day = seconds % 86_400;
-    u16::try_from(year)
+    let local = chrono::DateTime::<chrono::Local>::from(time);
+    u16::try_from(local.year())
         .ok()
         .and_then(|year| {
             DateTime::from_date_and_time(
                 year,
-                month as u8,
-                day as u8,
-                (of_day / 3600) as u8,
-                (of_day % 3600 / 60) as u8,
-                (of_day % 60) as u8,
+                local.month() as u8,
+                local.day() as u8,
+                local.hour() as u8,
+                local.minute() as u8,
+                local.second() as u8,
             )
             .ok()
         })
         .unwrap_or_default()
-}
-
-/// Year, month (1-12) and day of the proleptic Gregorian date `days` after
-/// 1970-01-01.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let day_of_era = z.rem_euclid(146_097);
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let shifted_month = (5 * day_of_year + 2) / 153;
-    let day = (day_of_year - (153 * shifted_month + 2) / 5 + 1) as u32;
-    let month = if shifted_month < 10 {
-        shifted_month + 3
-    } else {
-        shifted_month - 9
-    } as u32;
-    let year = year_of_era + era * 400 + i64::from(month <= 2);
-    (year, month, day)
 }
 
 #[cfg(test)]
@@ -341,7 +346,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("a.txt");
         fs::write(&file, b"hello hello hello hello").unwrap();
-        // 2024-03-05 12:34:56 UTC.
         File::options()
             .write(true)
             .open(&file)
@@ -374,18 +378,33 @@ mod tests {
         assert_eq!(text, "hello hello hello hello");
         #[cfg(unix)]
         assert_eq!(entry.unix_mode().unwrap() & 0o7777, 0o755);
+        let mtime = fs::metadata(&file).unwrap().modified().unwrap();
+        // The extended timestamp field holds the exact UTC mtime.
+        let extended = entry
+            .extra_data_fields()
+            .find_map(|field| match field {
+                zip::ExtraField::ExtendedTimestamp(stamp) => stamp.mod_time(),
+                _ => None,
+            })
+            .expect("extended timestamp present");
+        assert_eq!(i64::from(extended), 1_709_642_096);
+        assert!(i64::from(extended).abs_diff(unix_seconds(mtime)) <= 1);
+        // The DOS field reads as local time.
         let stamp = entry.last_modified().unwrap();
-        assert_eq!(
-            (
-                stamp.year(),
-                stamp.month(),
-                stamp.day(),
-                stamp.hour(),
-                stamp.minute()
-            ),
-            (2024, 3, 5, 12, 34)
-        );
-        assert!(stamp.second().abs_diff(56) <= 2);
+        let dos = chrono::NaiveDate::from_ymd_opt(
+            stamp.year().into(),
+            stamp.month().into(),
+            stamp.day().into(),
+        )
+        .unwrap()
+        .and_hms_opt(
+            stamp.hour().into(),
+            stamp.minute().into(),
+            stamp.second().into(),
+        )
+        .unwrap();
+        let local = chrono::DateTime::<chrono::Local>::from(mtime).naive_local();
+        assert!((dos - local).num_seconds().abs() <= 2);
     }
 
     #[test]
@@ -630,13 +649,6 @@ mod tests {
 
         assert!(matches!(result, Err(ArchiveError::Empty)));
         assert_eq!(listing(dir.path()), [".DS_Store"]);
-    }
-
-    #[test]
-    fn civil_dates() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(11_016), (2000, 2, 29));
-        assert_eq!(civil_from_days(19_787), (2024, 3, 5));
     }
 
     #[test]
