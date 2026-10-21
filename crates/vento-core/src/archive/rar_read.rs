@@ -341,10 +341,7 @@ fn classify(meta: &ArchiveMemberMeta) -> Result<Member, ArchiveError> {
         } else {
             meta.unpacked_size
         },
-        // No permission bits at all is more likely an unset field than intent.
-        mode: unix_attr
-            .map(|attr| attr & 0o7777)
-            .filter(|mode| mode & 0o777 != 0),
+        mode: unix_attr.map(|attr| attr & 0o7777),
         // The crate converts DOS local time and Unix seconds with checked
         // arithmetic, and gives `None` for fields that name no real time.
         mtime: meta.modification_time(),

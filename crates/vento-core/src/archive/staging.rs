@@ -192,8 +192,8 @@ impl<'a> Staging<'a> {
         if let Some(mtime) = info.mtime {
             file.set_modified(mtime)?;
         }
-        if let Some(mode) = info.mode {
-            set_file_mode(file, mode & 0o777)?;
+        if let Some(mode) = permissions(info) {
+            set_file_mode(file, mode)?;
         }
         Ok(())
     }
@@ -206,8 +206,8 @@ impl<'a> Staging<'a> {
         let (parent, name) = self.prepare(info)?;
         let path = parent.join(name);
         self.real_dir(&path, &info.path)?;
-        if let Some(mode) = info.mode {
-            set_dir_mode(&path, (mode & 0o777) | 0o700)?;
+        if let Some(mode) = permissions(info) {
+            set_dir_mode(&path, mode | 0o700)?;
         }
         if let Some(mtime) = info.mtime {
             self.dir_times.push((path, mtime));
@@ -555,6 +555,15 @@ fn make_symlink(_target: &str, _path: &Path) -> io::Result<()> {
         io::ErrorKind::Unsupported,
         "symlinks in archives are not supported here",
     ))
+}
+
+/// The permission bits to give `info`'s item, if any. A mode with none of
+/// them set (some writers mark an entry as unix-made but fill in only its
+/// DOS attributes) is more likely an unset field than intent: the item keeps
+/// the default mode rather than become unreadable. Every reader relies on
+/// this.
+fn permissions(info: &EntryInfo) -> Option<u32> {
+    info.mode.map(|mode| mode & 0o777).filter(|&mode| mode != 0)
 }
 
 #[cfg(unix)]

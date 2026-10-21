@@ -641,6 +641,27 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn entry_with_no_permission_bits_extracts_readable() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Dos.zip");
+        let mut zip = ZipWriter::new(File::create(&archive).unwrap());
+        zip.start_file("dos.txt", stored().unix_permissions(0))
+            .unwrap();
+        zip.write_all(b"hello").unwrap();
+        zip.finish().unwrap();
+
+        let out = extract(&archive).unwrap().output;
+
+        assert_eq!(out, dir.path().join("dos.txt"));
+        let mode = fs::metadata(&out).unwrap().permissions().mode();
+        assert_ne!(mode & 0o777, 0, "mode {mode:o}");
+        assert_eq!(fs::read(&out).unwrap(), b"hello");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn extract_keeps_modes_and_times() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
