@@ -109,6 +109,8 @@ export component PocketIsland inherits Window {
     callback item-pressed(int);
     callback item-moved(int, length, length);
     callback item-released(int);
+    // A right press on cell `index`, at this window-local point: its menu.
+    callback item-context(int, length, length);
     callback all-pressed();
     callback all-moved(length, length);
     callback all-released();
@@ -283,6 +285,10 @@ export component PocketIsland inherits Window {
                         pointer-event(e) => {
                             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                                 root.item-pressed(i);
+                            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                                && !self.pressed {
+                                // Never a drag, a selection or a hover change: just the menu.
+                                root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
                             } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
                                 || e.kind == PointerEventKind.cancel {
                                 root.item-released(i);
@@ -315,6 +321,13 @@ export component PocketIsland inherits Window {
                             remove-touch := TouchArea {
                                 clicked => {
                                     root.remove(i);
+                                }
+                                // The x takes the press before its cell does.
+                                pointer-event(e) => {
+                                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                                        && !self.pressed {
+                                        root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                    }
                                 }
                             }
                         }

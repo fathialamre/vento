@@ -88,6 +88,38 @@ pub trait DropCatcher {
     fn on_event(&self, f: Box<dyn Fn(CatcherEvent)>);
 }
 
+/// An app that can open a file, for an "Open With" menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppInfo {
+    /// The app bundle.
+    pub path: PathBuf,
+    /// The name Finder shows for it, without ".app".
+    pub name: String,
+    /// Whether it is the file's default app.
+    pub is_default: bool,
+}
+
+/// One entry of a native context menu ([`Platform::context_menu`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MenuEntry {
+    /// A leaf the user can choose; the menu reports its `id`.
+    Item {
+        id: u32,
+        title: String,
+        enabled: bool,
+        /// Shows this file's Finder icon (16 pt) beside the title.
+        icon: Option<PathBuf>,
+    },
+    /// An entry that opens `children` beside it.
+    Submenu {
+        title: String,
+        enabled: bool,
+        children: Vec<MenuEntry>,
+    },
+    /// A line between groups.
+    Separator,
+}
+
 /// Why a platform operation failed.
 #[derive(thiserror::Error, Debug)]
 pub enum PlatformError {
@@ -184,6 +216,28 @@ pub trait Platform {
     /// screen that contains `p`, a global logical point; the primary screen's
     /// when none does. 1.0 where unsupported.
     fn scale_factor_at(&self, p: Point) -> f64;
+    /// The apps that can open `path`, its default app first (marked
+    /// [`AppInfo::is_default`]), each app once. Empty where unsupported,
+    /// or when `path` doesn't exist.
+    fn apps_for(&self, path: &Path) -> Vec<AppInfo>;
+    /// Open `paths`: each with its default app for `app` `None`, all with
+    /// the app bundle `app` otherwise. Main thread only.
+    fn open_paths(&self, paths: &[PathBuf], app: Option<&Path>) -> Result<(), PlatformError>;
+    /// Show `paths` in Finder, selected. Nothing happens where
+    /// unsupported. Main thread only.
+    fn reveal_in_finder(&self, paths: &[PathBuf]);
+    /// Show a context menu of `entries` with its top-left corner at `at`
+    /// (window-local logical point, top-left origin) over `window`, and
+    /// wait until it closes. Returns the id of the [`MenuEntry::Item`]
+    /// chosen, or `None` if the menu was dismissed (or is unsupported).
+    /// Works from a window that is never key, in an app that is not
+    /// active. Main thread only.
+    fn context_menu(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        at: Point,
+        entries: &[MenuEntry],
+    ) -> Option<u32>;
 }
 
 /// The platform implementation for the running OS.

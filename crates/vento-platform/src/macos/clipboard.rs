@@ -35,7 +35,7 @@ pub(super) fn copy_files(paths: &[PathBuf]) -> Result<(), PlatformError> {
     }
 }
 
-fn file_url(path: &Path) -> Result<Retained<NSURL>, PlatformError> {
+pub(super) fn file_url(path: &Path) -> Result<Retained<NSURL>, PlatformError> {
     let s = path.to_str().ok_or_else(|| {
         PlatformError::Failed(format!("path is not valid UTF-8: {}", path.display()))
     })?;

@@ -14,13 +14,17 @@ use objc2_app_kit::{
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
-use crate::{DropCatcher, IslandHome, Platform, PlatformError, RgbaImage, TerminalApp};
+use crate::{
+    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, TerminalApp,
+};
 
+mod apps;
 mod catcher;
 mod clicks;
 mod clipboard;
 mod icons;
 mod input;
+mod menu;
 mod notify;
 mod overlay;
 mod patch;
@@ -248,5 +252,34 @@ impl Platform for MacPlatform {
 
     fn scale_factor_at(&self, p: Point) -> f64 {
         screens::scale_factor_at(p)
+    }
+
+    fn apps_for(&self, path: &Path) -> Vec<AppInfo> {
+        apps::apps_for(path)
+    }
+
+    fn open_paths(&self, paths: &[PathBuf], app: Option<&Path>) -> Result<(), PlatformError> {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("open_paths called off the main thread; ignored");
+            return Err(PlatformError::Failed("not on the main thread".into()));
+        }
+        apps::open_paths(paths, app)
+    }
+
+    fn reveal_in_finder(&self, paths: &[PathBuf]) {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("reveal_in_finder called off the main thread; ignored");
+            return;
+        }
+        apps::reveal(paths);
+    }
+
+    fn context_menu(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        at: Point,
+        entries: &[MenuEntry],
+    ) -> Option<u32> {
+        menu::context_menu(window, at, entries)
     }
 }

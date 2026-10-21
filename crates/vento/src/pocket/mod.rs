@@ -12,6 +12,7 @@
 
 mod add;
 mod geometry;
+mod menu;
 mod out;
 mod owned;
 
@@ -23,7 +24,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use log::{debug, info, warn};
 use raw_window_handle::HasWindowHandle;
-use slint::platform::WindowEvent;
+use slint::platform::{PointerEventButton, WindowEvent};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{
     ComponentHandle, Image, LogicalPosition, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -41,6 +42,7 @@ use crate::ui::{Icons, PocketCell, PocketIsland};
 
 use add::{AddPlan, Entry, plan_new, store};
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
+use menu::{ItemMenu, MenuAction, menu_targets};
 use out::{
     ALL, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
@@ -260,6 +262,25 @@ impl PocketController {
             }
         });
         let c = with.clone();
+        w.on_item_context(move |i, x, y| {
+            let (Some(c), Ok(i)) = (c(), usize::try_from(i)) else {
+                return;
+            };
+            let at = Point {
+                x: f64::from(x),
+                y: f64::from(y),
+            };
+            // On a later turn of the event loop: the menu runs its own loop
+            // until it closes, and the press it ends must be passed back to
+            // the window, which can't take events while it handles this one.
+            let this = c.this.clone();
+            Timer::single_shot(Duration::ZERO, move || {
+                if let Some(c) = this.upgrade() {
+                    c.show_menu(i, at);
+                }
+            });
+        });
+        let c = with.clone();
         w.on_all_pressed(move || {
             if let Some(c) = c() {
                 c.latch.press(ALL);
@@ -353,6 +374,92 @@ impl PocketController {
         if let Some(mut cell) = self.cells.row_data(index) {
             cell.selected = on;
             self.cells.set_row_data(index, cell);
+        }
+    }
+
+    /// The right-click menu on cell `index`, at window-local `at`: acts on
+    /// the selection when the cell is part of a bigger one, otherwise on the
+    /// cell's item. While it is up (it is modal), nothing else runs, so the
+    /// island stays as it is; afterwards it settles as usual.
+    fn show_menu(&self, index: usize, at: Point) {
+        if self.latch.running() {
+            return;
+        }
+        let Some(clicked) = self.id_at(index) else {
+            return;
+        };
+        let (targets, paths, clicked_path) = {
+            let pocket = self.pocket.borrow();
+            let all: Vec<u64> = pocket.items().iter().map(|i| i.id).collect();
+            let targets = menu_targets(clicked, &all, &self.selected.borrow());
+            let missing = pocket.missing();
+            let path_of = |id: &u64| {
+                (!missing.contains(id))
+                    .then(|| pocket.get(*id).map(|i| i.path.clone()))
+                    .flatten()
+            };
+            let paths: Vec<PathBuf> = targets.iter().filter_map(path_of).collect();
+            (targets, paths, path_of(&clicked))
+        };
+        // Asked only now, for the clicked item: nothing is done while idle.
+        let apps = clicked_path
+            .map(|p| self.platform.apps_for(&p))
+            .unwrap_or_default();
+        let menu = ItemMenu::build(targets.len(), paths.len(), &apps);
+        let handle = match self.window.window().window_handle().window_handle() {
+            Ok(handle) => handle.as_raw(),
+            Err(e) => {
+                warn!("cannot show the pocket menu: {e}");
+                return;
+            }
+        };
+        debug!(
+            "pocket menu on {} item(s), {} there, {} app(s)",
+            targets.len(),
+            paths.len(),
+            apps.len()
+        );
+        let chosen = self.platform.context_menu(handle, at, &menu.entries);
+        // The menu took the mouse: Slint never saw the right button go up,
+        // and the cell would keep the pointer grabbed.
+        self.dispatch(WindowEvent::PointerReleased {
+            position: LogicalPosition::new(at.x as f32, at.y as f32),
+            button: PointerEventButton::Right,
+        });
+        let Some(action) = chosen.and_then(|id| menu.action(id)) else {
+            return;
+        };
+        info!("pocket menu: {action:?} on {} item(s)", targets.len());
+        self.run_menu_action(action, &targets, &paths);
+    }
+
+    /// Does what the menu's `action` says, to `targets` (all of them, for
+    /// Remove) or to `paths` (the files of those still there).
+    fn run_menu_action(&self, action: MenuAction, targets: &[u64], paths: &[PathBuf]) {
+        let result = match action {
+            MenuAction::Open => self
+                .platform
+                .open_paths(paths, None)
+                .map_err(|e| ("open", e)),
+            MenuAction::OpenWith(app) => self
+                .platform
+                .open_paths(paths, Some(&app))
+                .map_err(|e| ("open", e)),
+            MenuAction::Reveal => {
+                self.platform.reveal_in_finder(paths);
+                Ok(())
+            }
+            MenuAction::Copy => self.platform.copy_files(paths).map_err(|e| ("copy", e)),
+            // As the cell's x does, for one item or many.
+            MenuAction::Remove => {
+                self.remove_items(targets, UNDO_WINDOW, true);
+                Ok(())
+            }
+        };
+        if let Err((verb, e)) = result {
+            warn!("pocket menu: cannot {verb}: {e}");
+            self.toast
+                .show(&format!("Couldn't {verb}: {e}"), None, self.toast_at());
         }
     }
 

@@ -6,7 +6,9 @@ use std::rc::Rc;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 
-use crate::{DropCatcher, IslandHome, Platform, PlatformError, RgbaImage, TerminalApp};
+use crate::{
+    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, TerminalApp,
+};
 
 /// Inert [`Platform`]: reports no input and supports nothing.
 #[derive(Debug, Default, Clone, Copy)]
@@ -106,6 +108,25 @@ impl Platform for StubPlatform {
     fn scale_factor_at(&self, _p: Point) -> f64 {
         1.0
     }
+
+    fn apps_for(&self, _path: &Path) -> Vec<AppInfo> {
+        Vec::new()
+    }
+
+    fn open_paths(&self, _paths: &[PathBuf], _app: Option<&Path>) -> Result<(), PlatformError> {
+        Err(PlatformError::Unsupported)
+    }
+
+    fn reveal_in_finder(&self, _paths: &[PathBuf]) {}
+
+    fn context_menu(
+        &self,
+        _window: raw_window_handle::RawWindowHandle,
+        _at: Point,
+        _entries: &[MenuEntry],
+    ) -> Option<u32> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -159,5 +180,27 @@ mod tests {
         p.watch_outside_clicks(Box::new(|| panic!("the stub reports no clicks")));
         p.stop_watching_outside_clicks();
         assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
+    }
+
+    #[test]
+    fn stub_has_no_apps_and_shows_no_menu() {
+        let p = StubPlatform;
+        assert!(p.apps_for(Path::new("/")).is_empty());
+        assert!(matches!(
+            p.open_paths(&[PathBuf::from("/")], None),
+            Err(PlatformError::Unsupported)
+        ));
+        p.reveal_in_finder(&[PathBuf::from("/")]);
+        let web = raw_window_handle::WebWindowHandle::new(1);
+        let entries = [MenuEntry::Item {
+            id: 1,
+            title: "Open".into(),
+            enabled: true,
+            icon: None,
+        }];
+        assert_eq!(
+            p.context_menu(web.into(), Point { x: 0.0, y: 0.0 }, &entries),
+            None
+        );
     }
 }

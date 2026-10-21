@@ -46,6 +46,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSDragging",
     "NSColor",
     "NSMenu",
+    "NSMenuItem",
 ] }
 objc2-core-graphics = { version = "0.3", features = ["CGEventSource"] }
 rfd = "0.17"
