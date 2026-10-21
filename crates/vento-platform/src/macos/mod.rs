@@ -28,9 +28,12 @@ mod menu;
 mod notify;
 mod overlay;
 mod patch;
+mod quarantine;
 mod screens;
 mod terminal;
 mod trash;
+
+pub(crate) use quarantine::{quarantine_of, set_quarantine};
 
 /// AppKit-backed [`Platform`].
 pub struct MacPlatform {

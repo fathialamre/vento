@@ -254,6 +254,35 @@ pub trait Platform {
     ) -> Option<u32>;
 }
 
+/// The quarantine attribute (`com.apple.quarantine`) of `path` itself, never
+/// of what a link points to. `None` when there is none, and also when it
+/// can't be read. A free function so a worker thread can call it. Always
+/// `None` where unsupported.
+pub fn quarantine_of(path: &Path) -> Option<Vec<u8>> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::quarantine_of(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::quarantine_of(path)
+    }
+}
+
+/// Mark `path` itself (never what a link points to) with the quarantine
+/// attribute `value`, as read by [`quarantine_of`]. A free function so a
+/// worker thread can call it. Does nothing where unsupported.
+pub fn set_quarantine(path: &Path, value: &[u8]) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_quarantine(path, value)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::set_quarantine(path, value)
+    }
+}
+
 /// The platform implementation for the running OS.
 pub fn current() -> Rc<dyn Platform> {
     #[cfg(target_os = "macos")]

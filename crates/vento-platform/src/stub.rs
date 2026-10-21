@@ -10,6 +10,18 @@ use crate::{
     AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, TerminalApp,
 };
 
+/// No quarantine attribute exists here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn quarantine_of(_path: &Path) -> Option<Vec<u8>> {
+    None
+}
+
+/// Nothing to set here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn set_quarantine(_path: &Path, _value: &[u8]) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Inert [`Platform`]: reports no input and supports nothing.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StubPlatform;
@@ -196,6 +208,12 @@ mod tests {
         p.watch_outside_clicks(Box::new(|| panic!("the stub reports no clicks")));
         p.stop_watching_outside_clicks();
         assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
+    }
+
+    #[test]
+    fn stub_has_no_quarantine() {
+        assert_eq!(quarantine_of(Path::new("/")), None);
+        assert!(set_quarantine(Path::new("/"), b"x").is_ok());
     }
 
     #[test]

@@ -51,3 +51,5 @@ objc2-app-kit = { version = "0.3", features = [
 ] }
 objc2-core-graphics = { version = "0.3", features = ["CGEventSource"] }
 rfd = "0.17"
+# Reads and copies the quarantine attribute of extracted files.
+xattr = "1"
