@@ -64,7 +64,7 @@ fn occupied(path: &Path) -> bool {
 }
 
 /// Name for the `n`-th duplicate: `a.txt` -> `a (2).txt`, `.env` -> `.env (2)`.
-fn numbered_name(name: &OsStr, n: u32) -> OsString {
+pub(crate) fn numbered_name(name: &OsStr, n: u32) -> OsString {
     let path = Path::new(name);
     // `file_stem` is the whole name for dotfiles, so a leading dot never splits.
     let (stem, ext) = (path.file_stem().unwrap_or(name), path.extension());
@@ -479,11 +479,11 @@ fn record_step(
 /// left out so the temporary name stays within the 255-byte name limit.
 const MAX_NAME_IN_PARTIAL: usize = 200;
 /// How many partial-copy names, and final names, are tried before giving up.
-const NAME_ATTEMPTS: u32 = 1000;
+pub(crate) const NAME_ATTEMPTS: u32 = 1000;
 
 /// Hidden name a cross-device copy is built under before it gets its final
 /// name: `.{name}.vento-partial-{pid}`, then `...-{pid}-2`, `-3`, ...
-fn partial_name(name: &OsStr, attempt: u32) -> OsString {
+pub(crate) fn partial_name(name: &OsStr, attempt: u32) -> OsString {
     let mut out = OsString::from(".");
     if name.len() <= MAX_NAME_IN_PARTIAL {
         out.push(name);
@@ -572,7 +572,7 @@ fn claim_partial(
 /// replace anything, and the partial name is then unlinked. Folders (and
 /// files on volumes without hard links) are renamed right after checking the
 /// name is free; `rename` itself could replace an item created in between.
-fn place_partial(
+pub(crate) fn place_partial(
     partial: &Path,
     dest_dir: &Path,
     name: &OsStr,
@@ -669,7 +669,7 @@ fn check_tree(path: &Path) -> Result<(), TreeCheck> {
 }
 
 /// Best-effort removal of a partial copy that this module created.
-fn remove_any(path: &Path) {
+pub(crate) fn remove_any(path: &Path) {
     if let Err(e) = remove_any_checked(path) {
         log::warn!("could not clean up partial copy {}: {e}", path.display());
     }
