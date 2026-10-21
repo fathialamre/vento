@@ -164,6 +164,15 @@ export component PasswordPrompt inherits Window {
     forward-focus: field;
 
     keys := FocusScope {
+        // The field shows dots, but its copy and cut would still put the
+        // password itself on the clipboard: those chords stop here.
+        capture-key-pressed(event) => {
+            if (field.has-focus && (event.modifiers.control || event.modifiers.meta)
+                && (event.text == "c" || event.text == "C" || event.text == "x" || event.text == "X")) {
+                return accept;
+            }
+            return reject;
+        }
         key-pressed(event) => {
             if (event.text == Key.Escape) {
                 root.cancel();
