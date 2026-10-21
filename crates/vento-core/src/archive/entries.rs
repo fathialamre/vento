@@ -8,6 +8,7 @@ use std::time::SystemTime;
 
 use super::detect::{Format, archive_stem};
 use super::job::{ArchiveError, Made, Progress};
+use super::sevenz_read::SevenZReader;
 use super::staging::Staging;
 use super::zip_read::ZipReader;
 
@@ -142,7 +143,7 @@ pub(crate) fn open_reader<'p>(
 ) -> Result<Box<dyn ArchiveReader + 'p>, ArchiveError> {
     match format {
         Format::Zip => Ok(Box::new(ZipReader::open(path, password)?)),
-        Format::SevenZ => Err(ArchiveError::Unsupported("7z".to_owned())),
+        Format::SevenZ => Ok(Box::new(SevenZReader::open(path, password)?)),
         Format::Rar => Err(ArchiveError::Unsupported("rar".to_owned())),
     }
 }

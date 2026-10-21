@@ -5,6 +5,7 @@ mod compress;
 mod detect;
 mod entries;
 mod job;
+mod sevenz_read;
 mod staging;
 mod zip_read;
 
