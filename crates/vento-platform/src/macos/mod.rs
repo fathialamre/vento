@@ -23,6 +23,7 @@ mod catcher;
 mod clicks;
 mod clipboard;
 mod icons;
+mod info;
 mod input;
 mod menu;
 mod notify;
@@ -33,6 +34,7 @@ mod screens;
 mod terminal;
 mod trash;
 
+pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 
 /// AppKit-backed [`Platform`].
@@ -150,6 +152,10 @@ impl Platform for MacPlatform {
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
         icons::file_icon(path, px)
+    }
+
+    fn kind_description(&self, path: &Path) -> Option<String> {
+        info::kind_description(path)
     }
 
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>> {

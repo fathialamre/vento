@@ -181,6 +181,9 @@ pub trait Platform {
     /// main screen's backing scale. `None` if `path` doesn't exist or the
     /// icon can't be rendered. Main thread only.
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage>;
+    /// The localised kind Finder shows for `path` ("PNG image", "Folder",
+    /// "Application"); `None` if unknown. Main thread only.
+    fn kind_description(&self, path: &Path) -> Option<String>;
     /// The native drop catcher, created on first use and shared afterwards.
     /// `None` where unsupported or off the main thread.
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>>;
@@ -283,6 +286,48 @@ pub fn set_quarantine(path: &Path, value: &[u8]) -> std::io::Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
         stub::set_quarantine(path, value)
+    }
+}
+
+/// Whether `path` is a package: a folder Finder shows as a single file (an
+/// app or other bundle). False for files and missing paths. A free function
+/// so a worker thread can call it. Always false where unsupported.
+pub fn is_package(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_package(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::is_package(path)
+    }
+}
+
+/// Make file reads on the calling thread fail on cloud-only files instead
+/// of downloading them. Call it on the thread that walks, before walking.
+/// Does nothing where unsupported.
+pub fn block_cloud_downloads_on_this_thread() -> Result<(), PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::block_cloud_downloads_on_this_thread()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::block_cloud_downloads_on_this_thread()
+    }
+}
+
+/// Which volumes a size count starting at `start` may enter. A free
+/// function so a worker thread can call it. The default scope (stay on
+/// `start`'s device) where unsupported.
+pub fn volume_scope(start: &Path) -> vento_core::sizes::VolumeScope {
+    #[cfg(target_os = "macos")]
+    {
+        macos::volume_scope(start)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::volume_scope(start)
     }
 }
 

@@ -22,6 +22,24 @@ pub(crate) fn set_quarantine(_path: &Path, _value: &[u8]) -> std::io::Result<()>
     Ok(())
 }
 
+/// No packages exist here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn is_package(_path: &Path) -> bool {
+    false
+}
+
+/// Nothing downloads on demand here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn block_cloud_downloads_on_this_thread() -> Result<(), PlatformError> {
+    Ok(())
+}
+
+/// Stay on the start's own device.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn volume_scope(_start: &Path) -> vento_core::sizes::VolumeScope {
+    vento_core::sizes::VolumeScope::default()
+}
+
 /// Inert [`Platform`]: reports no input and supports nothing.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StubPlatform;
@@ -102,6 +120,10 @@ impl Platform for StubPlatform {
         None
     }
 
+    fn kind_description(&self, _path: &Path) -> Option<String> {
+        None
+    }
+
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>> {
         None
     }
@@ -179,6 +201,10 @@ mod tests {
         let p = StubPlatform;
         assert!(p.pocket_home().is_none());
         assert!(p.file_icon(Path::new("/"), 32).is_none());
+        assert!(p.kind_description(Path::new("/")).is_none());
+        assert!(!is_package(Path::new("/")));
+        assert!(block_cloud_downloads_on_this_thread().is_ok());
+        assert_eq!(volume_scope(Path::new("/")), Default::default());
         assert!(p.drop_catcher().is_none());
         let web = raw_window_handle::WebWindowHandle::new(1);
         assert!(matches!(
