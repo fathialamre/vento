@@ -1228,9 +1228,15 @@ mod tests {
         // A hidden row dragged among the shown ones stays hidden and the
         // list keeps the shown rows first: it lands first of the hidden.
         show_action(&mut s, 1, false);
-        assert_eq!(s.hidden_actions, [ActionId::Pocket, ActionId::CopyTo]);
+        assert_eq!(
+            s.hidden_actions,
+            [ActionId::Pocket, ActionId::CopyTo, ActionId::Archive]
+        );
         move_action(&mut s, 5, 1);
-        assert_eq!(s.hidden_actions, [ActionId::CopyTo, ActionId::Pocket]);
+        assert_eq!(
+            s.hidden_actions,
+            [ActionId::CopyTo, ActionId::Pocket, ActionId::Archive]
+        );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();
         move_action(&mut s, 9, 0);

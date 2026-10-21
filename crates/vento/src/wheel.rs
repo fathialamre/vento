@@ -151,6 +151,7 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::CopyPath => icons.get_copy_path(),
         ActionId::Terminal => icons.get_terminal(),
         ActionId::CopyTo => icons.get_copy_to(),
+        ActionId::Archive => icons.get_archive(),
     }
 }
 

@@ -15,18 +15,21 @@ pub enum ActionId {
     Terminal,
     /// Copy the dragged files to a chosen folder.
     CopyTo,
+    /// Compress the dragged files to a zip, or extract the archives among them.
+    Archive,
 }
 
 impl ActionId {
     /// Every action, in the order the settings list offers the ones not yet
     /// placed.
-    pub const ALL: [ActionId; 6] = [
+    pub const ALL: [ActionId; 7] = [
         ActionId::Pocket,
         ActionId::Copy,
         ActionId::Move,
         ActionId::CopyPath,
         ActionId::Terminal,
         ActionId::CopyTo,
+        ActionId::Archive,
     ];
 
     /// Whether the action opens the folder ring when the pointer rests on its
@@ -44,6 +47,7 @@ impl ActionId {
             ActionId::CopyPath => "copy_path",
             ActionId::Terminal => "terminal",
             ActionId::CopyTo => "copy_to",
+            ActionId::Archive => "archive",
         }
     }
 
@@ -56,6 +60,7 @@ impl ActionId {
             ActionId::CopyPath => "Copy path",
             ActionId::Terminal => "Terminal",
             ActionId::CopyTo => "Copy to",
+            ActionId::Archive => "Archive",
         }
     }
 
@@ -68,6 +73,7 @@ impl ActionId {
             "copy_path" => Some(ActionId::CopyPath),
             "terminal" => Some(ActionId::Terminal),
             "copy_to" => Some(ActionId::CopyTo),
+            "archive" => Some(ActionId::Archive),
             _ => None,
         }
     }
@@ -102,5 +108,14 @@ mod tests {
             .filter(|a| a.takes_ring())
             .collect();
         assert_eq!(ringed, [ActionId::Move, ActionId::CopyTo]);
+    }
+
+    #[test]
+    fn archive_key_label_and_no_ring() {
+        assert_eq!(ActionId::Archive.key(), "archive");
+        assert_eq!(ActionId::Archive.label(), "Archive");
+        assert_eq!(ActionId::from_key("archive"), Some(ActionId::Archive));
+        assert!(!ActionId::Archive.takes_ring());
+        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Archive));
     }
 }

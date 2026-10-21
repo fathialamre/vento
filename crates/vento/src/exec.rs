@@ -309,6 +309,9 @@ impl Executor {
                 let result = self.platform.copy_text(&format_paths(&paths, format));
                 self.finish(action, result, at, || format!("copy path: {}", paths.len()));
             }
+            ActionId::Archive => {
+                warn!("archive not wired yet");
+            }
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);

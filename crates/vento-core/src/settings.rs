@@ -643,7 +643,14 @@ mod tests {
         assert!(s.pinned_folders.is_empty());
         assert_eq!(s.move_hold_ms, 400);
         assert!(s.hidden_actions.is_empty());
-        assert_eq!(s.action_rows().last(), Some(&(ActionId::CopyTo, false)));
+        assert_eq!(s.action_rows().last(), Some(&(ActionId::Archive, false)));
+    }
+
+    #[test]
+    fn archive_is_off_by_default() {
+        let rows = Settings::default().action_rows();
+        assert_eq!(rows.last(), Some(&(ActionId::Archive, false)));
+        assert!(!Settings::default().actions.contains(&ActionId::Archive));
     }
 
     #[test]
@@ -695,6 +702,7 @@ mod tests {
                 (ActionId::Pocket, false),
                 (ActionId::CopyPath, false),
                 (ActionId::CopyTo, false),
+                (ActionId::Archive, false),
             ]
         );
     }
@@ -711,6 +719,7 @@ mod tests {
             (ActionId::CopyTo, false),
             (ActionId::Pocket, false),
             (ActionId::CopyPath, false),
+            (ActionId::Archive, false),
         ];
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);
