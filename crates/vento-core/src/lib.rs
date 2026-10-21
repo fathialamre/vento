@@ -1,6 +1,7 @@
 //! Platform-independent core of vento.
 
 pub mod actions;
+pub mod archive;
 pub mod destinations;
 pub mod fileops;
 pub mod geometry;
