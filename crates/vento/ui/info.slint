@@ -12,7 +12,7 @@ import { SectionHeading, Separator, TextButton } from "controls.slint";
 export struct InfoDetail { label: string, value: string }
 
 // One of the biggest things inside a folder: its name, its size as shown and
-// its share of the biggest one, from 0 to 1.
+// its share of the total, from 0 to 1.
 export struct InfoBar { name: string, size: string, share: float }
 
 // The prominent "Done" button.
@@ -103,7 +103,7 @@ export component InfoWindow inherits Window {
     in property <string> item-name;
     // The total size as shown; it grows while a folder is counted.
     in property <string> size;
-    // A line under the header, like "Counting..."; hidden when empty.
+    // A line under the header, like "Calculating…"; hidden when empty.
     in property <string> status;
     // The details card's rows.
     in property <[InfoDetail]> details;

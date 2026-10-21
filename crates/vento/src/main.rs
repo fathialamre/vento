@@ -196,19 +196,22 @@ fn main() -> Result<(), slint::PlatformError> {
     // The menu-bar icon needs the running event loop, and lives as long as the app.
     let tray_handle = Rc::new(RefCell::new(None));
     let keep = tray_handle.clone();
+    let tray_info = info.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
         apply_shortcut(&hub.current().pocket_shortcut);
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
             on_open_panel: Box::new(move |icon| {
-                info.dismiss();
+                tray_info.dismiss();
                 panel.toggle_at(icon);
             }),
             pause,
         }));
     });
     let result = slint::run_event_loop_until_quit();
+    // Quitting stops a running count explicitly.
+    info.dismiss();
     pocket.flush_pending();
     result
 }

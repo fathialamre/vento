@@ -20,7 +20,7 @@ use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, ModelRc, Timer, VecModel};
 use vento_core::geometry::{Point, Rect};
 use vento_core::info::{Facts, Subject, ViewContext, subject_of, view};
-use vento_core::sizes::{CountOptions, Progress, count};
+use vento_core::sizes::{self, CountOptions, Progress, Tally, count};
 use vento_platform::Platform;
 
 use crate::panel::set_rows;
@@ -32,8 +32,9 @@ use crate::ui::{InfoBar, InfoDetail, InfoWindow};
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 /// Window width in logical points (matches `info.slint`).
 const WIDTH: f64 = 300.0;
-/// Size of the item's Finder icon, in pixels (shown at 32 pt).
-const ICON_PX: u32 = 64;
+/// Size of the item's Finder icon, in points (the platform multiplies by the
+/// backing scale; it is shown at 32 pt).
+const ICON_PT: u32 = 32;
 
 thread_local! {
     /// The controller, for progress sent from the counting thread. Set by
@@ -101,11 +102,8 @@ impl InfoController {
     /// are left out; when none is left, a toast says so instead. An open
     /// window takes the new items and its old count stops.
     pub fn open(&self, paths: Vec<PathBuf>, at: Point) {
-        if let Some(before_open) = self.before_open.borrow().as_ref() {
-            before_open();
-        }
         let several = paths.len() > 1;
-        let paths = existing_paths(paths);
+        let paths = existing_paths(sizes::outermost(&paths));
         if paths.is_empty() {
             self.close();
             let text = if several {
@@ -115,6 +113,9 @@ impl InfoController {
             };
             self.toaster.show(text, None, at);
             return;
+        }
+        if let Some(before_open) = self.before_open.borrow().as_ref() {
+            before_open();
         }
         self.stop_count();
         let generation = self.generation.get() + 1;
@@ -126,7 +127,7 @@ impl InfoController {
             [only] => {
                 let icon = self
                     .platform
-                    .file_icon(only, ICON_PX)
+                    .file_icon(only, ICON_PT)
                     .and_then(|icon| to_image(&icon));
                 window.set_has_icon(icon.is_some());
                 if let Some(icon) = icon {
@@ -147,7 +148,7 @@ impl InfoController {
             at,
         });
         self.placed_height.set(0.0);
-        self.show_progress(&Progress::default());
+        self.show_progress(&first_progress(subject, &paths));
 
         let was_open = self.open.replace(true);
         // vento runs as an accessory app: bring it forward so the window
@@ -315,6 +316,11 @@ impl InfoController {
             });
         if let Err(e) = spawned {
             warn!("cannot start the info count: {e}");
+            let at = self.shown.borrow().as_ref().map(|s| s.at);
+            self.close();
+            if let Some(at) = at {
+                self.toaster.show("Info: cannot count", None, at);
+            }
         }
     }
 
@@ -475,6 +481,27 @@ fn existing_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
+/// What the window shows before the first progress arrives. A single plain
+/// file has nothing to walk, so its size (already known from its metadata)
+/// is shown at once instead of a flash of "Zero bytes"; the worker's final
+/// progress replaces it. Anything else starts empty and says "Calculating…".
+fn first_progress(subject: Subject, paths: &[PathBuf]) -> Progress {
+    if let (Subject::File, [only]) = (subject, paths)
+        && let Ok(metadata) = only.symlink_metadata()
+    {
+        return Progress {
+            tally: Tally {
+                bytes: metadata.len(),
+                files: 1,
+                ..Tally::default()
+            },
+            biggest: Vec::new(),
+            done: true,
+        };
+    }
+    Progress::default()
+}
+
 /// Whether progress of count `generation` belongs in the window: it is the
 /// latest count (`current`) and the window is `open`.
 fn is_current(generation: u64, current: u64, open: bool) -> bool {
@@ -496,6 +523,19 @@ mod tests {
         let link = dir.path().join("link");
         std::os::unix::fs::symlink(&gone, &link).unwrap();
         assert_eq!(existing_paths(vec![link.clone()]), vec![link]);
+    }
+
+    #[test]
+    fn a_plain_file_is_sized_before_the_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a");
+        std::fs::write(&a, b"12345").unwrap();
+        let p = first_progress(Subject::File, std::slice::from_ref(&a));
+        assert_eq!((p.tally.bytes, p.tally.files, p.done), (5, 1, true));
+        let p = first_progress(Subject::Folder, &[dir.path().to_path_buf()]);
+        assert_eq!(p, Progress::default());
+        let p = first_progress(Subject::Several, &[a, dir.path().join("b")]);
+        assert_eq!(p, Progress::default());
     }
 
     #[test]
