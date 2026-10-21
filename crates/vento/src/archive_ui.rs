@@ -2,9 +2,6 @@
 //! never takes the keyboard, and the password prompt for protected
 //! archives, which does.
 
-// Nothing opens these windows until the Archive action is wired in.
-#![expect(dead_code, reason = "not used until the Archive action is wired in")]
-
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -276,6 +273,13 @@ impl PasswordView {
             return;
         }
         self.window.invoke_focus_field();
+    }
+
+    /// Closes the window, answering the open question (if any) with `None`.
+    pub fn dismiss(&self) {
+        if self.open.get() {
+            self.finish(None);
+        }
     }
 
     /// Hands the typed password over (never an empty one: the window does

@@ -60,6 +60,8 @@ fn main() -> Result<(), slint::PlatformError> {
         shared.clone(),
         toaster.clone(),
         recent.clone(),
+        archive_ui::ProgressView::new(platform.clone()),
+        archive_ui::PasswordView::new(platform.clone()),
     );
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
     let drop_executor = executor.clone();

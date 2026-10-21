@@ -1,13 +1,19 @@
 //! Runs the action a file was dropped on and reports the result in a toast.
 
 use std::cell::{Cell, RefCell};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use log::{debug, info, warn};
-use slint::Timer;
+use slint::{Timer, TimerMode};
 use vento_core::actions::ActionId;
+use vento_core::archive::{
+    ArchiveError, BatchOutcome, Made, PasswordAsk, Plan, Progress, Zeroizing, compress,
+    extract_batch, plan,
+};
 use vento_core::destinations::{RecentDestinations, recent_path};
 use vento_core::fileops::{
     CopyOutcome, CopyRecord, CopyUndoOutcome, FileOpError, MoveOutcome, MoveRecord, copy_items,
@@ -16,8 +22,9 @@ use vento_core::fileops::{
 use vento_core::geometry::Point;
 use vento_core::paths::format_paths;
 use vento_core::settings::Settings;
-use vento_platform::Platform;
+use vento_platform::{Platform, quarantine_of, set_quarantine};
 
+use crate::archive_ui::{PasswordView, ProgressView};
 use crate::toast::Toaster;
 use crate::wheel::WheelDrop;
 
@@ -57,12 +64,36 @@ fn failure_suffix(outcome: &MoveOutcome) -> String {
     suffix
 }
 
-/// The folder's own name, or the whole path for one without a name (`/`).
-fn folder_name(dest: &Path) -> String {
-    dest.file_name().map_or_else(
-        || dest.display().to_string(),
+/// `"1 archive"` / `"3 archives"`.
+fn archives(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "archive" } else { "archives" })
+}
+
+/// The item's own name, or the whole path for one without a name (`/`).
+fn display_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
     )
+}
+
+/// The name of the only one of `paths`, or `count` of them when there are
+/// several: `Photos.zip` / `2 archives`.
+fn name_or_count(paths: &[&Path], count: fn(usize) -> String) -> String {
+    match paths {
+        [only] => display_name(only),
+        _ => count(paths.len()),
+    }
+}
+
+/// The parts of a toast joined with `; `, the first letter capitalised.
+fn sentence(parts: &[String]) -> String {
+    let text = parts.join("; ");
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => text,
+    }
 }
 
 /// Toast text for a finished move.
@@ -70,7 +101,7 @@ fn move_toast_text(outcome: &MoveOutcome) -> String {
     format!(
         "Moved {} to {}{}",
         items(outcome.record.moved.len()),
-        folder_name(&outcome.record.dest),
+        display_name(&outcome.record.dest),
         failure_suffix(outcome)
     )
 }
@@ -80,7 +111,7 @@ fn copy_toast_text(outcome: &CopyOutcome) -> String {
     let mut text = format!(
         "Copied {} to {}",
         items(outcome.record.copies.len()),
-        folder_name(&outcome.record.dest)
+        display_name(&outcome.record.dest)
     );
     if !outcome.failed.is_empty() {
         text.push_str(&format!(" · {} failed", outcome.failed.len()));
@@ -106,6 +137,106 @@ fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
         text.push_str(&format!(" · {} failed", outcome.failed.len()));
     }
     text
+}
+
+/// Toast for a job the user cancelled.
+const CANCELLED_TEXT: &str = "Cancelled";
+
+/// What a finished Archive job did, as its toast tells it.
+#[derive(Debug)]
+enum ArchiveResult<'a> {
+    /// `count` items were zipped into the file called `output`.
+    Compressed { count: usize, output: String },
+    /// A batch of archives was extracted.
+    Extracted(&'a BatchOutcome),
+}
+
+/// Toast text for a finished Archive job.
+fn archive_toast_text(result: &ArchiveResult<'_>) -> String {
+    match result {
+        ArchiveResult::Compressed { count, output } => {
+            format!("Compressed {} to {output}", items(*count))
+        }
+        ArchiveResult::Extracted(outcome) => extract_toast_text(outcome),
+    }
+}
+
+/// Toast text for a finished extraction. Nothing extracted and nothing
+/// failed means the user cancelled: the job, or every password prompt.
+/// Failures give the first reason; a cancelled batch says how far it got
+/// without a total, since the archives after it were never tried.
+fn extract_toast_text(outcome: &BatchOutcome) -> String {
+    let made = outcome.made.len();
+    let failed = outcome.failed.len();
+    let skipped = outcome.skipped.len();
+    if made == 0 && failed == 0 {
+        return CANCELLED_TEXT.into();
+    }
+    let reason = outcome
+        .failed
+        .first()
+        .map(|(_, error)| error.to_string())
+        .unwrap_or_default();
+    let mut parts = Vec::new();
+    if made == 0 {
+        let names: Vec<&Path> = outcome.failed.iter().map(|(a, _)| a.as_path()).collect();
+        parts.push(format!(
+            "couldn't extract {}: {reason}",
+            name_or_count(&names, archives)
+        ));
+    } else {
+        if outcome.cancelled || failed + skipped == 0 {
+            let names: Vec<&Path> = outcome.made.iter().map(|m| m.source.as_path()).collect();
+            parts.push(format!("extracted {}", name_or_count(&names, archives)));
+        } else {
+            parts.push(format!("extracted {made} of {}", made + failed + skipped));
+        }
+        if failed > 0 {
+            parts.push(format!("{failed} failed: {reason}"));
+        }
+    }
+    if skipped > 0 {
+        parts.push(format!("{skipped} skipped"));
+    }
+    if outcome.cancelled {
+        parts.push("cancelled".into());
+    }
+    sentence(&parts)
+}
+
+/// Toast text for a finished undo of an Archive job; `trashed` are the
+/// outputs that went to the Trash.
+fn archive_undo_toast_text(outcome: &CopyUndoOutcome, trashed: &[PathBuf]) -> String {
+    if trashed.is_empty() && outcome.kept_changed.is_empty() && outcome.failed.is_empty() {
+        return "Nothing left to remove".into();
+    }
+    let mut parts = Vec::new();
+    if !trashed.is_empty() {
+        let names: Vec<&Path> = trashed.iter().map(PathBuf::as_path).collect();
+        parts.push(format!(
+            "moved {} to the Trash",
+            name_or_count(&names, items)
+        ));
+    }
+    if !outcome.kept_changed.is_empty() {
+        let names: Vec<&Path> = outcome.kept_changed.iter().map(PathBuf::as_path).collect();
+        let since = if names.len() == 1 {
+            "it was"
+        } else {
+            "they were"
+        };
+        parts.push(format!(
+            "kept {}: changed since {since} made",
+            name_or_count(&names, items)
+        ));
+    }
+    if outcome.gone > 0 {
+        parts.push(format!("{} no longer there", outcome.gone));
+    }
+    if let Some((_, reason)) = outcome.failed.first() {
+        parts.push(format!("{} failed: {reason}", outcome.failed.len()));
+    }
+    sentence(&parts)
 }
 
 /// What a finished move or copy leads to.
@@ -161,6 +292,8 @@ pub enum UndoKind {
     Move,
     /// The last Copy to.
     Copy,
+    /// The last Archive (what it compressed or extracted).
+    Archive,
 }
 
 /// Callback told which undo, if any, is available.
@@ -168,6 +301,16 @@ type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 
 /// Toast shown when a move, copy or undo is requested while one is running.
 const BUSY_TEXT: &str = "Busy — still working";
+
+/// How often an open password window checks whether its job was cancelled.
+const CANCEL_POLL: Duration = Duration::from_millis(100);
+
+/// The progress window's verbs.
+const COMPRESSING: &str = "Compressing";
+const EXTRACTING: &str = "Extracting";
+
+/// A password on its way from the password window to the worker.
+type Password = Zeroizing<Vec<u8>>;
 
 /// What is left to undo after `outcome`, the undo of `record`: the items that
 /// failed to go back, so the undo can be retried. An original that was copied
@@ -195,10 +338,105 @@ thread_local! {
     static MAIN_EXECUTOR: RefCell<Weak<Executor>> = const { RefCell::new(Weak::new()) };
 }
 
+/// Runs `f` with the executor on the main thread. Fails only when the event
+/// loop is gone; if the executor is, `f` is dropped without running.
+fn on_main(f: impl FnOnce(&Executor) + Send + 'static) -> Result<(), slint::EventLoopError> {
+    slint::invoke_from_event_loop(move || {
+        if let Some(executor) = MAIN_EXECUTOR.with(|slot| slot.borrow().upgrade()) {
+            f(&executor);
+        }
+    })
+}
+
+/// What an Archive job did, handed from the worker to the main thread.
+enum ArchiveDone {
+    /// `count` items were to be zipped.
+    Compressed {
+        count: usize,
+        result: Result<Made, ArchiveError>,
+    },
+    Extracted(BatchOutcome),
+}
+
+/// The worker's half of Archive: decides between compressing and
+/// extracting, has the progress window follow the job, and runs it.
+fn archive_job(paths: &[PathBuf], at: Point) -> ArchiveDone {
+    let progress = Progress::new();
+    match plan(paths) {
+        Plan::Compress { dir, name } => {
+            show_progress(&progress, COMPRESSING, at);
+            ArchiveDone::Compressed {
+                count: paths.len(),
+                result: compress(paths, &dir, &name, &progress),
+            }
+        }
+        Plan::Extract(archives) => {
+            show_progress(&progress, EXTRACTING, at);
+            let mark = copy_quarantine();
+            let mut ask = |archive: &Path, why| request_password(archive, why, &progress, at);
+            ArchiveDone::Extracted(extract_batch(&archives, &progress, &mark, &mut ask))
+        }
+    }
+}
+
+/// Has the main thread's progress window follow `progress`.
+fn show_progress(progress: &Arc<Progress>, verb: &'static str, at: Point) {
+    let progress = Arc::clone(progress);
+    if let Err(e) = on_main(move |executor| executor.progress.track(progress, verb, at)) {
+        warn!("cannot show the archive progress: {e}");
+    }
+}
+
+/// The `mark` of an extraction: gives everything extracted from an archive
+/// that archive's quarantine attribute, read once per archive. A failure
+/// fails that archive's extraction.
+fn copy_quarantine() -> impl Fn(&Path, &Path) -> io::Result<()> {
+    let read: RefCell<Option<(PathBuf, Option<Vec<u8>>)>> = RefCell::new(None);
+    move |archive: &Path, entry: &Path| {
+        let mut read = read.borrow_mut();
+        if read.as_ref().is_none_or(|(of, _)| of != archive) {
+            *read = Some((archive.to_path_buf(), quarantine_of(archive)));
+        }
+        match read.as_ref().and_then(|(_, value)| value.as_deref()) {
+            Some(value) => set_quarantine(entry, value),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The worker's `ask`: has the main thread open the password window and
+/// waits for its answer. `None` at once when the job is cancelled or the
+/// main thread can't be reached, and `None` when the question is dropped
+/// unanswered (its sender goes with it).
+fn request_password(
+    archive: &Path,
+    why: PasswordAsk,
+    progress: &Arc<Progress>,
+    at: Point,
+) -> Option<Password> {
+    if progress.is_cancelled() {
+        return None;
+    }
+    let (answer, answered) = mpsc::sync_channel(1);
+    let name = display_name(archive);
+    let wrong = why == PasswordAsk::Wrong;
+    let progress = Arc::clone(progress);
+    let asked = on_main(move |executor| {
+        executor.prompt_password(&name, wrong, progress, at, answer);
+    });
+    if let Err(e) = asked {
+        warn!("cannot ask for a password: {e}");
+        return None;
+    }
+    answered.recv().ok().flatten()
+}
+
 /// What the undo slot holds.
 enum LastOp {
     Move(MoveRecord),
     Copy(CopyRecord),
+    /// What an Archive job made, undone like a Copy to.
+    Archive(CopyRecord),
 }
 
 impl LastOp {
@@ -206,6 +444,7 @@ impl LastOp {
         match self {
             LastOp::Move(_) => UndoKind::Move,
             LastOp::Copy(_) => UndoKind::Copy,
+            LastOp::Archive(_) => UndoKind::Archive,
         }
     }
 }
@@ -233,8 +472,15 @@ pub struct Executor {
     last: RefCell<Option<Last>>,
     /// Folders recently moved or copied to; saved after each addition.
     recent: Rc<RefCell<RecentDestinations>>,
-    /// Whether a move, copy or undo is running on a worker thread.
+    /// Whether a move, copy, archive or undo is running on a worker thread.
     busy: Cell<bool>,
+    /// Follows a running Archive job.
+    progress: Rc<ProgressView>,
+    /// Asks for the passwords an Archive job needs.
+    password: Rc<PasswordView>,
+    /// Closes the password window if its job is cancelled; runs only while
+    /// the window is open.
+    prompt_watch: Timer,
     /// Told which undo is available whenever that changes.
     on_undo_changed: RefCell<Option<UndoListener>>,
     this: Weak<Self>,
@@ -242,13 +488,16 @@ pub struct Executor {
 
 impl Executor {
     /// `settings` is shared with the rest of the app, so a settings reload is
-    /// seen by the next action; `recent` is the list the ring reads. Call on
-    /// the main thread.
+    /// seen by the next action; `recent` is the list the ring reads;
+    /// `progress` and `password` are the Archive windows. Call on the main
+    /// thread.
     pub fn new(
         platform: Rc<dyn Platform>,
         settings: Rc<RefCell<Settings>>,
         toast: Rc<Toaster>,
         recent: Rc<RefCell<RecentDestinations>>,
+        progress: Rc<ProgressView>,
+        password: Rc<PasswordView>,
     ) -> Rc<Self> {
         let executor = Rc::new_cyclic(|this| Self {
             platform,
@@ -257,6 +506,9 @@ impl Executor {
             last: RefCell::new(None),
             recent,
             busy: Cell::new(false),
+            progress,
+            password,
+            prompt_watch: Timer::default(),
             on_undo_changed: RefCell::new(None),
             this: this.clone(),
         });
@@ -309,9 +561,7 @@ impl Executor {
                 let result = self.platform.copy_text(&format_paths(&paths, format));
                 self.finish(action, result, at, || format!("copy path: {}", paths.len()));
             }
-            ActionId::Archive => {
-                warn!("archive not wired yet");
-            }
+            ActionId::Archive => self.archive(paths, at),
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);
@@ -347,7 +597,8 @@ impl Executor {
         self.notify_undo_changed();
         match last.op {
             LastOp::Move(record) => self.undo_move(record, at),
-            LastOp::Copy(record) => self.undo_copy(record, at),
+            LastOp::Copy(record) => self.undo_copy(record, UndoKind::Copy, at),
+            LastOp::Archive(record) => self.undo_copy(record, UndoKind::Archive, at),
         }
         true
     }
@@ -392,18 +643,22 @@ impl Executor {
         self.toast.show(&undo_toast_text(&outcome), None, at);
     }
 
-    /// Undoes a Copy to in two steps. The worker finds the copies that are
-    /// still exactly as vento made them (the platform is not `Send`, so it
-    /// cannot trash from there); the main thread then trashes just those.
-    /// Nothing else is re-checked in between.
-    fn undo_copy(&self, record: CopyRecord, at: Point) {
-        self.toast.show(
-            &format!("Removing {}…", plural_copies(record.copies.len())),
-            None,
-            at,
-        );
+    /// Undoes a Copy to, or an Archive (`kind`), in two steps. The worker
+    /// finds the items that are still exactly as vento made them (the
+    /// platform is not `Send`, so it cannot trash from there); the main
+    /// thread then trashes just those. Nothing else is re-checked in between.
+    fn undo_copy(&self, record: CopyRecord, kind: UndoKind, at: Point) {
+        let (text, action) = if kind == UndoKind::Archive {
+            let outputs: Vec<&Path> = record.copies.iter().map(|(_, o, _)| o.as_path()).collect();
+            let text = format!("Moving {} to the Trash…", name_or_count(&outputs, items));
+            (text, ActionId::Archive)
+        } else {
+            let text = format!("Removing {}…", plural_copies(record.copies.len()));
+            (text, ActionId::CopyTo)
+        };
+        self.toast.show(&text, None, at);
         self.spawn_file_job(
-            ActionId::CopyTo,
+            action,
             move || {
                 let to_trash = RefCell::new(Vec::new());
                 let outcome = undo_copies(&record, |copy| {
@@ -415,31 +670,29 @@ impl Executor {
                     to_trash: to_trash.into_inner(),
                 }
             },
-            move |executor, checked| executor.copy_undo_finished(checked, at),
+            move |executor, checked| executor.copy_undo_finished(checked, kind, at),
             at,
         );
     }
 
-    fn copy_undo_finished(&self, checked: CopyUndoChecked, at: Point) {
+    fn copy_undo_finished(&self, checked: CopyUndoChecked, kind: UndoKind, at: Point) {
         let CopyUndoChecked {
             mut outcome,
             to_trash,
         } = checked;
-        outcome.trashed = 0;
+        let mut trashed = Vec::with_capacity(to_trash.len());
         for copy in to_trash {
             match self.platform.trash(&copy) {
-                Ok(()) => outcome.trashed += 1,
+                Ok(()) => trashed.push(copy),
                 Err(e) => {
                     warn!("cannot trash {}: {e}", copy.display());
                     outcome.failed.push((copy, e.to_string()));
                 }
             }
         }
+        outcome.trashed = trashed.len();
         for copy in &outcome.kept_changed {
-            info!(
-                "undo: kept {} (changed since it was copied)",
-                copy.display()
-            );
+            info!("undo: kept {} (changed since it was made)", copy.display());
         }
         info!(
             "undo: trashed {}, kept {} changed, {} gone, {} failed",
@@ -449,7 +702,12 @@ impl Executor {
             outcome.failed.len()
         );
         self.notify_undo_changed();
-        self.toast.show(&copy_undo_toast_text(&outcome), None, at);
+        let text = if kind == UndoKind::Archive {
+            archive_undo_toast_text(&outcome, &trashed)
+        } else {
+            copy_undo_toast_text(&outcome)
+        };
+        self.toast.show(&text, None, at);
     }
 
     /// Registers `f`, called with `has_undo()` after a move or copy records
@@ -568,6 +826,109 @@ impl Executor {
         self.record_undo(LastOp::Copy(outcome.record), text, at);
     }
 
+    /// Compresses `paths` into a zip, or extracts them when they are all
+    /// archives, on a worker thread.
+    fn archive(&self, paths: Vec<PathBuf>, at: Point) {
+        if self.refuse_if_busy(at) {
+            return;
+        }
+        self.spawn_file_job(
+            ActionId::Archive,
+            move || archive_job(&paths, at),
+            move |executor, done| executor.archive_finished(done, at),
+            at,
+        );
+    }
+
+    /// Opens the password window for the archive called `name` in place of
+    /// the progress window, which comes back once the window is answered.
+    /// `answer` gets the password, or `None`; it is dropped unanswered (also
+    /// `None` to the worker) when the job is already cancelled. A cancel
+    /// while the window is open closes it with `None`.
+    fn prompt_password(
+        &self,
+        name: &str,
+        wrong: bool,
+        progress: Arc<Progress>,
+        at: Point,
+        answer: mpsc::SyncSender<Option<Password>>,
+    ) {
+        if progress.is_cancelled() {
+            return;
+        }
+        self.progress.close();
+        let password = Rc::downgrade(&self.password);
+        let watched = Arc::clone(&progress);
+        self.prompt_watch
+            .start(TimerMode::Repeated, CANCEL_POLL, move || {
+                if watched.is_cancelled()
+                    && let Some(password) = password.upgrade()
+                {
+                    password.dismiss();
+                }
+            });
+        let this = self.this.clone();
+        self.password.ask(
+            name,
+            wrong,
+            at,
+            Box::new(move |password| {
+                if let Some(executor) = this.upgrade() {
+                    executor.prompt_watch.stop();
+                    if !progress.is_cancelled() {
+                        executor.progress.track(progress, EXTRACTING, at);
+                    }
+                }
+                // Only fails if the worker is gone, and then no one is waiting.
+                if answer.send(password).is_err() {
+                    debug!("password answered after its job ended");
+                }
+            }),
+        );
+    }
+
+    fn archive_finished(&self, done: ArchiveDone, at: Point) {
+        let (text, made) = match done {
+            ArchiveDone::Compressed {
+                result: Err(ArchiveError::Cancelled),
+                ..
+            } => (CANCELLED_TEXT.to_owned(), Vec::new()),
+            ArchiveDone::Compressed { result: Err(e), .. } => {
+                warn!("couldn't compress: {e}");
+                (format!("Couldn't compress: {e}"), Vec::new())
+            }
+            ArchiveDone::Compressed {
+                count,
+                result: Ok(made),
+            } => {
+                let output = display_name(&made.output);
+                let text = archive_toast_text(&ArchiveResult::Compressed { count, output });
+                (text, vec![made])
+            }
+            ArchiveDone::Extracted(outcome) => {
+                let text = archive_toast_text(&ArchiveResult::Extracted(&outcome));
+                (text, outcome.made)
+            }
+        };
+        info!("archive: {text}");
+        let Some(dest) = made
+            .first()
+            .and_then(|m| m.output.parent())
+            .map(Path::to_path_buf)
+        else {
+            self.toast.show(&text, None, at);
+            return;
+        };
+        let record = CopyRecord {
+            dest,
+            copies: made
+                .into_iter()
+                .map(|m| (m.source, m.output, m.fingerprint))
+                .collect(),
+        };
+        self.record_undo(LastOp::Archive(record), text, at);
+    }
+
     /// Keeps `op` as the one thing to undo and toasts `text` with an Undo
     /// button.
     fn record_undo(&self, op: LastOp, text: String, at: Point) {
@@ -593,7 +954,8 @@ impl Executor {
     }
 
     /// Runs `job` on a worker thread, then `done` with its result on the main
-    /// thread. Marks the executor busy until `done` runs.
+    /// thread. Marks the executor busy until `done` runs, and closes the
+    /// progress window (if the job used it) first, also after a panic.
     fn spawn_file_job<T: Send + 'static>(
         &self,
         action: ActionId,
@@ -606,13 +968,11 @@ impl Executor {
             .name("vento-fileops".into())
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
-                let delivered = slint::invoke_from_event_loop(move || {
-                    let Some(executor) = MAIN_EXECUTOR.with(|slot| slot.borrow().upgrade()) else {
-                        return;
-                    };
+                let delivered = on_main(move |executor| {
                     executor.busy.set(false);
+                    executor.progress.close();
                     match result {
-                        Ok(value) => done(&executor, value),
+                        Ok(value) => done(executor, value),
                         Err(_) => executor.toast_error(action, "internal error", at),
                     }
                 });
@@ -653,6 +1013,7 @@ impl Executor {
 mod tests {
     use super::*;
     use std::io;
+    use vento_core::archive::{ArchiveError, BatchOutcome, Made};
     use vento_core::fileops::{Fingerprint, MoveRecord};
 
     fn p(s: &str) -> PathBuf {
@@ -815,6 +1176,242 @@ mod tests {
             }),
             "Removed 0 copies, kept 1 changed, 1 no longer there · 1 failed"
         );
+    }
+
+    fn made(source: &str, output: &str) -> Made {
+        Made {
+            source: p(source),
+            output: p(output),
+            fingerprint: Fingerprint::Link {
+                target: p("/t"),
+                id: Default::default(),
+            },
+        }
+    }
+
+    fn extracted(made: Vec<Made>, failed: Vec<(PathBuf, ArchiveError)>) -> BatchOutcome {
+        BatchOutcome {
+            made,
+            failed,
+            ..Default::default()
+        }
+    }
+
+    fn damaged(name: &str) -> (PathBuf, ArchiveError) {
+        (p(name), ArchiveError::Damaged("crc".into()))
+    }
+
+    #[test]
+    fn archive_toast_compressed() {
+        let compressed = |count, output: &str| ArchiveResult::Compressed {
+            count,
+            output: output.into(),
+        };
+        assert_eq!(
+            archive_toast_text(&compressed(3, "Archive.zip")),
+            "Compressed 3 items to Archive.zip"
+        );
+        assert_eq!(
+            archive_toast_text(&compressed(1, "Report.zip")),
+            "Compressed 1 item to Report.zip"
+        );
+    }
+
+    #[test]
+    fn archive_toast_extracted_one() {
+        let result = extracted(vec![made("/d/Photos.zip", "/d/Photos")], vec![]);
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&result)),
+            "Extracted Photos.zip"
+        );
+    }
+
+    #[test]
+    fn archive_toast_extracted_several() {
+        let result = extracted(
+            vec![made("/d/a.zip", "/d/a"), made("/d/b.7z", "/d/b")],
+            vec![],
+        );
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&result)),
+            "Extracted 2 archives"
+        );
+    }
+
+    #[test]
+    fn archive_toast_partial_failure() {
+        let result = extracted(
+            vec![made("/d/a.zip", "/d/a"), made("/d/b.zip", "/d/b")],
+            vec![damaged("/d/c.zip")],
+        );
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&result)),
+            "Extracted 2 of 3; 1 failed: damaged archive: crc"
+        );
+    }
+
+    #[test]
+    fn archive_toast_skipped() {
+        let mut outcome = BatchOutcome {
+            made: vec![made("/d/a.zip", "/d/a"), made("/d/b.zip", "/d/b")],
+            skipped: vec![p("/d/c.zip")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&outcome)),
+            "Extracted 2 of 3; 1 skipped"
+        );
+        outcome = BatchOutcome {
+            made: vec![made("/d/a.zip", "/d/a")],
+            failed: vec![damaged("/d/b.zip")],
+            skipped: vec![p("/d/c.zip")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&outcome)),
+            "Extracted 1 of 3; 1 failed: damaged archive: crc; 1 skipped"
+        );
+        // Every password prompt was cancelled: nothing made, nothing failed.
+        outcome = BatchOutcome {
+            skipped: vec![p("/d/a.zip"), p("/d/b.zip")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&outcome)),
+            "Cancelled"
+        );
+    }
+
+    #[test]
+    fn archive_toast_all_failed() {
+        let wrong_format = || ArchiveError::Io(io::Error::other("wrong format"));
+        let result = extracted(vec![], vec![(p("/d/Photos.zip"), wrong_format())]);
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&result)),
+            "Couldn't extract Photos.zip: wrong format"
+        );
+        let result = extracted(
+            vec![],
+            vec![(p("/d/a.zip"), wrong_format()), damaged("/d/b.zip")],
+        );
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&result)),
+            "Couldn't extract 2 archives: wrong format"
+        );
+        let outcome = BatchOutcome {
+            failed: vec![(p("/d/a.zip"), wrong_format())],
+            skipped: vec![p("/d/b.zip")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&outcome)),
+            "Couldn't extract a.zip: wrong format; 1 skipped"
+        );
+    }
+
+    #[test]
+    fn archive_toast_cancelled() {
+        let outcome = BatchOutcome {
+            cancelled: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&outcome)),
+            "Cancelled"
+        );
+        // What was finished before Cancel is kept, and said so.
+        let outcome = BatchOutcome {
+            made: vec![made("/d/Photos.zip", "/d/Photos")],
+            cancelled: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_toast_text(&ArchiveResult::Extracted(&outcome)),
+            "Extracted Photos.zip; cancelled"
+        );
+    }
+
+    #[test]
+    fn archive_undo_texts() {
+        let one = [p("/d/Archive.zip")];
+        assert_eq!(
+            archive_undo_toast_text(
+                &CopyUndoOutcome {
+                    trashed: 1,
+                    ..Default::default()
+                },
+                &one
+            ),
+            "Moved Archive.zip to the Trash"
+        );
+        let two = [p("/d/a"), p("/d/b")];
+        assert_eq!(
+            archive_undo_toast_text(
+                &CopyUndoOutcome {
+                    trashed: 2,
+                    ..Default::default()
+                },
+                &two
+            ),
+            "Moved 2 items to the Trash"
+        );
+        let kept = CopyUndoOutcome {
+            kept_changed: vec![p("/d/Photos")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_undo_toast_text(&kept, &[]),
+            "Kept Photos: changed since it was made"
+        );
+        let mixed = CopyUndoOutcome {
+            trashed: 1,
+            kept_changed: vec![p("/d/x"), p("/d/y")],
+            gone: 1,
+            failed: vec![(p("/d/z"), "denied".into())],
+        };
+        assert_eq!(
+            archive_undo_toast_text(&mixed, &one),
+            "Moved Archive.zip to the Trash; kept 2 items: changed since they were made; \
+             1 no longer there; 1 failed: denied"
+        );
+        assert_eq!(
+            archive_undo_toast_text(
+                &CopyUndoOutcome {
+                    gone: 1,
+                    ..Default::default()
+                },
+                &[]
+            ),
+            "Nothing left to remove"
+        );
+    }
+
+    #[test]
+    fn extracted_items_get_their_archive_quarantine() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = |name: &str| {
+            let path = tmp.path().join(name);
+            std::fs::write(&path, "x").unwrap();
+            path
+        };
+        let (marked, plain) = (file("marked.zip"), file("plain.zip"));
+        let value = b"0081;6553f000;Safari;";
+        set_quarantine(&marked, value).unwrap();
+        let mark = copy_quarantine();
+
+        let first = file("a.txt");
+        mark(&marked, &first).unwrap();
+        assert_eq!(quarantine_of(&first).as_deref(), Some(&value[..]));
+        // Read once per archive: later items of the same archive get the
+        // value read for the first.
+        std::fs::remove_file(&marked).unwrap();
+        let second = file("b.txt");
+        mark(&marked, &second).unwrap();
+        assert_eq!(quarantine_of(&second).as_deref(), Some(&value[..]));
+        // Another archive, without the attribute, marks nothing.
+        let third = file("c.txt");
+        mark(&plain, &third).unwrap();
+        assert_eq!(quarantine_of(&third), None);
     }
 
     #[test]

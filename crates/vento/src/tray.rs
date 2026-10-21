@@ -123,11 +123,12 @@ fn tray_icon_rgba() -> Vec<u8> {
     rgba
 }
 
-/// The Undo item's text: names the copy when a copy is what would be undone,
-/// and reads "move" when there is nothing to undo.
+/// The Undo item's text: names what would be undone, and reads "move" when
+/// there is nothing to undo.
 fn undo_menu_text(kind: Option<UndoKind>) -> &'static str {
     match kind {
         Some(UndoKind::Copy) => "Undo last copy",
+        Some(UndoKind::Archive) => "Undo last archive",
         Some(UndoKind::Move) | None => "Undo last move",
     }
 }
@@ -407,6 +408,7 @@ mod tests {
     fn undo_item_names_what_it_would_undo() {
         assert_eq!(undo_menu_text(Some(UndoKind::Move)), "Undo last move");
         assert_eq!(undo_menu_text(Some(UndoKind::Copy)), "Undo last copy");
+        assert_eq!(undo_menu_text(Some(UndoKind::Archive)), "Undo last archive");
         assert_eq!(undo_menu_text(None), "Undo last move");
     }
 }
