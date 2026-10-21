@@ -1230,12 +1230,22 @@ mod tests {
         show_action(&mut s, 1, false);
         assert_eq!(
             s.hidden_actions,
-            [ActionId::Pocket, ActionId::CopyTo, ActionId::Archive]
+            [
+                ActionId::Pocket,
+                ActionId::CopyTo,
+                ActionId::Archive,
+                ActionId::Info
+            ]
         );
         move_action(&mut s, 5, 1);
         assert_eq!(
             s.hidden_actions,
-            [ActionId::CopyTo, ActionId::Pocket, ActionId::Archive]
+            [
+                ActionId::CopyTo,
+                ActionId::Pocket,
+                ActionId::Archive,
+                ActionId::Info
+            ]
         );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();

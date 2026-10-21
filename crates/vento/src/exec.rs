@@ -397,6 +397,7 @@ impl Executor {
                 self.finish(action, result, at, || format!("copy path: {}", paths.len()));
             }
             ActionId::Archive => self.archive(paths, at),
+            ActionId::Info => warn!("Info is handled by the info controller"),
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);

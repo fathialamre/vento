@@ -17,12 +17,14 @@ pub enum ActionId {
     CopyTo,
     /// Compress the dragged files to a zip, or extract the archives among them.
     Archive,
+    /// Show the size of the dragged files and folders in a window.
+    Info,
 }
 
 impl ActionId {
     /// Every action, in the order the settings list offers the ones not yet
     /// placed.
-    pub const ALL: [ActionId; 7] = [
+    pub const ALL: [ActionId; 8] = [
         ActionId::Pocket,
         ActionId::Copy,
         ActionId::Move,
@@ -30,6 +32,7 @@ impl ActionId {
         ActionId::Terminal,
         ActionId::CopyTo,
         ActionId::Archive,
+        ActionId::Info,
     ];
 
     /// Whether the action opens the folder ring when the pointer rests on its
@@ -48,6 +51,7 @@ impl ActionId {
             ActionId::Terminal => "terminal",
             ActionId::CopyTo => "copy_to",
             ActionId::Archive => "archive",
+            ActionId::Info => "info",
         }
     }
 
@@ -61,6 +65,7 @@ impl ActionId {
             ActionId::Terminal => "Terminal",
             ActionId::CopyTo => "Copy to",
             ActionId::Archive => "Archive",
+            ActionId::Info => "Info",
         }
     }
 
@@ -74,6 +79,7 @@ impl ActionId {
             "terminal" => Some(ActionId::Terminal),
             "copy_to" => Some(ActionId::CopyTo),
             "archive" => Some(ActionId::Archive),
+            "info" => Some(ActionId::Info),
             _ => None,
         }
     }
@@ -116,6 +122,14 @@ mod tests {
         assert_eq!(ActionId::Archive.label(), "Archive");
         assert_eq!(ActionId::from_key("archive"), Some(ActionId::Archive));
         assert!(!ActionId::Archive.takes_ring());
-        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Archive));
+    }
+
+    #[test]
+    fn info_key_and_label() {
+        assert_eq!(ActionId::Info.key(), "info");
+        assert_eq!(ActionId::Info.label(), "Info");
+        assert_eq!(ActionId::from_key("info"), Some(ActionId::Info));
+        assert!(!ActionId::Info.takes_ring());
+        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Info));
     }
 }

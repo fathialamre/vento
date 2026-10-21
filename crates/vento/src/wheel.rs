@@ -156,6 +156,7 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::Terminal => icons.get_terminal(),
         ActionId::CopyTo => icons.get_copy_to(),
         ActionId::Archive => icons.get_archive(),
+        ActionId::Info => icons.get_info(),
     }
 }
 
@@ -910,6 +911,7 @@ mod tests {
         assert_eq!(action_text(ActionId::Archive, true), "Extract");
         assert_eq!(action_text(ActionId::Move, true), "Move");
         assert_eq!(action_text(ActionId::CopyPath, false), "Copy path");
+        assert_eq!(action_text(ActionId::Info, false), "Info");
     }
 
     fn cell(x: f32, y: f32, radius: f32) -> geometry::Cell {
