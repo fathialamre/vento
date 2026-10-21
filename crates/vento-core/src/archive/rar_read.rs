@@ -20,6 +20,12 @@ use super::staging::{EntryTicket, Staging};
 /// Bits of a unix mode that give the file type, and the type of a symlink.
 const S_IFMT: u32 = 0o170_000;
 const S_IFLNK: u32 = 0o120_000;
+/// The largest dictionary a rar5 member may declare, as unrar allows by
+/// default. The decoder keeps history up to the dictionary (or the member, if
+/// smaller), so a tiny hostile archive could otherwise ask for tens of GiB.
+const DICTIONARY_LIMIT: u64 = 4 << 30;
+/// The flag of a rar 2 to 4 end block that says another volume follows.
+const END_NEXT_VOLUME: u16 = 0x0001;
 /// How often a running extraction looks for Cancel while the decoder is busy.
 /// The decoder itself looks as often as it can between those checks.
 const CANCEL_POLL: Duration = Duration::from_millis(50);
@@ -30,6 +36,8 @@ pub(crate) struct RarReader<'p> {
     volumes: Vec<Archive>,
     /// The password, `None` when none (or an empty one) was given.
     password: Option<&'p [u8]>,
+    /// The largest rar5 dictionary extracted.
+    dictionary_limit: u64,
 }
 
 impl<'p> RarReader<'p> {
@@ -41,14 +49,102 @@ impl<'p> RarReader<'p> {
     /// [`ArchiveError::WrongPassword`]) rather than from `entries`. The
     /// password is given as UTF-8 text: rar5 uses it so, and the crate turns it
     /// into the UTF-16 that rar 3 and 4 derive their keys from.
+    ///
+    /// Sibling volumes are joined only when `path` is itself a volume, and the
+    /// set must be whole: it has to start with the first volume and end with
+    /// one that says nothing follows. Otherwise it fails with
+    /// [`ArchiveError::Damaged`], which the crate alone does not catch when
+    /// a volume ends exactly between two files.
     pub(crate) fn open(path: &Path, password: Option<&'p [u8]>) -> Result<Self, ArchiveError> {
-        let password = password.filter(|bytes| !bytes.is_empty());
-        let volumes = rar_volumes(path)
-            .iter()
-            .map(|volume| read_volume(volume, password))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(RarReader { volumes, password })
+        Self::open_limited(path, password, DICTIONARY_LIMIT)
     }
+
+    /// As [`RarReader::open`], refusing rar5 dictionaries above `dictionary_limit`.
+    fn open_limited(
+        path: &Path,
+        password: Option<&'p [u8]>,
+        dictionary_limit: u64,
+    ) -> Result<Self, ArchiveError> {
+        let password = password.filter(|bytes| !bytes.is_empty());
+        let paths = rar_volumes(path);
+        let mut volumes = vec![read_volume(&paths[0], password)?];
+        // A plain archive that happens to sit beside files named like later
+        // volumes is not their first volume.
+        if is_volume(&volumes[0]) {
+            for volume in &paths[1..] {
+                volumes.push(read_volume(volume, password)?);
+            }
+        }
+        check_set(&volumes)?;
+        Ok(RarReader {
+            volumes,
+            password,
+            dictionary_limit,
+        })
+    }
+}
+
+/// Whether `archive` is a volume of a set.
+fn is_volume(archive: &Archive) -> bool {
+    match archive {
+        Archive::Rar50Plus(archive) => archive.main.is_volume(),
+        Archive::Rar15To40(archive) => archive.main.is_volume(),
+        // Told apart by nothing but its name.
+        _ => true,
+    }
+}
+
+/// Checks that `volumes` are a whole set: the first volume first, in order,
+/// and the last one not followed by another.
+///
+/// A volume can end exactly between two files, which looks the same as the end
+/// of the set from the files alone; what tells them apart is the volume
+/// numbers (rar5), the first-volume flag (rar 3 and 4) and the end block's
+/// "another volume follows" flag.
+fn check_set(volumes: &[Archive]) -> Result<(), ArchiveError> {
+    match volumes.first() {
+        Some(Archive::Rar50Plus(_)) => {
+            let mut last_continues = false;
+            for (index, volume) in volumes.iter().enumerate() {
+                let Archive::Rar50Plus(volume) = volume else {
+                    return Err(ArchiveError::Damaged("mixed kinds of volumes".to_owned()));
+                };
+                // The first volume carries no number, or 0.
+                let number = volume.main.volume_number.unwrap_or(0);
+                if number != index as u64 {
+                    return Err(if index == 0 {
+                        missing_volume("the first")
+                    } else {
+                        missing_volume("a")
+                    });
+                }
+                last_continues = volume.blocks.iter().any(
+                    |block| matches!(block, rars::rar50::Block::End(end) if end.has_next_volume()),
+                );
+            }
+            if last_continues {
+                return Err(missing_volume("a later"));
+            }
+        }
+        Some(Archive::Rar15To40(first)) => {
+            if first.main.is_volume() && !first.main.is_first_volume() {
+                return Err(missing_volume("the first"));
+            }
+            let continues = |volume: &Archive| {
+                match volume {
+                Archive::Rar15To40(volume) => volume.blocks.iter().any(|block| {
+                    matches!(block, rars::rar15_40::Block::End(end) if end.flags & END_NEXT_VOLUME != 0)
+                }),
+                _ => false,
+            }
+            };
+            if volumes.last().is_some_and(continues) {
+                return Err(missing_volume("a later"));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// Parses one volume.
@@ -102,8 +198,9 @@ impl ArchiveReader for RarReader<'_> {
         // to 512 MiB), so Cancel is passed on from a thread that watches the
         // progress for as long as the extraction runs.
         let token = ReadCancellation::new();
-        let options =
-            ArchiveReadOptions::with_optional_password(self.password).with_cancellation(&token);
+        let options = ArchiveReadOptions::with_optional_password(self.password)
+            .with_cancellation(&token)
+            .with_rar50_dictionary_size_limit(self.dictionary_limit);
         // The real error is kept here: the crate's own error type cannot carry
         // vento's, and would flatten `UnsafeEntry` or `Cancelled` into noise.
         let mut failure = None;
@@ -308,10 +405,11 @@ fn rar_error(error: rars::Error) -> ArchiveError {
 
 #[cfg(test)]
 mod tests {
-    use super::{CANCEL_POLL, watch};
+    use super::{CANCEL_POLL, RarReader, watch};
     use crate::archive::detect::{Format, Plan, plan};
-    use crate::archive::entries::{EntryKind, extract_one, open_reader};
+    use crate::archive::entries::{ArchiveReader, EntryKind, extract_one, open_reader};
     use crate::archive::job::{ArchiveError, Progress};
+    use crate::archive::staging::Staging;
     use crate::archive::test_support::{listing, no_mark, tree};
     use crate::fileops::Fingerprint;
     use rars::{ArchiveVersion, Builder, ReadCancellation};
@@ -1092,6 +1190,182 @@ mod tests {
             assert!(message.contains("later volume"), "{message}");
             assert_eq!(listing(dir.path()), before);
         }
+    }
+
+    /// Three files, each exactly filling a volume of the fixture, so that the
+    /// set is cut between files and no file continues over a cut.
+    fn boundary_entries() -> Vec<E<'static>> {
+        let leak = |len| -> &'static [u8] { Box::leak(noise(len).into_boxed_slice()) };
+        vec![
+            E::File("a.bin", leak(3000)),
+            E::File("b.bin", leak(3000)),
+            E::File("c.bin", leak(1000)),
+        ]
+    }
+
+    #[test]
+    fn rar_set_cut_between_files_extracts_when_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let volumes = make_volumes(dir.path(), RAR5, &boundary_entries(), false);
+
+        let made = extract(&volumes[0], None).unwrap();
+
+        assert_eq!(tree(&made.output), ["a.bin", "b.bin", "c.bin"]);
+        assert_eq!(fs::metadata(made.output.join("c.bin")).unwrap().len(), 1000);
+    }
+
+    #[test]
+    fn rar_set_cut_between_files_missing_its_last_volume_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let volumes = make_volumes(dir.path(), RAR5, &boundary_entries(), false);
+        fs::remove_file(&volumes[2]).unwrap();
+        let before = listing(dir.path());
+
+        let result = extract(&volumes[0], None);
+
+        let Err(ArchiveError::Damaged(message)) = result else {
+            panic!("{result:?}");
+        };
+        assert!(message.contains("later volume"), "{message}");
+        assert_eq!(listing(dir.path()), before);
+    }
+
+    #[test]
+    fn rar_set_cut_between_files_missing_a_middle_volume_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let volumes = make_volumes(dir.path(), RAR5, &boundary_entries(), false);
+        fs::remove_file(&volumes[1]).unwrap();
+        let before = listing(dir.path());
+
+        let result = extract(&volumes[0], None);
+
+        assert!(
+            matches!(result, Err(ArchiveError::Damaged(_))),
+            "{result:?}"
+        );
+        assert_eq!(listing(dir.path()), before);
+    }
+
+    #[test]
+    fn rar_set_cut_between_files_missing_its_first_volume_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let volumes = make_volumes(dir.path(), RAR5, &boundary_entries(), false);
+        fs::remove_file(&volumes[0]).unwrap();
+        let before = listing(dir.path());
+
+        // `plan` keeps the dropped path when the first volume is not there.
+        let Plan::Extract(archives) = plan(&[volumes[1].clone()]) else {
+            panic!("a volume is an archive");
+        };
+        let result = extract(&archives[0], None);
+
+        let Err(ArchiveError::Damaged(message)) = result else {
+            panic!("{result:?}");
+        };
+        assert!(message.contains("first volume"), "{message}");
+        assert_eq!(listing(dir.path()), before);
+    }
+
+    #[test]
+    fn rar_plain_archive_beside_volume_names_does_not_join_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("Big.part1.rar");
+        make_rar(&first, RAR5, &[E::File("only.txt", b"only")]);
+        // Named like the next volume, but not one: it is not even read.
+        fs::write(
+            dir.path().join("Big.part2.rar"),
+            b"Rar!\x1a\x07\x01\x00 junk",
+        )
+        .unwrap();
+
+        let made = extract(&first, None).unwrap();
+
+        assert_eq!(made.output, dir.path().join("only.txt"));
+        assert_eq!(fs::read(&made.output).unwrap(), b"only");
+    }
+
+    /// Sets the CRC-16 of the rar4 header of `bytes` that starts at `at` and
+    /// is `size` long, after it was edited.
+    fn fix_rar4_crc(bytes: &mut [u8], at: usize, size: usize) {
+        let crc = rars::crc32::crc32(&bytes[at + 2..at + size]) as u16;
+        bytes[at..at + 2].copy_from_slice(&crc.to_le_bytes());
+    }
+
+    #[test]
+    fn rar4_set_missing_its_first_volume_flag_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let volumes = make_volumes(dir.path(), RAR4, &big_only(), true);
+        let mut bytes = fs::read(&volumes[0]).unwrap();
+        // The main header follows the 7 byte marker; flags at 3, size at 5.
+        let size = usize::from(u16::from_le_bytes([bytes[12], bytes[13]]));
+        let flags = u16::from_le_bytes([bytes[10], bytes[11]]) & !0x0100;
+        bytes[10..12].copy_from_slice(&flags.to_le_bytes());
+        fix_rar4_crc(&mut bytes, 7, size);
+        fs::write(&volumes[0], bytes).unwrap();
+        let before = listing(dir.path());
+
+        let result = extract(&volumes[0], None);
+
+        let Err(ArchiveError::Damaged(message)) = result else {
+            panic!("{result:?}");
+        };
+        assert!(message.contains("first volume"), "{message}");
+        assert_eq!(listing(dir.path()), before);
+    }
+
+    #[test]
+    fn rar4_set_whose_last_volume_says_more_follow_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let volumes = make_volumes(dir.path(), RAR4, &big_only(), true);
+        // The writer leaves out the end block that other tools write; add
+        // one that says another volume follows.
+        let mut bytes = fs::read(&volumes[2]).unwrap();
+        let mut end = [0u8, 0, 0x7b, 0x01, 0x00, 0x07, 0x00];
+        fix_rar4_crc(&mut end, 0, 7);
+        bytes.extend_from_slice(&end);
+        fs::write(&volumes[2], bytes).unwrap();
+        let before = listing(dir.path());
+
+        let result = extract(&volumes[0], None);
+
+        let Err(ArchiveError::Damaged(message)) = result else {
+            panic!("{result:?}");
+        };
+        assert!(message.contains("later volume"), "{message}");
+        assert_eq!(listing(dir.path()), before);
+    }
+
+    #[test]
+    fn rar5_dictionary_above_the_limit_is_unsupported_and_leaves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Photos.rar");
+        // Compressed (not stored), so the member declares a dictionary.
+        make_rar(&archive, RAR5, &[E::File("a.txt", &[b'a'; 20_000])]);
+        let progress = Progress::new();
+        let mut reader = RarReader::open_limited(&archive, None, 0).unwrap();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+
+        let result = reader.extract(&mut staging);
+
+        assert!(
+            matches!(result, Err(ArchiveError::Unsupported(_))),
+            "{result:?}"
+        );
+        drop(staging);
+        assert_eq!(listing(dir.path()), ["Photos.rar"]);
+    }
+
+    #[test]
+    fn rar5_dictionary_within_the_limit_extracts() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Photos.rar");
+        make_rar(&archive, RAR5, &[E::File("a.txt", &[b'a'; 20_000])]);
+        let progress = Progress::new();
+        // 1 GiB is far above what the writer's default level declares.
+        let mut reader = RarReader::open_limited(&archive, None, 1 << 30).unwrap();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+
+        reader.extract(&mut staging).unwrap();
     }
 
     #[test]
