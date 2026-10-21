@@ -50,8 +50,8 @@ an archive only when both its extension and its contents say so, so dropping a
   password; a wrong one keeps it open, Cancel skips that archive and the rest of
   the drop carries on. Passwords are never saved or logged.
 - **Progress**: a job that runs longer than half a second shows a progress
-  window with a **Cancel** button. Cancelling removes everything vento had
-  started writing.
+  window with a **Cancel** button. Cancelling removes what vento was still
+  writing; in a drop of several archives, the ones already extracted stay.
 - Nothing is ever overwritten (`Archive (2).zip`), and a result only appears
   when it is complete.
 - **Undo last archive** (toast or menu) moves what vento created to the Trash,
@@ -64,7 +64,7 @@ it is listed with the hidden actions.
 
 - macOS 13 or later
 - Rust via rustup: `rust-toolchain.toml` pins the toolchain (1.99.1) and
-  rustup installs it on first build; the crates need at least 1.88.
+  rustup installs it on first build; the crates need at least 1.93.
 
 Neither Accessibility nor Input Monitoring permission is required.
 

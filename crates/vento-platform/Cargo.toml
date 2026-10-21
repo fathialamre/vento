@@ -3,7 +3,7 @@ name = "vento-platform"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
-rust-version = "1.88"
+rust-version = "1.93"
 
 [dependencies]
 vento-core = { path = "../vento-core" }
