@@ -15,10 +15,14 @@ use vento_platform::Platform;
 use crate::exec::{Executor, UndoKind};
 use crate::pause::PauseSwitch;
 
-/// Side length of the menu-bar icon in pixels.
-const ICON_SIZE: u32 = 18;
-/// Circumradius of the hexagon in pixels.
-const HEX_RADIUS: f32 = 8.0;
+/// The flame mark as a black template image, 36 px: an 18 pt glyph at 2x.
+const FLAME_PNG: &[u8] = include_bytes!("../assets/menu-bar-flame@2x.png");
+/// Side length of the flame in pixels.
+const FLAME_SIZE: u32 = 36;
+/// Side length of the menu-bar icon in pixels. tray-icon shows an image
+/// taller than 22 pt at 22 pt, so the 44 px icon lands at 22 pt and the
+/// flame centred in it at 18 pt, sharp on Retina screens.
+const ICON_SIZE: u32 = 44;
 
 /// Acts on a clicked menu item.
 type Dispatch = Box<dyn Fn(&MenuId)>;
@@ -100,25 +104,36 @@ pub struct TrayHandle {
     _icon: TrayIcon,
 }
 
-/// An 18x18 RGBA image of a filled flat-top hexagon: black with an alpha
-/// mask, so macOS can tint it as a template image.
+/// A 44x44 RGBA image of the flame centred on a transparent margin: black
+/// with an alpha mask, so macOS can tint it as a template image.
+///
+/// # Panics
+/// If the bundled flame is not a 36x36 RGBA PNG.
 fn tray_icon_rgba() -> Vec<u8> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(FLAME_PNG))
+        .read_info()
+        .expect("the bundled flame is a PNG");
+    let mut flame = vec![0u8; reader.output_buffer_size().expect("flame fits in memory")];
+    let info = reader
+        .next_frame(&mut flame)
+        .expect("the bundled flame decodes");
+    assert_eq!(
+        (info.width, info.height, info.color_type, info.bit_depth),
+        (
+            FLAME_SIZE,
+            FLAME_SIZE,
+            png::ColorType::Rgba,
+            png::BitDepth::Eight
+        ),
+        "the bundled flame is 36x36 RGBA8"
+    );
     let size = ICON_SIZE as usize;
-    let centre = (ICON_SIZE as f32) / 2.0;
+    let flame_size = FLAME_SIZE as usize;
+    let margin = (size - flame_size) / 2;
     let mut rgba = vec![0u8; size * size * 4];
-    for y in 0..size {
-        for x in 0..size {
-            // Sample at the pixel centre.
-            let dx = (x as f32 + 0.5 - centre).abs();
-            let dy = (y as f32 + 0.5 - centre).abs();
-            // Flat-top regular hexagon: flat edges up and down, points left
-            // and right.
-            let inside =
-                dy <= HEX_RADIUS * 3f32.sqrt() / 2.0 && dx + dy / 3f32.sqrt() <= HEX_RADIUS;
-            if inside {
-                rgba[(y * size + x) * 4 + 3] = 255;
-            }
-        }
+    for (y, row) in flame.chunks_exact(flame_size * 4).enumerate() {
+        let start = ((y + margin) * size + margin) * 4;
+        rgba[start..start + row.len()].copy_from_slice(row);
     }
     rgba
 }
@@ -377,33 +392,39 @@ mod tests {
 
     #[test]
     fn icon_has_the_right_length() {
-        assert_eq!(tray_icon_rgba().len(), 18 * 18 * 4);
+        assert_eq!(tray_icon_rgba().len(), 44 * 44 * 4);
     }
 
     #[test]
-    fn icon_centre_is_opaque() {
-        assert_eq!(alpha(&tray_icon_rgba(), 9, 9), 255);
-        assert_eq!(alpha(&tray_icon_rgba(), 8, 8), 255);
-    }
-
-    #[test]
-    fn icon_corners_are_transparent() {
+    fn icon_margin_is_transparent() {
         let rgba = tray_icon_rgba();
-        for (x, y) in [(0, 0), (17, 0), (0, 17), (17, 17)] {
-            assert_eq!(alpha(&rgba, x, y), 0, "corner ({x}, {y})");
+        for y in 0..44 {
+            for x in 0..44 {
+                if !(4..40).contains(&x) || !(4..40).contains(&y) {
+                    assert_eq!(alpha(&rgba, x, y), 0, "margin pixel ({x}, {y})");
+                }
+            }
         }
     }
 
     #[test]
-    fn icon_is_black_and_flat_top() {
+    fn icon_holds_the_flame() {
         let rgba = tray_icon_rgba();
-        assert!(rgba.as_chunks::<4>().0.iter().all(|p| p[..3] == [0, 0, 0]));
-        // Flat top: the topmost opaque row spans several pixels.
-        let top_row = (0..18).find(|&y| (0..18).any(|x| alpha(&rgba, x, y) != 0));
-        let width = (0..18)
-            .filter(|&x| alpha(&rgba, x, top_row.unwrap()) != 0)
+        let opaque = (0..44 * 44)
+            .filter(|i| alpha(&rgba, i % 44, i / 44) == 255)
             .count();
-        assert!(width >= 6, "top edge is {width} px wide");
+        assert!(opaque > 100, "{opaque} opaque pixels");
+    }
+
+    #[test]
+    fn icon_is_black() {
+        let rgba = tray_icon_rgba();
+        assert!(
+            rgba.as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| p[3] == 0 || p[..3] == [0, 0, 0])
+        );
     }
 
     #[test]
