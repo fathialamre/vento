@@ -149,21 +149,20 @@ enum ArchiveDone {
 
 /// The worker's half of Archive: decides between compressing and
 /// extracting, has the progress window follow the job, and runs it.
-fn archive_job(paths: &[PathBuf], at: Point) -> ArchiveDone {
-    let progress = Progress::new();
+fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> ArchiveDone {
     match plan(paths) {
         Plan::Compress { dir, name } => {
-            show_progress(&progress, COMPRESSING, at);
+            show_progress(progress, COMPRESSING, at);
             ArchiveDone::Compressed {
                 count: paths.len(),
-                result: compress(paths, &dir, &name, &progress),
+                result: compress(paths, &dir, &name, progress),
             }
         }
         Plan::Extract(archives) => {
-            show_progress(&progress, EXTRACTING, at);
+            show_progress(progress, EXTRACTING, at);
             let mark = copy_quarantine();
-            let mut ask = |archive: &Path, why| request_password(archive, why, &progress, at);
-            ArchiveDone::Extracted(extract_batch(&archives, &progress, &mark, &mut ask))
+            let mut ask = |archive: &Path, why| request_password(archive, why, progress, at);
+            ArchiveDone::Extracted(extract_batch(&archives, progress, &mark, &mut ask))
         }
     }
 }
@@ -227,10 +226,13 @@ impl Executor {
         if self.refuse_if_busy(at) {
             return;
         }
+        let progress = Progress::new();
+        let cancel = Some(Arc::clone(&progress));
         self.spawn_file_job(
             ActionId::Archive,
-            move || archive_job(&paths, at),
+            move || archive_job(&paths, &progress, at),
             move |executor, done| executor.archive_finished(done, at),
+            cancel,
             at,
         );
     }

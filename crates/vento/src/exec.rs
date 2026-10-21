@@ -3,11 +3,14 @@
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
-use std::time::Duration;
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use log::{debug, info, warn};
 use slint::Timer;
 use vento_core::actions::ActionId;
+use vento_core::archive::Progress;
 use vento_core::destinations::{RecentDestinations, recent_path};
 use vento_core::fileops::{
     CopyOutcome, CopyRecord, CopyUndoOutcome, FileOpError, MoveOutcome, MoveRecord, copy_items,
@@ -195,6 +198,28 @@ type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 /// Toast shown when a move, copy or undo is requested while one is running.
 const BUSY_TEXT: &str = "Busy — still working";
 
+/// Longest vento waits, when quitting, for a running job to stop.
+const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
+/// How often quitting checks whether the job has stopped.
+const SHUTDOWN_POLL: Duration = Duration::from_millis(10);
+
+/// Waits for `worker` to finish, but no longer than `limit`, so quitting
+/// never hangs. Returns whether it finished; one still running is left
+/// detached.
+fn join_within(worker: JoinHandle<()>, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    while !worker.is_finished() {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(SHUTDOWN_POLL);
+    }
+    if worker.join().is_err() {
+        warn!("a file operation ended in a panic");
+    }
+    true
+}
+
 /// What is left to undo after `outcome`, the undo of `record`: the items that
 /// failed to go back, so the undo can be retried. An original that was copied
 /// back but could not be removed is left out (retrying would duplicate it).
@@ -256,6 +281,13 @@ struct Last {
     at: Point,
 }
 
+/// The job running on a worker thread, kept so quitting can stop it.
+struct RunningJob {
+    worker: JoinHandle<()>,
+    /// The progress to cancel, for a job that can be cancelled (Archive).
+    cancel: Option<Arc<Progress>>,
+}
+
 /// Result of the worker's half of undoing a copy: the check of which copies
 /// are still as vento left them, and those to hand to the Trash.
 struct CopyUndoChecked {
@@ -274,6 +306,8 @@ pub struct Executor {
     recent: Rc<RefCell<RecentDestinations>>,
     /// Whether a move, copy, archive or undo is running on a worker thread.
     busy: Cell<bool>,
+    /// That job, until its result is handled on the main thread.
+    running: RefCell<Option<RunningJob>>,
     /// Follows a running Archive job.
     progress: Rc<ProgressView>,
     /// Asks for the passwords an Archive job needs.
@@ -306,6 +340,7 @@ impl Executor {
             last: RefCell::new(None),
             recent,
             busy: Cell::new(false),
+            running: RefCell::new(None),
             progress,
             password,
             prompt_watch: Timer::default(),
@@ -416,6 +451,7 @@ impl Executor {
                 (record, outcome)
             },
             move |executor, (record, outcome)| executor.undo_finished(&record, outcome, at),
+            None,
             at,
         );
     }
@@ -471,6 +507,7 @@ impl Executor {
                 }
             },
             move |executor, checked| executor.copy_undo_finished(checked, kind, at),
+            None,
             at,
         );
     }
@@ -558,6 +595,7 @@ impl Executor {
                 action,
                 move || copy_items(&paths, &dest),
                 move |executor, outcome| executor.copy_finished(outcome, at),
+                None,
                 at,
             );
         } else {
@@ -567,6 +605,7 @@ impl Executor {
                 action,
                 move || move_items(&paths, &dest),
                 move |executor, outcome| executor.move_finished(outcome, at),
+                None,
                 at,
             );
         }
@@ -653,11 +692,14 @@ impl Executor {
     /// Runs `job` on a worker thread, then `done` with its result on the main
     /// thread. Marks the executor busy until `done` runs, and closes the
     /// progress window (if the job used it) first, also after a panic.
+    /// `cancel` is the job's progress, when it can be cancelled; quitting
+    /// cancels it.
     fn spawn_file_job<T: Send + 'static>(
         &self,
         action: ActionId,
         job: impl FnOnce() -> T + Send + 'static,
         done: impl FnOnce(&Executor, T) + Send + 'static,
+        cancel: Option<Arc<Progress>>,
         at: Point,
     ) {
         self.busy.set(true);
@@ -667,6 +709,7 @@ impl Executor {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
                 let delivered = on_main(move |executor| {
                     executor.busy.set(false);
+                    executor.running.take();
                     executor.progress.close();
                     match result {
                         Ok(value) => done(executor, value),
@@ -677,9 +720,33 @@ impl Executor {
                     warn!("cannot report a finished file operation: {e}");
                 }
             });
-        if let Err(e) = spawned {
-            self.busy.set(false);
-            self.toast_error(action, &format!("cannot start: {e}"), at);
+        match spawned {
+            Ok(worker) => *self.running.borrow_mut() = Some(RunningJob { worker, cancel }),
+            Err(e) => {
+                self.busy.set(false);
+                self.toast_error(action, &format!("cannot start: {e}"), at);
+            }
+        }
+    }
+
+    /// Stops the running job before vento quits, so it leaves no partial
+    /// output behind: an Archive job is cancelled (and its password window,
+    /// if open, closed), which removes its partial item; then the worker gets
+    /// up to two seconds to finish. A move or copy cannot be cancelled and
+    /// gets the same wait. Never blocks longer. Call on the main thread.
+    pub fn shutdown(&self) {
+        let Some(job) = self.running.take() else {
+            return;
+        };
+        if let Some(progress) = &job.cancel {
+            progress.cancel();
+            // A worker waiting for a password would wait past the deadline.
+            self.password.dismiss();
+        }
+        if join_within(job.worker, SHUTDOWN_WAIT) {
+            info!("quit: the running job stopped");
+        } else {
+            warn!("quit: the running job did not stop in time");
         }
     }
 
@@ -964,5 +1031,25 @@ mod tests {
     #[test]
     fn terminal_dir_of_no_paths_is_none() {
         assert_eq!(terminal_dir(&[]), None);
+    }
+
+    #[test]
+    fn join_within_waits_for_a_worker_that_finishes() {
+        let worker = std::thread::spawn(|| std::thread::sleep(Duration::from_millis(20)));
+        assert!(join_within(worker, Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn join_within_gives_up_on_a_worker_that_does_not_finish() {
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            let _ = wait.recv();
+        });
+        let start = std::time::Instant::now();
+
+        assert!(!join_within(worker, Duration::from_millis(50)));
+
+        assert!(start.elapsed() < Duration::from_secs(1));
+        drop(release);
     }
 }

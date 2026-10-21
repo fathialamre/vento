@@ -212,10 +212,12 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 pause.set(pause_item.is_checked());
             } else if id == open_settings.id() {
                 open_settings_file();
-            } else if id == quit.id()
-                && let Err(e) = slint::quit_event_loop()
-            {
-                warn!("cannot quit: {e}");
+            } else if id == quit.id() {
+                // A job still running would leave its partial output behind.
+                exec.shutdown();
+                if let Err(e) = slint::quit_event_loop() {
+                    warn!("cannot quit: {e}");
+                }
             }
         }));
     });

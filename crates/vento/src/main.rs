@@ -141,9 +141,14 @@ fn main() -> Result<(), slint::PlatformError> {
 
     pocket.start();
     // Files waiting for the Trash go now when vento quits, also when the
-    // system ends it (log out, shut down).
+    // system ends it (log out, shut down); a running file job is stopped so
+    // it leaves no partial output behind.
     let flusher = Rc::downgrade(&pocket);
+    let stopper = Rc::downgrade(&executor);
     platform.on_terminate(Box::new(move || {
+        if let Some(executor) = stopper.upgrade() {
+            executor.shutdown();
+        }
         if let Some(pocket) = flusher.upgrade() {
             pocket.flush_pending();
         }
