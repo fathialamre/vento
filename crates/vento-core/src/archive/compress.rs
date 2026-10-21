@@ -13,8 +13,8 @@ use zip::write::{FullFileOptions, SimpleFileOptions};
 use zip::{CompressionMethod, DateTime, ZipWriter};
 
 use super::job::{ArchiveError, Counting, Made, Progress};
-use super::staging::claim_partial_file;
-use crate::fileops::{Fingerprint, numbered_name, place_partial, remove_any};
+use super::staging::{Partial, claim_partial_file};
+use crate::fileops::{Fingerprint, numbered_name, place_partial};
 
 /// Macs scatter these through folders; they carry nothing worth archiving.
 const DS_STORE: &str = ".DS_Store";
@@ -61,29 +61,6 @@ pub fn compress(
         output,
         fingerprint,
     })
-}
-
-/// A partial file that is removed when dropped, unless it was published.
-struct Partial {
-    path: PathBuf,
-    published: bool,
-}
-
-impl Partial {
-    fn new(path: PathBuf) -> Self {
-        Partial {
-            path,
-            published: false,
-        }
-    }
-}
-
-impl Drop for Partial {
-    fn drop(&mut self) {
-        if !self.published {
-            remove_any(&self.path);
-        }
-    }
 }
 
 /// What one zip entry is made from.

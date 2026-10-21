@@ -1,12 +1,388 @@
 //! Hidden partial items that archive output is built under before it gets its
-//! final name.
+//! final name, and the staging folder an archive is extracted into.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::{self, File, OpenOptions};
-use std::io;
-use std::path::{Path, PathBuf};
+use std::io::{self, Read, Write};
+use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 
-use crate::fileops::{NAME_ATTEMPTS, partial_name};
+use super::detect::archive_stem;
+use super::entries::{EntryInfo, Layout};
+use super::job::{ArchiveError, Counting, Progress};
+use crate::fileops::{
+    Fingerprint, NAME_ATTEMPTS, partial_name, place_partial, remove_any, unique_destination,
+};
+
+/// Most links followed while checking where one symlink leads; a longer chain
+/// (or a loop) is refused. Matches the usual kernel limit.
+const MAX_LINK_HOPS: usize = 40;
+/// Bytes read from an entry at a time.
+const COPY_BUFFER: usize = 64 * 1024;
+
+/// A partial item that is removed when dropped, unless it was published.
+pub(crate) struct Partial {
+    pub(crate) path: PathBuf,
+    pub(crate) published: bool,
+}
+
+impl Partial {
+    pub(crate) fn new(path: PathBuf) -> Self {
+        Partial {
+            path,
+            published: false,
+        }
+    }
+}
+
+impl Drop for Partial {
+    fn drop(&mut self) {
+        if !self.published {
+            remove_any(&self.path);
+        }
+    }
+}
+
+/// A hidden partial folder that an archive is extracted into, entry by entry,
+/// before the result is published beside the archive in one step.
+///
+/// Nothing is ever written outside the partial folder: every folder on the
+/// way to an entry must be a real folder inside it (never a symlink, so a
+/// link created by an earlier entry is never followed), and a symlink is only
+/// created when its target stays inside. Dropping an unpublished `Staging`
+/// removes the partial folder with everything in it.
+pub(crate) struct Staging<'a> {
+    partial: Partial,
+    /// The folder the result is published into.
+    dir: PathBuf,
+    progress: &'a Progress,
+    mark: &'a dyn Fn(&Path) -> io::Result<()>,
+    /// Folders whose modified time is set once every entry is written.
+    dir_times: Vec<(PathBuf, SystemTime)>,
+    /// Every symlink created, checked again against the final layout.
+    links: Vec<PathBuf>,
+}
+
+impl<'a> Staging<'a> {
+    /// Claims a partial folder in `dir`, named after `archive`, and passes it
+    /// to `mark`.
+    ///
+    /// `mark` runs on every item created inside (folders, files and symlinks
+    /// alike, so it must not follow links) before anything is published; an
+    /// error from it fails the extraction.
+    pub(crate) fn new(
+        dir: &Path,
+        archive: &Path,
+        progress: &'a Progress,
+        mark: &'a dyn Fn(&Path) -> io::Result<()>,
+    ) -> Result<Staging<'a>, ArchiveError> {
+        if progress.is_cancelled() {
+            return Err(ArchiveError::Cancelled);
+        }
+        let root = claim_partial_dir(dir, &archive_stem(archive))?;
+        let staging = Staging {
+            partial: Partial::new(root),
+            dir: dir.to_path_buf(),
+            progress,
+            mark,
+            dir_times: Vec::new(),
+            links: Vec::new(),
+        };
+        staging.mark(staging.root())?;
+        Ok(staging)
+    }
+
+    /// Writes a file entry from `data`, counting the bytes into the progress.
+    ///
+    /// A path already taken inside staging (the same name twice, or names
+    /// that differ only in case on a case-insensitive volume) gets the next
+    /// free name, `a (2).txt`. Data that fails to decode or to match its
+    /// checksum is [`ArchiveError::Damaged`].
+    pub(crate) fn file(
+        &mut self,
+        info: &EntryInfo,
+        data: &mut dyn Read,
+    ) -> Result<(), ArchiveError> {
+        let (parent, name) = self.prepare(info)?;
+        self.progress.set_current(&name.to_string_lossy());
+        let (path, file) = create_unique(&parent, name, |path| {
+            OpenOptions::new().write(true).create_new(true).open(path)
+        })?;
+        copy_data(data, &mut Counting::new(&file, self.progress))?;
+        // Marked before the mode is applied: a read-only file could refuse it.
+        self.mark(&path)?;
+        if let Some(mtime) = info.mtime {
+            file.set_modified(mtime)?;
+        }
+        if let Some(mode) = info.mode {
+            set_file_mode(&file, mode & 0o777)?;
+        }
+        Ok(())
+    }
+
+    /// Creates a folder entry, or reuses the folder when an earlier entry
+    /// already created it. The owner always keeps full access, so the folder
+    /// can be filled, fingerprinted and removed; its modified time is set
+    /// when publishing, after everything inside it is written.
+    pub(crate) fn dir(&mut self, info: &EntryInfo) -> Result<(), ArchiveError> {
+        let (parent, name) = self.prepare(info)?;
+        let path = parent.join(name);
+        self.real_dir(&path, &info.path)?;
+        if let Some(mode) = info.mode {
+            set_dir_mode(&path, (mode & 0o777) | 0o700)?;
+        }
+        if let Some(mtime) = info.mtime {
+            self.dir_times.push((path, mtime));
+        }
+        Ok(())
+    }
+
+    /// Creates a symlink entry pointing at `target`, which must stay inside
+    /// staging when followed from the link's own folder; a taken path gets
+    /// the next free name as for files.
+    pub(crate) fn symlink(&mut self, info: &EntryInfo, target: &str) -> Result<(), ArchiveError> {
+        let (parent, name) = self.prepare(info)?;
+        let from = parent.strip_prefix(self.root()).unwrap_or(&parent);
+        let safe = !target.is_empty()
+            && !target.contains('\0')
+            && link_stays_inside(self.root(), Path::new(""), from, Path::new(target));
+        if !safe {
+            return Err(ArchiveError::UnsafeEntry(format!(
+                "{} -> {target}",
+                info.path.display()
+            )));
+        }
+        let (path, ()) = create_unique(&parent, name, |path| make_symlink(target, path))?;
+        self.mark(&path)?;
+        self.links.push(path);
+        Ok(())
+    }
+
+    /// Sets the folders' modified times and publishes the result under a
+    /// free name in the archive's folder, never replacing anything.
+    ///
+    /// For [`Layout::Direct`] the one top-level item is moved out and the
+    /// emptied partial folder removed; for [`Layout::Wrapped`] the partial
+    /// folder itself becomes the result. Every symlink is checked again
+    /// against what is published, so a link cannot reach outside it through
+    /// another link created later, or (for `Direct`) to the item's siblings.
+    /// Returns the published path and its fingerprint, taken just before the
+    /// move (which keeps every entry's identity and times).
+    pub(crate) fn publish(
+        mut self,
+        layout: Layout,
+    ) -> Result<(PathBuf, Fingerprint), ArchiveError> {
+        if self.progress.is_cancelled() {
+            return Err(ArchiveError::Cancelled);
+        }
+        for (path, mtime) in &self.dir_times {
+            // Checked to be a real folder when it was made; nothing replaces it.
+            File::open(path)?.set_modified(*mtime)?;
+        }
+        let (item, bound) = match &layout {
+            Layout::Direct(top) => (self.root().join(top), top.as_path()),
+            Layout::Wrapped(_) => (self.root().to_path_buf(), Path::new("")),
+        };
+        for link in &self.links {
+            let relative = link.strip_prefix(self.root()).unwrap_or(link);
+            let from = relative.parent().unwrap_or(Path::new(""));
+            if !link_stays_inside(self.root(), bound, from, &fs::read_link(link)?) {
+                return Err(ArchiveError::UnsafeEntry(relative.display().to_string()));
+            }
+        }
+        let is_dir = fs::symlink_metadata(&item)?.is_dir();
+        let fingerprint = Fingerprint::of(&item)?;
+        let output = match &layout {
+            // The emptied partial folder is removed when `self` is dropped.
+            Layout::Direct(top) => place_partial(&item, &self.dir, top.as_os_str(), is_dir)?,
+            Layout::Wrapped(stem) => {
+                let output = place_partial(&item, &self.dir, stem, true)?;
+                self.partial.published = true;
+                output
+            }
+        };
+        Ok((output, fingerprint))
+    }
+
+    fn root(&self) -> &Path {
+        &self.partial.path
+    }
+
+    fn mark(&self, path: &Path) -> Result<(), ArchiveError> {
+        (self.mark)(path).map_err(ArchiveError::Io)
+    }
+
+    /// Checks the job is still wanted and `info`'s path is plain, and makes
+    /// sure every folder above it is a real folder inside staging, creating
+    /// the missing ones. Returns the entry's folder and its name.
+    fn prepare<'i>(&self, info: &'i EntryInfo) -> Result<(PathBuf, &'i OsStr), ArchiveError> {
+        if self.progress.is_cancelled() {
+            return Err(ArchiveError::Cancelled);
+        }
+        let plain = info
+            .path
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)));
+        let name = match info.path.file_name() {
+            Some(name) if plain => name,
+            _ => return Err(ArchiveError::UnsafeEntry(info.path.display().to_string())),
+        };
+        let mut parent = self.root().to_path_buf();
+        for folder in info.path.parent().into_iter().flat_map(Path::iter) {
+            parent.push(folder);
+            self.real_dir(&parent, &info.path)?;
+        }
+        Ok((parent, name))
+    }
+
+    /// Makes sure `path` is a real folder (not a symlink to one), creating and
+    /// marking it when missing. `entry` names the entry for errors.
+    fn real_dir(&self, path: &Path, entry: &Path) -> Result<(), ArchiveError> {
+        match fs::symlink_metadata(path) {
+            Ok(meta) if meta.is_dir() => Ok(()),
+            Ok(meta) if meta.file_type().is_symlink() => {
+                Err(ArchiveError::UnsafeEntry(entry.display().to_string()))
+            }
+            Ok(_) => Err(ArchiveError::Damaged(format!(
+                "{} is both a file and a folder",
+                entry.display()
+            ))),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                fs::create_dir(path)?;
+                self.mark(path)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
+/// Creates an item with `create` at the first free name for `name` in
+/// `parent`; `create` must fail with `AlreadyExists` rather than replace.
+fn create_unique<T>(
+    parent: &Path,
+    name: &OsStr,
+    mut create: impl FnMut(&Path) -> io::Result<T>,
+) -> Result<(PathBuf, T), ArchiveError> {
+    for _ in 0..NAME_ATTEMPTS {
+        let path = unique_destination(parent, name);
+        match create(&path) {
+            Ok(made) => return Ok((path, made)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(no_free_name().into())
+}
+
+/// Copies an entry's data, telling a failed read (damage) from a failed
+/// write (disk, or Cancel).
+fn copy_data(data: &mut dyn Read, out: &mut impl Write) -> Result<(), ArchiveError> {
+    let mut buffer = vec![0u8; COPY_BUFFER];
+    loop {
+        let read = match data.read(&mut buffer) {
+            Ok(0) => return Ok(()),
+            Ok(read) => read,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(ArchiveError::from_read(e)),
+        };
+        out.write_all(&buffer[..read])
+            .map_err(ArchiveError::from_io)?;
+    }
+}
+
+/// One step of a symlink target.
+enum Step {
+    Up,
+    Into(OsString),
+}
+
+/// The steps of a relative link target; `None` for an absolute one.
+fn steps(target: &Path) -> Option<Vec<Step>> {
+    target
+        .components()
+        .filter_map(|component| match component {
+            Component::CurDir => None,
+            Component::ParentDir => Some(Some(Step::Up)),
+            Component::Normal(name) => Some(Some(Step::Into(name.to_os_string()))),
+            Component::RootDir | Component::Prefix(_) => Some(None),
+        })
+        .collect()
+}
+
+/// Whether a link in the folder `from` pointing at `target` stays inside
+/// `bound` at every step. `from` and `bound` are relative to `root`.
+///
+/// Links already inside `root` are followed on the way (a chain longer than
+/// [`MAX_LINK_HOPS`] counts as leaving), so `a -> b/..` with `b -> .` is
+/// caught; names that do not exist yet are taken as plain folders.
+fn link_stays_inside(root: &Path, bound: &Path, from: &Path, target: &Path) -> bool {
+    let floor = bound.iter().count();
+    if !from.starts_with(bound) {
+        return false;
+    }
+    let mut at: Vec<OsString> = from.iter().map(OsStr::to_os_string).collect();
+    let Some(mut pending) = steps(target) else {
+        return false;
+    };
+    pending.reverse();
+    let mut hops = 0;
+    while let Some(step) = pending.pop() {
+        match step {
+            Step::Up if at.len() <= floor => return false,
+            Step::Up => {
+                at.pop();
+            }
+            Step::Into(name) => {
+                at.push(name);
+                let here = root.join(at.iter().collect::<PathBuf>());
+                if let Ok(next) = fs::read_link(&here) {
+                    hops += 1;
+                    at.pop();
+                    let Some(more) = steps(&next).filter(|_| hops <= MAX_LINK_HOPS) else {
+                        return false;
+                    };
+                    pending.extend(more.into_iter().rev());
+                }
+            }
+        }
+    }
+    true
+}
+
+#[cfg(unix)]
+fn make_symlink(target: &str, path: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, path)
+}
+
+#[cfg(not(unix))]
+fn make_symlink(_target: &str, _path: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "symlinks in archives are not supported here",
+    ))
+}
+
+#[cfg(unix)]
+fn set_file_mode(file: &File, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    file.set_permissions(fs::Permissions::from_mode(mode))
+}
+
+#[cfg(not(unix))]
+fn set_file_mode(_file: &File, _mode: u32) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_dir_mode(path: &Path, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+#[cfg(not(unix))]
+fn set_dir_mode(_path: &Path, _mode: u32) -> io::Result<()> {
+    Ok(())
+}
 
 /// Creates an empty file under the first free partial name in `dir`.
 ///
@@ -31,8 +407,6 @@ pub(crate) fn claim_partial_file(dir: &Path, name: &OsStr) -> io::Result<(PathBu
 /// Creates an empty folder under the first free partial name in `dir`.
 ///
 /// An item already at a partial name is skipped and left alone.
-// Used by extraction (a later task).
-#[allow(dead_code)]
 pub(crate) fn claim_partial_dir(dir: &Path, name: &OsStr) -> io::Result<PathBuf> {
     for attempt in 1..=NAME_ATTEMPTS {
         let candidate = dir.join(partial_name(name, attempt));
@@ -55,7 +429,130 @@ fn no_free_name() -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::archive::entries::EntryKind;
     use std::io::Write;
+
+    fn info(path: &str, kind: EntryKind) -> EntryInfo {
+        EntryInfo {
+            path: PathBuf::from(path),
+            kind,
+            size: 0,
+            mode: None,
+            mtime: None,
+        }
+    }
+
+    fn no_mark(_: &Path) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn listing(dir: &Path) -> Vec<String> {
+        let mut out: Vec<String> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_never_writes_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Evil.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        // A link that got into staging somehow; later entries must not follow it.
+        std::os::unix::fs::symlink(outside.path(), staging.partial.path.join("a")).unwrap();
+
+        let file = staging.file(&info("a/evil", EntryKind::File), &mut &b"x"[..]);
+        let folder = staging.dir(&info("a/sub", EntryKind::Dir));
+        let link = staging.symlink(&info("a/link", EntryKind::Symlink), "x");
+
+        assert!(matches!(file, Err(ArchiveError::UnsafeEntry(_))));
+        assert!(matches!(folder, Err(ArchiveError::UnsafeEntry(_))));
+        assert!(matches!(link, Err(ArchiveError::UnsafeEntry(_))));
+        assert!(listing(outside.path()).is_empty());
+        drop(staging);
+        assert!(listing(dir.path()).is_empty());
+        assert!(outside.path().is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_chain_leaving_the_output_is_refused_at_publish() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Chain.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        // Each link stays inside when it is created, but `l` resolves through
+        // `b`, created later, to the folder above the output.
+        staging
+            .symlink(&info("l", EntryKind::Symlink), "b/..")
+            .unwrap();
+        staging
+            .symlink(&info("b", EntryKind::Symlink), ".")
+            .unwrap();
+
+        let result = staging.publish(Layout::Wrapped("Chain".into()));
+
+        assert!(matches!(result, Err(ArchiveError::UnsafeEntry(_))));
+        assert!(listing(dir.path()).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_to_a_sibling_of_a_direct_top_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Photos.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        // Inside staging, but once `Photos` is published on its own the link
+        // would point at whatever sits beside it.
+        staging
+            .symlink(&info("Photos/up", EntryKind::Symlink), "../Photos.zip")
+            .unwrap();
+
+        let result = staging.publish(Layout::Direct("Photos".into()));
+
+        assert!(matches!(result, Err(ArchiveError::UnsafeEntry(_))));
+        assert!(listing(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn taken_names_inside_staging_get_free_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Dup.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        staging
+            .file(&info("a.txt", EntryKind::File), &mut &b"one"[..])
+            .unwrap();
+        staging
+            .file(&info("a.txt", EntryKind::File), &mut &b"two"[..])
+            .unwrap();
+
+        let (output, _) = staging.publish(Layout::Wrapped("Dup".into())).unwrap();
+
+        assert_eq!(output, dir.path().join("Dup"));
+        assert_eq!(fs::read(output.join("a.txt")).unwrap(), b"one");
+        assert_eq!(fs::read(output.join("a (2).txt")).unwrap(), b"two");
+    }
+
+    #[test]
+    fn dropped_staging_leaves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Gone.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        staging.dir(&info("x/y", EntryKind::Dir)).unwrap();
+        staging
+            .file(&info("x/y/z.txt", EntryKind::File), &mut &b"z"[..])
+            .unwrap();
+        drop(staging);
+        assert!(listing(dir.path()).is_empty());
+    }
 
     #[test]
     fn claims_file_under_partial_name() {

@@ -60,6 +60,18 @@ impl ArchiveError {
             ArchiveError::Io(error)
         }
     }
+
+    /// Maps an error from reading an archive: data that does not decode or
+    /// ends early, or a failed checksum, is [`ArchiveError::Damaged`]; any
+    /// other error stays an [`ArchiveError::Io`].
+    pub(crate) fn from_read(error: io::Error) -> Self {
+        match error.kind() {
+            io::ErrorKind::InvalidData | io::ErrorKind::UnexpectedEof => {
+                ArchiveError::Damaged(error.to_string())
+            }
+            _ => ArchiveError::from_io(error),
+        }
+    }
 }
 
 /// How far a job has got, shared between the worker and the progress window.
@@ -164,14 +176,14 @@ impl<W: Write> Write for Counting<'_, W> {
     }
 }
 
-/// A finished compress: what was archived and where the zip is.
+/// A finished compress or extract: what it read and what it created.
 #[derive(Debug)]
 pub struct Made {
-    /// The first input.
+    /// The first input of a compress, or the archive extracted.
     pub source: PathBuf,
-    /// The zip that was created.
+    /// The zip, or the extracted file or folder, that was created.
     pub output: PathBuf,
-    /// The zip as it was when created, for undo to recognise it.
+    /// The output as it was when created, for undo to recognise it.
     pub fingerprint: Fingerprint,
 }
 
@@ -221,6 +233,25 @@ mod tests {
             ArchiveError::Cancelled
         ));
         assert_eq!(p.snapshot().done, 3);
+    }
+
+    #[test]
+    fn bad_data_while_reading_is_damage() {
+        let bad = io::Error::new(io::ErrorKind::InvalidData, "Invalid checksum");
+        assert!(matches!(
+            ArchiveError::from_read(bad),
+            ArchiveError::Damaged(_)
+        ));
+        let short = io::Error::from(io::ErrorKind::UnexpectedEof);
+        assert!(matches!(
+            ArchiveError::from_read(short),
+            ArchiveError::Damaged(_)
+        ));
+        let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+        assert!(matches!(
+            ArchiveError::from_read(denied),
+            ArchiveError::Io(_)
+        ));
     }
 
     #[test]
