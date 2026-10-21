@@ -190,7 +190,7 @@ impl<'a> Staging<'a> {
         // Marked before the mode is applied: a read-only file could refuse it.
         self.mark(path)?;
         if let Some(mtime) = info.mtime {
-            file.set_modified(mtime)?;
+            set_time(path, mtime, |time| file.set_modified(time));
         }
         if let Some(mode) = permissions(info) {
             set_file_mode(file, mode)?;
@@ -258,7 +258,8 @@ impl<'a> Staging<'a> {
         }
         for (path, mtime) in &self.dir_times {
             // Checked to be a real folder when it was made; nothing replaces it.
-            File::open(path)?.set_modified(*mtime)?;
+            let dir = File::open(path)?;
+            set_time(path, *mtime, |time| dir.set_modified(time));
         }
         let layout = match layout {
             Layout::Direct(top) if !self.holds_only(&top)? => {
@@ -557,6 +558,14 @@ fn make_symlink(_target: &str, _path: &Path) -> io::Result<()> {
     ))
 }
 
+/// Gives the item at `path` its modified `time` with `set`. A time the
+/// filesystem refuses is logged and left out: it never fails the extraction.
+fn set_time(path: &Path, time: SystemTime, set: impl FnOnce(SystemTime) -> io::Result<()>) {
+    if let Err(e) = set(time) {
+        log::warn!("could not set the modified time of {}: {e}", path.display());
+    }
+}
+
 /// The permission bits to give `info`'s item, if any. A mode with none of
 /// them set (some writers mark an entry as unix-made but fill in only its
 /// DOS attributes) is more likely an unset field than intent: the item keeps
@@ -656,6 +665,20 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn a_refused_modified_time_is_skipped() {
+        let asked = Cell::new(None);
+        set_time(
+            Path::new("/staging/a.txt"),
+            SystemTime::UNIX_EPOCH,
+            |time| {
+                asked.set(Some(time));
+                Err(io::Error::from(io::ErrorKind::PermissionDenied))
+            },
+        );
+        assert_eq!(asked.get(), Some(SystemTime::UNIX_EPOCH));
+    }
+
     #[test]
     fn staging_never_writes_through_a_symlink() {
         let dir = tempfile::tempdir().unwrap();
