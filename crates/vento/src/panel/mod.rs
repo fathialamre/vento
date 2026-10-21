@@ -646,6 +646,13 @@ impl PanelController {
             let this = this.clone();
             Timer::single_shot(Duration::ZERO, move || {
                 if let Some(panel) = this.upgrade() {
+                    // AppKit can report a click on the panel itself (while
+                    // vento is not the active app): only close for a click
+                    // that is really outside it.
+                    if panel.cursor_on_panel() {
+                        debug!("click on the panel reported as outside: ignored");
+                        return;
+                    }
                     debug!("click outside the panel");
                     panel.close();
                 }
@@ -656,6 +663,22 @@ impl PanelController {
                 warn!("cannot wake the event loop: {e}");
             }
         }));
+    }
+
+    /// Whether the mouse is over the panel window now, in global logical
+    /// points (the window's frame, arrow band included).
+    fn cursor_on_panel(&self) -> bool {
+        let window = self.window.window();
+        let scale = window.scale_factor();
+        let at = window.position().to_logical(scale);
+        let size = window.size().to_logical(scale);
+        let frame = Rect {
+            x: f64::from(at.x),
+            y: f64::from(at.y),
+            w: f64::from(size.width),
+            h: f64::from(size.height),
+        };
+        contains(&frame, self.platform.sample_input().cursor)
     }
 
     fn show_notice(&self) {
@@ -960,9 +983,40 @@ fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     v.min(hi).max(lo)
 }
 
+/// Whether `p` lies inside `r`, edges included.
+fn contains(r: &Rect, p: Point) -> bool {
+    p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_click_on_the_panel_is_inside_it() {
+        let frame = Rect {
+            x: 933.0,
+            y: 33.75,
+            w: 340.0,
+            h: 500.0,
+        };
+        assert!(contains(&frame, Point { x: 1000.0, y: 60.0 }));
+        assert!(contains(
+            &frame,
+            Point {
+                x: 933.0,
+                y: 533.75
+            }
+        ));
+        assert!(!contains(&frame, Point { x: 900.0, y: 60.0 }));
+        assert!(!contains(
+            &frame,
+            Point {
+                x: 1000.0,
+                y: 600.0
+            }
+        ));
+    }
 
     fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }
