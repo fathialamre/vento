@@ -116,9 +116,11 @@ impl Progress {
         self.cancelled.load(Ordering::Relaxed)
     }
 
-    /// Sets the number of bytes the job will process.
-    pub fn set_total(&self, bytes: u64) {
-        self.total.store(bytes, Ordering::Relaxed);
+    /// Starts counting a new pass over `total` bytes: nothing done yet. Each
+    /// archive of a batch, and each password tried on one, is a new pass.
+    pub fn start(&self, total: u64) {
+        self.done.store(0, Ordering::Relaxed);
+        self.total.store(total, Ordering::Relaxed);
     }
 
     /// Records `bytes` more as processed.
@@ -196,7 +198,7 @@ mod tests {
     #[test]
     fn progress_tracks_values() {
         let p = Progress::new();
-        p.set_total(10);
+        p.start(10);
         p.add_done(3);
         p.add_done(4);
         p.set_current("a.txt");
@@ -211,6 +213,16 @@ mod tests {
         assert!(!p.is_cancelled());
         p.cancel();
         assert!(p.is_cancelled());
+    }
+
+    #[test]
+    fn start_sets_the_total_and_clears_what_was_done() {
+        let p = Progress::new();
+        p.start(10);
+        p.add_done(10);
+        p.start(4);
+        let snap = p.snapshot();
+        assert_eq!((snap.done, snap.total), (0, 4));
     }
 
     #[test]

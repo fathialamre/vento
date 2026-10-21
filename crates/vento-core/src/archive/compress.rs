@@ -45,7 +45,7 @@ pub fn compress(
     }
     let items = collect_inputs(paths, progress)?;
     let total = items.iter().map(Item::size).sum();
-    progress.set_total(total);
+    progress.start(total);
 
     let (partial, file) = claim_partial_file(dir, name)?;
     let mut partial = Partial::new(partial);

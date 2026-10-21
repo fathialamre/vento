@@ -184,7 +184,7 @@ pub fn extract_one(
         .filter(|e| e.kind == EntryKind::File)
         .fold(0u64, |sum, e| sum.saturating_add(e.size));
     check_space(dir, total)?;
-    progress.set_total(total);
+    progress.start(total);
 
     let mut staging = Staging::new(dir, archive, progress, mark)?;
     reader.extract(&mut staging)?;

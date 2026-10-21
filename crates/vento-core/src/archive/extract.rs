@@ -451,6 +451,35 @@ mod tests {
     }
 
     #[test]
+    fn progress_starts_over_for_each_archive_and_each_try() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = dir.path().join("Big.zip");
+        make_zip(&big, &[E::File("big.txt", &[b'x'; 100])]);
+        let secret = dir.path().join("Secret.zip");
+        make_encrypted(&secret);
+        let progress = Progress::new();
+        let seen = RefCell::new(Vec::new());
+        let mark = |_: &Path, _: &Path| {
+            let snap = progress.snapshot();
+            seen.borrow_mut().push((snap.done, snap.total));
+            Ok(())
+        };
+        let mut answers = vec![password("nope"), password("hunter2")];
+        let mut ask = |_: &Path, _: PasswordAsk| answers.remove(0);
+
+        let outcome = extract_batch(&[big, secret], &progress, &mark, &mut ask);
+
+        assert_eq!(outcome.made.len(), 2);
+        let seen = seen.into_inner();
+        assert!(!seen.is_empty());
+        for (done, total) in seen {
+            assert!(done <= total, "{done} of {total} done");
+        }
+        let end = progress.snapshot();
+        assert_eq!((end.done, end.total), (10, 10));
+    }
+
+    #[test]
     fn archive_that_is_gone_or_changed_fails_as_unsupported() {
         let dir = tempfile::tempdir().unwrap();
         let mut archives = plain_zips(dir.path(), &["a"]);
