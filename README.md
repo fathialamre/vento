@@ -74,6 +74,14 @@ Neither Accessibility nor Input Monitoring permission is required.
 cargo run -p vento --release
 ```
 
+Or build `target/bundle/vento.app`, which carries the app icon and stays out
+of the Dock:
+
+```sh
+scripts/bundle-macos.sh
+open target/bundle/vento.app
+```
+
 vento lives in the menu bar.
 
 - **Left click** the icon to open the settings panel. Its tabs are Wheel
