@@ -11,8 +11,8 @@ vento is **macOS only for now**. The core and platform crates are checked
 for Windows and Linux targets (the platform crate is a stub there, so the wheel
 does nothing); full CI runs on all three systems once the repo has a remote.
 
-Actions: Pocket, Copy, Move (with undo), Copy to (with undo), Copy path,
-Terminal.
+Actions: Pocket, Copy, Move (with undo), Copy to (with undo), Archive (with
+undo, off by default), Copy path, Terminal.
 
 ## Move and Copy to
 
@@ -29,6 +29,36 @@ vento made that have not changed since.
 Pin the folders you use most in the settings panel's Move tab with **Add
 folder**, or pin one from the recent list; up to seven fit. The same tab sets how
 long the hold takes (200 to 1000 ms) and clears the recent list.
+
+## Archive
+
+Release on **Archive** and vento compresses or extracts, depending on what you
+dragged. If every item is a zip, rar or 7z archive, each one is extracted;
+anything else, including a mix, is compressed into one zip. An item counts as
+an archive only when both its extension and its contents say so, so dropping a
+`.docx` or `.xlsx` zips it rather than unpacking it.
+
+- **Compress** writes a zip next to the first item: `Report.docx` gives
+  `Report.zip`, several items give `Archive.zip`. Folders are stored whole,
+  without `.DS_Store` or a `__MACOSX` folder.
+- **Extract** reads zip, rar and 7z (including multi-volume rar sets) and puts
+  the contents next to the archive, in a folder named after it (or, like
+  Finder, directly if the archive holds one top-level item). Files from a
+  downloaded archive keep its quarantine mark, so Gatekeeper still checks them.
+- **rar is extract-only**: the RAR format's licence forbids writing it.
+- **Passwords**: an encrypted archive opens a small window asking for the
+  password; a wrong one keeps it open, Cancel skips that archive and the rest of
+  the drop carries on. Passwords are never saved or logged.
+- **Progress**: a job that runs longer than half a second shows a progress
+  window with a **Cancel** button. Cancelling removes everything vento had
+  started writing.
+- Nothing is ever overwritten (`Archive (2).zip`), and a result only appears
+  when it is complete.
+- **Undo last archive** (toast or menu) moves what vento created to the Trash,
+  unless you have changed it since.
+
+Archive is off by default: switch it on in the settings panel's Wheel tab, where
+it is listed with the hidden actions.
 
 ## Requirements
 
@@ -52,8 +82,8 @@ vento lives in the menu bar.
   copy) and General (trigger, terminal, Copy path format); Pause and Quit are at
   the bottom. It follows the system light or dark appearance. Changes apply and
   are saved at once.
-- **Right click** for the menu: Undo last move/copy, Pause, Open settings file,
-  Quit.
+- **Right click** for the menu: Undo last move/copy/archive, Pause, Open
+  settings file, Quit.
 
 ## Settings
 
@@ -77,8 +107,8 @@ layout = "honeycomb"
 trigger = "ctrl"
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to". A file that already lists `actions` must add "pocket"
-# or "copy_to" to show it.
+# "terminal", "copy_to", "archive". A file that already lists `actions` must add
+# "pocket", "copy_to" or "archive" to show it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
 # Actions turned off in the panel (the panel lists them below the shown ones)
