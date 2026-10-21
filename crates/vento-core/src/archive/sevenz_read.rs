@@ -4,9 +4,9 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sevenz_rust2::{ArchiveEntry, EncoderMethod, Error, Password};
+use sevenz_rust2::{ArchiveEntry, EncoderMethod, Error, NtTime, Password};
 
 use super::entries::{ArchiveReader, EntryInfo, EntryKind, safe_relative};
 use super::job::ArchiveError;
@@ -184,8 +184,36 @@ fn entry_info(entry: &ArchiveEntry) -> Result<Option<EntryInfo>, ArchiveError> {
         mode: unix_mode.map(|mode| mode & 0o7777),
         mtime: entry
             .has_last_modified_date
-            .then(|| SystemTime::from(entry.last_modified_date())),
+            .then(|| modified(entry.last_modified_date()))
+            .flatten(),
     }))
+}
+
+/// Windows file time ticks (100 ns) per second.
+const TICKS_PER_SECOND: u64 = 10_000_000;
+/// The file time of the unix epoch: ticks from 1601-01-01 to 1970-01-01.
+const UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
+/// The file time of 9999-12-31 23:59:59, the last time accepted.
+const LAST_TICKS: u64 = UNIX_EPOCH_TICKS + 253_402_300_799 * TICKS_PER_SECOND;
+
+/// An entry's modified time, or `None` when the archive's value cannot be
+/// trusted: absent (0, which some writers store for "unknown"), or outside
+/// 1601 to 9999, which no file system takes as a modified time. The crate's
+/// own conversion panics on some values, so this one is checked throughout.
+fn modified(date: NtTime) -> Option<SystemTime> {
+    let ticks = u64::from(date);
+    if ticks == 0 || ticks > LAST_TICKS {
+        return None;
+    }
+    let seconds = |ticks: u64| ticks / TICKS_PER_SECOND;
+    let nanos = |ticks: u64| ((ticks % TICKS_PER_SECOND) * 100) as u32;
+    if ticks >= UNIX_EPOCH_TICKS {
+        let after = ticks - UNIX_EPOCH_TICKS;
+        UNIX_EPOCH.checked_add(Duration::new(seconds(after), nanos(after)))
+    } else {
+        let before = UNIX_EPOCH_TICKS - ticks;
+        UNIX_EPOCH.checked_sub(Duration::new(seconds(before), nanos(before)))
+    }
 }
 
 /// The password in the form 7z derives its key from: UTF-16 little endian.
@@ -223,9 +251,11 @@ fn sevenz_error(error: Error) -> ArchiveError {
 
 #[cfg(test)]
 mod tests {
+    use super::{LAST_TICKS, TICKS_PER_SECOND, UNIX_EPOCH_TICKS, modified};
     use crate::archive::detect::Format;
     use crate::archive::entries::{extract_one, open_reader};
     use crate::archive::job::{ArchiveError, Progress};
+    use crate::archive::test_support::{listing, no_mark, tree};
     use crate::fileops::Fingerprint;
     use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
     use sevenz_rust2::{ArchiveEntry, ArchiveWriter, NtTime, Password, SourceReader};
@@ -242,6 +272,8 @@ mod tests {
         /// A file with unix mode bits and a modified time, stored the way
         /// p7zip does (mode in the high half of the attributes).
         Stamped(&'a str, &'a [u8], u32, SystemTime),
+        /// A file whose stored modified time is this raw file time.
+        RawTime(&'a str, &'a [u8], u64),
         Link(&'a str, &'a str),
         Anti(&'a str),
     }
@@ -277,6 +309,12 @@ mod tests {
                 unix(&mut entry, 0o100_000 | mode);
                 entry.has_last_modified_date = true;
                 entry.last_modified_date = NtTime::try_from(*time).unwrap();
+                (entry, Some(data.to_vec()))
+            }
+            E::RawTime(name, data, ticks) => {
+                let mut entry = ArchiveEntry::new_file(name);
+                entry.has_last_modified_date = true;
+                entry.last_modified_date = NtTime::new(*ticks);
                 (entry, Some(data.to_vec()))
             }
             E::Link(name, target) => {
@@ -322,41 +360,6 @@ mod tests {
             writer.push_archive_entry::<&[u8]>(entry, None).unwrap();
         }
         writer.finish().unwrap();
-    }
-
-    fn listing(dir: &Path) -> Vec<String> {
-        let mut out: Vec<String> = fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        out.sort();
-        out
-    }
-
-    /// Every path below `dir`, relative to it, sorted.
-    fn tree(dir: &Path) -> Vec<String> {
-        fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
-            for entry in fs::read_dir(dir).unwrap() {
-                let path = entry.unwrap().path();
-                out.push(
-                    path.strip_prefix(root)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-                if fs::symlink_metadata(&path).unwrap().is_dir() {
-                    walk(root, &path, out);
-                }
-            }
-        }
-        let mut out = Vec::new();
-        walk(dir, dir, &mut out);
-        out.sort();
-        out
-    }
-
-    fn no_mark(_: &Path) -> io::Result<()> {
-        Ok(())
     }
 
     fn extract(
@@ -761,5 +764,60 @@ mod tests {
         assert_eq!(meta.modified().unwrap(), time);
         let plain = fs::metadata(out.join("plain.txt")).unwrap();
         assert!(plain.modified().unwrap() > time);
+    }
+
+    #[test]
+    fn sevenz_garbage_times_do_not_fail_the_extraction() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Times.7z");
+        let before = SystemTime::now() - Duration::from_secs(60);
+        make_7z(
+            &archive,
+            SOLID,
+            &[
+                E::RawTime("max.txt", b"max", u64::MAX),
+                E::RawTime("zero.txt", b"zero", 0),
+                E::RawTime("far.txt", b"far", (1 << 63) + 1),
+                E::RawTime("old.txt", b"old", 1),
+            ],
+        );
+
+        let made = extract(&archive, None).unwrap();
+
+        assert_eq!(fs::read(made.output.join("max.txt")).unwrap(), b"max");
+        assert_eq!(fs::read(made.output.join("zero.txt")).unwrap(), b"zero");
+        assert_eq!(fs::read(made.output.join("far.txt")).unwrap(), b"far");
+        assert_eq!(fs::read(made.output.join("old.txt")).unwrap(), b"old");
+        // None of those times was applied: the files keep the time of writing.
+        for name in ["max.txt", "zero.txt", "far.txt"] {
+            let time = fs::metadata(made.output.join(name))
+                .unwrap()
+                .modified()
+                .unwrap();
+            assert!(time > before, "{name}");
+        }
+    }
+
+    #[test]
+    fn modified_converts_checked() {
+        let at = |seconds_since_1601: u64| NtTime::new(seconds_since_1601 * TICKS_PER_SECOND);
+        let unix_seconds = UNIX_EPOCH_TICKS / TICKS_PER_SECOND;
+        assert_eq!(modified(NtTime::new(0)), None);
+        assert_eq!(modified(NtTime::new(u64::MAX)), None);
+        assert_eq!(modified(NtTime::new(LAST_TICKS + 1)), None);
+        assert!(modified(NtTime::new(LAST_TICKS)).is_some());
+        assert_eq!(modified(at(unix_seconds)), Some(UNIX_EPOCH));
+        assert_eq!(
+            modified(at(unix_seconds + 1_600_000_000)),
+            Some(UNIX_EPOCH + Duration::from_secs(1_600_000_000))
+        );
+        assert_eq!(
+            modified(NtTime::new(UNIX_EPOCH_TICKS + 5)),
+            Some(UNIX_EPOCH + Duration::from_nanos(500))
+        );
+        assert_eq!(
+            modified(at(unix_seconds - 100)),
+            Some(UNIX_EPOCH - Duration::from_secs(100))
+        );
     }
 }

@@ -292,6 +292,7 @@ fn dos_time(time: SystemTime) -> DateTime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::archive::test_support::listing;
     use crate::fileops::Fingerprint;
     use std::fs::{self, File};
     use std::io::Read;
@@ -307,15 +308,6 @@ mod tests {
         (0..archive.len())
             .map(|i| archive.by_index(i).unwrap().name().unwrap().into_owned())
             .collect()
-    }
-
-    fn listing(dir: &Path) -> Vec<String> {
-        let mut out: Vec<String> = fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        out.sort();
-        out
     }
 
     #[test]

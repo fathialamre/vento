@@ -7,6 +7,8 @@ mod entries;
 mod job;
 mod sevenz_read;
 mod staging;
+#[cfg(test)]
+mod test_support;
 mod zip_read;
 
 pub use compress::compress;

@@ -478,6 +478,7 @@ fn no_free_name() -> io::Error {
 mod tests {
     use super::*;
     use crate::archive::entries::EntryKind;
+    use crate::archive::test_support::{listing, no_mark};
     use std::io::Write;
 
     fn info(path: &str, kind: EntryKind) -> EntryInfo {
@@ -496,19 +497,6 @@ mod tests {
             size: data.len() as u64,
             ..info(path, EntryKind::File)
         }
-    }
-
-    fn no_mark(_: &Path) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn listing(dir: &Path) -> Vec<String> {
-        let mut out: Vec<String> = fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        out.sort();
-        out
     }
 
     #[cfg(unix)]
