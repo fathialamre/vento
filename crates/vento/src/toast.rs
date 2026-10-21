@@ -25,13 +25,22 @@ pub(crate) const LIFETIME: Duration = Duration::from_secs(5);
 /// Top-left corner of a toast anchored below `at`, horizontally centred on it
 /// and clamped to the screen work area that contains (or is nearest to) `at`.
 fn toast_position(at: Point, screens: &[Rect]) -> (f64, f64) {
-    let (x, y) = (at.x - WIDTH / 2.0, at.y + OFFSET_Y);
+    position_below(at, (WIDTH, HEIGHT), screens)
+}
+
+/// Top-left corner of a window of `size` (width, height) anchored 24 px
+/// below `at`, horizontally centred on it and clamped to the screen work
+/// area that contains (or is nearest to) `at`. The other small windows that
+/// appear near the pointer use it too.
+pub(crate) fn position_below(at: Point, size: (f64, f64), screens: &[Rect]) -> (f64, f64) {
+    let (width, height) = size;
+    let (x, y) = (at.x - width / 2.0, at.y + OFFSET_Y);
     let Some(screen) = screen_for(at, screens) else {
         return (x, y);
     };
     (
-        clamp(x, screen.x, screen.x + screen.w - WIDTH),
-        clamp(y, screen.y, screen.y + screen.h - HEIGHT),
+        clamp(x, screen.x, screen.x + screen.w - width),
+        clamp(y, screen.y, screen.y + screen.h - height),
     )
 }
 

@@ -2,6 +2,8 @@
 //! are dragged from Finder and Ctrl is pressed.
 
 #[cfg(target_os = "macos")]
+mod archive_ui;
+#[cfg(target_os = "macos")]
 mod exec;
 #[cfg(target_os = "macos")]
 mod hotkey;
