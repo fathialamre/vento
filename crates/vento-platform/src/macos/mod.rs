@@ -133,6 +133,14 @@ impl Platform for MacPlatform {
         patch::make_non_key(window)
     }
 
+    fn keep_window_frame(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+    ) -> Result<(), PlatformError> {
+        let window = patch::window_of(window, "keep_window_frame")?;
+        patch::keep_frame(&window)
+    }
+
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
         icons::file_icon(path, px)
     }

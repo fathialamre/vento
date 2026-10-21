@@ -15,6 +15,7 @@ use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
 use log::{debug, warn};
+use raw_window_handle::HasWindowHandle;
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
@@ -112,6 +113,9 @@ pub struct PanelController {
     folder_icons: RefCell<HashMap<PathBuf, Option<Image>>>,
     /// The installed terminals, as the Terminal menu lists them.
     terminals: RefCell<Vec<TerminalApp>>,
+    /// AppKit has been told to leave the window where vento puts it (needs
+    /// the native window, which exists once the panel has been shown).
+    frame_kept: Cell<bool>,
     open: Cell<bool>,
     /// The modifier keys held now, for the shortcut recorder.
     modifiers: Cell<ModifiersState>,
@@ -155,6 +159,7 @@ impl PanelController {
             folder_icons: RefCell::new(HashMap::new()),
             terminals: RefCell::new(Vec::new()),
             open: Cell::new(false),
+            frame_kept: Cell::new(false),
             modifiers: Cell::new(ModifiersState::empty()),
             this: this.clone(),
         });
@@ -635,11 +640,25 @@ impl PanelController {
             self.platform.deactivate_app();
             return;
         }
+        if !self.frame_kept.get() {
+            self.keep_frame();
+            // AppKit may already have pushed the window down while showing it.
+            self.window
+                .window()
+                .set_position(LogicalPosition::new(x as f32, y as f32));
+        }
         self.watch_outside_clicks();
         let this = self.this.clone();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(panel) = this.upgrade() {
                 panel.window.set_revealed(true);
+                let w = panel.window.window();
+                let scale = w.scale_factor();
+                debug!(
+                    "panel shown at {:?}, size {:?}, scale {scale}",
+                    w.position().to_logical(scale),
+                    w.size().to_logical(scale)
+                );
             }
         });
         debug!("panel open at ({x}, {y}) in {:?}", started.elapsed());
@@ -671,6 +690,22 @@ impl PanelController {
                 warn!("cannot wake the event loop: {e}");
             }
         }));
+    }
+
+    /// Tells AppKit to leave the panel where it is placed: on its own it
+    /// pushes a window whose top meets the menu bar a menu bar further down.
+    fn keep_frame(&self) {
+        let result = match self.window.window().window_handle().window_handle() {
+            Ok(handle) => self
+                .platform
+                .keep_window_frame(handle.as_raw())
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match result {
+            Ok(()) => self.frame_kept.set(true),
+            Err(e) => warn!("cannot keep the settings panel under the menu bar: {e}"),
+        }
     }
 
     /// Whether the mouse is over the panel window now, in global logical

@@ -75,6 +75,13 @@ impl Platform for StubPlatform {
         Err(PlatformError::Unsupported)
     }
 
+    fn keep_window_frame(
+        &self,
+        _window: raw_window_handle::RawWindowHandle,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::Unsupported)
+    }
+
     fn file_icon(&self, _path: &Path, _px: u32) -> Option<RgbaImage> {
         None
     }

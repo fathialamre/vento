@@ -168,6 +168,12 @@ pub trait Platform {
     /// takes keystrokes from the frontmost app. Main thread only.
     fn make_non_key(&self, window: raw_window_handle::RawWindowHandle)
     -> Result<(), PlatformError>;
+    /// Keep this window exactly where vento places it: AppKit would push a
+    /// window whose top meets the menu bar further down. Main thread only.
+    fn keep_window_frame(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+    ) -> Result<(), PlatformError>;
     /// The Finder icon of `path`, rendered at `px`×`px` points times the
     /// main screen's backing scale. `None` if `path` doesn't exist or the
     /// icon can't be rendered. Main thread only.
