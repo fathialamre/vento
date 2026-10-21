@@ -7,8 +7,14 @@ import { Palette } from "std-widgets.slint";
 export global Theme {
     in-out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
 
-    out property <color> bg: root.dark ? #1f1f22 : #f6f6f7;
-    out property <color> surface: root.dark ? #2b2b2f : #e7e7ea;
+    out property <color> bg: root.dark ? #1f1f22 : #f1f9fa;
+    out property <color> surface: root.dark ? #2b2b2f : #e2eaec;
+    // A raised card on the panel (the tab bar), a shade lighter than `bg`
+    // with a hairline edge.
+    out property <color> card: root.dark ? #2b2b2f : #f6fbfc;
+    out property <color> card-border: root.dark ? #ffffff14 : #e4e9e9;
+    // The chosen tab: the accent, faint.
+    out property <color> accent-soft: root.dark ? #ff6a1a33 : #ff6a1a1f;
     out property <color> selected: root.dark ? #3a3a40 : #ffffff;
     out property <color> text: root.dark ? #f2f2f3 : #1d1d1f;
     out property <color> muted: root.dark ? #9a9aa2 : #6e6e73;

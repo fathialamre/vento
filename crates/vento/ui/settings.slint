@@ -26,24 +26,23 @@ component TabBar inherits Rectangle {
     in property <[TabItem]> tabs;
     in-out property <int> current;
 
-    property <length> pad: 3px;
+    property <length> pad: 6px;
     property <length> tab-w: (self.width - 2 * self.pad) / max(1, self.tabs.length);
     property <length> tab-h: self.height - 2 * self.pad;
 
-    height: 46px;
-    border-radius: 10px;
-    background: Theme.surface;
+    height: 52px;
+    border-radius: 14px;
+    background: Theme.card;
+    border-width: 1px;
+    border-color: Theme.card-border;
 
     Rectangle {
         x: root.pad + root.current * root.tab-w;
         y: root.pad;
         width: root.tab-w;
         height: root.tab-h;
-        border-radius: 8px;
-        background: Theme.selected;
-        drop-shadow-blur: 3px;
-        drop-shadow-offset-y: 1px;
-        drop-shadow-color: Theme.dark ? #00000059 : #0000001f;
+        border-radius: 10px;
+        background: Theme.accent-soft;
         animate x { duration: 150ms; easing: ease-out; }
     }
 
@@ -58,31 +57,15 @@ component TabBar inherits Rectangle {
         accessible-item-selected: self.on;
         accessible-action-default => { root.current = i; }
 
-        VerticalLayout {
-            alignment: center;
-            spacing: 3px;
-
-            HorizontalLayout {
-                alignment: center;
-
-                Image {
-                    source: item.icon;
-                    width: 16px;
-                    height: 16px;
-                    colorize: on ? Theme.text : Theme.muted;
-                }
-            }
-
-            Text {
-                text: item.label;
-                font-size: 11px;
-                font-weight: on ? 600 : 400;
-                color: on ? Theme.text : Theme.muted;
-                horizontal-alignment: center;
-            }
+        // Icons only; the name stays for screen readers.
+        Image {
+            source: item.icon;
+            width: 20px;
+            height: 20px;
+            colorize: on ? Theme.accent : (touch.has-hover ? Theme.text : Theme.muted);
         }
 
-        TouchArea {
+        touch := TouchArea {
             clicked => { root.current = i; }
         }
     }
