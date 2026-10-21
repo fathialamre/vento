@@ -16,6 +16,7 @@ use slint::{
     VecModel,
 };
 use vento_core::actions::ActionId;
+use vento_core::archive::looks_like_archives;
 use vento_core::destinations::{
     Destination, LABEL_CHARS, PETAL_LABEL_CHARS, RecentDestinations, cell_labels, display_path,
     fit_path, folder_exists, ring_destinations,
@@ -77,6 +78,9 @@ struct State {
     ring: Option<OpenRing>,
     /// The ring destination under the cursor.
     ring_hot: Option<usize>,
+    /// Whether the files being dragged all look like archives, so the
+    /// Archive cell reads "Extract" rather than "Compress".
+    extracting: bool,
 }
 
 /// The destination ring around one action.
@@ -152,6 +156,24 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::Terminal => icons.get_terminal(),
         ActionId::CopyTo => icons.get_copy_to(),
         ActionId::Archive => icons.get_archive(),
+    }
+}
+
+/// What the wheel calls `action`: the Archive cell names what a drop will
+/// do with the files being dragged.
+fn action_text(action: ActionId, extracting: bool) -> &'static str {
+    match action {
+        ActionId::Archive if extracting => "Extract",
+        ActionId::Archive => "Compress",
+        other => other.label(),
+    }
+}
+
+/// The icon `action` shows on the wheel, matching [`action_text`].
+fn wheel_icon(icons: &Icons<'_>, action: ActionId, extracting: bool) -> Image {
+    match action {
+        ActionId::Archive if extracting => icons.get_extract(),
+        other => action_icon(icons, other),
     }
 }
 
@@ -247,6 +269,7 @@ impl WheelController {
                 tracker,
                 ring: None,
                 ring_hot: None,
+                extracting: false,
             }),
             paused: Cell::new(false),
             poll: Timer::default(),
@@ -310,21 +333,7 @@ impl WheelController {
     fn render_geometry(&self) {
         let state = self.state.borrow();
         let extent = state.geometry.extent();
-        let icons = self.window.global::<Icons>();
-        let cells: Vec<WheelCell> = state
-            .geometry
-            .cells()
-            .iter()
-            .zip(&state.settings.actions)
-            .map(|(cell, action)| WheelCell {
-                x: cell.center.x,
-                y: cell.center.y,
-                r: cell.radius,
-                covered: false,
-                label: action.label().into(),
-                icon: action_icon(&icons, *action),
-            })
-            .collect();
+        let cells = self.cells(&state);
         let (layout, center_r) = match state.settings.layout {
             Layout::Honeycomb => (WheelLayout::Honeycomb, HEX_RADIUS),
             Layout::Petals => (WheelLayout::Petals, PETAL_DEAD_ZONE),
@@ -337,6 +346,44 @@ impl WheelController {
         self.window.set_cells(ModelRc::new(VecModel::from(cells)));
         self.window.set_highlighted(-1);
         self.window.set_center_text("".into());
+    }
+
+    /// The wheel's cells for `state`, with their labels and icons.
+    fn cells(&self, state: &State) -> Vec<WheelCell> {
+        let icons = self.window.global::<Icons>();
+        state
+            .geometry
+            .cells()
+            .iter()
+            .zip(&state.settings.actions)
+            .map(|(cell, action)| WheelCell {
+                x: cell.center.x,
+                y: cell.center.y,
+                r: cell.radius,
+                covered: false,
+                label: action_text(*action, state.extracting).into(),
+                icon: wheel_icon(&icons, *action, state.extracting),
+            })
+            .collect()
+    }
+
+    /// Names the Archive cell after the files being dragged, reading their
+    /// paths from the drag pasteboard (names only, no file I/O).
+    fn label_archive_cell(&self) {
+        let changed = {
+            let mut state = self.state.borrow_mut();
+            if !state.settings.actions.contains(&ActionId::Archive) {
+                return;
+            }
+            let extracting = looks_like_archives(&self.platform.drag_paths());
+            let changed = state.extracting != extracting;
+            state.extracting = extracting;
+            changed
+        };
+        if changed {
+            let cells = self.cells(&self.state.borrow());
+            self.window.set_cells(ModelRc::new(VecModel::from(cells)));
+        }
     }
 
     /// Resizes the (square) window to `side`, at once, so a move that
@@ -448,6 +495,7 @@ impl WheelController {
             let rings = state.settings.actions.iter().any(|a| a.takes_ring());
             (extent, rings)
         };
+        self.label_archive_cell();
         // `dismiss` already cleared the highlight with animation off.
         self.window.set_animate_hover(true);
         self.centre_window(extent);
@@ -491,7 +539,9 @@ impl WheelController {
         let mut state = self.state.borrow_mut();
         if state.highlighted != action {
             state.highlighted = action;
-            let label = action.map_or("", |i| state.settings.actions[i].label());
+            let label = action.map_or("", |i| {
+                action_text(state.settings.actions[i], state.extracting)
+            });
             self.window.set_highlighted(action.map_or(-1, |i| i as i32));
             self.window.set_center_text(label.into());
         }
@@ -853,6 +903,14 @@ fn window_half(ring_extent: f32, label: Vec2) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn archive_cell_says_compress_or_extract() {
+        assert_eq!(action_text(ActionId::Archive, false), "Compress");
+        assert_eq!(action_text(ActionId::Archive, true), "Extract");
+        assert_eq!(action_text(ActionId::Move, true), "Move");
+        assert_eq!(action_text(ActionId::CopyPath, false), "Copy path");
+    }
 
     fn cell(x: f32, y: f32, radius: f32) -> geometry::Cell {
         geometry::Cell {

@@ -15,7 +15,8 @@ mod zip_read;
 
 pub use compress::compress;
 pub use detect::{
-    Format, Plan, archive_stem, detect, plan, rar_first_volume, rar_volumes, zip_name,
+    Format, Plan, archive_stem, detect, looks_like_archives, plan, rar_first_volume, rar_volumes,
+    zip_name,
 };
 pub use entries::extract_one;
 pub use extract::{BatchOutcome, PasswordAsk, extract_batch};

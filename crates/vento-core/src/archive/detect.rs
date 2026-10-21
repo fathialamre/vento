@@ -65,6 +65,29 @@ fn signature_matches(format: Format, head: &[u8]) -> bool {
     }
 }
 
+/// The archive format `path`'s extension names (`.zip`, `.rar`, `.7z`,
+/// `.rNN`, any case), without looking at the file.
+fn format_by_name(path: &Path) -> Option<Format> {
+    let ext = path.extension()?.to_str()?;
+    if ext.eq_ignore_ascii_case("zip") {
+        Some(Format::Zip)
+    } else if ext.eq_ignore_ascii_case("rar") || is_old_volume_ext(ext) {
+        Some(Format::Rar)
+    } else if ext.eq_ignore_ascii_case("7z") {
+        Some(Format::SevenZ)
+    } else {
+        None
+    }
+}
+
+/// Whether every one of `paths` has an archive extension, judged from the
+/// names alone with no I/O, so the wheel can say "Extract" before the drop.
+/// The drop itself still decides with [`plan`], which also checks the
+/// files' signatures. `false` for no paths.
+pub fn looks_like_archives(paths: &[PathBuf]) -> bool {
+    !paths.is_empty() && paths.iter().all(|p| format_by_name(p).is_some())
+}
+
 /// Which archive format `path` is, if it is one.
 ///
 /// Needs both an archive extension (`.zip`, `.rar`, `.7z`, `.rNN`, any case)
@@ -72,16 +95,7 @@ fn signature_matches(format: Format, head: &[u8]) -> bool {
 /// `.7z.001` piece is not an archive. Names with other extensions cost no I/O;
 /// folders and unreadable files give `None`.
 pub fn detect(path: &Path) -> Option<Format> {
-    let ext = path.extension()?.to_str()?;
-    let format = if ext.eq_ignore_ascii_case("zip") {
-        Format::Zip
-    } else if ext.eq_ignore_ascii_case("rar") || is_old_volume_ext(ext) {
-        Format::Rar
-    } else if ext.eq_ignore_ascii_case("7z") {
-        Format::SevenZ
-    } else {
-        return None;
-    };
+    let format = format_by_name(path)?;
     let mut head = Vec::with_capacity(8);
     File::open(path).ok()?.take(8).read_to_end(&mut head).ok()?;
     signature_matches(format, &head).then_some(format)
@@ -432,5 +446,29 @@ mod tests {
         assert_eq!(s("/d/x.rar"), OsString::from("x"));
         assert_eq!(s("/d/x.r00"), OsString::from("x"));
         assert_eq!(s("/d/a.b.7z"), OsString::from("a.b"));
+    }
+
+    #[test]
+    fn archive_names_look_like_archives_without_reading_them() {
+        let paths = |names: &[&str]| -> Vec<PathBuf> { names.iter().map(PathBuf::from).collect() };
+        // None of these files exist: the answer comes from the names alone.
+        assert!(looks_like_archives(&paths(&["/nope/a.zip"])));
+        assert!(looks_like_archives(&paths(&[
+            "/nope/A.ZIP",
+            "/nope/b.rar",
+            "/nope/c.7z"
+        ])));
+        assert!(looks_like_archives(&paths(&[
+            "/nope/x.part2.rar",
+            "/nope/x.r00"
+        ])));
+        assert!(!looks_like_archives(&paths(&[
+            "/nope/a.zip",
+            "/nope/Report.docx"
+        ])));
+        assert!(!looks_like_archives(&paths(&["/nope/Report.docx"])));
+        assert!(!looks_like_archives(&paths(&["/nope/x.7z.001"])));
+        assert!(!looks_like_archives(&paths(&["/nope/Photos"])));
+        assert!(!looks_like_archives(&[]));
     }
 }

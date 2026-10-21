@@ -40,6 +40,10 @@ impl Platform for StubPlatform {
         }
     }
 
+    fn drag_paths(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
     fn screens(&self) -> Vec<Rect> {
         vec![Rect {
             x: 0.0,

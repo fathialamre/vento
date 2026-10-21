@@ -1,6 +1,7 @@
 //! Global input sampling via polling; none of it needs a permission prompt.
 
 use std::cell::Cell;
+use std::path::PathBuf;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
@@ -10,6 +11,7 @@ use objc2_core_graphics::{CGEventSource, CGEventSourceStateID};
 use vento_core::geometry::Point;
 use vento_core::trigger::{InputSample, Modifiers};
 
+use super::catcher::DropSource;
 use super::screens::primary_height;
 
 /// `kVK_Escape`.
@@ -73,6 +75,12 @@ pub(super) fn sample(cache: &DragPasteboardCache) -> InputSample {
         drag_has_files,
         cursor,
     }
+}
+
+/// The file paths on the system drag pasteboard.
+pub(super) fn drag_paths() -> Vec<PathBuf> {
+    let pasteboard = NSPasteboard::pasteboardWithName(unsafe { NSPasteboardNameDrag });
+    pasteboard.file_paths()
 }
 
 fn pasteboard_has_file_url(pasteboard: &NSPasteboard) -> bool {

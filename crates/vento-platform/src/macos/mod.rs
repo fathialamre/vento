@@ -85,6 +85,10 @@ impl Platform for MacPlatform {
         input::sample(&self.drag)
     }
 
+    fn drag_paths(&self) -> Vec<PathBuf> {
+        input::drag_paths()
+    }
+
     fn screens(&self) -> Vec<Rect> {
         screens::screens()
     }

@@ -140,6 +140,9 @@ pub trait Platform {
     fn prepare_app(&self);
     /// Snapshot of global input state. Main thread only.
     fn sample_input(&self) -> InputSample;
+    /// The local files in the drag in progress (empty when none, or when
+    /// the drag carries no files). Main thread only.
+    fn drag_paths(&self) -> Vec<PathBuf>;
     /// Screen work areas (each screen without the menu bar and Dock) in
     /// logical, top-left-origin global coordinates; the primary screen comes
     /// first.
