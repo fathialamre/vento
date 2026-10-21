@@ -869,6 +869,12 @@ export component SettingsPanel inherits Window {
     // edge. vento sets it so the arrow points at the menu-bar icon.
     in property <length> arrow-x: self.width / 2;
 
+    // Off while the panel is hidden; turned on right after it shows, so the
+    // panel fades in and drops into place instead of popping up.
+    in property <bool> revealed: true;
+    property <float> reveal: self.revealed ? 1 : 0;
+    animate reveal { duration: self.revealed ? 160ms : 0ms; easing: ease-out; }
+
     // The arrow's height above the body, and the body's corner radius (the
     // panel code relies on both, and on the arrow's width and blend).
     property <length> arrow-h: 10px;
@@ -907,6 +913,8 @@ export component SettingsPanel inherits Window {
         }
 
         PanelOutline {
+            y: (root.reveal - 1) * 6px;
+            opacity: root.reveal;
             width: parent.width;
             height: parent.height;
             arrow-x: root.arrow-x;
@@ -915,7 +923,8 @@ export component SettingsPanel inherits Window {
         }
 
         Rectangle {
-            y: root.arrow-h;
+            y: root.arrow-h + (root.reveal - 1) * 6px;
+            opacity: root.reveal;
             height: parent.height - root.arrow-h;
 
             layout := VerticalLayout {

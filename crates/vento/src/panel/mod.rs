@@ -42,7 +42,7 @@ use crate::wheel::action_icon;
 /// Panel width in logical points (matches `settings.slint`).
 const WIDTH: f64 = 340.0;
 /// Gap between the bottom of the menu-bar icon and the arrow's visible tip.
-const TIP_GAP: f64 = 2.0;
+const TIP_GAP: f64 = 1.25;
 /// How far below the top of the window the arrow's visible tip is: the
 /// outline's rounded apex lies 1.75 pt down, its hairline's outer edge half
 /// a point above that (matches `settings.slint`).
@@ -624,6 +624,8 @@ impl PanelController {
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
         self.open.set(true);
+        // Shown faded out, then revealed on the next turn (see `revealed`).
+        self.window.set_revealed(false);
         // vento runs as an accessory app: bring it forward so the panel
         // becomes key and takes Esc.
         self.platform.activate_app();
@@ -634,6 +636,12 @@ impl PanelController {
             return;
         }
         self.watch_outside_clicks();
+        let this = self.this.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            if let Some(panel) = this.upgrade() {
+                panel.window.set_revealed(true);
+            }
+        });
         debug!("panel open at ({x}, {y}) in {:?}", started.elapsed());
     }
 
@@ -1041,7 +1049,7 @@ mod tests {
         let icon = rect(1000.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(842.0, 25.75, WIDTH / 2.0)
+            at(842.0, 25.0, WIDTH / 2.0)
         );
     }
 
@@ -1053,7 +1061,7 @@ mod tests {
         let icon = rect(1300.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(1092.0, 25.75, 220.0)
+            at(1092.0, 25.0, 220.0)
         );
     }
 
@@ -1064,13 +1072,13 @@ mod tests {
         let icon = rect(1410.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(1092.0, 25.75, WIDTH - ARROW_MARGIN)
+            at(1092.0, 25.0, WIDTH - ARROW_MARGIN)
         );
         // And one at the far left.
         let icon = rect(4.0, 0.0, 24.0, 25.0);
         assert_eq!(
             panel_position(icon, 400.0, &[PRIMARY]),
-            at(8.0, 25.75, ARROW_MARGIN)
+            at(8.0, 25.0, ARROW_MARGIN)
         );
         // Never closer to a corner than its radius plus half the arrow.
         const { assert!(ARROW_MARGIN >= CORNER_RADIUS + ARROW_W / 2.0) };
@@ -1078,9 +1086,10 @@ mod tests {
 
     #[test]
     fn panel_stays_above_the_bottom_of_the_screen() {
-        // Tall enough to reach the bottom: lifted to stay 8 pt above it.
+        // The window's top meets the menu bar, so a panel that reaches the
+        // bottom inset has no room to be lifted: its top stays there.
         let icon = rect(700.0, 0.0, 24.0, 25.0);
-        assert_eq!(panel_position(icon, 866.5, &[PRIMARY]).y, 25.5);
+        assert_eq!(panel_position(icon, 866.5, &[PRIMARY]).y, 25.0);
         // Too tall for the screen: the top stays below the menu bar.
         assert_eq!(panel_position(icon, 2000.0, &[PRIMARY]).y, 25.0);
     }
@@ -1092,7 +1101,7 @@ mod tests {
         let second = rect(1440.0, 37.0, 1920.0, 1043.0);
         let icon = rect(3330.0, 0.0, 24.0, 37.0);
         let placed = panel_position(icon, 400.0, &[PRIMARY, second]);
-        assert_eq!(placed, at(3012.0, 37.75, WIDTH - ARROW_MARGIN));
+        assert_eq!(placed, at(3012.0, 37.0, WIDTH - ARROW_MARGIN));
     }
 
     #[test]
@@ -1102,7 +1111,7 @@ mod tests {
         let above = rect(0.0, -1055.0, 1920.0, 1055.0);
         let icon = rect(1300.0, 0.0, 24.0, 25.0);
         let placed = panel_position(icon, 400.0, &[above, PRIMARY]);
-        assert_eq!(placed, at(1092.0, 25.75, 220.0));
+        assert_eq!(placed, at(1092.0, 25.0, 220.0));
     }
 
     #[test]
@@ -1110,7 +1119,7 @@ mod tests {
         let icon = rect(100.0, 0.0, 20.0, 24.0);
         assert_eq!(
             panel_position(icon, 400.0, &[]),
-            at(-60.0, 24.75, WIDTH / 2.0)
+            at(-60.0, 24.0, WIDTH / 2.0)
         );
     }
 
