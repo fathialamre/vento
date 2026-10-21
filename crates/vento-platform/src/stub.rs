@@ -113,7 +113,16 @@ impl Platform for StubPlatform {
         Vec::new()
     }
 
-    fn open_paths(&self, _paths: &[PathBuf], _app: Option<&Path>) -> Result<(), PlatformError> {
+    fn open_paths(&self, _paths: &[PathBuf]) -> Result<(), PlatformError> {
+        Err(PlatformError::Unsupported)
+    }
+
+    fn open_with(
+        &self,
+        _paths: &[PathBuf],
+        _app: &Path,
+        _on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError> {
         Err(PlatformError::Unsupported)
     }
 
@@ -187,7 +196,15 @@ mod tests {
         let p = StubPlatform;
         assert!(p.apps_for(Path::new("/")).is_empty());
         assert!(matches!(
-            p.open_paths(&[PathBuf::from("/")], None),
+            p.open_paths(&[PathBuf::from("/")]),
+            Err(PlatformError::Unsupported)
+        ));
+        assert!(matches!(
+            p.open_with(
+                &[PathBuf::from("/")],
+                Path::new("/Applications/TextEdit.app"),
+                Box::new(|_| panic!("the stub opens nothing"))
+            ),
             Err(PlatformError::Unsupported)
         ));
         p.reveal_in_finder(&[PathBuf::from("/")]);

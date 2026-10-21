@@ -258,12 +258,25 @@ impl Platform for MacPlatform {
         apps::apps_for(path)
     }
 
-    fn open_paths(&self, paths: &[PathBuf], app: Option<&Path>) -> Result<(), PlatformError> {
+    fn open_paths(&self, paths: &[PathBuf]) -> Result<(), PlatformError> {
         if MainThreadMarker::new().is_none() {
             log::warn!("open_paths called off the main thread; ignored");
             return Err(PlatformError::Failed("not on the main thread".into()));
         }
-        apps::open_paths(paths, app)
+        apps::open_paths(paths)
+    }
+
+    fn open_with(
+        &self,
+        paths: &[PathBuf],
+        app: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError> {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("open_with called off the main thread; ignored");
+            return Err(PlatformError::Failed("not on the main thread".into()));
+        }
+        apps::open_with(paths, app, on_error)
     }
 
     fn reveal_in_finder(&self, paths: &[PathBuf]) {

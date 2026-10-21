@@ -109,8 +109,10 @@ export component PocketIsland inherits Window {
     callback item-pressed(int);
     callback item-moved(int, length, length);
     callback item-released(int);
-    // A right press on cell `index`, at this window-local point: its menu.
-    callback item-context(int, length, length);
+    // A press on cell `index` at this window-local point, with the left
+    // button or not: true if it opens the cell's menu (a right press, or a
+    // Control-click), which the press then does nothing else for.
+    callback item-context(int, length, length, bool) -> bool;
     callback all-pressed();
     callback all-moved(length, length);
     callback all-released();
@@ -283,12 +285,14 @@ export component PocketIsland inherits Window {
 
                     touch := TouchArea {
                         pointer-event(e) => {
+                            // A menu press is never a drag, a selection or a hover change.
                             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                root.item-pressed(i);
+                                if !root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true) {
+                                    root.item-pressed(i);
+                                }
                             } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
                                 && !self.pressed {
-                                // Never a drag, a selection or a hover change: just the menu.
-                                root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
                             } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
                                 || e.kind == PointerEventKind.cancel {
                                 root.item-released(i);
@@ -319,14 +323,21 @@ export component PocketIsland inherits Window {
                             }
 
                             remove-touch := TouchArea {
+                                // This press opened the menu (a Control-click): no removal.
+                                property <bool> menu-press;
+
                                 clicked => {
-                                    root.remove(i);
+                                    if !self.menu-press {
+                                        root.remove(i);
+                                    }
                                 }
                                 // The x takes the press before its cell does.
                                 pointer-event(e) => {
-                                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                        self.menu-press = root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true);
+                                    } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
                                         && !self.pressed {
-                                        root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                        root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
                                     }
                                 }
                             }

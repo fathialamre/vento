@@ -42,7 +42,7 @@ use crate::ui::{Icons, PocketCell, PocketIsland};
 
 use add::{AddPlan, Entry, plan_new, store};
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
-use menu::{ItemMenu, MenuAction, menu_targets};
+use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
     ALL, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
@@ -74,6 +74,20 @@ thread_local! {
     /// The controller on the main thread, for copy jobs finishing on a
     /// worker thread.
     static MAIN_POCKET: RefCell<Weak<PocketController>> = const { RefCell::new(Weak::new()) };
+}
+
+/// Shows a launch that failed after Open With returned (`reason`, from any
+/// thread) in the Pocket's toast, on the main thread.
+fn toast_late_open_error(reason: String) {
+    let delivered = slint::invoke_from_event_loop(move || {
+        if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
+            c.toast
+                .show(&format!("Couldn't open: {reason}"), None, c.toast_at());
+        }
+    });
+    if let Err(e) = delivered {
+        warn!("cannot report a failed open: {e}");
+    }
 }
 
 /// Cells for the first [`MAX_CELLS`] items; `icon` gets each item and
@@ -262,13 +276,26 @@ impl PocketController {
             }
         });
         let c = with.clone();
-        w.on_item_context(move |i, x, y| {
-            let (Some(c), Ok(i)) = (c(), usize::try_from(i)) else {
-                return;
+        w.on_item_context(move |i, x, y, left| {
+            let Some(c) = c() else {
+                return false;
+            };
+            let ctrl = left && c.platform.sample_input().modifiers.ctrl;
+            if !opens_menu(left, ctrl) {
+                return false;
+            }
+            // The item under the press now, whatever the cells show later.
+            let Some(id) = usize::try_from(i).ok().and_then(|i| c.id_at(i)) else {
+                return true;
             };
             let at = Point {
                 x: f64::from(x),
                 y: f64::from(y),
+            };
+            let button = if left {
+                PointerEventButton::Left
+            } else {
+                PointerEventButton::Right
             };
             // On a later turn of the event loop: the menu runs its own loop
             // until it closes, and the press it ends must be passed back to
@@ -276,9 +303,10 @@ impl PocketController {
             let this = c.this.clone();
             Timer::single_shot(Duration::ZERO, move || {
                 if let Some(c) = this.upgrade() {
-                    c.show_menu(i, at);
+                    c.show_menu(id, at, button);
                 }
             });
+            true
         });
         let c = with.clone();
         w.on_all_pressed(move || {
@@ -381,14 +409,16 @@ impl PocketController {
     /// the selection when the cell is part of a bigger one, otherwise on the
     /// cell's item. While it is up (it is modal), nothing else runs, so the
     /// island stays as it is; afterwards it settles as usual.
-    fn show_menu(&self, index: usize, at: Point) {
-        if self.latch.running() {
+    fn show_menu(&self, clicked: u64, at: Point, button: PointerEventButton) {
+        if self.paused.get()
+            || self.island.borrow().presence() != Presence::Expanded
+            || self.latch.running()
+            || self.pocket.borrow().get(clicked).is_none()
+        {
+            debug!("pocket menu not shown: the island changed since the press");
             return;
         }
-        let Some(clicked) = self.id_at(index) else {
-            return;
-        };
-        let (targets, paths, clicked_path) = {
+        let (targets, paths, source) = {
             let pocket = self.pocket.borrow();
             let all: Vec<u64> = pocket.items().iter().map(|i| i.id).collect();
             let targets = menu_targets(clicked, &all, &self.selected.borrow());
@@ -399,10 +429,11 @@ impl PocketController {
                     .flatten()
             };
             let paths: Vec<PathBuf> = targets.iter().filter_map(path_of).collect();
-            (targets, paths, path_of(&clicked))
+            let source = apps_source(clicked, &targets, &missing).and_then(|id| path_of(&id));
+            (targets, paths, source)
         };
-        // Asked only now, for the clicked item: nothing is done while idle.
-        let apps = clicked_path
+        // Asked only now: nothing is done while idle.
+        let apps = source
             .map(|p| self.platform.apps_for(&p))
             .unwrap_or_default();
         let menu = ItemMenu::build(targets.len(), paths.len(), &apps);
@@ -420,11 +451,11 @@ impl PocketController {
             apps.len()
         );
         let chosen = self.platform.context_menu(handle, at, &menu.entries);
-        // The menu took the mouse: Slint never saw the right button go up,
-        // and the cell would keep the pointer grabbed.
+        // The menu took the mouse: Slint never saw the button go up, and
+        // the cell would keep the pointer grabbed.
         self.dispatch(WindowEvent::PointerReleased {
             position: LogicalPosition::new(at.x as f32, at.y as f32),
-            button: PointerEventButton::Right,
+            button,
         });
         let Some(action) = chosen.and_then(|id| menu.action(id)) else {
             return;
@@ -437,13 +468,10 @@ impl PocketController {
     /// Remove) or to `paths` (the files of those still there).
     fn run_menu_action(&self, action: MenuAction, targets: &[u64], paths: &[PathBuf]) {
         let result = match action {
-            MenuAction::Open => self
-                .platform
-                .open_paths(paths, None)
-                .map_err(|e| ("open", e)),
+            MenuAction::Open => self.platform.open_paths(paths).map_err(|e| ("open", e)),
             MenuAction::OpenWith(app) => self
                 .platform
-                .open_paths(paths, Some(&app))
+                .open_with(paths, &app, Box::new(toast_late_open_error))
                 .map_err(|e| ("open", e)),
             MenuAction::Reveal => {
                 self.platform.reveal_in_finder(paths);

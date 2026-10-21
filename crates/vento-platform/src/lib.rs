@@ -220,9 +220,17 @@ pub trait Platform {
     /// [`AppInfo::is_default`]), each app once. Empty where unsupported,
     /// or when `path` doesn't exist.
     fn apps_for(&self, path: &Path) -> Vec<AppInfo>;
-    /// Open `paths`: each with its default app for `app` `None`, all with
-    /// the app bundle `app` otherwise. Main thread only.
-    fn open_paths(&self, paths: &[PathBuf], app: Option<&Path>) -> Result<(), PlatformError>;
+    /// Open each of `paths` with its default app. Main thread only.
+    fn open_paths(&self, paths: &[PathBuf]) -> Result<(), PlatformError>;
+    /// Open all of `paths` with the app bundle `app`. Errors found at once
+    /// are returned; a launch that fails later calls `on_error` with the
+    /// reason, once, on any thread. Main thread only.
+    fn open_with(
+        &self,
+        paths: &[PathBuf],
+        app: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError>;
     /// Show `paths` in Finder, selected. Nothing happens where
     /// unsupported. Main thread only.
     fn reveal_in_finder(&self, paths: &[PathBuf]);

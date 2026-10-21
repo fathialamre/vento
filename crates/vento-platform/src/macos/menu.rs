@@ -32,8 +32,10 @@ define_class!(
         /// The action of every leaf item: remembers which one was chosen.
         /// Cannot panic, so nothing unwinds into AppKit.
         #[unsafe(method(chooseItem:))]
-        fn choose_item(&self, item: &NSMenuItem) {
-            self.ivars().set(Some(item.tag()));
+        fn choose_item(&self, item: Option<&NSMenuItem>) {
+            if let Some(item) = item {
+                self.ivars().set(Some(item.tag()));
+            }
         }
     }
 );

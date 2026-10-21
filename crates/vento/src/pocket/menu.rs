@@ -35,6 +35,21 @@ pub(super) fn menu_targets(clicked: u64, all: &[u64], selected: &[u64]) -> Vec<u
     }
 }
 
+/// The item whose apps Open With lists: the clicked one, or, when its
+/// file is gone, the first target (in order) whose file is still there.
+pub(super) fn apps_source(clicked: u64, targets: &[u64], missing: &[u64]) -> Option<u64> {
+    if !missing.contains(&clicked) {
+        return Some(clicked);
+    }
+    targets.iter().copied().find(|id| !missing.contains(id))
+}
+
+/// Whether a press opens the menu instead of pressing the item: a right
+/// press, or a left one with Control held (Finder's secondary click).
+pub(super) fn opens_menu(left: bool, ctrl: bool) -> bool {
+    !left || ctrl
+}
+
 const OPEN: u32 = 1;
 const REVEAL: u32 = 2;
 const COPY: u32 = 3;
@@ -186,6 +201,23 @@ mod tests {
         // The only selected item: just it.
         assert_eq!(menu_targets(3, &all, &[3]), vec![3]);
         assert_eq!(menu_targets(3, &all, &[]), vec![3]);
+    }
+
+    #[test]
+    fn open_with_follows_the_first_target_still_there_when_the_clicked_one_is_gone() {
+        assert_eq!(apps_source(2, &[1, 2, 3], &[]), Some(2));
+        assert_eq!(apps_source(2, &[1, 2, 3], &[1, 2]), Some(3));
+        assert_eq!(apps_source(2, &[1, 2, 3], &[2]), Some(1));
+        assert_eq!(apps_source(2, &[1, 2, 3], &[1, 2, 3]), None);
+        assert_eq!(apps_source(2, &[2], &[2]), None);
+    }
+
+    #[test]
+    fn right_presses_and_control_clicks_open_the_menu() {
+        assert!(opens_menu(false, false));
+        assert!(opens_menu(false, true));
+        assert!(opens_menu(true, true));
+        assert!(!opens_menu(true, false));
     }
 
     #[test]
