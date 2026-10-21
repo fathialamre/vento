@@ -324,6 +324,24 @@ mod tests {
     }
 
     #[test]
+    fn file_named_like_the_top_folder_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Mixed.zip");
+        make_zip(
+            &archive,
+            &[E::File("Photos/x", b"x"), E::File("Photos", b"file")],
+        );
+
+        let made = extract(&archive).unwrap();
+
+        assert_eq!(made.output, dir.path().join("Mixed"));
+        assert_eq!(tree(&made.output), ["Photos", "Photos (2)", "Photos/x"]);
+        assert_eq!(fs::read(made.output.join("Photos (2)")).unwrap(), b"file");
+        assert_eq!(listing(dir.path()), ["Mixed", "Mixed.zip"]);
+        assert_eq!(Fingerprint::of(&made.output).unwrap(), made.fingerprint);
+    }
+
+    #[test]
     fn extract_beside_existing_folder_gets_free_name() {
         let dir = tempfile::tempdir().unwrap();
         let old = dir.path().join("Photos");

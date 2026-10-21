@@ -55,6 +55,8 @@ pub(crate) struct Staging<'a> {
     partial: Partial,
     /// The folder the result is published into.
     dir: PathBuf,
+    /// The archive's name without extension, for a wrapping folder.
+    stem: OsString,
     progress: &'a Progress,
     mark: &'a dyn Fn(&Path) -> io::Result<()>,
     /// Folders whose modified time is set once every entry is written.
@@ -79,10 +81,12 @@ impl<'a> Staging<'a> {
         if progress.is_cancelled() {
             return Err(ArchiveError::Cancelled);
         }
-        let root = claim_partial_dir(dir, &archive_stem(archive))?;
+        let stem = archive_stem(archive);
+        let root = claim_partial_dir(dir, &stem)?;
         let staging = Staging {
             partial: Partial::new(root),
             dir: dir.to_path_buf(),
+            stem,
             progress,
             mark,
             dir_times: Vec::new(),
@@ -97,7 +101,8 @@ impl<'a> Staging<'a> {
     /// A path already taken inside staging (the same name twice, or names
     /// that differ only in case on a case-insensitive volume) gets the next
     /// free name, `a (2).txt`. Data that fails to decode or to match its
-    /// checksum is [`ArchiveError::Damaged`].
+    /// checksum, or that runs past the entry's declared size (which the disk
+    /// space check relied on), is [`ArchiveError::Damaged`].
     pub(crate) fn file(
         &mut self,
         info: &EntryInfo,
@@ -108,7 +113,15 @@ impl<'a> Staging<'a> {
         let (path, file) = create_unique(&parent, name, |path| {
             OpenOptions::new().write(true).create_new(true).open(path)
         })?;
-        copy_data(data, &mut Counting::new(&file, self.progress))?;
+        // One byte more than declared is enough to tell the entry lied.
+        let mut capped = Read::take(data, info.size.saturating_add(1));
+        let copied = copy_data(&mut capped, &mut Counting::new(&file, self.progress))?;
+        if copied > info.size {
+            return Err(ArchiveError::Damaged(format!(
+                "{} is larger than the archive declares",
+                info.path.display()
+            )));
+        }
         // Marked before the mode is applied: a read-only file could refuse it.
         self.mark(&path)?;
         if let Some(mtime) = info.mtime {
@@ -163,7 +176,10 @@ impl<'a> Staging<'a> {
     ///
     /// For [`Layout::Direct`] the one top-level item is moved out and the
     /// emptied partial folder removed; for [`Layout::Wrapped`] the partial
-    /// folder itself becomes the result. Every symlink is checked again
+    /// folder itself becomes the result. `Direct` falls back to `Wrapped` in
+    /// a folder named after the archive when staging holds anything besides
+    /// the top item (an entry renamed because its name was taken), so nothing
+    /// extracted is ever left behind. Every symlink is checked again
     /// against what is published, so a link cannot reach outside it through
     /// another link created later, or (for `Direct`) to the item's siblings.
     /// Returns the published path and its fingerprint, taken just before the
@@ -179,6 +195,15 @@ impl<'a> Staging<'a> {
             // Checked to be a real folder when it was made; nothing replaces it.
             File::open(path)?.set_modified(*mtime)?;
         }
+        let layout = match layout {
+            Layout::Direct(top) if !self.holds_only(&top)? => {
+                // An entry was renamed beside the top item (the same name
+                // twice, or a file named like the top folder); publishing the
+                // top alone would lose it.
+                Layout::Wrapped(self.stem.clone())
+            }
+            layout => layout,
+        };
         let (item, bound) = match &layout {
             Layout::Direct(top) => (self.root().join(top), top.as_path()),
             Layout::Wrapped(_) => (self.root().to_path_buf(), Path::new("")),
@@ -193,8 +218,19 @@ impl<'a> Staging<'a> {
         let is_dir = fs::symlink_metadata(&item)?.is_dir();
         let fingerprint = Fingerprint::of(&item)?;
         let output = match &layout {
-            // The emptied partial folder is removed when `self` is dropped.
-            Layout::Direct(top) => place_partial(&item, &self.dir, top.as_os_str(), is_dir)?,
+            Layout::Direct(top) => {
+                let output = place_partial(&item, &self.dir, top.as_os_str(), is_dir)?;
+                self.partial.published = true;
+                // Not recursive: anything still inside stays where it can be
+                // seen rather than vanish.
+                if let Err(e) = fs::remove_dir(self.root()) {
+                    log::warn!(
+                        "could not remove emptied staging folder {}: {e}",
+                        self.root().display()
+                    );
+                }
+                output
+            }
             Layout::Wrapped(stem) => {
                 let output = place_partial(&item, &self.dir, stem, true)?;
                 self.partial.published = true;
@@ -202,6 +238,16 @@ impl<'a> Staging<'a> {
             }
         };
         Ok((output, fingerprint))
+    }
+
+    /// Whether staging holds nothing but `top`.
+    fn holds_only(&self, top: &Path) -> io::Result<bool> {
+        for entry in fs::read_dir(self.root())? {
+            if Path::new(&entry?.file_name()) != top {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn root(&self) -> &Path {
@@ -274,19 +320,21 @@ fn create_unique<T>(
     Err(no_free_name().into())
 }
 
-/// Copies an entry's data, telling a failed read (damage) from a failed
-/// write (disk, or Cancel).
-fn copy_data(data: &mut dyn Read, out: &mut impl Write) -> Result<(), ArchiveError> {
+/// Copies an entry's data and returns the number of bytes copied, telling a
+/// failed read (damage) from a failed write (disk, or Cancel).
+fn copy_data(data: &mut impl Read, out: &mut impl Write) -> Result<u64, ArchiveError> {
     let mut buffer = vec![0u8; COPY_BUFFER];
+    let mut copied = 0u64;
     loop {
         let read = match data.read(&mut buffer) {
-            Ok(0) => return Ok(()),
+            Ok(0) => return Ok(copied),
             Ok(read) => read,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(ArchiveError::from_read(e)),
         };
         out.write_all(&buffer[..read])
             .map_err(ArchiveError::from_io)?;
+        copied += read as u64;
     }
 }
 
@@ -442,6 +490,14 @@ mod tests {
         }
     }
 
+    /// A file entry declaring `data`'s size.
+    fn file_info(path: &str, data: &[u8]) -> EntryInfo {
+        EntryInfo {
+            size: data.len() as u64,
+            ..info(path, EntryKind::File)
+        }
+    }
+
     fn no_mark(_: &Path) -> io::Result<()> {
         Ok(())
     }
@@ -527,10 +583,10 @@ mod tests {
         let progress = Progress::new();
         let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
         staging
-            .file(&info("a.txt", EntryKind::File), &mut &b"one"[..])
+            .file(&file_info("a.txt", b"one"), &mut &b"one"[..])
             .unwrap();
         staging
-            .file(&info("a.txt", EntryKind::File), &mut &b"two"[..])
+            .file(&file_info("a.txt", b"two"), &mut &b"two"[..])
             .unwrap();
 
         let (output, _) = staging.publish(Layout::Wrapped("Dup".into())).unwrap();
@@ -541,6 +597,67 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_top_level_file_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Dup.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        // Every entry shares the top `a.txt`, but the second one had to be
+        // renamed inside staging, so publishing `a.txt` alone would lose it.
+        staging
+            .file(&file_info("a.txt", b"one"), &mut &b"one"[..])
+            .unwrap();
+        staging
+            .file(&file_info("a.txt", b"two"), &mut &b"two"[..])
+            .unwrap();
+
+        let (output, fingerprint) = staging.publish(Layout::Direct("a.txt".into())).unwrap();
+
+        assert_eq!(output, dir.path().join("Dup"));
+        assert_eq!(fs::read(output.join("a.txt")).unwrap(), b"one");
+        assert_eq!(fs::read(output.join("a (2).txt")).unwrap(), b"two");
+        assert_eq!(Fingerprint::of(&output).unwrap(), fingerprint);
+        assert_eq!(listing(dir.path()), ["Dup"]);
+    }
+
+    #[test]
+    fn direct_publish_removes_the_emptied_staging_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Photos.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        staging
+            .file(&file_info("Photos/a.jpg", b"jpg"), &mut &b"jpg"[..])
+            .unwrap();
+
+        let (output, _) = staging.publish(Layout::Direct("Photos".into())).unwrap();
+
+        assert_eq!(output, dir.path().join("Photos"));
+        assert_eq!(listing(dir.path()), ["Photos"]);
+    }
+
+    #[test]
+    fn file_longer_than_declared_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Lies.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        staging
+            .file(&file_info("exact.txt", b"abc"), &mut &b"abc"[..])
+            .unwrap();
+
+        let result = staging.file(&file_info("big.txt", b"abc"), &mut &b"abcdef"[..]);
+
+        assert!(
+            matches!(result, Err(ArchiveError::Damaged(_))),
+            "{result:?}"
+        );
+        assert!(progress.snapshot().done <= 7);
+        drop(staging);
+        assert!(listing(dir.path()).is_empty());
+    }
+
+    #[test]
     fn dropped_staging_leaves_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let archive = dir.path().join("Gone.zip");
@@ -548,7 +665,7 @@ mod tests {
         let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
         staging.dir(&info("x/y", EntryKind::Dir)).unwrap();
         staging
-            .file(&info("x/y/z.txt", EntryKind::File), &mut &b"z"[..])
+            .file(&file_info("x/y/z.txt", b"z"), &mut &b"z"[..])
             .unwrap();
         drop(staging);
         assert!(listing(dir.path()).is_empty());
