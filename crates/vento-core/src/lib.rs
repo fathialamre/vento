@@ -5,6 +5,7 @@ pub mod archive;
 pub mod destinations;
 pub mod fileops;
 pub mod geometry;
+pub mod info;
 pub mod paths;
 pub mod pocket;
 pub mod pocket_content;

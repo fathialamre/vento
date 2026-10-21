@@ -2981,6 +2981,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "windows-link",
 ]
 
 [[package]]
@@ -5933,6 +5934,7 @@ dependencies = [
  "chrono",
  "directories",
  "fs4",
+ "jiff",
  "log",
  "rars",
  "serde",
