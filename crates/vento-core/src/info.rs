@@ -189,7 +189,15 @@ pub fn view(
             if let Some(kind) = &facts.kind {
                 push("Kind", kind.clone());
             }
-            push("Size", exact_size(tally.bytes));
+            let exact = exact_size(tally.bytes);
+            push(
+                "Size",
+                if tally.skipped {
+                    format!("≥ {exact}")
+                } else {
+                    exact
+                },
+            );
             if let Some(parent) = paths.first().and_then(|p| p.parent()) {
                 push("Where", display_path(parent, home));
             }
@@ -556,6 +564,27 @@ mod tests {
             &ctx(),
         );
         assert!(!v.empty_folder);
+    }
+
+    #[test]
+    fn skipped_package_marks_the_size_row_at_least() {
+        let paths = [PathBuf::from("/Applications/Foo.app")];
+        let t = Tally {
+            bytes: 1_234_567_890,
+            files: 1,
+            folders: 0,
+            skipped: true,
+        };
+        let v = view(
+            &paths,
+            Subject::Package,
+            &Facts::default(),
+            &progress(t, Vec::new(), true),
+            &ctx(),
+        );
+        assert_eq!(v.size, "≥ 1.23 GB");
+        let size_row = v.details.iter().find(|(l, _)| l == "Size").unwrap();
+        assert_eq!(size_row.1, "≥ 1,234,567,890 bytes");
     }
 
     #[test]

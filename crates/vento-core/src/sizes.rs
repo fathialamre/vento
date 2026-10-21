@@ -289,6 +289,25 @@ impl<'a> Walker<'a> {
     }
 }
 
+/// The dropped paths that no other dropped path contains, in their order.
+///
+/// A folder dropped together with something inside it would count that
+/// something twice. Paths are compared as given (component-wise), neither is
+/// canonicalized; duplicates keep their first occurrence.
+pub fn outermost(paths: &[PathBuf]) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .enumerate()
+        .filter(|&(i, path)| {
+            !paths
+                .iter()
+                .enumerate()
+                .any(|(j, other)| path.starts_with(other) && (path != other || j < i))
+        })
+        .map(|(_, path)| path.clone())
+        .collect()
+}
+
 /// Measure `paths`, calling `on_progress` at most once per `opts.interval`
 /// while walking and exactly once more with `done: true`.
 ///
@@ -301,6 +320,8 @@ pub fn count(
     opts: &CountOptions,
     on_progress: &mut dyn FnMut(&Progress),
 ) -> Option<Progress> {
+    let paths = outermost(paths);
+    let paths = paths.as_slice();
     let mut walker = Walker {
         opts,
         tally: Tally::default(),
@@ -413,6 +434,7 @@ mod tests {
         assert_eq!(p.tally.folders, 0);
     }
 
+    #[cfg(unix)]
     #[test]
     fn hard_links_count_once() {
         let t = tempdir().unwrap();
@@ -442,6 +464,43 @@ mod tests {
         assert!(p.tally.skipped);
         assert_eq!(p.tally.bytes, 5);
         assert_eq!(p.tally.folders, 1);
+    }
+
+    #[test]
+    fn nested_dropped_paths_count_once() {
+        let t = tempdir().unwrap();
+        let d = t.path().join("d");
+        let e = t.path().join("e");
+        write(&d.join("sub/x"), 100);
+        write(&d.join("y"), 10);
+        write(&e, 5);
+
+        // Several items: only the outermost ones are parts.
+        let p = run(&[d.clone(), e.clone(), d.join("sub/x")]);
+        assert_eq!(p.tally.bytes, 115);
+        assert_eq!(p.tally.files, 3);
+        assert_eq!(p.biggest, [part(d.clone(), 110), part(e, 5)]);
+
+        // A folder and something inside it is just that folder.
+        let p = run(&[d.clone(), d.join("sub/x")]);
+        assert_eq!(p.tally.bytes, 110);
+        assert_eq!(p.tally.files, 2);
+        assert_eq!(p.biggest, [part(d.join("sub"), 100), part(d.join("y"), 10)]);
+    }
+
+    #[test]
+    fn outermost_keeps_order_and_drops_descendants() {
+        let p = |s: &str| PathBuf::from(s);
+        let input = [
+            p("/a/b/c"),
+            p("/z"),
+            p("/a/b"),
+            p("/a/bc"),
+            p("/z/q/r"),
+            p("/a/b"),
+        ];
+        assert_eq!(outermost(&input), [p("/z"), p("/a/b"), p("/a/bc")]);
+        assert_eq!(outermost(&[]), Vec::<PathBuf>::new());
     }
 
     #[test]
