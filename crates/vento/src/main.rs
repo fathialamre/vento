@@ -8,6 +8,8 @@ mod exec;
 #[cfg(target_os = "macos")]
 mod hotkey;
 #[cfg(target_os = "macos")]
+mod info;
+#[cfg(target_os = "macos")]
 mod panel;
 #[cfg(target_os = "macos")]
 mod pause;
@@ -64,14 +66,17 @@ fn main() -> Result<(), slint::PlatformError> {
         archive_ui::PasswordView::new(platform.clone()),
     );
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
+    let info = info::InfoController::new(platform.clone(), toaster.clone());
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
+    let drop_info = info.clone();
     let controller = wheel::WheelController::new(
         platform.clone(),
         hub.current(),
         recent.clone(),
         Box::new(move |drop: wheel::WheelDrop| match drop.action {
             ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
+            ActionId::Info => drop_info.open(drop.paths, drop.at),
             _ => drop_executor.run(drop),
         }),
     );
@@ -130,6 +135,16 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    // The Info window and the panel never show together: whichever opens
+    // closes the other, keeping the focus for itself.
+    {
+        let panel = Rc::downgrade(&panel);
+        info.set_before_open(Box::new(move || {
+            if let Some(panel) = panel.upgrade() {
+                panel.close_for_other_window();
+            }
+        }));
+    }
     {
         let panel = Rc::downgrade(&panel);
         pause.on_change(Box::new(move |paused| {
@@ -186,7 +201,10 @@ fn main() -> Result<(), slint::PlatformError> {
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
-            on_open_panel: Box::new(move |icon| panel.toggle_at(icon)),
+            on_open_panel: Box::new(move |icon| {
+                info.dismiss();
+                panel.toggle_at(icon);
+            }),
             pause,
         }));
     });

@@ -91,14 +91,16 @@ export component InfoWindow inherits Window {
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    title: "vento info";
+    title: root.item-name != "" ? root.item-name : "vento info";
     default-font-size: 13px;
 
-    // `icon` and `title` are the Window's own properties, used here for the
-    // item: its Finder icon, shown when `has-icon` (otherwise the stack icon,
-    // which stands for several items), and its name or how many items there
-    // are. The title starts as "vento info" until vento sets it.
+    // The item's Finder icon, shown when `has-icon` (otherwise the stack
+    // icon, which stands for several items). Declared here because Slint
+    // gives the Window's own `icon` and `title` no setters in Rust.
+    in property <image> item-icon;
     in property <bool> has-icon;
+    // The item's name, or how many items there are; also the window title.
+    in property <string> item-name;
     // The total size as shown; it grows while a folder is counted.
     in property <string> size;
     // A line under the header, like "Counting..."; hidden when empty.
@@ -151,7 +153,7 @@ export component InfoWindow inherits Window {
                         alignment: center;
 
                         Image {
-                            source: root.has-icon ? root.icon : Icons.pocket;
+                            source: root.has-icon ? root.item-icon : Icons.pocket;
                             width: 32px;
                             height: 32px;
                             colorize: root.has-icon ? transparent : Theme.muted;
@@ -159,7 +161,7 @@ export component InfoWindow inherits Window {
                     }
 
                     Text {
-                        text: root.title;
+                        text: root.item-name;
                         font-size: 14px;
                         font-weight: 600;
                         color: Theme.text;

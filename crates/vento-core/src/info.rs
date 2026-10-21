@@ -121,6 +121,17 @@ pub struct ViewContext {
     pub tz: jiff::tz::TimeZone,
 }
 
+impl ViewContext {
+    /// The running user's: `$HOME` and the system time zone (UTC when it
+    /// cannot be found).
+    pub fn local() -> Self {
+        Self {
+            home: std::env::var_os("HOME").map(PathBuf::from),
+            tz: jiff::tz::TimeZone::system(),
+        }
+    }
+}
+
 /// One bar of the "biggest parts" chart.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bar {

@@ -580,6 +580,16 @@ impl PanelController {
     /// that is over can `deactivate_app` see that focus is already
     /// elsewhere and leave it there.
     pub fn close(&self) {
+        self.close_with(true);
+    }
+
+    /// Hides the panel like [`PanelController::close`], but keeps the focus:
+    /// another vento window is about to take it.
+    pub fn close_for_other_window(&self) {
+        self.close_with(false);
+    }
+
+    fn close_with(&self, hand_back: bool) {
         if !self.open.replace(false) {
             return;
         }
@@ -592,15 +602,17 @@ impl PanelController {
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the settings panel: {e}");
         }
-        let this = self.this.clone();
-        Timer::single_shot(Duration::ZERO, move || {
-            // Reopened in the meantime: vento keeps the focus.
-            if let Some(panel) = this.upgrade()
-                && !panel.is_open()
-            {
-                panel.platform.deactivate_app();
-            }
-        });
+        if hand_back {
+            let this = self.this.clone();
+            Timer::single_shot(Duration::ZERO, move || {
+                // Reopened in the meantime: vento keeps the focus.
+                if let Some(panel) = this.upgrade()
+                    && !panel.is_open()
+                {
+                    panel.platform.deactivate_app();
+                }
+            });
+        }
         debug!("panel closed");
     }
 
@@ -974,7 +986,7 @@ fn apply_shortcut(
 
 /// Makes `model` hold `rows`, touching only the rows that changed, so a
 /// switch that flips animates instead of its row being rebuilt.
-fn set_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+pub(crate) fn set_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     if model.row_count() != rows.len() {
         model.set_vec(rows);
         return;
