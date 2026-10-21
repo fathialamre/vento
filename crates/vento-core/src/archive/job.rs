@@ -2,6 +2,7 @@
 //! result of a finished compress.
 
 use std::io::{self, Write};
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -147,20 +148,21 @@ impl Progress {
 }
 
 /// A writer that counts what passes through it into a [`Progress`] and stops
-/// with a cancellation error once the job is cancelled.
-pub(crate) struct Counting<'a, W> {
+/// with a cancellation error once the job is cancelled. `P` is how it reaches
+/// the progress: a borrow, or an `Arc` when the writer must own it.
+pub(crate) struct Counting<P, W> {
     inner: W,
-    progress: &'a Progress,
+    progress: P,
 }
 
-impl<'a, W> Counting<'a, W> {
+impl<P, W> Counting<P, W> {
     /// Wraps `inner`, counting into `progress`.
-    pub(crate) fn new(inner: W, progress: &'a Progress) -> Self {
+    pub(crate) fn new(inner: W, progress: P) -> Self {
         Counting { inner, progress }
     }
 }
 
-impl<W: Write> Write for Counting<'_, W> {
+impl<P: Deref<Target = Progress>, W: Write> Write for Counting<P, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.progress.is_cancelled() {
             return Err(io::Error::other(CANCELLED));
@@ -214,7 +216,7 @@ mod tests {
     #[test]
     fn counting_counts_and_chunks() {
         let p = Progress::new();
-        let mut out = Counting::new(Vec::new(), &p);
+        let mut out = Counting::new(Vec::new(), Arc::clone(&p));
         let data = vec![1u8; CHUNK + 5];
         assert_eq!(out.write(&data).unwrap(), CHUNK);
         out.write_all(&data[CHUNK..]).unwrap();
@@ -224,7 +226,7 @@ mod tests {
     #[test]
     fn counting_stops_after_cancel() {
         let p = Progress::new();
-        let mut out = Counting::new(Vec::new(), &p);
+        let mut out = Counting::new(Vec::new(), Arc::clone(&p));
         out.write_all(b"abc").unwrap();
         p.cancel();
         let error = out.write(b"def").unwrap_err();

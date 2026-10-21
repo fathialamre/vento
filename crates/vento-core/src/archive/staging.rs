@@ -1,10 +1,13 @@
 //! Hidden partial items that archive output is built under before it gets its
 //! final name, and the staging folder an archive is extracted into.
 
+use std::cell::{Cell, RefCell};
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use super::detect::archive_stem;
@@ -57,7 +60,7 @@ pub(crate) struct Staging<'a> {
     dir: PathBuf,
     /// The archive's name without extension, for a wrapping folder.
     stem: OsString,
-    progress: &'a Progress,
+    progress: Arc<Progress>,
     mark: &'a dyn Fn(&Path) -> io::Result<()>,
     /// Folders whose modified time is set once every entry is written.
     dir_times: Vec<(PathBuf, SystemTime)>,
@@ -75,7 +78,7 @@ impl<'a> Staging<'a> {
     pub(crate) fn new(
         dir: &Path,
         archive: &Path,
-        progress: &'a Progress,
+        progress: &Arc<Progress>,
         mark: &'a dyn Fn(&Path) -> io::Result<()>,
     ) -> Result<Staging<'a>, ArchiveError> {
         if progress.is_cancelled() {
@@ -87,7 +90,7 @@ impl<'a> Staging<'a> {
             partial: Partial::new(root),
             dir: dir.to_path_buf(),
             stem,
-            progress,
+            progress: Arc::clone(progress),
             mark,
             dir_times: Vec::new(),
             links: Vec::new(),
@@ -108,27 +111,89 @@ impl<'a> Staging<'a> {
         info: &EntryInfo,
         data: &mut dyn Read,
     ) -> Result<(), ArchiveError> {
-        let (parent, name) = self.prepare(info)?;
-        self.progress.set_current(&name.to_string_lossy());
-        let (path, file) = create_unique(&parent, name, |path| {
-            OpenOptions::new().write(true).create_new(true).open(path)
-        })?;
+        let (path, file) = self.create_file(info)?;
         // One byte more than declared is enough to tell the entry lied.
         let mut capped = Read::take(data, info.size.saturating_add(1));
-        let copied = copy_data(&mut capped, &mut Counting::new(&file, self.progress))?;
+        let copied = copy_data(&mut capped, &mut Counting::new(&file, &*self.progress))?;
+        self.finish_file(info, &path, &file, copied)
+    }
+
+    /// Starts a file entry for a decoder that pushes its output in, rather
+    /// than being read from: returns the writer to hand it and the ticket
+    /// that ends the entry.
+    ///
+    /// The file is created, named, counted and capped exactly as for
+    /// [`Staging::file`]; the writer refuses data past the entry's declared
+    /// size and stops once the job is cancelled. Once the decoder is done with
+    /// the writer, [`Staging::finish_writer`] with the ticket marks the file and
+    /// sets its time and mode. Until then, or if it never is, the file is only
+    /// a partial item that dropping the staging removes.
+    pub(crate) fn file_writer(
+        &mut self,
+        info: &EntryInfo,
+    ) -> Result<(EntryWriter, EntryTicket), ArchiveError> {
+        let (path, file) = self.create_file(info)?;
+        let state = Rc::new(EntryState::default());
+        let writer = EntryWriter {
+            out: Counting::new(file.try_clone()?, Arc::clone(&self.progress)),
+            name: info.path.clone(),
+            size: info.size,
+            state: Rc::clone(&state),
+        };
+        let ticket = EntryTicket {
+            info: info.clone(),
+            path,
+            file,
+            state,
+        };
+        Ok((writer, ticket))
+    }
+
+    /// Ends an entry started with [`Staging::file_writer`] once its writer is
+    /// done: the same finishing as for [`Staging::file`]. Fails with whatever
+    /// made the writer stop, if it did.
+    pub(crate) fn finish_writer(&self, ticket: EntryTicket) -> Result<(), ArchiveError> {
+        if let Some(failure) = ticket.failure() {
+            return Err(failure);
+        }
+        let copied = ticket.state.written.get();
+        self.finish_file(&ticket.info, &ticket.path, &ticket.file, copied)
+    }
+
+    /// The job's progress, shared with whoever watches it.
+    pub(crate) fn progress(&self) -> &Arc<Progress> {
+        &self.progress
+    }
+
+    /// Creates the file for `info` at its first free name, below real folders
+    /// only, and names it in the progress.
+    fn create_file(&mut self, info: &EntryInfo) -> Result<(PathBuf, File), ArchiveError> {
+        let (parent, name) = self.prepare(info)?;
+        self.progress.set_current(&name.to_string_lossy());
+        create_unique(&parent, name, |path| {
+            OpenOptions::new().write(true).create_new(true).open(path)
+        })
+    }
+
+    /// Checks that `copied` bytes are no more than `info` declares, then marks
+    /// the written file and gives it its time and mode.
+    fn finish_file(
+        &self,
+        info: &EntryInfo,
+        path: &Path,
+        file: &File,
+        copied: u64,
+    ) -> Result<(), ArchiveError> {
         if copied > info.size {
-            return Err(ArchiveError::Damaged(format!(
-                "{} is larger than the archive declares",
-                info.path.display()
-            )));
+            return Err(too_large(&info.path));
         }
         // Marked before the mode is applied: a read-only file could refuse it.
-        self.mark(&path)?;
+        self.mark(path)?;
         if let Some(mtime) = info.mtime {
             file.set_modified(mtime)?;
         }
         if let Some(mode) = info.mode {
-            set_file_mode(&file, mode & 0o777)?;
+            set_file_mode(file, mode & 0o777)?;
         }
         Ok(())
     }
@@ -300,6 +365,88 @@ impl<'a> Staging<'a> {
             Err(e) => Err(e.into()),
         }
     }
+}
+
+/// What an entry's writer and its ticket share.
+#[derive(Default)]
+struct EntryState {
+    /// Bytes the writer has accepted.
+    written: Cell<u64>,
+    /// Why the writer stopped, when it did.
+    failure: RefCell<Option<ArchiveError>>,
+}
+
+impl EntryState {
+    /// Notes why the writer stopped; the first reason stands.
+    fn fail(&self, failure: ArchiveError) {
+        self.failure.borrow_mut().get_or_insert(failure);
+    }
+}
+
+/// The writer of a file entry started with [`Staging::file_writer`]. It owns
+/// everything it uses, so a decoder can hold it without borrowing the staging.
+pub(crate) struct EntryWriter {
+    out: Counting<Arc<Progress>, File>,
+    /// The entry's path, for the message when it outgrows its size.
+    name: PathBuf,
+    /// The size the entry declares, which it may not exceed.
+    size: u64,
+    state: Rc<EntryState>,
+}
+
+impl Write for EntryWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let written = self.state.written.get();
+        if buf.len() as u64 > self.size - written {
+            // Refused before anything past the size reaches the disk.
+            self.state.fail(too_large(&self.name));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "entry is larger than the archive declares",
+            ));
+        }
+        match self.out.write(buf) {
+            Ok(count) => {
+                self.state.written.set(written + count as u64);
+                Ok(count)
+            }
+            Err(error) => {
+                // The decoder's own error type cannot carry ours, so the real
+                // reason is kept for the ticket.
+                let copy = io::Error::new(error.kind(), error.to_string());
+                self.state.fail(ArchiveError::from_io(copy));
+                Err(error)
+            }
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.out.flush()
+    }
+}
+
+/// Ends a file entry started with [`Staging::file_writer`].
+pub(crate) struct EntryTicket {
+    info: EntryInfo,
+    path: PathBuf,
+    file: File,
+    state: Rc<EntryState>,
+}
+
+impl EntryTicket {
+    /// Why the entry's writer stopped, if it did: the entry outgrew its size,
+    /// the job was cancelled, or the disk failed. Taken, so a second call
+    /// gives `None`.
+    pub(crate) fn failure(&self) -> Option<ArchiveError> {
+        self.state.failure.borrow_mut().take()
+    }
+}
+
+fn too_large(entry: &Path) -> ArchiveError {
+    ArchiveError::Damaged(format!(
+        "{} is larger than the archive declares",
+        entry.display()
+    ))
 }
 
 /// Creates an item with `create` at the first free name for `name` in
@@ -643,6 +790,139 @@ mod tests {
         assert!(progress.snapshot().done <= 7);
         drop(staging);
         assert!(listing(dir.path()).is_empty());
+    }
+
+    /// Writes `pieces` through a writer the way a decoder that pushes its
+    /// output would, then finishes the entry.
+    fn push_file(
+        staging: &mut Staging<'_>,
+        info: &EntryInfo,
+        pieces: &[&[u8]],
+    ) -> Result<(), ArchiveError> {
+        let (mut writer, ticket) = staging.file_writer(info)?;
+        let mut result = Ok(());
+        for piece in pieces {
+            if let Err(error) = writer.write_all(piece) {
+                result = Err(ticket.failure().unwrap_or(ArchiveError::from_io(error)));
+                break;
+            }
+        }
+        drop(writer);
+        result?;
+        staging.finish_writer(ticket)
+    }
+
+    #[test]
+    fn writer_entry_is_written_counted_and_stamped_like_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Pushed.zip");
+        let progress = Progress::new();
+        let marked = std::cell::RefCell::new(Vec::new());
+        let mark = |path: &Path| {
+            marked
+                .borrow_mut()
+                .push(path.file_name().unwrap().to_owned());
+            Ok(())
+        };
+        let mtime = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &mark).unwrap();
+        let info = EntryInfo {
+            mode: Some(0o640),
+            mtime: Some(mtime),
+            ..file_info("sub/a.txt", b"hello")
+        };
+
+        push_file(&mut staging, &info, &[b"hel", b"lo"]).unwrap();
+        let (output, _) = staging.publish(Layout::Wrapped("Pushed".into())).unwrap();
+
+        let path = output.join("sub/a.txt");
+        assert_eq!(fs::read(&path).unwrap(), b"hello");
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), mtime);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o640);
+        }
+        assert_eq!(progress.snapshot().done, 5);
+        assert_eq!(progress.snapshot().current, "a.txt");
+        assert!(marked.borrow().iter().any(|name| name == "a.txt"));
+        assert_eq!(listing(dir.path()), ["Pushed"]);
+    }
+
+    #[test]
+    fn writer_entry_takes_the_next_free_name_when_its_path_is_taken() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Dup.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+
+        push_file(&mut staging, &file_info("a.txt", b"one"), &[b"one"]).unwrap();
+        push_file(&mut staging, &file_info("a.txt", b"two"), &[b"two"]).unwrap();
+        let (output, _) = staging.publish(Layout::Wrapped("Dup".into())).unwrap();
+
+        assert_eq!(fs::read(output.join("a.txt")).unwrap(), b"one");
+        assert_eq!(fs::read(output.join("a (2).txt")).unwrap(), b"two");
+    }
+
+    #[test]
+    fn writer_entry_longer_than_declared_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Lies.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+
+        let result = push_file(
+            &mut staging,
+            &file_info("big.txt", b"abc"),
+            &[b"ab", b"cdef"],
+        );
+
+        assert!(
+            matches!(result, Err(ArchiveError::Damaged(_))),
+            "{result:?}"
+        );
+        assert_eq!(progress.snapshot().done, 2);
+        drop(staging);
+        assert!(listing(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn writer_entry_stops_once_cancelled() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Stop.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        let (mut writer, ticket) = staging.file_writer(&file_info("a", b"abcd")).unwrap();
+        writer.write_all(b"ab").unwrap();
+
+        progress.cancel();
+        let error = writer.write_all(b"cd").unwrap_err();
+
+        assert!(matches!(ticket.failure(), Some(ArchiveError::Cancelled)));
+        assert!(matches!(
+            ArchiveError::from_io(error),
+            ArchiveError::Cancelled
+        ));
+        drop((writer, ticket));
+        drop(staging);
+        assert!(listing(dir.path()).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writer_entry_never_writes_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Evil.zip");
+        let progress = Progress::new();
+        let mut staging = Staging::new(dir.path(), &archive, &progress, &no_mark).unwrap();
+        std::os::unix::fs::symlink(outside.path(), staging.partial.path.join("a")).unwrap();
+
+        let result = staging.file_writer(&file_info("a/evil", b"x"));
+
+        assert!(matches!(result, Err(ArchiveError::UnsafeEntry(_))));
+        assert!(listing(outside.path()).is_empty());
     }
 
     #[test]

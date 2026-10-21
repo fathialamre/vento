@@ -5,6 +5,7 @@ mod compress;
 mod detect;
 mod entries;
 mod job;
+mod rar_read;
 mod sevenz_read;
 mod staging;
 #[cfg(test)]

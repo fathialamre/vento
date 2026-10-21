@@ -16,7 +16,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zip = { version = "9", default-features = false, features = ["aes-crypto", "deflate", "deflate64", "bzip2", "lzma", "zstd", "time"] }
 fs4 = "1"
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["aes256", "bzip2", "ppmd"] }
+rars = { version = "0.11", default-features = false, features = ["encryption"] }
 
 [dev-dependencies]
 tempfile = "3"
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["aes256", "bzip2", "ppmd", "compress"] }
+rars = { version = "0.11", default-features = false, features = ["encryption", "write"] }

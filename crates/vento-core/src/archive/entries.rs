@@ -4,10 +4,12 @@
 use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use super::detect::{Format, archive_stem};
 use super::job::{ArchiveError, Made, Progress};
+use super::rar_read::RarReader;
 use super::sevenz_read::SevenZReader;
 use super::staging::Staging;
 use super::zip_read::ZipReader;
@@ -144,7 +146,7 @@ pub(crate) fn open_reader<'p>(
     match format {
         Format::Zip => Ok(Box::new(ZipReader::open(path, password)?)),
         Format::SevenZ => Ok(Box::new(SevenZReader::open(path, password)?)),
-        Format::Rar => Err(ArchiveError::Unsupported("rar".to_owned())),
+        Format::Rar => Ok(Box::new(RarReader::open(path, password)?)),
     }
 }
 
@@ -167,7 +169,7 @@ pub fn extract_one(
     archive: &Path,
     format: Format,
     password: Option<&[u8]>,
-    progress: &Progress,
+    progress: &Arc<Progress>,
     mark: &dyn Fn(&Path) -> io::Result<()>,
 ) -> Result<Made, ArchiveError> {
     if progress.is_cancelled() {
