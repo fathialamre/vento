@@ -95,8 +95,8 @@ vento lives in the menu bar.
 - **Left click** the icon to open the settings panel. Its tabs are Wheel
   (layout, which actions show and in what order), Move (pinned and recent
   folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
-  copy) and General (trigger, terminal, Copy path format); Pause and Quit are at
-  the bottom. It follows the system light or dark appearance. Changes apply and
+  copy), Clipboard (history on or off, its shortcut, Clear history) and General
+  (trigger, terminal, Copy path format); Pause and Quit are at the bottom. It follows the system light or dark appearance. Changes apply and
   are saved at once.
 - **Right click** for the menu: Undo last move/copy/archive, Pause, Open
   settings file, Quit.
@@ -169,7 +169,8 @@ clipboard_shortcut = "ctrl+alt+v"
 
 The Pocket is a holding shelf for files, text, links and images you are
 carrying between places. With items in it, a small island shows at the top of
-the screen by the notch; it is hidden while empty.
+the screen by the notch; it is hidden while empty (unless the
+[Clipboard](#clipboard) history has entries).
 
 Add to it by any of these:
 
@@ -192,6 +193,60 @@ and `.../kept`; the item list is `~/Library/Application Support/vento/pocket.jso
 beside the `pocket/` folder. When such a vento file leaves the Pocket it goes to
 the Trash (after the Undo, or a minute after a drop), never deleted outright.
 Your own files are only forgotten, never deleted, trashed or moved.
+
+## Clipboard
+
+vento can remember what you copy. The island has a second view, **Clipboard**,
+listing your recent copies, newest on top. Click one and it goes back on the
+clipboard, ready for ⌘V in any app. The history survives quitting vento and
+restarting the Mac. Recording never opens the island by itself.
+
+- **Open it** with the shortcut, ⌃⌥V by default (press it again to close), or
+  open the island as you do for the Pocket and use the two buttons at the bottom,
+  **Clipboard** and **Pocket**, each with its count. Hovering the island opens
+  the view you used last; the Pocket shortcut opens the Pocket; dragging a file
+  over the island switches to the Pocket, since a drop adds to it. Pressing one
+  shortcut while the island shows the other view switches views.
+- **Each row** shows an icon (or a thumbnail for an image), one line (the first
+  line of text, the file names, a link without its scheme, or `Image 800×600`)
+  and its age: `now`, `5m`, `3h`, a weekday within a week, then a date like
+  `20 Oct`.
+- **Click a row** to put it back exactly as you copied it, formatting included
+  (cells paste as cells, styled text as styled text), and the island closes. It
+  moves to the top of the list. A file entry whose files are all gone is dimmed
+  and does nothing; if only some are gone, the rest are put back.
+- **Hover a row** for two buttons: **Pocket** adds it to the Pocket (the Pocket
+  holds files, text, links and images, so formatting does not travel there; the
+  entry stays in the history), and **x** removes it from the history.
+- **Clear** empties the history. It and **x** offer Undo, like the Pocket.
+  **Clear history** in the settings panel empties it at once, without Undo.
+- **What is kept**: the 50 newest copies. Copying something already in the list
+  moves it to the top instead of adding it again. Files are kept as references,
+  never copied. A copy over 20 MB keeps only its plain form (the text, the file
+  list, the link or one image) and is skipped if even that is over 20 MB.
+- **What is not recorded**: copies from password managers and other apps that
+  mark a copy as secret or temporary (1Password, Keychain Access's Copy
+  Password), empty text, anything vento itself puts back from the history, and
+  copies made while vento is paused or the history is off (including whatever
+  was already on the clipboard when vento started, or when you switched it on).
+  vento's own Copy and Copy path actions are recorded like any other copy.
+
+Switch the history off in the settings panel's Clipboard tab: recording stops,
+the switch at the bottom of the island disappears (it is the Pocket alone, as
+before) and ⌃⌥V is free for other apps. The stored history stays until you clear
+it. If you pick a shortcut the Pocket already uses (or the other way round), the
+panel says so and keeps the old one.
+
+Settings keys (see above): `clipboard_history`, `clipboard_shortcut`.
+
+The history is stored **unencrypted** in `~/Library/Application Support/vento/`:
+`clipboard.json` lists the entries and the `clipboard/` folder beside it holds
+what each copy contained. Anything you copy and vento does not skip, such as
+text with a private note in it, is readable there until it leaves the history.
+When an entry leaves (it falls off the end, you remove it or clear the list and
+the Undo time passes), its folder is deleted outright, not moved to the Trash.
+vento only ever deletes folders inside `clipboard/`, and never touches the files
+you copied.
 
 ## License
 
