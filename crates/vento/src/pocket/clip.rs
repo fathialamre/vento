@@ -7,10 +7,6 @@
 //! its blobs are written by a worker; until that write is reported back, the
 //! snapshot is held in memory so the entry can already be put back.
 
-// The rows, Undo and Pocket parts are for the Clipboard view, which is not
-// built yet.
-#![allow(dead_code)]
-
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -237,11 +233,22 @@ impl ClipController {
     }
 
     /// Entry `id`'s blobs were written, or failed to be: an entry whose
-    /// data could not be stored can never be put back, so it goes.
+    /// data could not be stored can never be put back, so it goes. A stored
+    /// image is reported as a change: its thumbnail can be read now.
     fn stored(&self, id: u64, result: Result<(), String>) {
         self.pending.borrow_mut().remove(&id);
         match result {
-            Ok(()) => self.save(),
+            Ok(()) => {
+                self.save();
+                let image = self
+                    .history
+                    .borrow()
+                    .get(id)
+                    .is_some_and(|e| matches!(e.summary, Summary::Image { .. }));
+                if image {
+                    (self.on_change)();
+                }
+            }
             Err(e) => {
                 warn!("cannot store clipboard entry {id}: {e}");
                 let removed = self.history.borrow_mut().remove(&[id]);
@@ -262,6 +269,8 @@ impl ClipController {
 
     /// The history was switched on or off. Either way the next sample only
     /// sets the baseline, so the copy made while off is not recorded.
+    // Wired to the settings in Task 9 (`apply_clip_settings`).
+    #[allow(dead_code)]
     pub(super) fn set_enabled(&self, on: bool) {
         self.enabled.set(on);
         self.primed.set(false);
@@ -452,7 +461,7 @@ impl ClipController {
 }
 
 /// Seconds since the Unix epoch, now.
-fn now_unix() -> u64 {
+pub(super) fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())

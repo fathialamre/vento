@@ -7,6 +7,10 @@ import { Icons } from "wheel.slint";
 
 export struct PocketCell { name: string, icon: image, missing: bool, selected: bool }
 
+// One entry of the clipboard history. `kind`: 0 text, 1 files, 2 link,
+// 3 image; `thumb` is an image's thumbnail, empty when it can't be shown.
+export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image }
+
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
 component DashedBox inherits Rectangle {
@@ -79,6 +83,355 @@ component DashedBox inherits Rectangle {
     @children
 }
 
+// Undo after a removal or a clear, with the time left (`left`, 1 to 0) as
+// a ring and `secs` below it.
+component UndoRing inherits Rectangle {
+    in property <float> left;
+    in property <int> secs;
+    callback clicked();
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+
+    height: 68px;
+
+    ring := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 0px;
+        width: 46px;
+        height: 46px;
+        border-radius: 23px;
+        background: undo-touch.has-hover ? root.item-fill : transparent;
+        border-width: 2.5px;
+        border-color: #ffffff22;
+
+        property <float> left: min(max(root.left, 0.001), 0.999);
+        property <angle> sweep: 360deg * self.left;
+
+        Path {
+            width: 46px;
+            height: 46px;
+            viewbox-width: 46;
+            viewbox-height: 46;
+            stroke: root.accent;
+            stroke-width: 2.5px;
+
+            MoveTo {
+                x: 23;
+                y: 1.25;
+            }
+
+            ArcTo {
+                x: 23 + 21.75 * Math.sin(ring.sweep);
+                y: 23 - 21.75 * Math.cos(ring.sweep);
+                radius-x: 21.75;
+                radius-y: 21.75;
+                large-arc: ring.left > 0.5;
+                sweep: true;
+            }
+        }
+
+        Image {
+            source: Icons.undo;
+            colorize: root.accent;
+            width: 22px;
+            height: 22px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+
+    Text {
+        y: 50px;
+        height: 16px;
+        text: "Undo \{root.secs}s";
+        color: undo-touch.has-hover ? white : #ffffffb0;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    undo-touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// One button of the bottom switch: an icon, a label and a count, filled
+// with the accent while its view is shown.
+component SwitchButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <int> count;
+    in property <bool> current;
+    callback clicked();
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+
+    height: 28px;
+    border-radius: 14px;
+    background: root.current ? root.accent : touch.has-hover ? #2c2c32 : root.item-fill;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 6px;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                colorize: root.current ? white : #ffffffa8;
+                width: 14px;
+                height: 14px;
+            }
+        }
+
+        Text {
+            text: root.label;
+            color: root.current ? white : #ffffffa8;
+            font-size: 12px;
+            font-weight: root.current ? 600 : 400;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.count;
+            color: root.current ? #ffffffb8 : #ffffff70;
+            font-size: 12px;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The Clipboard view: the history as a list, newest on top, with Clear (or
+// Undo) beside it.
+component ClipList inherits Rectangle {
+    in property <[ClipRow]> rows;
+    in property <bool> undo-active;
+    in property <float> undo-left;
+    in property <int> undo-secs;
+    // Both by entry id.
+    callback pressed(int);
+    callback pocket(int);
+    callback remove(int);
+    callback clear();
+    callback undo();
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+    property <length> pad: 14px;
+    property <length> side-w: 52px;
+    property <length> row-h: 36px;
+
+    list := Flickable {
+        x: root.pad;
+        y: 8px;
+        width: parent.width - 2 * root.pad - root.side-w - 10px;
+        height: parent.height - 16px;
+        // Presses belong to the rows; the list scrolls by wheel only.
+        interactive: false;
+        content-height: root.rows.length * root.row-h;
+
+        for row[i] in root.rows: Rectangle {
+            y: i * root.row-h;
+            height: root.row-h;
+            width: list.width;
+            border-radius: 10px;
+            background: touch.has-hover && !row.missing ? root.item-fill : transparent;
+
+            touch := TouchArea {
+                // A missing entry has nothing to put back.
+                clicked => {
+                    if !row.missing {
+                        root.pressed(row.id);
+                    }
+                }
+
+                Rectangle {
+                    opacity: row.missing ? 0.4 : 1.0;
+
+                    Rectangle {
+                        x: 4px;
+                        y: (parent.height - self.height) / 2;
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 7px;
+                        background: touch.has-hover && !row.missing ? #2c2c32 : root.item-fill;
+                        clip: true;
+
+                        // An image's thumbnail, once it could be loaded.
+                        if row.kind == 3 && row.thumb.width > 0: Image {
+                            source: row.thumb;
+                            width: parent.width;
+                            height: parent.height;
+                            image-fit: cover;
+                        }
+
+                        if row.kind != 3 || row.thumb.width == 0: Image {
+                            source: row.kind == 0 ? Icons.text : row.kind == 1 ? Icons.file : row.kind == 2 ? Icons.copy-path : Icons.photo;
+                            colorize: #ffffffc0;
+                            width: 16px;
+                            height: 16px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    Text {
+                        x: 42px;
+                        width: parent.width - self.x - (touch.has-hover ? actions.width + 12px : 50px);
+                        text: row.label;
+                        color: #e6e6e6;
+                        font-size: 13px;
+                        overflow: elide;
+                        wrap: no-wrap;
+                        vertical-alignment: center;
+                    }
+
+                    if !touch.has-hover: Text {
+                        x: parent.width - self.width - 8px;
+                        width: 36px;
+                        text: row.age;
+                        color: #ffffff70;
+                        font-size: 11px;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Children of the row's TouchArea, so hovering them keeps the
+                // row hovered, and they take the press before it does.
+                actions := Rectangle {
+                    x: parent.width - self.width - 6px;
+                    y: (parent.height - self.height) / 2;
+                    width: row.missing ? 24px : 98px;
+                    height: 24px;
+                    visible: touch.has-hover;
+
+                    if !row.missing: Rectangle {
+                        x: 0px;
+                        width: 68px;
+                        height: 24px;
+                        border-radius: 7px;
+                        background: pocket-touch.has-hover ? #ff6a1a55 : #ff6a1a33;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 4px;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Image {
+                                    source: Icons.pocket;
+                                    colorize: #ff8a45;
+                                    width: 12px;
+                                    height: 12px;
+                                }
+                            }
+
+                            Text {
+                                text: "Pocket";
+                                color: #ff8a45;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        pocket-touch := TouchArea {
+                            clicked => {
+                                root.pocket(row.id);
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        x: parent.width - self.width;
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        background: remove-touch.has-hover ? #55555c : #3a3a40;
+
+                        Image {
+                            source: Icons.remove;
+                            colorize: white;
+                            width: 10px;
+                            height: 10px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        remove-touch := TouchArea {
+                            clicked => {
+                                root.remove(row.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.rows.length == 0: Text {
+        x: list.x;
+        y: list.y;
+        width: list.width;
+        height: list.height;
+        text: "Copy something and it shows up here";
+        color: #ffffff66;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if root.rows.length > 0 && !root.undo-active: Rectangle {
+        x: parent.width - root.pad - root.side-w;
+        y: 12px;
+        width: root.side-w;
+        height: 26px;
+        border-radius: 13px;
+        background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
+
+        Text {
+            text: "Clear";
+            color: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
+            font-size: 11px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        clear-touch := TouchArea {
+            clicked => {
+                root.clear();
+            }
+        }
+    }
+
+    if root.undo-active: UndoRing {
+        x: parent.width - root.pad - root.side-w;
+        y: 12px;
+        width: root.side-w;
+        left: root.undo-left;
+        secs: root.undo-secs;
+        clicked => {
+            root.undo();
+        }
+    }
+}
+
 export component PocketIsland inherits Window {
     no-frame: true;
     always-on-top: true;
@@ -104,6 +457,19 @@ export component PocketIsland inherits Window {
     in property <int> undo-secs;
     // What a clear took, shown faded while its Undo is offered.
     in property <[PocketCell]> ghosts;
+    // The view shown expanded: 0 the Pocket, 1 the Clipboard.
+    in property <int> view;
+    // The clipboard history is on: the bar switching views is drawn under
+    // either one.
+    in property <bool> show-switch;
+    // The history, newest first, and how many entries it holds.
+    in property <[ClipRow]> clip-rows;
+    in property <int> clip-count;
+    // Height of what is drawn below the menu bar (set by the app).
+    in property <length> panel-h: 112px;
+    // Collapsed with an empty Pocket but some history: the wings show the
+    // clipboard icon and no count.
+    in property <bool> clip-wing;
 
     // `moved` offsets are measured from the press point.
     callback item-pressed(int);
@@ -119,9 +485,17 @@ export component PocketIsland inherits Window {
     callback remove(int);
     callback clear();
     callback undo();
+    // A switch button: the view to show.
+    callback view-chosen(int);
+    // The Clipboard view, by entry id: a row clicked, its Pocket and x
+    // buttons; and its Clear.
+    callback clip-pressed(int);
+    callback clip-pocket(int);
+    callback clip-remove(int);
+    callback clip-clear();
 
     width: root.panel-w;
-    height: root.top-h + 112px;
+    height: root.top-h + root.panel-h;
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
@@ -150,6 +524,7 @@ export component PocketIsland inherits Window {
         border-bottom-right-radius: self.border-bottom-left-radius;
 
         // Collapsed: the stack icon on the left, the item count on the right;
+        // with an empty Pocket but some history, the clipboard icon alone;
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
         if !root.expanded: Rectangle {
             if root.undo-active: TouchArea {
@@ -159,15 +534,16 @@ export component PocketIsland inherits Window {
             }
 
             Image {
-                source: root.undo-active ? Icons.undo : Icons.pocket;
+                source: root.undo-active ? Icons.undo : root.clip-wing ? Icons.clipboard : Icons.pocket;
                 colorize: root.undo-active ? root.accent : white;
                 width: 16px;
                 height: 16px;
-                x: root.notch-style ? (root.wing - self.width) / 2 : 12px;
+                x: root.notch-style ? (root.wing - self.width) / 2
+                    : root.clip-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
                 y: (parent.height - self.height) / 2;
             }
 
-            Text {
+            if root.undo-active || !root.clip-wing: Text {
                 text: root.undo-active ? "Undo" : root.count;
                 color: root.undo-active ? root.accent : white;
                 font-size: root.undo-active ? 11px : 13px;
@@ -185,176 +561,311 @@ export component PocketIsland inherits Window {
             x: (parent.width - root.width) / 2;
             y: root.top-h - parent.y;
             width: root.width;
-            height: 112px;
+            height: root.panel-h;
 
-            row := Flickable {
-                x: root.pad;
-                y: 16px;
-                width: parent.width - 2 * root.pad - root.side-w - 10px;
-                height: 80px;
-                // Pointer drags belong to the cells; the row scrolls by wheel only.
-                interactive: false;
-                content-width: max(root.cells.length, root.ghosts.length) * root.cell-step
-                    + (root.count > root.cells.length ? 48px : 0px);
+            // The Pocket view.
+            if root.view == 0: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 112px;
 
-                // A clear's items, faded, until its Undo is gone.
-                if root.count == 0: Rectangle {
-                    opacity: 0.35;
+                row := Flickable {
+                    x: root.pad;
+                    y: 16px;
+                    width: parent.width - 2 * root.pad - root.side-w - 10px;
+                    height: 80px;
+                    // Pointer drags belong to the cells; the row scrolls by wheel only.
+                    interactive: false;
+                    content-width: max(root.cells.length, root.ghosts.length) * root.cell-step
+                        + (root.count > root.cells.length ? 48px : 0px);
 
-                    for ghost[i] in root.ghosts: Rectangle {
+                    // A clear's items, faded, until its Undo is gone.
+                    if root.count == 0: Rectangle {
+                        opacity: 0.35;
+
+                        for ghost[i] in root.ghosts: Rectangle {
+                            x: i * root.cell-step;
+                            width: 64px;
+                            height: 80px;
+                            border-radius: 12px;
+                            background: root.item-fill;
+
+                            Image {
+                                source: ghost.icon;
+                                x: 12px;
+                                y: 8px;
+                                width: 40px;
+                                height: 40px;
+                            }
+
+                            Text {
+                                text: ghost.name;
+                                x: 4px;
+                                y: 54px;
+                                width: 56px;
+                                height: 18px;
+                                color: white;
+                                font-size: 11px;
+                                overflow: elide;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    for cell[i] in root.cells: Rectangle {
                         x: i * root.cell-step;
                         width: 64px;
                         height: 80px;
                         border-radius: 12px;
                         background: root.item-fill;
+                        border-width: cell.selected ? 2px : 0px;
+                        border-color: root.accent;
 
-                        Image {
-                            source: ghost.icon;
-                            x: 12px;
-                            y: 8px;
-                            width: 40px;
-                            height: 40px;
-                        }
+                        Rectangle {
+                            opacity: cell.missing ? 0.4 : 1.0;
 
-                        Text {
-                            text: ghost.name;
-                            x: 4px;
-                            y: 54px;
-                            width: 56px;
-                            height: 18px;
-                            color: white;
-                            font-size: 11px;
-                            overflow: elide;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
+                            if !cell.missing: Image {
+                                source: cell.icon;
+                                x: 12px;
+                                y: 8px;
+                                width: 40px;
+                                height: 40px;
+                            }
 
-                for cell[i] in root.cells: Rectangle {
-                    x: i * root.cell-step;
-                    width: 64px;
-                    height: 80px;
-                    border-radius: 12px;
-                    background: root.item-fill;
-                    border-width: cell.selected ? 2px : 0px;
-                    border-color: root.accent;
+                            if cell.missing: Image {
+                                source: cell.icon;
+                                colorize: white;
+                                x: 12px;
+                                y: 8px;
+                                width: 40px;
+                                height: 40px;
+                            }
 
-                    Rectangle {
-                        opacity: cell.missing ? 0.4 : 1.0;
-
-                        if !cell.missing: Image {
-                            source: cell.icon;
-                            x: 12px;
-                            y: 8px;
-                            width: 40px;
-                            height: 40px;
+                            Text {
+                                text: cell.name;
+                                x: 4px;
+                                y: 54px;
+                                width: 56px;
+                                height: 18px;
+                                color: white;
+                                font-size: 11px;
+                                overflow: elide;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
                         }
 
                         if cell.missing: Image {
-                            source: cell.icon;
-                            colorize: white;
-                            x: 12px;
-                            y: 8px;
-                            width: 40px;
-                            height: 40px;
+                            source: Icons.missing;
+                            colorize: #ffcc33;
+                            x: 40px;
+                            y: 32px;
+                            width: 16px;
+                            height: 16px;
                         }
 
+                        touch := TouchArea {
+                            pointer-event(e) => {
+                                // A menu press is never a drag, a selection or a hover change.
+                                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                    if !root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true) {
+                                        root.item-pressed(i);
+                                    }
+                                } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                                    && !self.pressed {
+                                    root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
+                                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                                    || e.kind == PointerEventKind.cancel {
+                                    root.item-released(i);
+                                }
+                            }
+                            moved => {
+                                if self.pressed {
+                                    root.item-moved(i, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                                }
+                            }
+
+                            // A child of the cell's TouchArea, so hovering it keeps the cell hovered.
+                            if touch.has-hover: Rectangle {
+                                x: parent.width - self.width - 2px;
+                                y: 2px;
+                                width: 18px;
+                                height: 18px;
+                                border-radius: 9px;
+                                background: remove-touch.has-hover ? #55555c : #3a3a40;
+
+                                Image {
+                                    source: Icons.remove;
+                                    colorize: white;
+                                    width: 10px;
+                                    height: 10px;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+
+                                remove-touch := TouchArea {
+                                    // This press opened the menu (a Control-click): no removal.
+                                    property <bool> menu-press;
+
+                                    clicked => {
+                                        if !self.menu-press {
+                                            root.remove(i);
+                                        }
+                                    }
+                                    // The x takes the press before its cell does.
+                                    pointer-event(e) => {
+                                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                            self.menu-press = root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true);
+                                        } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                                            && !self.pressed {
+                                            root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if root.count > root.cells.length: Rectangle {
+                        x: root.cells.length * root.cell-step;
+                        width: 44px;
+                        height: 80px;
+                        border-radius: 12px;
+                        background: root.item-fill;
+
                         Text {
-                            text: cell.name;
-                            x: 4px;
-                            y: 54px;
-                            width: 56px;
-                            height: 18px;
-                            color: white;
-                            font-size: 11px;
-                            overflow: elide;
+                            text: "+\{root.count - root.cells.length}";
+                            color: #ffffffb0;
+                            font-size: 13px;
+                            font-weight: 600;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
                     }
+                }
 
-                    if cell.missing: Image {
-                        source: Icons.missing;
-                        colorize: #ffcc33;
-                        x: 40px;
-                        y: 32px;
-                        width: 16px;
-                        height: 16px;
+                // "Drag all" with the item count, and Clear below it.
+                if root.count > 0 && !root.undo-active: Rectangle {
+                    x: parent.width - root.pad - root.side-w;
+                    y: 16px;
+                    width: root.side-w;
+                    height: 80px;
+
+                    Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: 0px;
+                        width: 42px;
+                        height: 42px;
+                        border-radius: 21px;
+                        background: all-touch.pressed ? #e55a10 : root.accent;
+
+                        Image {
+                            source: Icons.grab;
+                            colorize: white;
+                            width: 20px;
+                            height: 20px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        Rectangle {
+                            width: root.count > 99 ? 28px : root.count > 9 ? 24px : 18px;
+                            height: 18px;
+                            x: parent.width - self.width + 4px;
+                            y: -4px;
+                            border-radius: 9px;
+                            background: white;
+
+                            Text {
+                                text: root.count > 99 ? "99+" : root.count;
+                                color: black;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        all-touch := TouchArea {
+                            pointer-event(e) => {
+                                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                    root.all-pressed();
+                                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                                    || e.kind == PointerEventKind.cancel {
+                                    root.all-released();
+                                }
+                            }
+                            moved => {
+                                if self.pressed {
+                                    root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                                }
+                            }
+                        }
                     }
 
-                    touch := TouchArea {
-                        pointer-event(e) => {
-                            // A menu press is never a drag, a selection or a hover change.
-                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                if !root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true) {
-                                    root.item-pressed(i);
-                                }
-                            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
-                                && !self.pressed {
-                                root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
-                            } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
-                                || e.kind == PointerEventKind.cancel {
-                                root.item-released(i);
-                            }
-                        }
-                        moved => {
-                            if self.pressed {
-                                root.item-moved(i, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                            }
+                    Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: 50px;
+                        width: 30px;
+                        height: 30px;
+                        border-radius: 15px;
+                        background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
+
+                        Image {
+                            source: Icons.trash;
+                            colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
+                            width: 16px;
+                            height: 16px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
                         }
 
-                        // A child of the cell's TouchArea, so hovering it keeps the cell hovered.
-                        if touch.has-hover: Rectangle {
-                            x: parent.width - self.width - 2px;
-                            y: 2px;
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 9px;
-                            background: remove-touch.has-hover ? #55555c : #3a3a40;
-
-                            Image {
-                                source: Icons.remove;
-                                colorize: white;
-                                width: 10px;
-                                height: 10px;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2;
-                            }
-
-                            remove-touch := TouchArea {
-                                // This press opened the menu (a Control-click): no removal.
-                                property <bool> menu-press;
-
-                                clicked => {
-                                    if !self.menu-press {
-                                        root.remove(i);
-                                    }
-                                }
-                                // The x takes the press before its cell does.
-                                pointer-event(e) => {
-                                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                        self.menu-press = root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true);
-                                    } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
-                                        && !self.pressed {
-                                        root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
-                                    }
-                                }
+                        clear-touch := TouchArea {
+                            clicked => {
+                                root.clear();
                             }
                         }
                     }
                 }
 
-                if root.count > root.cells.length: Rectangle {
-                    x: root.cells.length * root.cell-step;
-                    width: 44px;
-                    height: 80px;
-                    border-radius: 12px;
-                    background: root.item-fill;
+                // After a removal or a clear: Undo, with the time left as a ring.
+                if root.undo-active: UndoRing {
+                    x: parent.width - root.pad - root.side-w;
+                    y: 22px;
+                    width: root.side-w;
+                    left: root.undo-left;
+                    secs: root.undo-secs;
+                    clicked => {
+                        root.undo();
+                    }
+                }
+
+                // Empty, or a drag hovers: say what a drop does.
+                if root.hint || (root.count == 0 && !root.undo-active): DashedBox {
+                    x: 8px;
+                    y: 6px;
+                    width: parent.width - 16px;
+                    height: parent.height - 14px;
+                    stroke: root.hint ? root.accent : #ffffff40;
+                    thickness: root.hint ? 2px : 1.5px;
+                    background: root.count > 0 || root.undo-active ? #000000d8 : transparent;
+
+                    Image {
+                        source: Icons.drop;
+                        colorize: root.hint ? root.accent : #ffffff66;
+                        width: 26px;
+                        height: 26px;
+                        x: (parent.width - self.width) / 2;
+                        y: parent.height / 2 - self.height - 2px;
+                    }
 
                     Text {
-                        text: "+\{root.count - root.cells.length}";
-                        color: #ffffffb0;
+                        y: parent.height / 2 + 4px;
+                        height: 18px;
+                        text: "Drop to add";
+                        color: root.hint ? root.accent : #ffffff66;
                         font-size: 13px;
                         font-weight: 600;
                         horizontal-alignment: center;
@@ -363,188 +874,73 @@ export component PocketIsland inherits Window {
                 }
             }
 
-            // "Drag all" with the item count, and Clear below it.
-            if root.count > 0 && !root.undo-active: Rectangle {
-                x: parent.width - root.pad - root.side-w;
-                y: 16px;
-                width: root.side-w;
-                height: 80px;
+            // The Clipboard view.
+            if root.view == 1: ClipList {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 232px;
+                rows: root.clip-rows;
+                undo-active: root.undo-active;
+                undo-left: root.undo-left;
+                undo-secs: root.undo-secs;
+                pressed(id) => {
+                    root.clip-pressed(id);
+                }
+                pocket(id) => {
+                    root.clip-pocket(id);
+                }
+                remove(id) => {
+                    root.clip-remove(id);
+                }
+                clear => {
+                    root.clip-clear();
+                }
+                undo => {
+                    root.undo();
+                }
+            }
+
+            // Under either view: the two buttons switching between them.
+            if root.show-switch: Rectangle {
+                x: 0px;
+                y: parent.height - self.height;
+                width: parent.width;
+                height: 40px;
 
                 Rectangle {
-                    x: (parent.width - self.width) / 2;
+                    x: root.pad;
                     y: 0px;
-                    width: 42px;
-                    height: 42px;
-                    border-radius: 21px;
-                    background: all-touch.pressed ? #e55a10 : root.accent;
-
-                    Image {
-                        source: Icons.grab;
-                        colorize: white;
-                        width: 20px;
-                        height: 20px;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                    }
-
-                    Rectangle {
-                        width: root.count > 99 ? 28px : root.count > 9 ? 24px : 18px;
-                        height: 18px;
-                        x: parent.width - self.width + 4px;
-                        y: -4px;
-                        border-radius: 9px;
-                        background: white;
-
-                        Text {
-                            text: root.count > 99 ? "99+" : root.count;
-                            color: black;
-                            font-size: 11px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    all-touch := TouchArea {
-                        pointer-event(e) => {
-                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                root.all-pressed();
-                            } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
-                                || e.kind == PointerEventKind.cancel {
-                                root.all-released();
-                            }
-                        }
-                        moved => {
-                            if self.pressed {
-                                root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                            }
-                        }
-                    }
+                    width: parent.width - 2 * root.pad;
+                    height: 1px;
+                    background: #ffffff14;
                 }
 
-                Rectangle {
-                    x: (parent.width - self.width) / 2;
-                    y: 50px;
-                    width: 30px;
-                    height: 30px;
-                    border-radius: 15px;
-                    background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    padding-top: 4px;
+                    padding-bottom: 8px;
 
-                    Image {
-                        source: Icons.trash;
-                        colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-                        width: 16px;
-                        height: 16px;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                    }
-
-                    clear-touch := TouchArea {
+                    SwitchButton {
+                        icon: Icons.clipboard;
+                        label: "Clipboard";
+                        count: root.clip-count;
+                        current: root.view == 1;
                         clicked => {
-                            root.clear();
-                        }
-                    }
-                }
-            }
-
-            // After a removal or a clear: Undo, with the time left as a ring.
-            if root.undo-active: Rectangle {
-                x: parent.width - root.pad - root.side-w;
-                y: 22px;
-                width: root.side-w;
-                height: 68px;
-
-                ring := Rectangle {
-                    x: (parent.width - self.width) / 2;
-                    y: 0px;
-                    width: 46px;
-                    height: 46px;
-                    border-radius: 23px;
-                    background: undo-touch.has-hover ? root.item-fill : transparent;
-                    border-width: 2.5px;
-                    border-color: #ffffff22;
-
-                    property <float> left: min(max(root.undo-left, 0.001), 0.999);
-                    property <angle> sweep: 360deg * self.left;
-
-                    Path {
-                        width: 46px;
-                        height: 46px;
-                        viewbox-width: 46;
-                        viewbox-height: 46;
-                        stroke: root.accent;
-                        stroke-width: 2.5px;
-
-                        MoveTo {
-                            x: 23;
-                            y: 1.25;
-                        }
-
-                        ArcTo {
-                            x: 23 + 21.75 * Math.sin(ring.sweep);
-                            y: 23 - 21.75 * Math.cos(ring.sweep);
-                            radius-x: 21.75;
-                            radius-y: 21.75;
-                            large-arc: ring.left > 0.5;
-                            sweep: true;
+                            root.view-chosen(1);
                         }
                     }
 
-                    Image {
-                        source: Icons.undo;
-                        colorize: root.accent;
-                        width: 22px;
-                        height: 22px;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
+                    SwitchButton {
+                        icon: Icons.pocket;
+                        label: "Pocket";
+                        count: root.count;
+                        current: root.view == 0;
+                        clicked => {
+                            root.view-chosen(0);
+                        }
                     }
-                }
-
-                Text {
-                    y: 50px;
-                    height: 16px;
-                    text: "Undo \{root.undo-secs}s";
-                    color: undo-touch.has-hover ? white : #ffffffb0;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-
-                undo-touch := TouchArea {
-                    clicked => {
-                        root.undo();
-                    }
-                }
-            }
-
-            // Empty, or a drag hovers: say what a drop does.
-            if root.hint || (root.count == 0 && !root.undo-active): DashedBox {
-                x: 8px;
-                y: 6px;
-                width: parent.width - 16px;
-                height: parent.height - 14px;
-                stroke: root.hint ? root.accent : #ffffff40;
-                thickness: root.hint ? 2px : 1.5px;
-                background: root.count > 0 || root.undo-active ? #000000d8 : transparent;
-
-                Image {
-                    source: Icons.drop;
-                    colorize: root.hint ? root.accent : #ffffff66;
-                    width: 26px;
-                    height: 26px;
-                    x: (parent.width - self.width) / 2;
-                    y: parent.height / 2 - self.height - 2px;
-                }
-
-                Text {
-                    y: parent.height / 2 + 4px;
-                    height: 18px;
-                    text: "Drop to add";
-                    color: root.hint ? root.accent : #ffffff66;
-                    font-size: 13px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
                 }
             }
         }
