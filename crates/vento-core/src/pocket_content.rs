@@ -27,11 +27,15 @@ pub fn save_text(dir: &Path, text: &str, now: SystemTime) -> io::Result<PathBuf>
 /// Saves `url` as a `.webloc` (XML property list with a `URL` key) named
 /// `<host> <timestamp>.webloc`, or `Link <timestamp>.webloc` without a host.
 pub fn save_url(dir: &Path, url: &str, now: SystemTime) -> io::Result<PathBuf> {
-    let url = url.trim();
-    let host = host_of(url);
+    let host = host_of(url.trim());
     let host = if host.is_empty() { "Link" } else { &host };
     let name = format!("{host} {}.webloc", timestamp(now));
-    let plist = format!(
+    write_new(dir, &name, &webloc_bytes(url))
+}
+
+/// The contents [`save_url`] writes for `url`.
+pub fn webloc_bytes(url: &str) -> Vec<u8> {
+    format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
          \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
@@ -40,9 +44,9 @@ pub fn save_url(dir: &Path, url: &str, now: SystemTime) -> io::Result<PathBuf> {
          \t<key>URL</key><string>{}</string>\n\
          </dict>\n\
          </plist>\n",
-        xml_escape(url)
-    );
-    write_new(dir, &name, plist.as_bytes())
+        xml_escape(url.trim())
+    )
+    .into_bytes()
 }
 
 /// Saves `bytes` as `Image <timestamp>.<ext>` in `dir`. `ext` must be one of

@@ -1,13 +1,14 @@
 //! How a drop turns into Pocket items, and storing what vento saves or
 //! copies for them.
 
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use vento_core::fileops::copy_into;
 use vento_core::pocket::ItemSource;
-use vento_core::pocket_content::{save_image, save_text, save_url};
+use vento_core::pocket_content::{save_image, save_text, save_url, webloc_bytes};
 use vento_platform::Dropped;
 
 use super::display_name;
@@ -48,6 +49,28 @@ pub(super) fn plan_new(d: &Dropped, keep_copies: bool, held: impl Fn(&Path) -> b
         AddPlan::Copies(paths) => AddPlan::Copies(paths.into_iter().filter(|p| !held(p)).collect()),
         other => other,
     }
+}
+
+/// The bytes [`store`] would write for saved content (text, a link or an
+/// image); `None` for files, which are compared by path instead.
+pub(super) fn saved_content(plan: &AddPlan) -> Option<Cow<'_, [u8]>> {
+    match plan {
+        AddPlan::SaveText(text) => Some(Cow::Borrowed(text.as_bytes())),
+        AddPlan::SaveUrl(url) => Some(Cow::Owned(webloc_bytes(url))),
+        AddPlan::SaveImage(bytes, _) => Some(Cow::Borrowed(bytes)),
+        AddPlan::References(_) | AddPlan::Copies(_) => None,
+    }
+}
+
+/// Whether one of the `saved` files holds exactly `bytes`, so the same
+/// text, link or image is not saved into the Pocket twice. Only files of
+/// the same size are read; one that can't be read counts as different.
+pub(super) fn holds_content<'a>(saved: impl IntoIterator<Item = &'a Path>, bytes: &[u8]) -> bool {
+    let len = bytes.len() as u64;
+    saved.into_iter().any(|path| {
+        fs::metadata(path).is_ok_and(|m| m.len() == len)
+            && fs::read(path).is_ok_and(|held| held == bytes)
+    })
 }
 
 /// A file to add, who owns it, and (for a kept copy) where it came from.
@@ -157,6 +180,40 @@ mod tests {
             plan_new(&Dropped::Text("hi".into()), true, |_| true),
             AddPlan::SaveText("hi".into())
         );
+    }
+
+    #[test]
+    fn saved_content_is_what_store_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let plans = [
+            AddPlan::SaveText("hello".into()),
+            AddPlan::SaveUrl(" https://example.com/a?b=1&c=2 ".into()),
+            AddPlan::SaveImage(vec![1, 2, 3], "png"),
+        ];
+        for plan in plans {
+            let bytes = saved_content(&plan).unwrap().into_owned();
+            let (entries, errors) = store(plan, dir.path());
+            assert!(errors.is_empty(), "{errors:?}");
+            assert_eq!(std::fs::read(&entries[0].0).unwrap(), bytes);
+        }
+        assert_eq!(saved_content(&AddPlan::References(Vec::new())), None);
+        assert_eq!(saved_content(&AddPlan::Copies(Vec::new())), None);
+    }
+
+    #[test]
+    fn holds_content_compares_whole_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        std::fs::write(&a, "hello").unwrap();
+        std::fs::write(&b, "world").unwrap();
+        let gone = dir.path().join("gone.txt");
+        let saved = [gone.as_path(), b.as_path(), a.as_path()];
+        assert!(holds_content(saved, b"hello"));
+        // Same length, other bytes; a prefix; nothing at all.
+        assert!(!holds_content(saved, b"hellp"));
+        assert!(!holds_content(saved, b"hell"));
+        assert!(!holds_content([gone.as_path()], b"hello"));
     }
 
     #[test]

@@ -48,7 +48,7 @@ use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
-use add::{AddPlan, Entry, plan_new, store};
+use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::ClipView;
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
@@ -1157,20 +1157,29 @@ impl PocketController {
         self.pin_until.set(Some(Instant::now() + pin_open_for));
     }
 
-    /// Adds what was dropped on the island. Files already in the Pocket are
-    /// skipped silently; anything that fails is reported in a toast. Kept
-    /// copies are made on a worker thread and added when done; each drop
-    /// runs its own job, so drops keep working meanwhile.
+    /// Adds what was dropped on the island. Files already in the Pocket, and
+    /// text, links or images it already saved, are skipped silently;
+    /// anything that fails is reported in a toast. Kept copies are made on a
+    /// worker thread and added when done; each drop runs its own job, so
+    /// drops keep working meanwhile.
     fn add_dropped(&self, d: Dropped) {
         let keep_copies = self.settings.borrow().pocket_keep_copies;
-        let plan = {
+        let (plan, held) = {
             let pocket = self.pocket.borrow();
             let copying = self.copying.borrow();
-            plan_new(&d, keep_copies, |p| {
+            let plan = plan_new(&d, keep_copies, |p| {
                 pocket.contains(p) || copying.iter().any(|c| c == p)
-            })
+            });
+            let saved = pocket
+                .items()
+                .iter()
+                .filter(|i| i.source == ItemSource::Saved)
+                .map(|i| i.path.as_path());
+            let held = saved_content(&plan).is_some_and(|bytes| holds_content(saved, &bytes));
+            (plan, held)
         };
         match plan {
+            _ if held => debug!("pocket already holds this content"),
             AddPlan::Copies(paths) if paths.is_empty() => {}
             AddPlan::Copies(paths) => self.spawn_copies(paths),
             plan => {
