@@ -10,18 +10,13 @@ use std::time::{Duration, Instant};
 use log::debug;
 use slint::{Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 use vento_core::clip_history::ClipEntry;
-use vento_platform::RgbaImage;
 
 use crate::ui::{ClipRow, PocketIsland};
 
 use super::clip::{ClipKind, ClipRowData, now_unix};
 use super::geometry::Panel;
-use super::{PocketController, Undo, View, to_image};
+use super::{PocketController, Undo, View};
 
-/// A thumbnail's shorter side, in pixels: the 28 pt icon box at 2x.
-const THUMB_PX: u32 = 56;
-/// A thumbnail's longer side is at most this many times its shorter one.
-const THUMB_MAX_RATIO: u32 = 8;
 /// How long the island stays open after a switch button, wherever the
 /// pointer is.
 const SWITCH_GRACE: Duration = Duration::from_secs(1);
@@ -83,7 +78,7 @@ fn set_rows_in_place<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: 
 }
 
 /// The cached thumbnail of entry `id`, made from `path` the first time. Not
-/// cached while the file isn't there yet (its write is under way).
+/// cached while the file isn't there yet (its entry is still being stored).
 fn thumb_for(thumbs: &mut HashMap<u64, Image>, id: u64, path: &Path) -> Image {
     if let Some(t) = thumbs.get(&id) {
         return t.clone();
@@ -96,78 +91,13 @@ fn thumb_for(thumbs: &mut HashMap<u64, Image>, id: u64, path: &Path) -> Image {
     t
 }
 
-/// A small copy of the picture at `path`, or an empty image if it can't be
-/// read (a TIFF may not be): the row then shows the photo icon. Only the
-/// small copy is kept, so a history of screenshots stays light.
+/// The small thumbnail the store worker wrote at `path`, or an empty image
+/// if it can't be read: the row then shows the photo icon.
 fn thumbnail(path: &Path) -> Image {
-    let full = match Image::load_from_path(path) {
-        Ok(image) => image,
-        Err(_) => {
-            debug!("clipboard: no thumbnail for {}", path.display());
-            return no_thumb();
-        }
-    };
-    let Some(buffer) = full.to_rgba8() else {
-        return full;
-    };
-    let small = shrink(buffer.as_bytes(), buffer.width(), buffer.height(), THUMB_PX);
-    to_image(&small).unwrap_or_else(no_thumb)
-}
-
-/// The RGBA `pixels` of a `w` x `h` image scaled down so its shorter side is
-/// `px` and its longer side at most [`THUMB_MAX_RATIO`] times that, each
-/// pixel the average of those it covers. Never scaled up.
-fn shrink(pixels: &[u8], w: u32, h: u32, px: u32) -> RgbaImage {
-    let short = w.min(h);
-    let long = w.max(h);
-    let unchanged = || RgbaImage {
-        width: w,
-        height: h,
-        pixels: pixels.to_vec(),
-    };
-    if short == 0 {
-        return unchanged();
-    }
-    let scale = (f64::from(px) / f64::from(short))
-        .min(f64::from(px * THUMB_MAX_RATIO) / f64::from(long))
-        .min(1.0);
-    if scale >= 1.0 {
-        return unchanged();
-    }
-    let out_w = ((f64::from(w) * scale).round() as u32).max(1);
-    let out_h = ((f64::from(h) * scale).round() as u32).max(1);
-    let mut out = Vec::with_capacity(out_w as usize * out_h as usize * 4);
-    for oy in 0..out_h {
-        let (y0, y1) = span(oy, out_h, h);
-        for ox in 0..out_w {
-            let (x0, x1) = span(ox, out_w, w);
-            let mut sum = [0u64; 4];
-            for y in y0..y1 {
-                let row = y as usize * w as usize;
-                for x in x0..x1 {
-                    let at = (row + x as usize) * 4;
-                    for (s, &v) in sum.iter_mut().zip(&pixels[at..at + 4]) {
-                        *s += u64::from(v);
-                    }
-                }
-            }
-            let n = u64::from((x1 - x0) * (y1 - y0));
-            out.extend(sum.iter().map(|s| (s / n) as u8));
-        }
-    }
-    RgbaImage {
-        width: out_w,
-        height: out_h,
-        pixels: out,
-    }
-}
-
-/// The source pixels `[start, end)` that output pixel `i` of `out` covers
-/// along a side `len` long; never empty.
-fn span(i: u32, out: u32, len: u32) -> (u32, u32) {
-    let at = |k: u32| (u64::from(k) * u64::from(len) / u64::from(out)) as u32;
-    let start = at(i);
-    (start, at(i + 1).max(start + 1).min(len))
+    Image::load_from_path(path).unwrap_or_else(|_| {
+        debug!("clipboard: no thumbnail at {}", path.display());
+        no_thumb()
+    })
 }
 
 /// The thumbnail of a row that has none: empty, and equal to every other
@@ -386,40 +316,8 @@ mod tests {
     #[test]
     fn missing_thumbnail_file_is_not_cached() {
         let mut thumbs = HashMap::new();
-        let gone = Path::new("/nonexistent/vento-test/0-0");
+        let gone = Path::new("/nonexistent/vento-test/thumb.png");
         assert_eq!(thumb_for(&mut thumbs, 1, gone).size().width, 0);
         assert!(thumbs.is_empty());
-    }
-
-    #[test]
-    fn shrink_keeps_the_short_side_at_the_thumbnail_size() {
-        let shrink_flat =
-            |w: u32, h: u32| shrink(&vec![200; w as usize * h as usize * 4], w, h, 56);
-        let small = shrink_flat(1120, 560);
-        assert_eq!((small.width, small.height), (112, 56));
-        assert_eq!(small.pixels.len(), 112 * 56 * 4);
-        // A flat colour stays that colour.
-        assert!(small.pixels.iter().all(|&p| p == 200));
-        // Very long pictures are cut down on their long side too.
-        let long = shrink_flat(4000, 100);
-        assert_eq!((long.width, long.height), (448, 11));
-        // Already small: unchanged.
-        let tiny = shrink_flat(40, 30);
-        assert_eq!((tiny.width, tiny.height), (40, 30));
-    }
-
-    #[test]
-    fn shrink_averages_the_pixels_it_covers() {
-        // 4 x 2, left half black, right half white, down to 2 x 1.
-        let mut pixels = Vec::new();
-        for _ in 0..2 {
-            for x in 0..4 {
-                let v = if x < 2 { 0 } else { 255 };
-                pixels.extend([v, v, v, 255]);
-            }
-        }
-        let small = shrink(&pixels, 4, 2, 1);
-        assert_eq!((small.width, small.height), (2, 1));
-        assert_eq!(small.pixels, [0, 0, 0, 255, 255, 255, 255, 255]);
     }
 }

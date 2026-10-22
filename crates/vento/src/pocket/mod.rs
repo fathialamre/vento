@@ -15,6 +15,7 @@
 
 mod add;
 mod clip;
+mod clip_thumb;
 mod clip_view;
 mod geometry;
 mod menu;
@@ -124,6 +125,17 @@ enum Undo {
     Pocket(u64),
     /// Entries taken out of the clipboard history.
     Clip(Vec<ClipEntry>),
+}
+
+impl Undo {
+    /// The window's number for this kind of Undo: only the view it belongs
+    /// to (0 the Pocket, 1 the Clipboard) shows its ring.
+    fn kind(&self) -> i32 {
+        match self {
+            Undo::Pocket(_) => 0,
+            Undo::Clip(_) => 1,
+        }
+    }
 }
 
 /// Cells for the first [`MAX_CELLS`] items; `icon` gets each item and
@@ -731,6 +743,7 @@ impl PocketController {
     /// entries are let go now. The island stays up meanwhile, even with
     /// nothing in it.
     fn offer_undo(&self, undo: Undo, ghosts: Vec<PocketCell>) {
+        self.window.set_undo_kind(undo.kind());
         let replaced = self
             .undo
             .replace(Some((undo, Instant::now() + UNDO_LIFETIME)));
@@ -1022,8 +1035,9 @@ impl PocketController {
             self.rehome();
             self.present(before, after);
         }
-        // A drag over the island is headed for the Pocket.
-        if dragging && after == Presence::Expanded && self.view.get() == View::Clipboard {
+        // A drag over the island is headed for the Pocket; one elsewhere
+        // leaves a pinned Clipboard alone.
+        if dragging && hits(&f, after, sample.cursor) && self.view.get() == View::Clipboard {
             self.set_view(View::Pocket);
         }
         let f = self.island_frames().unwrap_or(f);
@@ -1427,6 +1441,13 @@ mod tests {
         // Asked for the other view: it switches and stays open.
         assert_eq!(next_open(Some(Pocket), Clipboard), Some(Clipboard));
         assert_eq!(next_open(Some(Clipboard), Pocket), Some(Pocket));
+    }
+
+    #[test]
+    fn each_undo_belongs_to_its_view() {
+        // The window shows a ring in the view whose number is the kind.
+        assert_eq!(Undo::Pocket(3).kind(), 0);
+        assert_eq!(Undo::Clip(Vec::new()).kind(), 1);
     }
 
     #[test]

@@ -17,14 +17,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use jiff::tz::TimeZone;
 use log::{debug, warn};
 use vento_core::clip::{
-    ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, TYPE_PNG, TYPE_TIFF, drop_missing_files, fit, image,
-    is_secret, plain_text, snapshot_hash, summarize,
+    ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_secret,
+    plain_text, snapshot_hash, summarize,
 };
 use vento_core::clip_history::{ClipEntry, ClipHistory, Recorded, clipboard_dir, clipboard_path};
 use vento_core::clip_store::{delete_entry, read_entry, sweep, write_entry};
 use vento_core::settings::Settings;
 use vento_platform::{Dropped, Platform};
 
+use super::clip_thumb::{THUMB_FILE, write_thumb};
 use super::display_name;
 
 thread_local! {
@@ -168,6 +169,7 @@ impl ClipController {
             return;
         };
         let hash = snapshot_hash(&snapshot);
+        let picture = matches!(summary, Summary::Image { .. });
         let types = snapshot
             .items
             .iter()
@@ -182,7 +184,7 @@ impl ClipController {
                 debug!("clipboard: recorded entry {id}");
                 let snapshot = Arc::new(snapshot);
                 self.pending.borrow_mut().insert(id, snapshot.clone());
-                self.spawn_write(id, snapshot, evicted);
+                self.spawn_write(id, snapshot, evicted, picture);
             }
             Recorded::Bumped { id } => {
                 debug!("clipboard: entry {id} copied again");
@@ -192,9 +194,16 @@ impl ClipController {
         (self.on_change)();
     }
 
-    /// Writes entry `id`'s blobs on a worker thread, then deletes the
-    /// folders of `evicted`; the result is reported back on the main thread.
-    fn spawn_write(&self, id: u64, snapshot: Arc<ClipSnapshot>, evicted: Vec<ClipEntry>) {
+    /// Writes entry `id`'s blobs on a worker thread, with a thumbnail beside
+    /// them for a `picture`, then deletes the folders of `evicted`; the
+    /// result is reported back on the main thread.
+    fn spawn_write(
+        &self,
+        id: u64,
+        snapshot: Arc<ClipSnapshot>,
+        evicted: Vec<ClipEntry>,
+        picture: bool,
+    ) {
         let evicted: Vec<u64> = evicted.iter().map(|e| e.id).collect();
         {
             let mut pending = self.pending.borrow_mut();
@@ -209,6 +218,14 @@ impl ClipController {
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let written = write_entry(&dir, id, &snapshot).map_err(|e| e.to_string());
+                    // Here, not on the main thread: decoding scales with
+                    // the picture. Without a thumbnail the row shows an icon.
+                    if written.is_ok()
+                        && picture
+                        && let Err(e) = write_thumb(&dir.join(id.to_string()), &snapshot)
+                    {
+                        debug!("clipboard: no thumbnail for entry {id}: {e}");
+                    }
                     for old in gone {
                         delete_entry(&dir, old);
                     }
@@ -489,7 +506,7 @@ fn build_rows(
                     None,
                 ),
                 Summary::Link { url } => (ClipKind::Link, link_label(url), false, None),
-                Summary::Image { ext, width, height } => (
+                Summary::Image { width, height, .. } => (
                     ClipKind::Image,
                     if *width == 0 || *height == 0 {
                         "Image".to_owned()
@@ -497,7 +514,7 @@ fn build_rows(
                         format!("Image {width}×{height}")
                     },
                     false,
-                    image_blob(e, ext, dir),
+                    Some(dir.join(e.id.to_string()).join(THUMB_FILE)),
                 ),
             };
             ClipRowData {
@@ -532,14 +549,6 @@ fn link_label(url: &str) -> String {
         .or_else(|| url.strip_prefix("http://"))
         .unwrap_or(url)
         .to_owned()
-}
-
-/// The blob of an Image entry's picture: its first item's `ext`
-/// representation.
-fn image_blob(e: &ClipEntry, ext: &str, dir: &Path) -> Option<PathBuf> {
-    let ty = if ext == "png" { TYPE_PNG } else { TYPE_TIFF };
-    let rep = e.types.first()?.iter().position(|t| t == ty)?;
-    Some(dir.join(e.id.to_string()).join(format!("0-{rep}")))
 }
 
 /// How long ago `copied_unix` was at `now_unix`: `now` under a minute,
@@ -946,7 +955,7 @@ mod tests {
             ]
         );
         assert!(rows.iter().all(|r| !r.missing));
-        assert_eq!(rows[4].thumb, Some(dir.join("5").join("0-1")));
+        assert_eq!(rows[4].thumb, Some(dir.join("5").join("thumb.png")));
         assert_eq!(rows[0].thumb, None);
         assert_eq!(rows[0].id, 1);
         // Every file gone: missing.

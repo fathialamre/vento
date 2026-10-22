@@ -455,6 +455,9 @@ export component PocketIsland inherits Window {
     in property <bool> undo-active;
     in property <float> undo-left;
     in property <int> undo-secs;
+    // What the offered Undo puts back: 0 Pocket items, 1 history entries.
+    // Each view shows the ring only for its own; collapsed, both read "Undo".
+    in property <int> undo-kind;
     // What a clear took, shown faded while its Undo is offered.
     in property <[PocketCell]> ghosts;
     // The view shown expanded: 0 the Pocket, 1 the Clipboard.
@@ -508,6 +511,8 @@ export component PocketIsland inherits Window {
     property <length> collapsed-h: root.notch-style ? root.top-h : 28px;
     property <length> collapsed-y: root.notch-style ? 0px : root.top-h + 4px;
     property <length> pill-r: root.notch-style ? 0px : 14px;
+    property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
+    property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
 
     island := Rectangle {
         width: root.expanded ? root.width : root.collapsed-w;
@@ -747,7 +752,7 @@ export component PocketIsland inherits Window {
                 }
 
                 // "Drag all" with the item count, and Clear below it.
-                if root.count > 0 && !root.undo-active: Rectangle {
+                if root.count > 0 && !root.pocket-undo: Rectangle {
                     x: parent.width - root.pad - root.side-w;
                     y: 16px;
                     width: root.side-w;
@@ -831,7 +836,7 @@ export component PocketIsland inherits Window {
                 }
 
                 // After a removal or a clear: Undo, with the time left as a ring.
-                if root.undo-active: UndoRing {
+                if root.pocket-undo: UndoRing {
                     x: parent.width - root.pad - root.side-w;
                     y: 22px;
                     width: root.side-w;
@@ -843,14 +848,14 @@ export component PocketIsland inherits Window {
                 }
 
                 // Empty, or a drag hovers: say what a drop does.
-                if root.hint || (root.count == 0 && !root.undo-active): DashedBox {
+                if root.hint || (root.count == 0 && !root.pocket-undo): DashedBox {
                     x: 8px;
                     y: 6px;
                     width: parent.width - 16px;
                     height: parent.height - 14px;
                     stroke: root.hint ? root.accent : #ffffff40;
                     thickness: root.hint ? 2px : 1.5px;
-                    background: root.count > 0 || root.undo-active ? #000000d8 : transparent;
+                    background: root.count > 0 || root.pocket-undo ? #000000d8 : transparent;
 
                     Image {
                         source: Icons.drop;
@@ -881,7 +886,7 @@ export component PocketIsland inherits Window {
                 width: parent.width;
                 height: 232px;
                 rows: root.clip-rows;
-                undo-active: root.undo-active;
+                undo-active: root.clip-undo;
                 undo-left: root.undo-left;
                 undo-secs: root.undo-secs;
                 pressed(id) => {
