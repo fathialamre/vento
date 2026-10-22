@@ -96,8 +96,9 @@ vento lives in the menu bar.
   (layout, which actions show and in what order), Move (pinned and recent
   folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
   copy), Clipboard (history on or off, its shortcut, Clear history) and General
-  (trigger, terminal, Copy path format); Pause and Quit are at the bottom. It follows the system light or dark appearance. Changes apply and
-  are saved at once.
+  (trigger, terminal, Copy path format); Pause and Quit are at the bottom. It
+  follows the system light or dark appearance. Changes apply and are saved at
+  once.
 - **Right click** for the menu: Undo last move/copy/archive, Pause, Open
   settings file, Quit.
 
@@ -224,12 +225,12 @@ restarting the Mac. Recording never opens the island by itself.
   moves it to the top instead of adding it again. Files are kept as references,
   never copied. A copy over 20 MB keeps only its plain form (the text, the file
   list, the link or one image) and is skipped if even that is over 20 MB.
-- **What is not recorded**: copies from password managers and other apps that
-  mark a copy as secret or temporary (1Password, Keychain Access's Copy
-  Password), empty text, anything vento itself puts back from the history, and
-  copies made while vento is paused or the history is off (including whatever
-  was already on the clipboard when vento started, or when you switched it on).
-  vento's own Copy and Copy path actions are recorded like any other copy.
+- **What is not recorded**: copies that password managers and other apps mark
+  as concealed or transient, empty text, anything vento itself puts back from
+  the history, and copies made while vento is paused or the history is off
+  (including whatever was already on the clipboard when vento started, or when
+  you switched it on). vento's own Copy and Copy path actions are recorded like
+  any other copy.
 
 Switch the history off in the settings panel's Clipboard tab: recording stops,
 the switch at the bottom of the island disappears (it is the Pocket alone, as
@@ -246,7 +247,10 @@ text with a private note in it, is readable there until it leaves the history.
 When an entry leaves (it falls off the end, you remove it or clear the list and
 the Undo time passes), its folder is deleted outright, not moved to the Trash.
 vento only ever deletes folders inside `clipboard/`, and never touches the files
-you copied.
+you copied. If `clipboard.json` cannot be read (damaged, or written by a newer
+vento), it is kept as `clipboard.json.bak` together with the folders, and the
+history starts empty; emptying the history (Clear history, or letting a Clear
+pass) deletes that backup too.
 
 ## License
 
