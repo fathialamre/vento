@@ -203,8 +203,8 @@ clipboard, ready for ⌘V in any app. The history survives quitting vento and
 restarting the Mac. Recording never opens the island by itself.
 
 - **Open it** with the shortcut, ⌃⌥V by default (press it again to close), or
-  open the island as you do for the Pocket and use the two buttons at the bottom,
-  **Clipboard** and **Pocket**, each with its count. Hovering the island opens
+  open the island as you do for the Pocket and use the two buttons at its bottom
+  left, the **Clipboard** and **Pocket** icons, each with its count. Hovering the island opens
   the view you used last; the Pocket shortcut opens the Pocket; dragging a file
   over the island switches to the Pocket, since a drop adds to it. Pressing one
   shortcut while the island shows the other view switches views.

@@ -158,8 +158,8 @@ component UndoRing inherits Rectangle {
     }
 }
 
-// One button of the bottom switch: an icon, a label and a count, filled
-// with the accent while its view is shown.
+// One button of the bottom switch: an icon and a count, filled with the
+// accent while its view is shown. `label` names it for VoiceOver only.
 component SwitchButton inherits Rectangle {
     in property <image> icon;
     in property <string> label;
@@ -173,10 +173,15 @@ component SwitchButton inherits Rectangle {
     height: 28px;
     border-radius: 14px;
     background: root.current ? root.accent : touch.has-hover ? #2c2c32 : root.item-fill;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: 11px;
+        padding-right: 11px;
         spacing: 6px;
 
         VerticalLayout {
@@ -188,14 +193,6 @@ component SwitchButton inherits Rectangle {
                 width: 14px;
                 height: 14px;
             }
-        }
-
-        Text {
-            text: root.label;
-            color: root.current ? white : #ffffffa8;
-            font-size: 12px;
-            font-weight: root.current ? 600 : 400;
-            vertical-alignment: center;
         }
 
         Text {
@@ -1041,8 +1038,9 @@ export component PocketIsland inherits Window {
                 }
 
                 HorizontalLayout {
-                    alignment: center;
+                    alignment: start;
                     spacing: 6px;
+                    padding-left: root.pad;
                     padding-top: 4px;
                     padding-bottom: 8px;
 
