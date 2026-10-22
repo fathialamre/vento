@@ -224,8 +224,9 @@ restarting the Mac. Recording never opens the island by itself.
 - **Pinned** entries stay until you remove them with **x**: they sit at the top
   of the list with a pin beside their age, don't count toward the 50, and Clear
   leaves them alone. Click the pin again to unpin.
-- **Filters** under Clear list everything, only pinned entries, or only text,
-  links, images or files; each shows how many entries it lists.
+- **Filters** at the top of the column beside the list (Clear sits at its
+  foot) list everything, only pinned entries, or only text, links, images or
+  files; each shows how many entries it lists.
 - **Clear** empties the history except pinned entries. It and **x** offer
   Undo, like the Pocket. **Clear history** in the settings panel does the same
   at once, without Undo.

@@ -468,10 +468,11 @@ component ClipList inherits Rectangle {
         vertical-alignment: center;
     }
 
-    // Clear empties everything but pinned entries, whatever the filter.
+    // At the foot of the column. Clear empties everything but pinned
+    // entries, whatever the filter.
     if root.counts[0] > root.counts[1] && !root.undo-active: Rectangle {
         x: parent.width - root.pad - root.side-w;
-        y: 12px;
+        y: parent.height - 8px - self.height;
         width: root.side-w;
         height: 26px;
         border-radius: 13px;
@@ -495,7 +496,7 @@ component ClipList inherits Rectangle {
 
     if root.undo-active: UndoRing {
         x: parent.width - root.pad - root.side-w;
-        y: 12px;
+        y: parent.height - 8px - self.height;
         width: root.side-w;
         left: root.undo-left;
         secs: root.undo-secs;
@@ -504,10 +505,10 @@ component ClipList inherits Rectangle {
         }
     }
 
-    // The filters, under Clear (or the taller Undo ring).
+    // The filters, at the head of the column (above Clear or Undo).
     VerticalLayout {
         x: parent.width - root.pad - root.side-w;
-        y: root.undo-active ? 84px : 46px;
+        y: 8px;
         width: root.side-w;
         spacing: 2px;
 
