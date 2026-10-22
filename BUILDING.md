@@ -38,7 +38,7 @@ This builds the app and zips it with the licence files into
 Releases page. It needs `cargo-about` for the third-party notices:
 
 ```sh
-cargo install cargo-about --locked
+cargo install cargo-about --locked --features cli
 ```
 
 ## Tests

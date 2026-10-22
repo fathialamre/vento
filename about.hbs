@@ -1,0 +1,17 @@
+Third-party software in vento
+=============================
+
+vento is built from these open-source Rust crates. Each licence below lists the
+crates it covers, followed by its full text.
+{{#each licenses}}
+
+--------------------------------------------------------------------------------
+{{name}} ({{id}})
+
+Used by:
+{{#each used_by}}
+  - {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{{text}}}
+{{/each}}
