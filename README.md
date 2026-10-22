@@ -2,10 +2,9 @@
 
 A radial actions wheel for files. Start dragging a file, then press the
 trigger modifier (it must be pressed after the drag has started), or shake the
-pointer quickly left and right, and a wheel of actions appears under the
-cursor; release the mouse over an action to run
-it. Releasing anywhere outside the wheel leaves the drop to whatever is
-underneath. Esc cancels (if your macOS allows reading key state without extra
+pointer quickly back and forth in any direction, and a wheel of actions appears
+under the cursor; release the mouse over an action to run it. Releasing
+anywhere outside the wheel leaves the drop to whatever is underneath. Esc cancels (if your macOS allows reading key state without extra
 permission).
 
 vento is **macOS only for now**. The core and platform crates are checked
@@ -124,8 +123,8 @@ layout = "honeycomb"
 # Modifier held while dragging: "ctrl", "alt", "shift" or "meta"
 trigger = "ctrl"
 
-# A quick left-right shake of the pointer while dragging files opens the
-# wheel too
+# A quick back-and-forth shake of the pointer (any direction) while dragging
+# files opens the wheel too
 shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::Point;
-use crate::pocket_zone::ShakeDetector;
+use crate::shake::ShakeDetector;
 
 /// A keyboard modifier that can be configured as the wheel trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,7 +98,7 @@ impl TriggerMachine {
         }
     }
 
-    /// With `on`, a quick side-to-side shake of the cursor during a file
+    /// With `on`, a quick shake of the cursor (any direction) during a file
     /// drag opens the wheel too, as the trigger modifier does.
     pub fn with_shake(mut self, on: bool) -> Self {
         self.shake = on.then(ShakeDetector::new);
@@ -152,7 +152,7 @@ impl TriggerMachine {
             && self
                 .shake
                 .as_mut()
-                .is_some_and(|shake| shake.feed(s.cursor.x, now));
+                .is_some_and(|shake| shake.feed(s.cursor, now));
         if drag_active && (trigger_rose || shaken) {
             self.open = true;
             return TriggerEvent::Open(s.cursor);

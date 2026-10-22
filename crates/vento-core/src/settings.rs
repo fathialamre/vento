@@ -19,7 +19,7 @@ pub struct Settings {
     pub layout: Layout,
     /// Modifier that opens the wheel during a drag.
     pub trigger: Modifier,
-    /// Whether a quick side-to-side shake during a file drag opens the
+    /// Whether a quick back-and-forth shake during a file drag opens the
     /// wheel too.
     pub shake_to_open: bool,
     /// Actions shown on the wheel, in order (unique, at most `MAX_ACTIONS`).
