@@ -369,7 +369,7 @@ component ClipList inherits Rectangle {
                 actions := Rectangle {
                     x: parent.width - self.width - 6px;
                     y: (parent.height - self.height) / 2;
-                    width: row.missing ? 54px : 128px;
+                    width: row.missing ? 54px : 84px;
                     height: 24px;
                     visible: touch.has-hover;
 
@@ -400,34 +400,23 @@ component ClipList inherits Rectangle {
                         }
                     }
 
+                    // Adds the entry to the Pocket.
                     if !row.missing: Rectangle {
                         x: 30px;
-                        width: 68px;
+                        width: 24px;
                         height: 24px;
-                        border-radius: 7px;
-                        background: pocket-touch.has-hover ? #ff6a1a55 : #ff6a1a33;
+                        border-radius: 12px;
+                        background: pocket-touch.has-hover ? #55555c : #3a3a40;
+                        accessible-role: button;
+                        accessible-label: "Add to Pocket";
 
-                        HorizontalLayout {
-                            alignment: center;
-                            spacing: 4px;
-
-                            VerticalLayout {
-                                alignment: center;
-
-                                Image {
-                                    source: Icons.pocket;
-                                    colorize: #ff8a45;
-                                    width: 12px;
-                                    height: 12px;
-                                }
-                            }
-
-                            Text {
-                                text: "Pocket";
-                                color: #ff8a45;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                            }
+                        Image {
+                            source: Icons.pocket;
+                            colorize: white;
+                            width: 12px;
+                            height: 12px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
                         }
 
                         pocket-touch := TouchArea {
