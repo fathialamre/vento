@@ -9,7 +9,7 @@ export struct PocketCell { name: string, icon: image, missing: bool, selected: b
 
 // One entry of the clipboard history. `kind`: 0 text, 1 files, 2 link,
 // 3 image; `thumb` is an image's thumbnail, empty when it can't be shown.
-export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image, pinned: bool }
+export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image }
 
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
@@ -221,10 +221,9 @@ component ClipList inherits Rectangle {
     in property <bool> undo-active;
     in property <float> undo-left;
     in property <int> undo-secs;
-    // All by entry id.
+    // Both by entry id.
     callback pressed(int);
     callback pocket(int);
-    callback unpin(int);
     callback remove(int);
     callback clear();
     callback undo();
@@ -291,7 +290,7 @@ component ClipList inherits Rectangle {
 
                     Text {
                         x: 42px;
-                        width: parent.width - self.x - (touch.has-hover ? actions.width + 12px : row.pinned ? 70px : 50px);
+                        width: parent.width - self.x - (touch.has-hover ? actions.width + 12px : 50px);
                         text: row.label;
                         color: #e6e6e6;
                         font-size: 13px;
@@ -309,17 +308,6 @@ component ClipList inherits Rectangle {
                         horizontal-alignment: right;
                         vertical-alignment: center;
                     }
-
-                    // In the Pocket: a pin beside the age. On hover the
-                    // Pinned button takes its place.
-                    if !touch.has-hover && row.pinned: Image {
-                        source: Icons.pin;
-                        colorize: root.accent;
-                        width: 13px;
-                        height: 13px;
-                        x: parent.width - 8px - 36px - 6px - self.width;
-                        y: (parent.height - self.height) / 2;
-                    }
                 }
 
                 // Children of the row's TouchArea, so hovering them keeps the
@@ -331,16 +319,12 @@ component ClipList inherits Rectangle {
                     height: 24px;
                     visible: touch.has-hover;
 
-                    // Sends the entry to the Pocket; once it is there, shows
-                    // it as pinned, and a click takes it out again.
                     if !row.missing: Rectangle {
                         x: 0px;
                         width: 68px;
                         height: 24px;
                         border-radius: 7px;
-                        background: row.pinned
-                            ? (pocket-touch.has-hover ? #ff8a45 : root.accent)
-                            : (pocket-touch.has-hover ? #ff6a1a55 : #ff6a1a33);
+                        background: pocket-touch.has-hover ? #ff6a1a55 : #ff6a1a33;
 
                         HorizontalLayout {
                             alignment: center;
@@ -350,29 +334,24 @@ component ClipList inherits Rectangle {
                                 alignment: center;
 
                                 Image {
-                                    source: row.pinned ? Icons.pin : Icons.pocket;
-                                    colorize: row.pinned ? white : #ff8a45;
+                                    source: Icons.pocket;
+                                    colorize: #ff8a45;
                                     width: 12px;
                                     height: 12px;
                                 }
                             }
 
                             Text {
-                                text: row.pinned ? "Pinned" : "Pocket";
-                                color: row.pinned ? white : #ff8a45;
+                                text: "Pocket";
+                                color: #ff8a45;
                                 font-size: 11px;
-                                font-weight: row.pinned ? 600 : 400;
                                 vertical-alignment: center;
                             }
                         }
 
                         pocket-touch := TouchArea {
                             clicked => {
-                                if row.pinned {
-                                    root.unpin(row.id);
-                                } else {
-                                    root.pocket(row.id);
-                                }
+                                root.pocket(row.id);
                             }
                         }
                     }
@@ -515,7 +494,6 @@ export component PocketIsland inherits Window {
     // buttons; and its Clear.
     callback clip-pressed(int);
     callback clip-pocket(int);
-    callback clip-unpin(int);
     callback clip-remove(int);
     callback clip-clear();
 
@@ -916,9 +894,6 @@ export component PocketIsland inherits Window {
                 }
                 pocket(id) => {
                     root.clip-pocket(id);
-                }
-                unpin(id) => {
-                    root.clip-unpin(id);
                 }
                 remove(id) => {
                     root.clip-remove(id);

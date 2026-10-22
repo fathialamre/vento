@@ -15,7 +15,7 @@ use crate::ui::{ClipRow, PocketIsland};
 
 use super::clip::{ClipKind, ClipRowData, now_unix};
 use super::geometry::Panel;
-use super::{PocketController, UNDO_WINDOW, Undo, View};
+use super::{PocketController, Undo, View};
 
 /// How long the island stays open after a switch button, wherever the
 /// pointer is.
@@ -121,7 +121,6 @@ fn clip_row(d: &ClipRowData, thumb: Image) -> ClipRow {
         age: d.age.as_str().into(),
         missing: d.missing,
         thumb,
-        pinned: d.pinned,
     }
 }
 
@@ -153,17 +152,7 @@ impl PocketController {
             if let (Some(c), Ok(id)) = (c(), u64::try_from(id))
                 && let Some(d) = c.clip.to_pocket(id)
             {
-                let file = c.add_dropped(d);
-                if file.is_some() {
-                    c.clip.set_pocket_file(id, file);
-                    c.refresh();
-                }
-            }
-        });
-        let c = with.clone();
-        w.on_clip_unpin(move |id| {
-            if let (Some(c), Ok(id)) = (c(), u64::try_from(id)) {
-                c.unpin(id);
+                c.add_dropped(d);
             }
         });
         let c = with.clone();
@@ -199,27 +188,6 @@ impl PocketController {
                 c.settle_now();
             }
         });
-    }
-
-    /// A row's pinned mark was clicked: what the Pocket holds for the entry
-    /// leaves it, the way the Pocket's own x takes an item out (vento's
-    /// saved file goes to the Trash once the Undo window has passed). The
-    /// entry stays in the history.
-    fn unpin(&self, id: u64) {
-        let ids: Vec<u64> = {
-            let pocket = self.pocket.borrow();
-            self.clip
-                .pocket_paths(id)
-                .iter()
-                .flat_map(|p| pocket.holding(p))
-                .collect()
-        };
-        self.clip.set_pocket_file(id, None);
-        if ids.is_empty() {
-            self.refresh();
-        } else {
-            self.remove_items(&ids, UNDO_WINDOW, false);
-        }
     }
 
     /// A switch button was clicked. Going to the shorter Pocket view leaves
@@ -273,8 +241,7 @@ impl PocketController {
     pub(super) fn refresh_clip(&self) {
         let on = self.clip.enabled();
         let rows = if on {
-            let pocket = self.pocket.borrow();
-            self.clip.rows(now_unix(), |p| pocket.contains(p))
+            self.clip.rows(now_unix())
         } else {
             Vec::new()
         };
@@ -307,7 +274,6 @@ mod tests {
             age: "now".into(),
             missing: false,
             thumb: None,
-            pinned: false,
         }
     }
 

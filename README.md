@@ -219,10 +219,6 @@ restarting the Mac. Recording never opens the island by itself.
 - **Hover a row** for two buttons: **Pocket** adds it to the Pocket (the Pocket
   holds files, text, links and images, so formatting does not travel there; the
   entry stays in the history), and **x** removes it from the history.
-- **Pinned**: an entry the Pocket holds (sent there with **Pocket**, or whose
-  files are in the Pocket) shows a pin beside its age. On hover its button
-  reads **Pinned**; click it to take the entry out of the Pocket again. The
-  same text, link or image is never saved into the Pocket twice.
 - **Clear** empties the history. It and **x** offer Undo, like the Pocket.
   **Clear history** in the settings panel empties it at once, without Undo.
 - **What is kept**: the 50 newest copies. Copying something already in the list

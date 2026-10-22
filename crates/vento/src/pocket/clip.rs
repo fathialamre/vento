@@ -61,9 +61,6 @@ pub(super) struct ClipRowData {
     pub(super) missing: bool,
     /// The stored image of an Image entry, for its thumbnail.
     pub(super) thumb: Option<PathBuf>,
-    /// The Pocket holds the entry (sent there with its ✋ button, or its
-    /// files are there).
-    pub(super) pinned: bool,
 }
 
 /// Records copies into the clipboard history and puts entries back. Main
@@ -578,45 +575,12 @@ impl ClipController {
     }
 
     /// The rows of the Clipboard view, newest first, aged against
-    /// `now_unix` in the local time zone; `in_pocket` says whether the
-    /// Pocket holds a path.
-    pub(super) fn rows(
-        &self,
-        now_unix: u64,
-        in_pocket: impl Fn(&Path) -> bool,
-    ) -> Vec<ClipRowData> {
+    /// `now_unix` in the local time zone.
+    pub(super) fn rows(&self, now_unix: u64) -> Vec<ClipRowData> {
         let Some(dir) = self.dir() else {
             return Vec::new();
         };
-        build_rows(
-            self.history.borrow().entries(),
-            now_unix,
-            Path::exists,
-            in_pocket,
-            dir,
-        )
-    }
-
-    /// The paths the Pocket holds entry `id` under (see [`pocket_paths`]).
-    pub(super) fn pocket_paths(&self, id: u64) -> Vec<PathBuf> {
-        self.history
-            .borrow()
-            .get(id)
-            .map(pocket_paths)
-            .unwrap_or_default()
-    }
-
-    /// Records the Pocket file entry `id`'s content was saved as (`None`
-    /// once it left the Pocket), and saves the history.
-    pub(super) fn set_pocket_file(&self, id: u64, file: Option<PathBuf>) {
-        let changed = {
-            let mut history = self.history.borrow_mut();
-            history.get(id).is_some_and(|e| e.pocket_file != file)
-                && history.set_pocket_file(id, file)
-        };
-        if changed {
-            self.save();
-        }
+        build_rows(self.history.borrow().entries(), now_unix, Path::exists, dir)
     }
 
     /// Deletes the history file an unusable one was set aside as, if any
@@ -666,21 +630,12 @@ fn build_rows(
     entries: &[ClipEntry],
     now_unix: u64,
     exists: impl Fn(&Path) -> bool,
-    in_pocket: impl Fn(&Path) -> bool,
     dir: &Path,
 ) -> Vec<ClipRowData> {
     let tz = TimeZone::system();
     entries
         .iter()
         .map(|e| {
-            let pinned = match &e.summary {
-                // Every file still there is in the Pocket.
-                Summary::Files { paths } => {
-                    let mut live = paths.iter().filter(|p| exists(p)).peekable();
-                    live.peek().is_some() && live.all(|p| in_pocket(p))
-                }
-                _ => e.pocket_file.as_deref().is_some_and(&in_pocket),
-            };
             let (kind, label, missing, thumb) = match &e.summary {
                 Summary::Text { preview } => (ClipKind::Text, preview.clone(), false, None),
                 Summary::Files { paths } => (
@@ -708,19 +663,9 @@ fn build_rows(
                 age: age_label(e.copied_unix, now_unix, tz.clone()),
                 missing,
                 thumb,
-                pinned,
             }
         })
         .collect()
-}
-
-/// The paths the Pocket holds entry `e` under: its files, or the file the
-/// Pocket saved its text, link or image as.
-pub(super) fn pocket_paths(e: &ClipEntry) -> Vec<PathBuf> {
-    match &e.summary {
-        Summary::Files { paths } => paths.clone(),
-        _ => e.pocket_file.iter().cloned().collect(),
-    }
 }
 
 /// The first file's name, then `", <second>"` for exactly two, or `" +N"`
@@ -1016,7 +961,6 @@ mod tests {
             hash: Some(id),
             summary,
             types,
-            pocket_file: None,
         }
     }
 
@@ -1285,7 +1229,7 @@ mod tests {
         c.forget_backup();
         c.discard(c.clear());
         c.flush();
-        assert!(c.rows(0, |_| false).is_empty());
+        assert!(c.rows(0).is_empty());
     }
 
     #[test]
@@ -1350,71 +1294,7 @@ mod tests {
         let id = top_id(&c);
         assert!(!c.put_back(id));
         assert!(fake.written.borrow().is_empty());
-        assert!(c.rows(0, |_| false)[0].missing);
-    }
-
-    #[test]
-    fn rows_are_pinned_while_the_pocket_holds_them() {
-        let dir = Path::new("/data/clipboard");
-        let files = |ps: &[&str]| Summary::Files {
-            paths: ps.iter().map(PathBuf::from).collect(),
-        };
-        let saved = PathBuf::from("/p/saved/Text 1.txt");
-        let entries = vec![
-            entry(1, 0, files(&["/x/a.txt", "/x/b.txt"]), vec![]),
-            entry(2, 0, files(&["/x/a.txt", "/x/gone.txt"]), vec![]),
-            entry(3, 0, files(&["/x/a.txt", "/x/c.txt"]), vec![]),
-            ClipEntry {
-                pocket_file: Some(saved.clone()),
-                ..entry(
-                    4,
-                    0,
-                    Summary::Text {
-                        preview: "a".into(),
-                    },
-                    vec![],
-                )
-            },
-            ClipEntry {
-                pocket_file: Some(PathBuf::from("/p/saved/left.txt")),
-                ..entry(
-                    5,
-                    0,
-                    Summary::Text {
-                        preview: "b".into(),
-                    },
-                    vec![],
-                )
-            },
-            entry(
-                6,
-                0,
-                Summary::Text {
-                    preview: "c".into(),
-                },
-                vec![],
-            ),
-            entry(7, 0, files(&["/x/gone.txt"]), vec![]),
-        ];
-        let exists = |p: &Path| p != Path::new("/x/gone.txt");
-        let held = [
-            Path::new("/x/a.txt"),
-            Path::new("/x/b.txt"),
-            Path::new("/x/gone.txt"),
-            saved.as_path(),
-        ];
-        let rows = build_rows(&entries, 0, exists, |p| held.contains(&p), dir);
-        let pinned: Vec<bool> = rows.iter().map(|r| r.pinned).collect();
-        // Files: every file still there is held (a gone one doesn't count);
-        // content: its saved file is still held; all files gone: not pinned.
-        assert_eq!(pinned, [true, true, false, true, false, false, false]);
-
-        assert_eq!(
-            pocket_paths(&entries[0]),
-            [PathBuf::from("/x/a.txt"), PathBuf::from("/x/b.txt")]
-        );
-        assert_eq!(pocket_paths(&entries[3]), [saved]);
-        assert!(pocket_paths(&entries[5]).is_empty());
+        assert!(c.rows(0)[0].missing);
     }
 
     #[test]
@@ -1477,14 +1357,7 @@ mod tests {
             ),
         ];
         // Only b.txt is still there.
-        let rows = build_rows(
-            &entries,
-            now,
-            |p| p == Path::new("/x/b.txt"),
-            |_| false,
-            dir,
-        );
-        assert!(rows.iter().all(|r| !r.pinned));
+        let rows = build_rows(&entries, now, |p| p == Path::new("/x/b.txt"), dir);
         let labels: Vec<&str> = rows.iter().map(|r| r.label.as_str()).collect();
         assert_eq!(
             labels,
@@ -1516,7 +1389,7 @@ mod tests {
         assert_eq!(rows[0].thumb, None);
         assert_eq!(rows[0].id, 1);
         // Every file gone: missing.
-        assert!(build_rows(&entries[..1], now, |_| false, |_| false, dir)[0].missing);
+        assert!(build_rows(&entries[..1], now, |_| false, dir)[0].missing);
 
         let utc = |s: &str| s.parse::<jiff::Timestamp>().unwrap().as_second() as u64;
         // A Thursday.
