@@ -177,9 +177,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         exec.has_undo().is_some(),
         None,
     );
-    let pause_item = CheckMenuItem::new("Pause vento", true, pause.is_paused(), None);
+    let pause_item = CheckMenuItem::new("Pause Vento", true, pause.is_paused(), None);
     let open_settings = MenuItem::new("Open settings file", true, None);
-    let quit = MenuItem::new("Quit vento", true, None);
+    let quit = MenuItem::new("Quit Vento", true, None);
 
     let menu = Menu::new();
     menu.append_items(&[
@@ -196,7 +196,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         .expect("tray icon has a valid size");
     let tray = TrayIconBuilder::new()
         .with_icon_templated(icon)
-        .with_tooltip("vento")
+        .with_tooltip("Vento")
         .with_menu(Box::new(menu))
         .with_menu_on_left_click(false)
         .build()

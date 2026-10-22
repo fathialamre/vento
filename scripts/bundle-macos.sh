@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds vento in release mode and wraps it in target/bundle/vento.app, with
+# Builds vento in release mode and wraps it in target/bundle/Vento.app, with
 # the app icon and LSUIElement so it stays out of the Dock.
 set -eu
 
@@ -7,7 +7,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/vento/Cargo.toml | head -n 1)
-app=target/bundle/vento.app
+app=target/bundle/Vento.app
 
 cargo build -p vento --release
 
@@ -32,7 +32,9 @@ cat > "$app/Contents/Info.plist" <<EOF
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>vento</string>
+	<string>Vento</string>
+	<key>CFBundleDisplayName</key>
+	<string>Vento</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

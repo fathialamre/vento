@@ -236,5 +236,5 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
-    println!("vento: this platform is not supported yet");
+    println!("Vento: this platform is not supported yet");
 }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the release zip published on GitHub: vento.app plus the licence files,
+# Builds the release zip published on GitHub: Vento.app plus the licence files,
 # in target/release-zip/vento-<version>-macos-arm64.zip. Needs cargo-about
 # (cargo install cargo-about --locked --features cli) for the third-party notices.
 set -eu
@@ -22,7 +22,7 @@ scripts/bundle-macos.sh >/dev/null
 
 rm -rf "$stage" "$out/$zip"
 mkdir -p "$stage"
-ditto target/bundle/vento.app "$stage/vento.app"
+ditto target/bundle/Vento.app "$stage/Vento.app"
 cp LICENSE "$stage/LICENSE"
 cp crates/vento/ui/icons/LICENSE-tabler "$stage/LICENSE-tabler"
 cargo about generate --fail about.hbs >"$stage/THIRD-PARTY-NOTICES.txt"
