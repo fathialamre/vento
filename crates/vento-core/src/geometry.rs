@@ -8,8 +8,8 @@ pub const MAX_ACTIONS: usize = 12;
 
 /// Drawn circumradius of a flat-top honeycomb hexagon.
 pub const HEX_RADIUS: f32 = 38.0;
-/// Centre-to-centre distance between adjacent honeycomb cells (about 73.82).
-pub const HEX_SPACING: f32 = 1.732_050_8 * HEX_RADIUS + 8.0;
+/// Centre-to-centre distance between adjacent honeycomb cells (about 75.82).
+pub const HEX_SPACING: f32 = 1.732_050_8 * HEX_RADIUS + 10.0;
 /// Corner rounding of a drawn hexagon at `HEX_RADIUS`, in logical pixels.
 pub const HEX_CORNER_RADIUS: f32 = 8.0;
 /// Width of the viewbox `rounded_hex_path` draws in (a circumradius-2 hexagon).
@@ -61,8 +61,8 @@ pub const PETAL_DEAD_ZONE: f32 = 36.0;
 /// the window, so a highlighted petal always means the cursor is over vento.
 pub const PETAL_MAX_REACH: f32 = PETALS_EXTENT - 5.0;
 
-const HONEYCOMB_EXTENT_SMALL: f32 = 115.0;
-const HONEYCOMB_EXTENT_LARGE: f32 = 190.0;
+const HONEYCOMB_EXTENT_SMALL: f32 = 120.0;
+const HONEYCOMB_EXTENT_LARGE: f32 = 196.0;
 const PETALS_EXTENT: f32 = 150.0;
 const PETAL_GAP: f32 = 3.0;
 
@@ -466,8 +466,8 @@ mod tests {
     #[test]
     fn honeycomb_ring1_order() {
         let g = WheelGeometry::new(Layout::Honeycomb, 6);
-        assert!(close(g.cells()[0].center, v(0., -73.82)));
-        assert!(close(g.cells()[1].center, v(63.93, -36.91)));
+        assert!(close(g.cells()[0].center, v(0., -75.82)));
+        assert!(close(g.cells()[1].center, v(65.66, -37.91)));
         for i in 0..6 {
             assert_eq!(g.hit(g.cells()[i].center), Some(i));
         }
@@ -477,7 +477,7 @@ mod tests {
     fn honeycomb_tiles_have_no_gap() {
         let g = WheelGeometry::new(Layout::Honeycomb, 6);
         assert_eq!(g.hit(v(0., -33.0)), None); // inside centre hex
-        assert_eq!(g.hit(v(0., -38.0)), Some(0)); // just past the shared edge
+        assert_eq!(g.hit(v(0., -39.0)), Some(0)); // just past the shared edge
     }
 
     #[test]
@@ -536,8 +536,8 @@ mod tests {
 
     #[test]
     fn extents() {
-        assert_eq!(WheelGeometry::new(Layout::Honeycomb, 6).extent(), 115.);
-        assert_eq!(WheelGeometry::new(Layout::Honeycomb, 7).extent(), 190.);
+        assert_eq!(WheelGeometry::new(Layout::Honeycomb, 6).extent(), 120.);
+        assert_eq!(WheelGeometry::new(Layout::Honeycomb, 7).extent(), 196.);
         assert_eq!(WheelGeometry::new(Layout::Petals, 3).extent(), 150.);
     }
 
@@ -844,6 +844,6 @@ mod tests {
                 h: 1.,
             },
         );
-        assert_eq!(empty.extent(), 115.);
+        assert_eq!(empty.extent(), 120.);
     }
 }
