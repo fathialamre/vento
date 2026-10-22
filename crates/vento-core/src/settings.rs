@@ -19,6 +19,9 @@ pub struct Settings {
     pub layout: Layout,
     /// Modifier that opens the wheel during a drag.
     pub trigger: Modifier,
+    /// Whether a quick side-to-side shake during a file drag opens the
+    /// wheel too.
+    pub shake_to_open: bool,
     /// Actions shown on the wheel, in order (unique, at most `MAX_ACTIONS`).
     pub actions: Vec<ActionId>,
     /// Format used by the Copy path action.
@@ -83,6 +86,7 @@ impl Default for Settings {
         Settings {
             layout: Layout::Honeycomb,
             trigger: Modifier::Ctrl,
+            shake_to_open: true,
             actions: default_actions(),
             copy_path_format: PathFormat::Plain,
             terminal: None,
@@ -105,6 +109,7 @@ impl Default for Settings {
 struct RawSettings {
     layout: Layout,
     trigger: Modifier,
+    shake_to_open: bool,
     actions: Vec<String>,
     copy_path_format: PathFormat,
     terminal: Option<String>,
@@ -129,6 +134,7 @@ impl From<&Settings> for RawSettings {
         RawSettings {
             layout: s.layout,
             trigger: s.trigger,
+            shake_to_open: s.shake_to_open,
             actions: s.actions.iter().map(|a| a.key().to_owned()).collect(),
             copy_path_format: s.copy_path_format,
             terminal: s.terminal.clone(),
@@ -186,6 +192,7 @@ impl From<RawSettings> for Settings {
         Settings {
             layout: raw.layout,
             trigger: raw.trigger,
+            shake_to_open: raw.shake_to_open,
             actions,
             copy_path_format: raw.copy_path_format,
             terminal: raw.terminal,
@@ -508,6 +515,22 @@ mod tests {
         let s = Settings {
             clipboard_history: false,
             clipboard_shortcut: "cmd+shift+c".into(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn shake_to_open_defaults_on_and_round_trips() {
+        assert!(Settings::default().shake_to_open);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        // A file from before the key: on.
+        std::fs::write(&p, "trigger = \"ctrl\"\n").unwrap();
+        assert!(Settings::try_load(&p).unwrap().shake_to_open);
+        let s = Settings {
+            shake_to_open: false,
             ..Settings::default()
         };
         s.save(&p).unwrap();

@@ -8,7 +8,7 @@
 //!
 //! Items come in from the wheel's Pocket action ([`PocketController::add`]),
 //! by a drop on the expanded island (through the platform's drop catcher),
-//! and the island opens on a shake during a drag or on the global shortcut.
+//! and the island opens as a drag nears it or on the global shortcut.
 //!
 //! With the clipboard history on, the expanded island has a second view, the
 //! Clipboard ([`View`]), and a bar under either view to switch between them.
@@ -39,7 +39,7 @@ use slint::{
 use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
-use vento_core::pocket_zone::{IslandState, Presence, ShakeDetector};
+use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::Settings;
 use vento_core::trigger::InputSample;
 use vento_platform::{CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, RgbaImage};
@@ -198,11 +198,6 @@ pub struct PocketController {
     pinned: Cell<bool>,
     /// Kept open until then, to confirm an add.
     pin_until: Cell<Option<Instant>>,
-    /// Kept open by a shake until the drag ends.
-    shaken: Cell<bool>,
-    shake: RefCell<ShakeDetector>,
-    /// The shake detector has been fed since the last mouse-up.
-    shake_fed: Cell<bool>,
     /// The native drop target over the expanded island, once created.
     catcher: RefCell<Option<Rc<dyn DropCatcher>>>,
     /// Where the catcher is shown, or `None` while hidden.
@@ -279,9 +274,6 @@ impl PocketController {
             cells,
             pinned: Cell::new(false),
             pin_until: Cell::new(None),
-            shaken: Cell::new(false),
-            shake: RefCell::new(ShakeDetector::new()),
-            shake_fed: Cell::new(false),
             catcher: RefCell::new(None),
             catcher_rect: Cell::new(None),
             copying: RefCell::new(Vec::new()),
@@ -854,7 +846,6 @@ impl PocketController {
         let before = self.island.borrow().presence();
         let after = self.island.borrow_mut().settle(has_items);
         self.pin_until.set(None);
-        self.shaken.set(false);
         if after != before {
             self.present(before, after);
         }
@@ -987,23 +978,6 @@ impl PocketController {
         }
     }
 
-    /// Feeds the shake detector while dragging; a shake keeps the island
-    /// open until the drag ends. The detector re-arms on mouse-up.
-    fn track_shake(&self, sample: &InputSample, dragging: bool, now: Instant) {
-        if dragging {
-            self.shake_fed.set(true);
-            if self.shake.borrow_mut().feed(sample.cursor.x, now) {
-                debug!("pocket shake");
-                self.shaken.set(true);
-            }
-        } else {
-            self.shaken.set(false);
-        }
-        if !sample.left_down && self.shake_fed.replace(false) {
-            self.shake.borrow_mut().reset();
-        }
-    }
-
     /// Updates the island from one input sample; `dragging` is whether a drag
     /// of any type is under way. Called on every poll tick of the wheel.
     pub fn observe(&self, sample: &InputSample, dragging: bool) {
@@ -1012,7 +986,6 @@ impl PocketController {
             return;
         }
         let now = Instant::now();
-        self.track_shake(sample, dragging, now);
         let screens_changed = self.platform.screens_changed();
         if screens_changed || dragging && !self.was_dragging.get() {
             // The screens changed, or a drag may be headed for the island:
@@ -1097,7 +1070,7 @@ impl PocketController {
         if self.pin_until.get().is_some_and(|until| now >= until) {
             self.pin_until.set(None);
         }
-        self.pinned.get() || self.shaken.get() || self.pin_until.get().is_some()
+        self.pinned.get() || self.pin_until.get().is_some()
     }
 
     /// Shows, hides, expands or collapses the window for a presence change.

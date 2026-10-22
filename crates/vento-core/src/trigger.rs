@@ -1,11 +1,12 @@
 //! Drag-trigger state machine: decides when the wheel opens, moves, releases
 //! or is cancelled, from periodic input samples.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::Point;
+use crate::pocket_zone::ShakeDetector;
 
 /// A keyboard modifier that can be configured as the wheel trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +78,8 @@ pub struct TriggerMachine {
     last_up_count: Option<i64>,
     open: bool,
     finished: bool,
+    /// Watches the cursor during a file drag when a shake opens the wheel.
+    shake: Option<ShakeDetector>,
 }
 
 impl TriggerMachine {
@@ -91,11 +94,24 @@ impl TriggerMachine {
             last_up_count: None,
             open: false,
             finished: false,
+            shake: None,
         }
+    }
+
+    /// With `on`, a quick side-to-side shake of the cursor during a file
+    /// drag opens the wheel too, as the trigger modifier does.
+    pub fn with_shake(mut self, on: bool) -> Self {
+        self.shake = on.then(ShakeDetector::new);
+        self
     }
 
     /// Processes one sample and returns the resulting event.
     pub fn feed(&mut self, s: &InputSample) -> TriggerEvent {
+        self.feed_at(s, Instant::now())
+    }
+
+    /// [`feed`](Self::feed) for a sample taken at `now`.
+    pub fn feed_at(&mut self, s: &InputSample, now: Instant) -> TriggerEvent {
         let trigger_down = s.modifiers.has(self.trigger);
         let trigger_rose = trigger_down && !self.prev_trigger;
         let escape_rose = s.escape_down && !self.prev_escape;
@@ -128,7 +144,16 @@ impl TriggerMachine {
         }
 
         let drag_active = s.left_down && s.drag_change_count != self.baseline && s.drag_has_files;
-        if drag_active && trigger_rose {
+        if !drag_active && let Some(shake) = &mut self.shake {
+            // Each drag shakes from scratch.
+            shake.reset();
+        }
+        let shaken = drag_active
+            && self
+                .shake
+                .as_mut()
+                .is_some_and(|shake| shake.feed(s.cursor.x, now));
+        if drag_active && (trigger_rose || shaken) {
             self.open = true;
             return TriggerEvent::Open(s.cursor);
         }
@@ -195,6 +220,55 @@ mod tests {
         m.feed(&s(true, false, 6, true));
         assert_eq!(m.feed(&s(true, true, 6, true)), TriggerEvent::Open(CURSOR));
         m
+    }
+
+    /// Feeds a file drag that shakes: the cursor swings 50 points between
+    /// x 0 and 50, `swings` times, 20 ms apart. Returns the last event.
+    fn shake(m: &mut TriggerMachine, files: bool, swings: usize) -> TriggerEvent {
+        let t0 = Instant::now();
+        let at = |x: f64| InputSample {
+            cursor: Point { x, y: 20. },
+            ..s(true, false, 6, files)
+        };
+        m.feed_at(&s(false, false, 5, false), t0);
+        m.feed_at(&s(true, false, 5, false), t0);
+        let mut last = TriggerEvent::None;
+        for i in 0..=swings {
+            let x = if i % 2 == 0 { 0.0 } else { 50.0 };
+            let now = t0 + Duration::from_millis(20 * (i as u64 + 1));
+            last = m.feed_at(&at(x), now);
+            if last != TriggerEvent::None {
+                break;
+            }
+        }
+        last
+    }
+
+    #[test]
+    fn opens_on_a_shake_during_a_file_drag() {
+        let mut m = TriggerMachine::new(Modifier::Ctrl).with_shake(true);
+        assert!(matches!(shake(&mut m, true, 6), TriggerEvent::Open(_)));
+        assert!(m.is_open());
+    }
+
+    #[test]
+    fn a_shake_does_nothing_when_off_without_files_or_too_short() {
+        let mut m = TriggerMachine::new(Modifier::Ctrl);
+        assert_eq!(shake(&mut m, true, 6), TriggerEvent::None);
+        let mut m = TriggerMachine::new(Modifier::Ctrl).with_shake(true);
+        assert_eq!(shake(&mut m, false, 6), TriggerEvent::None);
+        let mut m = TriggerMachine::new(Modifier::Ctrl).with_shake(true);
+        assert_eq!(shake(&mut m, true, 3), TriggerEvent::None);
+        assert!(!m.is_open());
+    }
+
+    #[test]
+    fn a_shake_rearms_after_the_button_is_released() {
+        let mut m = TriggerMachine::new(Modifier::Ctrl).with_shake(true);
+        assert_eq!(shake(&mut m, true, 3), TriggerEvent::None);
+        // Released: the half-made shake is forgotten, the next drag starts over.
+        assert_eq!(shake(&mut m, true, 3), TriggerEvent::None);
+        assert!(matches!(shake(&mut m, true, 6), TriggerEvent::Open(_)));
     }
 
     #[test]

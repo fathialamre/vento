@@ -335,6 +335,12 @@ impl PanelController {
                 panel.apply(|s| s.pocket_keep_copies = on);
             }
         });
+        let this = self.this.clone();
+        self.window.on_shake_to_open_toggled(move |on| {
+            if let Some(panel) = this.upgrade() {
+                panel.apply(|s| s.shake_to_open = on);
+            }
+        });
         self.connect_clipboard_tab();
         // While recording, the menu bar is away, so ⌘Q and ⌘H reach the
         // recorder instead of quitting or hiding vento.
@@ -565,6 +571,7 @@ impl PanelController {
             .set_wheel_layout(choice_index(&LAYOUTS, settings.layout));
         self.window
             .set_trigger(choice_index(&TRIGGERS, settings.trigger));
+        self.window.set_shake_to_open(settings.shake_to_open);
         self.window
             .set_path_format(choice_index(&PATH_FORMATS, settings.copy_path_format));
         let terminal = terminal_index(&self.terminals.borrow(), settings.terminal.as_deref());

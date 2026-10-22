@@ -671,11 +671,14 @@ component ClipboardTab inherits VerticalLayout {
 component GeneralTab inherits VerticalLayout {
     // 0 Control, 1 Option, 2 Shift, 3 Command.
     in property <int> trigger;
+    // A shake during a file drag opens the wheel too.
+    in property <bool> shake-to-open;
     in property <[string]> terminals;
     in property <int> terminal;
     // 0 Plain, 1 Shell-quoted.
     in property <int> path-format;
     callback trigger-chosen(int);
+    callback shake-to-open-toggled(bool);
     callback terminal-chosen(int);
     callback path-format-chosen(int);
 
@@ -689,6 +692,12 @@ component GeneralTab inherits VerticalLayout {
         items: ["Control", "Option", "Shift", "Command"];
         current: root.trigger;
         chosen(i) => { root.trigger-chosen(i); }
+    }
+
+    SwitchRow {
+        label: "Shake to open";
+        on: root.shake-to-open;
+        toggled(on) => { root.shake-to-open-toggled(on); }
     }
 
     Separator { }
@@ -853,6 +862,8 @@ export component SettingsPanel inherits Window {
     in property <int> shown-actions;
     // 0 Control, 1 Option, 2 Shift, 3 Command.
     in property <int> trigger;
+    // A shake during a file drag opens the wheel too.
+    in property <bool> shake-to-open;
     // The installed terminals' names, and the one in use.
     in property <[string]> terminals;
     in property <int> terminal;
@@ -891,6 +902,7 @@ export component SettingsPanel inherits Window {
     // A row of the Wheel tab's list dragged from one place to another.
     callback action-moved(int, int);
     callback trigger-chosen(int);
+    callback shake-to-open-toggled(bool);
     callback terminal-chosen(int);
     callback path-format-chosen(int);
     // "Add folder": vento shows the folder picker.
@@ -1052,10 +1064,12 @@ export component SettingsPanel inherits Window {
                     }
                     if root.tab == 4: GeneralTab {
                         trigger: root.trigger;
+                        shake-to-open: root.shake-to-open;
                         terminals: root.terminals;
                         terminal: root.terminal;
                         path-format: root.path-format;
                         trigger-chosen(i) => { root.trigger-chosen(i); }
+                        shake-to-open-toggled(on) => { root.shake-to-open-toggled(on); }
                         terminal-chosen(i) => { root.terminal-chosen(i); }
                         path-format-chosen(i) => { root.path-format-chosen(i); }
                     }

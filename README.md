@@ -1,8 +1,9 @@
 # vento
 
 A radial actions wheel for files. Start dragging a file, then press the
-trigger modifier (it must be pressed after the drag has started) and a wheel
-of actions appears under the cursor; release the mouse over an action to run
+trigger modifier (it must be pressed after the drag has started), or shake the
+pointer quickly left and right, and a wheel of actions appears under the
+cursor; release the mouse over an action to run
 it. Releasing anywhere outside the wheel leaves the drop to whatever is
 underneath. Esc cancels (if your macOS allows reading key state without extra
 permission).
@@ -96,9 +97,9 @@ vento lives in the menu bar.
   (layout, which actions show and in what order), Move (pinned and recent
   folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
   copy), Clipboard (history on or off, its shortcut, Clear history) and General
-  (trigger, terminal, Copy path format); Pause and Quit are at the bottom. It
-  follows the system light or dark appearance. Changes apply and are saved at
-  once.
+  (trigger, shake to open, terminal, Copy path format); Pause and Quit are at
+  the bottom. It follows the system light or dark appearance. Changes apply and
+  are saved at once.
 - **Right click** for the menu: Undo last move/copy/archive, Pause, Open
   settings file, Quit.
 
@@ -122,6 +123,10 @@ layout = "honeycomb"
 
 # Modifier held while dragging: "ctrl", "alt", "shift" or "meta"
 trigger = "ctrl"
+
+# A quick left-right shake of the pointer while dragging files opens the
+# wheel too
+shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
 # "terminal", "copy_to", "archive", "info". A file that already lists `actions`
@@ -177,7 +182,6 @@ Add to it by any of these:
 
 - the **Pocket** action on the wheel;
 - dropping onto the island near the notch;
-- shaking while dragging;
 - the shortcut, ⌃⌥P by default.
 
 Take items out by dragging one to any app. Click items to select them, then drag
