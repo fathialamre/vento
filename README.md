@@ -216,13 +216,22 @@ restarting the Mac. Recording never opens the island by itself.
   (cells paste as cells, styled text as styled text), and the island closes. It
   moves to the top of the list. A file entry whose files are all gone is dimmed
   and does nothing; if only some are gone, the rest are put back.
-- **Hover a row** for two buttons: **Pocket** adds it to the Pocket (the Pocket
-  holds files, text, links and images, so formatting does not travel there; the
-  entry stays in the history), and **x** removes it from the history.
-- **Clear** empties the history. It and **x** offer Undo, like the Pocket.
-  **Clear history** in the settings panel empties it at once, without Undo.
-- **What is kept**: the 50 newest copies. Copying something already in the list
-  moves it to the top instead of adding it again. Files are kept as references,
+- **Hover a row** for three buttons: the **pin** keeps it (see below),
+  **Pocket** adds it to the Pocket (the Pocket holds files, text, links and
+  images, so formatting does not travel there; the entry stays in the history,
+  and the same text, link or image is never saved into the Pocket twice), and
+  **x** removes it from the history.
+- **Pinned** entries stay until you remove them with **x**: they sit at the top
+  of the list with a pin beside their age, don't count toward the 50, and Clear
+  leaves them alone. Click the pin again to unpin.
+- **Filters** under Clear list everything, only pinned entries, or only text,
+  links, images or files; each shows how many entries it lists.
+- **Clear** empties the history except pinned entries. It and **x** offer
+  Undo, like the Pocket. **Clear history** in the settings panel does the same
+  at once, without Undo.
+- **What is kept**: the 50 newest copies, plus every pinned one. Copying
+  something already in the list moves it to the top instead of adding it again
+  (it stays pinned if it was). Files are kept as references,
   never copied. A copy over 20 MB keeps only its plain form (the text, the file
   list, the link or one image) and is skipped if even that is over 20 MB.
 - **What is not recorded**: copies that password managers and other apps mark

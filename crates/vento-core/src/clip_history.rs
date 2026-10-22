@@ -33,6 +33,11 @@ pub struct ClipEntry {
     /// The pasteboard type names of each item's representations, in order,
     /// so the blobs saved for the entry can be put back as they were.
     pub types: Vec<Vec<String>>,
+    /// Kept until the user removes it: outside the [`MAX_ENTRIES`] cap and
+    /// left alone by [`clear_unpinned`](ClipHistory::clear_unpinned). Not
+    /// written while unset.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 /// How [`ClipHistory::load`] found the history file.
@@ -109,6 +114,7 @@ impl ClipHistory {
                 hash: None,
                 summary,
                 types,
+                pinned: false,
             },
         );
         (id, self.enforce_cap())
@@ -117,8 +123,9 @@ impl ClipHistory {
     /// Gives entry `id` its hash, worked out after it was added. When
     /// another entry already has that hash the two are one copy: the one
     /// nearer the top (the later copy, whose row the list already shows
-    /// there) stays and the other is removed and returned, so its blobs can
-    /// go. `None` when nothing was removed, also for an unknown id.
+    /// there) stays, pinned if either was, and the other is removed and
+    /// returned, so its blobs can go. `None` when nothing was removed, also
+    /// for an unknown id.
     pub fn set_hash(&mut self, id: u64, hash: u64) -> Option<ClipEntry> {
         let at = self.entries.iter().position(|e| e.id == id)?;
         self.entries[at].hash = Some(hash);
@@ -126,7 +133,18 @@ impl ClipHistory {
             .entries
             .iter()
             .position(|e| e.id != id && e.hash == Some(hash))?;
-        Some(self.entries.remove(at.max(twin)))
+        let gone = self.entries.remove(at.max(twin));
+        self.entries[at.min(twin)].pinned |= gone.pinned;
+        Some(gone)
+    }
+
+    /// Pins or unpins entry `id`. `false` when there is no such entry.
+    pub fn set_pinned(&mut self, id: u64, pinned: bool) -> bool {
+        let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else {
+            return false;
+        };
+        entry.pinned = pinned;
+        true
     }
 
     /// Whether an entry has this hash (an entry whose hash is not known yet
@@ -173,9 +191,9 @@ impl ClipHistory {
         removed
     }
 
-    /// Removes every entry and returns them.
-    pub fn clear(&mut self) -> Vec<ClipEntry> {
-        std::mem::take(&mut self.entries)
+    /// Removes every entry that isn't pinned and returns them.
+    pub fn clear_unpinned(&mut self) -> Vec<ClipEntry> {
+        self.retain(|e| e.pinned)
     }
 
     /// Puts entries back (an undone removal): each lands by `copied_unix`
@@ -250,13 +268,17 @@ impl ClipHistory {
         written
     }
 
-    /// Drops everything beyond [`MAX_ENTRIES`] and returns it, oldest last.
+    /// Drops the unpinned entries beyond the newest [`MAX_ENTRIES`] of them
+    /// and returns them, oldest last. Pinned entries don't count.
     fn enforce_cap(&mut self) -> Vec<ClipEntry> {
-        if self.entries.len() > MAX_ENTRIES {
-            self.entries.split_off(MAX_ENTRIES)
-        } else {
-            Vec::new()
-        }
+        let mut unpinned = 0;
+        self.retain(|e| {
+            if e.pinned {
+                return true;
+            }
+            unpinned += 1;
+            unpinned <= MAX_ENTRIES
+        })
     }
 
     fn parse(text: &str) -> Result<ClipHistory, String> {
@@ -371,6 +393,7 @@ mod tests {
             hash: Some(id),
             summary: text("x"),
             types: types(),
+            pinned: false,
         }
     }
 
@@ -446,6 +469,71 @@ mod tests {
         assert_eq!(h.len(), MAX_ENTRIES);
         assert_eq!(h.entries()[0].id, id);
         assert!(h.get(first).is_none());
+    }
+
+    #[test]
+    fn pinned_entries_are_outside_the_cap() {
+        let mut h = ClipHistory::default();
+        let pinned: Vec<u64> = (0..3).map(|n| new_id(&mut h, n)).collect();
+        for &id in &pinned {
+            assert!(h.set_pinned(id, true));
+        }
+        assert!(!h.set_pinned(999, true));
+        // A full history of unpinned copies on top of the pinned ones.
+        let first = new_id(&mut h, 10);
+        for n in 11..10 + MAX_ENTRIES as u64 {
+            assert!(rec_evicting(&mut h, n).1.is_empty());
+        }
+        assert_eq!(h.len(), MAX_ENTRIES + 3);
+        // One more pushes out the oldest unpinned copy, never a pinned one.
+        let (_, evicted) = rec_evicting(&mut h, 1000);
+        let evicted: Vec<u64> = evicted.iter().map(|e| e.id).collect();
+        assert_eq!(evicted, [first]);
+        assert!(pinned.iter().all(|&id| h.get(id).is_some_and(|e| e.pinned)));
+        // Unpinned again it counts: the next copy pushes out the two oldest
+        // unpinned entries, the oldest copy and it, oldest last.
+        let oldest_copy = h.entries()[MAX_ENTRIES - 1].id;
+        assert!(h.set_pinned(pinned[0], false));
+        let (_, evicted) = rec_evicting(&mut h, 1001);
+        let evicted: Vec<u64> = evicted.iter().map(|e| e.id).collect();
+        assert_eq!(evicted, [oldest_copy, pinned[0]]);
+        assert_eq!(h.len(), MAX_ENTRIES + 2);
+    }
+
+    #[test]
+    fn clear_unpinned_keeps_pinned_entries() {
+        let mut h = ClipHistory::default();
+        let all: Vec<u64> = (0..4).map(|n| new_id(&mut h, n)).collect();
+        h.set_pinned(all[1], true);
+        let cleared: Vec<u64> = h.clear_unpinned().iter().map(|e| e.id).collect();
+        assert_eq!(cleared, [all[3], all[2], all[0]]);
+        assert_eq!(ids(&h), [all[1]]);
+    }
+
+    #[test]
+    fn a_duplicate_of_a_pinned_entry_stays_pinned() {
+        let mut h = ClipHistory::default();
+        let a = new_id(&mut h, 1);
+        h.set_pinned(a, true);
+        let (b, _) = h.insert_new(text("1 again"), types(), 5);
+        assert_eq!(h.set_hash(b, 1).map(|e| e.id), Some(a));
+        assert!(h.get(b).unwrap().pinned);
+    }
+
+    #[test]
+    fn pinned_is_saved_and_only_written_when_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clipboard.json");
+        let mut h = ClipHistory::default();
+        let a = new_id(&mut h, 1);
+        let b = new_id(&mut h, 2);
+        h.set_pinned(a, true);
+        h.save(&path).unwrap();
+        let (loaded, _) = ClipHistory::load(&path);
+        assert!(loaded.get(a).unwrap().pinned);
+        assert!(!loaded.get(b).unwrap().pinned);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.matches("pinned").count(), 1, "{text}");
     }
 
     #[test]
@@ -528,7 +616,7 @@ mod tests {
         let removed_ids: Vec<u64> = removed.iter().map(|e| e.id).collect();
         assert_eq!(removed_ids, [all[3], all[1]]);
         assert_eq!(ids(&h), [all[2], all[0]]);
-        let cleared = h.clear();
+        let cleared = h.clear_unpinned();
         assert_eq!(cleared.len(), 2);
         assert!(h.is_empty());
     }

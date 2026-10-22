@@ -9,7 +9,7 @@ export struct PocketCell { name: string, icon: image, missing: bool, selected: b
 
 // One entry of the clipboard history. `kind`: 0 text, 1 files, 2 link,
 // 3 image; `thumb` is an image's thumbnail, empty when it can't be shown.
-export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image }
+export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image, pinned: bool }
 
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
@@ -214,19 +214,65 @@ component SwitchButton inherits Rectangle {
     }
 }
 
-// The Clipboard view: the history as a list, newest on top, with Clear (or
-// Undo) beside it.
+// One button of the Clipboard view's filter column: an icon and how many
+// rows the filter lists, filled with the accent while it is chosen.
+component FilterButton inherits Rectangle {
+    in property <image> icon;
+    in property <int> count;
+    in property <bool> current;
+    callback clicked();
+
+    height: 22px;
+    border-radius: 11px;
+    background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
+
+    Image {
+        source: root.icon;
+        colorize: root.current ? white : #ffffffa8;
+        width: 12px;
+        height: 12px;
+        x: 9px;
+        y: (parent.height - self.height) / 2;
+    }
+
+    Text {
+        x: 24px;
+        width: parent.width - self.x - 8px;
+        text: root.count;
+        color: root.current ? white : #ffffff80;
+        font-size: 11px;
+        font-weight: 600;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The Clipboard view: the history as a list, pinned entries first, then
+// newest on top, with Clear (or Undo) beside it and the filters below that.
 component ClipList inherits Rectangle {
+    // The rows the chosen filter lists.
     in property <[ClipRow]> rows;
+    // The chosen filter (0 All, 1 Pinned, 2 Text, 3 Links, 4 Images,
+    // 5 Files) and how many rows each lists; the first is the whole history.
+    in property <int> filter;
+    in property <[int]> counts;
     in property <bool> undo-active;
     in property <float> undo-left;
     in property <int> undo-secs;
-    // Both by entry id.
+    // All by entry id.
     callback pressed(int);
     callback pocket(int);
+    callback pin(int, bool);
     callback remove(int);
     callback clear();
     callback undo();
+    callback filter-chosen(int);
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
@@ -290,7 +336,7 @@ component ClipList inherits Rectangle {
 
                     Text {
                         x: 42px;
-                        width: parent.width - self.x - (touch.has-hover ? actions.width + 12px : 50px);
+                        width: parent.width - self.x - (touch.has-hover ? actions.width + 12px : row.pinned ? 70px : 50px);
                         text: row.label;
                         color: #e6e6e6;
                         font-size: 13px;
@@ -308,6 +354,17 @@ component ClipList inherits Rectangle {
                         horizontal-alignment: right;
                         vertical-alignment: center;
                     }
+
+                    // Pinned: a pin beside the age. On hover the pin button
+                    // takes its place.
+                    if !touch.has-hover && row.pinned: Image {
+                        source: Icons.pin;
+                        colorize: root.accent;
+                        width: 13px;
+                        height: 13px;
+                        x: parent.width - 8px - 36px - 6px - self.width;
+                        y: (parent.height - self.height) / 2;
+                    }
                 }
 
                 // Children of the row's TouchArea, so hovering them keeps the
@@ -315,12 +372,39 @@ component ClipList inherits Rectangle {
                 actions := Rectangle {
                     x: parent.width - self.width - 6px;
                     y: (parent.height - self.height) / 2;
-                    width: row.missing ? 24px : 98px;
+                    width: row.missing ? 54px : 128px;
                     height: 24px;
                     visible: touch.has-hover;
 
-                    if !row.missing: Rectangle {
+                    // Pins the entry (kept until removed by hand) or unpins
+                    // it; filled with the accent while pinned.
+                    Rectangle {
                         x: 0px;
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        background: row.pinned
+                            ? (pin-touch.has-hover ? #ff8a45 : root.accent)
+                            : (pin-touch.has-hover ? #55555c : #3a3a40);
+
+                        Image {
+                            source: Icons.pin;
+                            colorize: white;
+                            width: 12px;
+                            height: 12px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        pin-touch := TouchArea {
+                            clicked => {
+                                root.pin(row.id, !row.pinned);
+                            }
+                        }
+                    }
+
+                    if !row.missing: Rectangle {
+                        x: 30px;
                         width: 68px;
                         height: 24px;
                         border-radius: 7px;
@@ -388,7 +472,9 @@ component ClipList inherits Rectangle {
         y: list.y;
         width: list.width;
         height: list.height;
-        text: "Copy something and it shows up here";
+        text: root.filter == 0
+            ? "Copy something and it shows up here"
+            : root.filter == 1 ? "Pin a copy to keep it here" : "Nothing of this kind yet";
         color: #ffffff66;
         font-size: 13px;
         font-weight: 600;
@@ -396,7 +482,8 @@ component ClipList inherits Rectangle {
         vertical-alignment: center;
     }
 
-    if root.rows.length > 0 && !root.undo-active: Rectangle {
+    // Clear empties everything but pinned entries, whatever the filter.
+    if root.counts[0] > root.counts[1] && !root.undo-active: Rectangle {
         x: parent.width - root.pad - root.side-w;
         y: 12px;
         width: root.side-w;
@@ -428,6 +515,23 @@ component ClipList inherits Rectangle {
         secs: root.undo-secs;
         clicked => {
             root.undo();
+        }
+    }
+
+    // The filters, under Clear (or the taller Undo ring).
+    VerticalLayout {
+        x: parent.width - root.pad - root.side-w;
+        y: root.undo-active ? 84px : 46px;
+        width: root.side-w;
+        spacing: 2px;
+
+        for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
+            icon: f;
+            count: root.counts[i];
+            current: root.filter == i;
+            clicked => {
+                root.filter-chosen(i);
+            }
         }
     }
 }
@@ -468,6 +572,10 @@ export component PocketIsland inherits Window {
     // The history, newest first, and how many entries it holds.
     in property <[ClipRow]> clip-rows;
     in property <int> clip-count;
+    // The Clipboard view's filter (0 All, 1 Pinned, 2 Text, 3 Links,
+    // 4 Images, 5 Files) and how many entries each lists.
+    in property <int> clip-filter;
+    in property <[int]> clip-filter-counts: [0, 0, 0, 0, 0, 0];
     // Height of what is drawn below the menu bar (set by the app).
     in property <length> panel-h: 112px;
     // Collapsed with an empty Pocket but some history: the wings show the
@@ -494,8 +602,11 @@ export component PocketIsland inherits Window {
     // buttons; and its Clear.
     callback clip-pressed(int);
     callback clip-pocket(int);
+    // Entry id, and whether it is to be pinned (or unpinned).
+    callback clip-pin(int, bool);
     callback clip-remove(int);
     callback clip-clear();
+    callback clip-filter-chosen(int);
 
     width: root.panel-w;
     height: root.top-h + root.panel-h;
@@ -886,6 +997,8 @@ export component PocketIsland inherits Window {
                 width: parent.width;
                 height: 232px;
                 rows: root.clip-rows;
+                filter: root.clip-filter;
+                counts: root.clip-filter-counts;
                 undo-active: root.clip-undo;
                 undo-left: root.undo-left;
                 undo-secs: root.undo-secs;
@@ -894,6 +1007,12 @@ export component PocketIsland inherits Window {
                 }
                 pocket(id) => {
                     root.clip-pocket(id);
+                }
+                pin(id, on) => {
+                    root.clip-pin(id, on);
+                }
+                filter-chosen(i) => {
+                    root.clip-filter-chosen(i);
                 }
                 remove(id) => {
                     root.clip-remove(id);

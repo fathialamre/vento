@@ -1,7 +1,7 @@
 //! The island's Clipboard view: the history's rows as the window draws them,
 //! what a row and its buttons do, and the bottom switch between the views.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -21,10 +21,74 @@ use super::{PocketController, Undo, View};
 /// pointer is.
 const SWITCH_GRACE: Duration = Duration::from_secs(1);
 
-/// The rows the Clipboard view shows, and the image thumbnails already made
-/// for them.
+/// Which rows the Clipboard view lists, chosen in the column under Clear.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum ClipFilter {
+    #[default]
+    All,
+    Pinned,
+    Text,
+    Links,
+    Images,
+    Files,
+}
+
+/// The filters in the order the window's column shows them.
+const FILTERS: [ClipFilter; 6] = [
+    ClipFilter::All,
+    ClipFilter::Pinned,
+    ClipFilter::Text,
+    ClipFilter::Links,
+    ClipFilter::Images,
+    ClipFilter::Files,
+];
+
+impl ClipFilter {
+    /// The filter at window index `i`.
+    fn from_index(i: i32) -> Option<Self> {
+        usize::try_from(i)
+            .ok()
+            .and_then(|i| FILTERS.get(i))
+            .copied()
+    }
+
+    /// Its index in the window's column.
+    fn index(self) -> i32 {
+        FILTERS
+            .iter()
+            .position(|&f| f == self)
+            .map_or(0, |i| i as i32)
+    }
+
+    /// Whether the view lists `row` under this filter.
+    fn admits(self, row: &ClipRowData) -> bool {
+        match self {
+            ClipFilter::All => true,
+            ClipFilter::Pinned => row.pinned,
+            ClipFilter::Text => row.kind == ClipKind::Text,
+            ClipFilter::Links => row.kind == ClipKind::Link,
+            ClipFilter::Images => row.kind == ClipKind::Image,
+            ClipFilter::Files => row.kind == ClipKind::Files,
+        }
+    }
+}
+
+/// How many of `rows` each filter lists, in the window's order.
+fn filter_counts(rows: &[ClipRowData]) -> Vec<i32> {
+    FILTERS
+        .iter()
+        .map(|f| {
+            let n = rows.iter().filter(|r| f.admits(r)).count();
+            i32::try_from(n).unwrap_or(i32::MAX)
+        })
+        .collect()
+}
+
+/// The rows the Clipboard view shows, the filter choosing them, and the
+/// image thumbnails already made for them.
 pub(super) struct ClipView {
     rows: Rc<VecModel<ClipRow>>,
+    filter: Cell<ClipFilter>,
     /// Thumbnails by entry id, made once; an empty image when the picture
     /// could not be read.
     thumbs: RefCell<HashMap<u64, Image>>,
@@ -37,17 +101,24 @@ impl ClipView {
         window.set_clip_rows(ModelRc::from(rows.clone()));
         Self {
             rows,
+            filter: Cell::new(ClipFilter::All),
             thumbs: RefCell::new(HashMap::new()),
         }
     }
 
-    /// Shows `data`, touching only the rows that changed so hover stays
-    /// where it is. Thumbnails of entries that left are dropped.
-    pub(super) fn show(&self, data: &[ClipRowData]) {
+    /// Shows the rows of `data` the filter admits, touching only the rows
+    /// that changed so hover stays where it is, and gives `window` the
+    /// filter and each filter's count. Thumbnails of entries that left the
+    /// history are dropped.
+    pub(super) fn show(&self, window: &PocketIsland, data: &[ClipRowData]) {
+        let filter = self.filter.get();
+        window.set_clip_filter(filter.index());
+        window.set_clip_filter_counts(ModelRc::new(VecModel::from(filter_counts(data))));
         let mut thumbs = self.thumbs.borrow_mut();
         thumbs.retain(|id, _| data.iter().any(|d| d.id == *id));
         let rows = data
             .iter()
+            .filter(|d| filter.admits(d))
             .map(|d| {
                 let thumb = match &d.thumb {
                     Some(path) => thumb_for(&mut thumbs, d.id, path),
@@ -121,6 +192,7 @@ fn clip_row(d: &ClipRowData, thumb: Image) -> ClipRow {
         age: d.age.as_str().into(),
         missing: d.missing,
         thumb,
+        pinned: d.pinned,
     }
 }
 
@@ -153,6 +225,19 @@ impl PocketController {
                 && let Some(d) = c.clip.to_pocket(id)
             {
                 c.add_dropped(d);
+            }
+        });
+        let c = with.clone();
+        w.on_clip_pin(move |id, pinned| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id)) {
+                c.clip.set_pinned(id, pinned);
+            }
+        });
+        let c = with.clone();
+        w.on_clip_filter_chosen(move |i| {
+            if let (Some(c), Some(f)) = (c(), ClipFilter::from_index(i)) {
+                c.clip_view.filter.set(f);
+                c.refresh_clip();
             }
         });
         let c = with.clone();
@@ -245,7 +330,7 @@ impl PocketController {
         } else {
             Vec::new()
         };
-        self.clip_view.show(&rows);
+        self.clip_view.show(&self.window, &rows);
         let w = &self.window;
         w.set_clip_count(i32::try_from(self.clip.len()).unwrap_or(i32::MAX));
         w.set_show_switch(on);
@@ -274,7 +359,40 @@ mod tests {
             age: "now".into(),
             missing: false,
             thumb: None,
+            pinned: false,
         }
+    }
+
+    #[test]
+    fn filters_admit_their_rows_and_count_them() {
+        let pinned_link = ClipRowData {
+            pinned: true,
+            ..data(5, ClipKind::Link)
+        };
+        let rows = [
+            data(1, ClipKind::Text),
+            data(2, ClipKind::Text),
+            data(3, ClipKind::Files),
+            data(4, ClipKind::Image),
+            pinned_link,
+        ];
+        let admitted = |f: ClipFilter| -> Vec<u64> {
+            rows.iter().filter(|r| f.admits(r)).map(|r| r.id).collect()
+        };
+        assert_eq!(admitted(ClipFilter::All), [1, 2, 3, 4, 5]);
+        assert_eq!(admitted(ClipFilter::Pinned), [5]);
+        assert_eq!(admitted(ClipFilter::Text), [1, 2]);
+        assert_eq!(admitted(ClipFilter::Links), [5]);
+        assert_eq!(admitted(ClipFilter::Images), [4]);
+        assert_eq!(admitted(ClipFilter::Files), [3]);
+        // In the order the window's filter column lists them.
+        assert_eq!(filter_counts(&rows), [5, 1, 2, 1, 1, 1]);
+        for (i, f) in FILTERS.iter().enumerate() {
+            assert_eq!(ClipFilter::from_index(i as i32), Some(*f));
+            assert_eq!(f.index(), i as i32);
+        }
+        assert_eq!(ClipFilter::from_index(6), None);
+        assert_eq!(ClipFilter::from_index(-1), None);
     }
 
     #[test]

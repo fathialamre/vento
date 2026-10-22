@@ -186,6 +186,7 @@ mod tests {
                 .iter()
                 .map(|item| item.iter().map(|r| r.ty.clone()).collect())
                 .collect(),
+            pinned: false,
         }
     }
 

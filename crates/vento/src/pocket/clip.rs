@@ -61,6 +61,8 @@ pub(super) struct ClipRowData {
     pub(super) missing: bool,
     /// The stored image of an Image entry, for its thumbnail.
     pub(super) thumb: Option<PathBuf>,
+    /// Kept until removed by hand; pinned rows come first.
+    pub(super) pinned: bool,
 }
 
 /// Records copies into the clipboard history and puts entries back. Main
@@ -470,12 +472,25 @@ impl ClipController {
         removed
     }
 
-    /// Empties the history and returns what it held, as
-    /// [`remove`](Self::remove) does.
+    /// Empties the history except for pinned entries and returns what it
+    /// took, as [`remove`](Self::remove) does.
     pub(super) fn clear(&self) -> Vec<ClipEntry> {
-        let removed = self.history.borrow_mut().clear();
+        let removed = self.history.borrow_mut().clear_unpinned();
         self.took(&removed);
         removed
+    }
+
+    /// Pins entry `id` (kept until removed by hand) or unpins it, saves and
+    /// reports the change.
+    pub(super) fn set_pinned(&self, id: u64, pinned: bool) {
+        let changed = {
+            let mut history = self.history.borrow_mut();
+            history.get(id).is_some_and(|e| e.pinned != pinned) && history.set_pinned(id, pinned)
+        };
+        if changed {
+            self.save();
+            (self.on_change)();
+        }
     }
 
     /// Holds `removed` for an Undo, saves and reports the change.
@@ -623,9 +638,9 @@ pub(super) fn now_unix() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// The rows for `entries`: `exists` says whether a file is still there, and
-/// `dir` holds the blobs (for image thumbnails). Ages are in the local time
-/// zone.
+/// The rows for `entries`, pinned ones first, each part newest first:
+/// `exists` says whether a file is still there, and `dir` holds the blobs
+/// (for image thumbnails). Ages are in the local time zone.
 fn build_rows(
     entries: &[ClipEntry],
     now_unix: u64,
@@ -633,8 +648,10 @@ fn build_rows(
     dir: &Path,
 ) -> Vec<ClipRowData> {
     let tz = TimeZone::system();
-    entries
-        .iter()
+    let (pinned, rest): (Vec<&ClipEntry>, Vec<&ClipEntry>) = entries.iter().partition(|e| e.pinned);
+    pinned
+        .into_iter()
+        .chain(rest)
         .map(|e| {
             let (kind, label, missing, thumb) = match &e.summary {
                 Summary::Text { preview } => (ClipKind::Text, preview.clone(), false, None),
@@ -663,6 +680,7 @@ fn build_rows(
                 age: age_label(e.copied_unix, now_unix, tz.clone()),
                 missing,
                 thumb,
+                pinned: e.pinned,
             }
         })
         .collect()
@@ -961,6 +979,7 @@ mod tests {
             hash: Some(id),
             summary,
             types,
+            pinned: false,
         }
     }
 
@@ -1163,6 +1182,29 @@ mod tests {
         let c = launch(tmp.path(), &fake, true);
         assert_eq!(c.len(), 1);
         assert!(!old.exists());
+    }
+
+    #[test]
+    fn pinned_entries_survive_clear_and_lead_the_rows() {
+        let (_tmp, fake, c) = setup(true);
+        tick(&fake, &c, 1);
+        for (n, s) in ["a", "b", "c"].into_iter().enumerate() {
+            fake.set(text(s), &[]);
+            tick(&fake, &c, n as i64 + 2);
+        }
+        let ids: Vec<u64> = c.history.borrow().entries().iter().map(|e| e.id).collect();
+        assert_eq!(ids.len(), 3);
+        let (newest, middle) = (ids[0], ids[1]);
+        c.set_pinned(middle, true);
+        let rows = c.rows(0);
+        let order: Vec<(u64, bool)> = rows.iter().map(|r| (r.id, r.pinned)).collect();
+        assert_eq!(order, [(middle, true), (newest, false), (ids[2], false)]);
+
+        let removed: Vec<u64> = c.clear().iter().map(|e| e.id).collect();
+        assert_eq!(removed, [newest, ids[2]]);
+        assert_eq!(c.len(), 1);
+        c.set_pinned(middle, false);
+        assert!(!c.rows(0)[0].pinned);
     }
 
     #[test]
