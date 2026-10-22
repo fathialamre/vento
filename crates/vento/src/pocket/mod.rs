@@ -1264,14 +1264,9 @@ impl PocketController {
         }
     }
 
-    /// The Pocket shortcut: keeps the island open on the Pocket, or lets
-    /// it close again.
-    pub fn toggle_pinned(&self) {
-        self.open_view(View::Pocket);
-    }
-
-    /// Keeps the island open on view `v`; switches to it if the island is
-    /// held open on the other view; lets it close if it already shows `v`.
+    /// The Pocket and Clipboard shortcuts: keeps the island open on view
+    /// `v`; switches to it if the island is held open on the other view;
+    /// lets it close if it already shows `v`.
     pub fn open_view(&self, v: View) {
         let current = self.pinned.get().then(|| self.shown_view());
         let next = next_open(current, v);
@@ -1285,6 +1280,43 @@ impl PocketController {
                 self.settle_now();
             }
             None => {}
+        }
+    }
+
+    /// Follows the history setting of `s`. Switched on or off, the next
+    /// sample only sets the baseline, so what is on the clipboard then is
+    /// not recorded. Switched off, the island falls back to the Pocket view
+    /// and an Undo of the history is withdrawn; the stored history stays.
+    pub fn apply_clip_settings(&self, s: &Settings) {
+        let on = s.clipboard_history;
+        if on == self.clip.enabled() {
+            return;
+        }
+        debug!("clipboard history {}", if on { "on" } else { "off" });
+        self.clip.set_enabled(on);
+        if !on {
+            self.withdraw_clip_undo();
+            self.set_view(View::Pocket);
+        }
+        self.refresh();
+    }
+
+    /// Empties the clipboard history at once, with no Undo (the settings'
+    /// "Clear history"). An Undo of the history on offer is withdrawn too,
+    /// its entries let go with the rest.
+    pub fn clear_clip_history(&self) {
+        let gone = self.clip.clear();
+        self.clip.discard(gone);
+        self.withdraw_clip_undo();
+        self.refresh();
+    }
+
+    /// Withdraws the Undo on offer if it puts history entries back, and
+    /// lets those entries go.
+    fn withdraw_clip_undo(&self) {
+        let is_clip = matches!(*self.undo.borrow(), Some((Undo::Clip(_), _)));
+        if is_clip && let Some(Undo::Clip(entries)) = self.end_undo() {
+            self.clip.discard(entries);
         }
     }
 

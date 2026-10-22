@@ -286,8 +286,6 @@ impl ClipController {
 
     /// The history was switched on or off. Either way the next sample only
     /// sets the baseline, so the copy made while off is not recorded.
-    // Wired to the settings in Task 9 (`apply_clip_settings`).
-    #[allow(dead_code)]
     pub(super) fn set_enabled(&self, on: bool) {
         self.enabled.set(on);
         self.primed.set(false);

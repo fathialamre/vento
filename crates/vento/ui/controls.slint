@@ -480,26 +480,32 @@ export component Stepper inherits HorizontalLayout {
 // A field showing a keyboard shortcut. Clicking it starts recording: it
 // then reads "Press a shortcut…" and takes the keyboard, so no other key
 // handling in the panel reacts; Esc, a second click or losing focus
-// cancels. vento reads the combination itself and ends the recording.
+// cancels. vento reads the combination itself and ends the recording. A
+// disabled field shows its shortcut dimmed and cannot start recording.
 export component ShortcutField inherits Rectangle {
     // The shortcut as symbols, e.g. "⌃⌥P".
     in property <string> text;
     in property <string> label;
+    in property <bool> enabled: true;
     in-out property <bool> recording;
     callback started();
     callback cancelled();
 
     height: 28px;
     border-radius: 8px;
-    background: self.recording || touch.has-hover ? Theme.selected : Theme.surface;
+    background: self.recording || (self.enabled && touch.has-hover) ? Theme.selected : Theme.surface;
     border-width: self.recording ? 2px : 0px;
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: self.label;
     accessible-value: self.recording ? "Press a shortcut…" : self.text;
+    accessible-enabled: self.enabled;
     accessible-action-default => { root.start(); }
 
     function start() {
+        if (!root.enabled) {
+            return;
+        }
         root.recording = true;
         scope.focus();
         root.started();
@@ -508,7 +514,7 @@ export component ShortcutField inherits Rectangle {
     Text {
         text: root.recording ? "Press a shortcut…" : root.text;
         font-size: 13px;
-        color: root.recording ? Theme.muted : Theme.text;
+        color: root.recording || !root.enabled ? Theme.muted : Theme.text;
         horizontal-alignment: center;
         vertical-alignment: center;
     }

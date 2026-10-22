@@ -609,6 +609,65 @@ component PocketTab inherits VerticalLayout {
     }
 }
 
+component ClipboardTab inherits VerticalLayout {
+    // The history records copies; while it does not, its shortcut is not
+    // registered and its field cannot record.
+    in property <bool> history;
+    // The Clipboard shortcut as symbols, and why the last one recorded was
+    // refused (empty when it was not).
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    in-out property <bool> recording;
+    callback history-toggled(bool);
+    callback recording-started();
+    callback recording-cancelled();
+    callback history-cleared();
+
+    spacing: 8px;
+
+    SwitchRow {
+        label: "Clipboard history";
+        on: root.history;
+        toggled(on) => { root.history-toggled(on); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Shortcut";
+    }
+
+    ShortcutField {
+        text: root.shortcut;
+        label: "Clipboard shortcut";
+        enabled: root.history;
+        recording <=> root.recording;
+        started => {
+            root.shortcut-error = "";
+            root.recording-started();
+        }
+        cancelled => { root.recording-cancelled(); }
+    }
+
+    if root.shortcut-error != "": Text {
+        text: root.shortcut-error;
+        font-size: 12px;
+        color: Theme.danger;
+        wrap: word-wrap;
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        alignment: start;
+
+        TextButton {
+            label: "Clear history";
+            clicked => { root.history-cleared(); }
+        }
+    }
+}
+
 component GeneralTab inherits VerticalLayout {
     // 0 Control, 1 Option, 2 Shift, 3 Command.
     in property <int> trigger;
@@ -779,7 +838,7 @@ export component SettingsPanel inherits Window {
     title: "vento settings";
     default-font-size: 13px;
 
-    // The selected tab: 0 Wheel, 1 Move, 2 Pocket, 3 General.
+    // The selected tab: 0 Wheel, 1 Move, 2 Pocket, 3 Clipboard, 4 General.
     in-out property <int> tab;
     // vento is paused: the Pause item shows as on.
     in property <bool> paused;
@@ -817,6 +876,13 @@ export component SettingsPanel inherits Window {
     in-out property <bool> shortcut-recording;
     in property <bool> remove-after-drop;
     in property <bool> keep-copies;
+    // The clipboard history records copies.
+    in property <bool> clip-history;
+    // The Clipboard shortcut as symbols, why a recorded one was refused,
+    // and whether its field is waiting for a key combination.
+    in property <string> clip-shortcut;
+    in-out property <string> clip-shortcut-error;
+    in-out property <bool> clip-shortcut-recording;
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
@@ -838,9 +904,14 @@ export component SettingsPanel inherits Window {
     callback hold-stepped(int);
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
-    // The shortcut field started recording, and the recording ended (each
-    // way it can end goes through `stop-recording`).
+    callback clip-history-toggled(bool);
+    // "Clear history": the history empties at once, with no Undo.
+    callback clip-history-cleared();
+    // The Pocket's or the Clipboard's shortcut field started recording,
+    // and either recording ended (each way it can end goes through
+    // `stop-recording`).
     callback shortcut-recording-started();
+    callback clip-shortcut-recording-started();
     callback shortcut-recording-stopped();
 
     callback pause-clicked();
@@ -875,13 +946,15 @@ export component SettingsPanel inherits Window {
     // back to the panel, so Esc closes it again.
     public function stop-recording() {
         root.shortcut-recording = false;
+        root.clip-shortcut-recording = false;
         keys.focus();
         root.shortcut-recording-stopped();
     }
 
-    // Leaving the Pocket tab removes the field that was recording.
+    // Leaving the Pocket or the Clipboard tab removes the field that was
+    // recording.
     changed tab => {
-        if (root.shortcut-recording) {
+        if (root.shortcut-recording || root.clip-shortcut-recording) {
             root.stop-recording();
         }
     }
@@ -920,6 +993,7 @@ export component SettingsPanel inherits Window {
                         { icon: PanelIcons.wheel, label: "Wheel" },
                         { icon: Icons.move, label: "Move" },
                         { icon: Icons.pocket, label: "Pocket" },
+                        { icon: Icons.clipboard, label: "Clipboard" },
                         { icon: PanelIcons.general, label: "General" },
                     ];
                 }
@@ -966,7 +1040,17 @@ export component SettingsPanel inherits Window {
                         remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
                         keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
                     }
-                    if root.tab == 3: GeneralTab {
+                    if root.tab == 3: ClipboardTab {
+                        history: root.clip-history;
+                        shortcut: root.clip-shortcut;
+                        shortcut-error <=> root.clip-shortcut-error;
+                        recording <=> root.clip-shortcut-recording;
+                        history-toggled(on) => { root.clip-history-toggled(on); }
+                        recording-started => { root.clip-shortcut-recording-started(); }
+                        recording-cancelled => { root.stop-recording(); }
+                        history-cleared => { root.clip-history-cleared(); }
+                    }
+                    if root.tab == 4: GeneralTab {
                         trigger: root.trigger;
                         terminals: root.terminals;
                         terminal: root.terminal;
