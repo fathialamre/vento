@@ -112,6 +112,10 @@ impl Platform for MacPlatform {
         clipboard::types_of(&NSPasteboard::generalPasteboard())
     }
 
+    fn clipboard_change_count(&self) -> i64 {
+        NSPasteboard::generalPasteboard().changeCount() as i64
+    }
+
     fn read_clipboard(&self) -> ClipSnapshot {
         if MainThreadMarker::new().is_none() {
             log::warn!("read_clipboard called off the main thread; ignored");

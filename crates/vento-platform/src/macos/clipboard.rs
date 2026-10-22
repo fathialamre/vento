@@ -169,6 +169,25 @@ mod tests {
     }
 
     #[test]
+    fn read_keeps_a_zero_length_marker() {
+        // The secret re-check runs on the snapshot's own type names, so an
+        // empty marker must survive the read.
+        let pb = TempPasteboard::new();
+        let s = ClipSnapshot {
+            items: vec![vec![
+                rep("public.utf8-plain-text", b"secret"),
+                rep("org.nspasteboard.ConcealedType", b""),
+            ]],
+        };
+        write_to(&pb.0, &s).unwrap();
+        let read = read_from(&pb.0);
+        assert!(
+            read.items[0].contains(&rep("org.nspasteboard.ConcealedType", b"")),
+            "{read:?}"
+        );
+    }
+
+    #[test]
     fn write_returns_new_change_count() {
         let pb = TempPasteboard::new();
         let before = pb.0.changeCount() as i64;

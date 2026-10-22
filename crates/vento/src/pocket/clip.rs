@@ -149,18 +149,31 @@ impl ClipController {
         if count == before || self.own_write.get() == Some(count) {
             return;
         }
-        self.record_clipboard();
+        self.record_clipboard(count);
     }
 
-    /// Reads the clipboard and records it, unless it is secret, too big or
-    /// holds nothing worth showing.
-    fn record_clipboard(&self) {
+    /// Reads the clipboard, whose change count was `count` when sampled,
+    /// and records it, unless it is secret, too big or holds nothing worth
+    /// showing.
+    fn record_clipboard(&self, count: i64) {
         // Type names only: a secret's data is never read.
         if is_secret(&self.platform.clipboard_types()) {
             debug!("clipboard: secret copy not recorded");
             return;
         }
-        let Some(snapshot) = fit(self.platform.read_clipboard(), MAX_SNAPSHOT_BYTES) else {
+        let read = self.platform.read_clipboard();
+        // The two reads are not one: a copy landing in between, or an app
+        // adding its marker after its text, must not slip through.
+        if self.platform.clipboard_change_count() != count {
+            debug!("clipboard: changed while read, left to the next sample");
+            return;
+        }
+        let types: Vec<String> = read.items.iter().flatten().map(|r| r.ty.clone()).collect();
+        if is_secret(&types) {
+            debug!("clipboard: secret copy not recorded");
+            return;
+        }
+        let Some(snapshot) = fit(read, MAX_SNAPSHOT_BYTES) else {
             debug!("clipboard: copy too big, not recorded");
             return;
         };
@@ -594,6 +607,10 @@ mod tests {
         snapshot: RefCell<ClipSnapshot>,
         written: RefCell<Vec<ClipSnapshot>>,
         count: Cell<i64>,
+        /// The change count the clipboard reports now.
+        live: Cell<i64>,
+        /// Another copy lands while the data is read: the count moves by one.
+        copy_during_read: Cell<bool>,
         /// How often the data (not just the type names) was read.
         data_reads: Cell<usize>,
     }
@@ -630,8 +647,14 @@ mod tests {
         fn clipboard_types(&self) -> Vec<String> {
             self.types.borrow().clone()
         }
+        fn clipboard_change_count(&self) -> i64 {
+            self.live.get()
+        }
         fn read_clipboard(&self) -> ClipSnapshot {
             self.data_reads.set(self.data_reads.get() + 1);
+            if self.copy_during_read.get() {
+                self.live.set(self.live.get() + 1);
+            }
             self.snapshot.borrow().clone()
         }
         fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError> {
@@ -762,6 +785,13 @@ mod tests {
         (tmp, fake, c)
     }
 
+    /// An input sample carrying change count `n`, which the clipboard
+    /// reports too.
+    fn tick(fake: &FakeClipPlatform, c: &ClipController, n: i64) {
+        fake.live.set(n);
+        c.observe(n);
+    }
+
     fn top_id(c: &ClipController) -> u64 {
         c.history.borrow().entries()[0].id
     }
@@ -780,13 +810,13 @@ mod tests {
     fn first_sample_only_primes() {
         let (_tmp, fake, c) = setup(true);
         fake.set(text("hello"), &[]);
-        c.observe(5);
+        tick(&fake, &c, 5);
         assert_eq!(c.len(), 0);
         assert_eq!(fake.data_reads.get(), 0);
-        c.observe(6);
+        tick(&fake, &c, 6);
         assert_eq!(c.len(), 1);
         // The same count again is no new copy.
-        c.observe(6);
+        tick(&fake, &c, 6);
         assert_eq!(fake.data_reads.get(), 1);
     }
 
@@ -794,15 +824,15 @@ mod tests {
     fn resume_reprimes() {
         let (_tmp, fake, c) = setup(true);
         fake.set(text("a"), &[]);
-        c.observe(7);
-        c.observe(8);
+        tick(&fake, &c, 7);
+        tick(&fake, &c, 8);
         assert_eq!(c.len(), 1);
         c.set_paused(true);
         c.set_paused(false);
         fake.set(text("b"), &[]);
-        c.observe(9);
+        tick(&fake, &c, 9);
         assert_eq!(c.len(), 1);
-        c.observe(10);
+        tick(&fake, &c, 10);
         assert_eq!(c.len(), 2);
     }
 
@@ -810,22 +840,50 @@ mod tests {
     fn secret_copy_is_not_recorded() {
         let (_tmp, fake, c) = setup(true);
         fake.set(text("hunter2"), &["org.nspasteboard.ConcealedType"]);
-        c.observe(1);
-        c.observe(2);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
         assert!(c.is_empty());
         // Decided from the type names alone: the data is never read.
         assert_eq!(fake.data_reads.get(), 0);
     }
 
     #[test]
+    fn marker_seen_only_in_the_read_data_is_not_recorded() {
+        // The marker arrives between the type check and the read.
+        let (_tmp, fake, c) = setup(true);
+        let mut s = text("hunter2");
+        s.items[0].push(rep("org.nspasteboard.ConcealedType", b""));
+        fake.set(s, &[]);
+        *fake.types.borrow_mut() = vec![TYPE_TEXT.to_owned()];
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn copy_landing_during_the_read_is_left_to_the_next_tick() {
+        let (_tmp, fake, c) = setup(true);
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        fake.copy_during_read.set(true);
+        tick(&fake, &c, 2);
+        assert!(c.is_empty());
+        // The next sample carries the newer count and records it.
+        fake.copy_during_read.set(false);
+        fake.set(text("b"), &[]);
+        tick(&fake, &c, 3);
+        assert_eq!(c.len(), 1);
+    }
+
+    #[test]
     fn own_write_is_ignored() {
         let (_tmp, fake, c) = setup(true);
         fake.set(text("a"), &[]);
-        c.observe(1);
-        c.observe(2);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
         let a = top_id(&c);
         fake.set(text("b"), &[]);
-        c.observe(3);
+        tick(&fake, &c, 3);
         assert_ne!(top_id(&c), a);
 
         assert!(c.put_back(a));
@@ -833,7 +891,7 @@ mod tests {
         assert_eq!(*fake.written.borrow(), vec![text("a")]);
         let reads = fake.data_reads.get();
         fake.set(text("c"), &[]);
-        c.observe(count);
+        tick(&fake, &c, count);
         assert_eq!(fake.data_reads.get(), reads);
         assert_eq!(c.len(), 2);
         assert_eq!(top_id(&c), a);
@@ -843,8 +901,8 @@ mod tests {
     fn put_back_uses_pending_snapshot() {
         let (_tmp, fake, c) = setup(true);
         fake.set(text("hello"), &[]);
-        c.observe(1);
-        c.observe(2);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
         let id = top_id(&c);
         // No event loop in tests: the finished write is never reported, so
         // the snapshot stays pending.
@@ -857,8 +915,8 @@ mod tests {
     fn all_missing_files_put_back_nothing() {
         let (_tmp, fake, c) = setup(true);
         fake.set(files(&["/nonexistent/a"]), &[]);
-        c.observe(1);
-        c.observe(2);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
         let id = top_id(&c);
         assert!(!c.put_back(id));
         assert!(fake.written.borrow().is_empty());
@@ -973,16 +1031,16 @@ mod tests {
         let (_tmp, fake, c) = setup(false);
         assert!(!c.enabled());
         fake.set(text("a"), &[]);
-        c.observe(1);
-        c.observe(2);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
         assert!(c.is_empty());
         assert_eq!(fake.data_reads.get(), 0);
         // Turned on: the copy made while off is not recorded.
         c.set_enabled(true);
         assert!(c.enabled());
-        c.observe(3);
+        tick(&fake, &c, 3);
         assert!(c.is_empty());
-        c.observe(4);
+        tick(&fake, &c, 4);
         assert_eq!(c.len(), 1);
     }
 
@@ -990,8 +1048,8 @@ mod tests {
     fn restore_drops_content_copied_again() {
         let (tmp, fake, c) = setup(true);
         fake.set(text("a"), &[]);
-        c.observe(1);
-        c.observe(2);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
         let kept = top_id(&c);
         // An undone removal of the same content, whose blobs are on disk.
         let folder = tmp.path().join("clipboard").join("40");

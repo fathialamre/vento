@@ -155,6 +155,9 @@ pub trait Platform {
     /// Every pasteboard type name of every clipboard item, in order,
     /// duplicates kept. Cheap: reads names only, never data.
     fn clipboard_types(&self) -> Vec<String>;
+    /// The clipboard's change counter now (the one input samples carry as
+    /// `clip_change_count`). Cheap: reads no content. Main thread only.
+    fn clipboard_change_count(&self) -> i64;
     /// The whole clipboard: per item, every representation that has data.
     /// Items left with none are dropped.
     fn read_clipboard(&self) -> ClipSnapshot;

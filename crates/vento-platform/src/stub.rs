@@ -85,6 +85,10 @@ impl Platform for StubPlatform {
         Vec::new()
     }
 
+    fn clipboard_change_count(&self) -> i64 {
+        0
+    }
+
     fn read_clipboard(&self) -> ClipSnapshot {
         ClipSnapshot::default()
     }
@@ -238,6 +242,7 @@ mod tests {
         assert!(matches!(p.copy_text("x"), Err(PlatformError::Unsupported)));
         assert!(matches!(p.copy_files(&[]), Err(PlatformError::Unsupported)));
         assert!(p.clipboard_types().is_empty());
+        assert_eq!(p.clipboard_change_count(), 0);
         assert!(p.read_clipboard().items.is_empty());
         assert!(matches!(
             p.write_clipboard(&ClipSnapshot::default()),
