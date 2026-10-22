@@ -33,6 +33,11 @@ pub struct ClipEntry {
     /// The pasteboard type names of each item's representations, in order,
     /// so the blobs saved for the entry can be put back as they were.
     pub types: Vec<Vec<String>>,
+    /// The file the Pocket saved this entry's text, link or image as, when
+    /// it was sent there; the entry counts as pinned while the Pocket holds
+    /// it. Not written while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pocket_file: Option<PathBuf>,
 }
 
 /// How [`ClipHistory::load`] found the history file.
@@ -109,6 +114,7 @@ impl ClipHistory {
                 hash: None,
                 summary,
                 types,
+                pocket_file: None,
             },
         );
         (id, self.enforce_cap())
@@ -160,6 +166,16 @@ impl ClipHistory {
         let mut entry = self.entries.remove(at);
         entry.copied_unix = now_unix;
         self.entries.insert(0, entry);
+        true
+    }
+
+    /// Records the Pocket file holding entry `id`'s content (`None` once it
+    /// left the Pocket). `false` when there is no such entry.
+    pub fn set_pocket_file(&mut self, id: u64, file: Option<PathBuf>) -> bool {
+        let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else {
+            return false;
+        };
+        entry.pocket_file = file;
         true
     }
 
@@ -371,6 +387,7 @@ mod tests {
             hash: Some(id),
             summary: text("x"),
             types: types(),
+            pocket_file: None,
         }
     }
 
@@ -612,6 +629,27 @@ mod tests {
         assert_eq!(loaded, Loaded::Missing);
         assert!(h.is_empty());
         assert!(!dir.path().join("clipboard.json.bak").exists());
+    }
+
+    #[test]
+    fn pocket_file_is_kept_and_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clipboard.json");
+        let mut h = ClipHistory::default();
+        let (id, _) = h.insert_new(text("a"), types(), 1);
+        h.set_hash(id, 9);
+        assert_eq!(h.get(id).unwrap().pocket_file, None);
+        let saved = PathBuf::from("/p/saved/Text 1.txt");
+        assert!(h.set_pocket_file(id, Some(saved.clone())));
+        assert!(!h.set_pocket_file(id + 1, None));
+        h.save(&path).unwrap();
+        let (loaded, _) = ClipHistory::load(&path);
+        assert_eq!(loaded.get(id).unwrap().pocket_file, Some(saved));
+        assert!(h.set_pocket_file(id, None));
+        // Written only when set, so older files read the same.
+        h.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("pocket_file"), "{text}");
     }
 
     #[test]

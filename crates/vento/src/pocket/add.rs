@@ -62,12 +62,15 @@ pub(super) fn saved_content(plan: &AddPlan) -> Option<Cow<'_, [u8]>> {
     }
 }
 
-/// Whether one of the `saved` files holds exactly `bytes`, so the same
+/// The first of the `saved` files that holds exactly `bytes`, so the same
 /// text, link or image is not saved into the Pocket twice. Only files of
 /// the same size are read; one that can't be read counts as different.
-pub(super) fn holds_content<'a>(saved: impl IntoIterator<Item = &'a Path>, bytes: &[u8]) -> bool {
+pub(super) fn held_by<'a>(
+    saved: impl IntoIterator<Item = &'a Path>,
+    bytes: &[u8],
+) -> Option<&'a Path> {
     let len = bytes.len() as u64;
-    saved.into_iter().any(|path| {
+    saved.into_iter().find(|path| {
         fs::metadata(path).is_ok_and(|m| m.len() == len)
             && fs::read(path).is_ok_and(|held| held == bytes)
     })
@@ -201,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn holds_content_compares_whole_files() {
+    fn held_by_compares_whole_files() {
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("a.txt");
         let b = dir.path().join("b.txt");
@@ -209,11 +212,11 @@ mod tests {
         std::fs::write(&b, "world").unwrap();
         let gone = dir.path().join("gone.txt");
         let saved = [gone.as_path(), b.as_path(), a.as_path()];
-        assert!(holds_content(saved, b"hello"));
+        assert_eq!(held_by(saved, b"hello"), Some(a.as_path()));
         // Same length, other bytes; a prefix; nothing at all.
-        assert!(!holds_content(saved, b"hellp"));
-        assert!(!holds_content(saved, b"hell"));
-        assert!(!holds_content([gone.as_path()], b"hello"));
+        assert_eq!(held_by(saved, b"hellp"), None);
+        assert_eq!(held_by(saved, b"hell"), None);
+        assert_eq!(held_by([gone.as_path()], b"hello"), None);
     }
 
     #[test]

@@ -48,7 +48,7 @@ use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
-use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
+use add::{AddPlan, Entry, held_by, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::ClipView;
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
@@ -1162,7 +1162,11 @@ impl PocketController {
     /// anything that fails is reported in a toast. Kept copies are made on a
     /// worker thread and added when done; each drop runs its own job, so
     /// drops keep working meanwhile.
-    fn add_dropped(&self, d: Dropped) {
+    ///
+    /// For text, a link or an image, returns the Pocket file now holding it
+    /// (the one saved before, or the new one); `None` for files, or if it
+    /// could not be added.
+    fn add_dropped(&self, d: Dropped) -> Option<PathBuf> {
         let keep_copies = self.settings.borrow().pocket_keep_copies;
         let (plan, held) = {
             let pocket = self.pocket.borrow();
@@ -1175,16 +1179,26 @@ impl PocketController {
                 .iter()
                 .filter(|i| i.source == ItemSource::Saved)
                 .map(|i| i.path.as_path());
-            let held = saved_content(&plan).is_some_and(|bytes| holds_content(saved, &bytes));
+            let held = saved_content(&plan)
+                .and_then(|bytes| held_by(saved, &bytes).map(Path::to_path_buf));
             (plan, held)
         };
         match plan {
-            _ if held => debug!("pocket already holds this content"),
-            AddPlan::Copies(paths) if paths.is_empty() => {}
-            AddPlan::Copies(paths) => self.spawn_copies(paths),
+            _ if held.is_some() => {
+                debug!("pocket already holds this content");
+                held
+            }
+            AddPlan::Copies(paths) if paths.is_empty() => None,
+            AddPlan::Copies(paths) => {
+                self.spawn_copies(paths);
+                None
+            }
             plan => {
+                let saves = saved_content(&plan).is_some();
                 let (entries, errors) = store(plan, &pocket_dir());
+                let file = entries.first().map(|(path, ..)| path.clone());
                 self.finish_add(entries, &errors);
+                file.filter(|f| saves && self.pocket.borrow().contains(f))
             }
         }
     }

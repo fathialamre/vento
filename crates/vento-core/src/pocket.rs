@@ -59,6 +59,15 @@ fn identity(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+/// Whether `item` is the file `wanted` (an [`identity`]), or a kept copy of it.
+fn stands_for(item: &PocketItem, wanted: &Path) -> bool {
+    identity(&item.path) == wanted
+        || item
+            .origin
+            .as_deref()
+            .is_some_and(|o| identity(o) == wanted)
+}
+
 /// `path` with `suffix` appended to its file name (`pocket.json` -> `pocket.json.tmp`).
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
@@ -113,10 +122,18 @@ impl Pocket {
     /// copied from. Paths are compared as in [`add`](Self::add).
     pub fn contains(&self, path: &Path) -> bool {
         let wanted = identity(path);
-        self.items.iter().any(|i| {
-            identity(&i.path) == wanted
-                || i.origin.as_deref().is_some_and(|o| identity(o) == wanted)
-        })
+        self.items.iter().any(|i| stands_for(i, &wanted))
+    }
+
+    /// The ids of the items that stand for `path`, as in
+    /// [`contains`](Self::contains).
+    pub fn holding(&self, path: &Path) -> Vec<u64> {
+        let wanted = identity(path);
+        self.items
+            .iter()
+            .filter(|i| stands_for(i, &wanted))
+            .map(|i| i.id)
+            .collect()
     }
 
     /// Removes the items with these ids and returns them (unknown ids are
@@ -388,6 +405,28 @@ mod tests {
                 .is_none()
         );
         assert!(p.add(other, ItemSource::Reference, 4).is_some());
+    }
+
+    #[test]
+    fn holding_finds_items_by_path_and_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        let (orig, copy, other) = (
+            dir.path().join("orig.txt"),
+            dir.path().join("kept-orig.txt"),
+            dir.path().join("other.txt"),
+        );
+        for f in [&orig, &copy, &other] {
+            std::fs::write(f, "x").unwrap();
+        }
+        let mut p = Pocket::default();
+        let kept = p
+            .add_with_origin(copy.clone(), ItemSource::Kept, Some(orig.clone()), 1)
+            .unwrap();
+        let referenced = p.add(other.clone(), ItemSource::Reference, 2).unwrap();
+        assert_eq!(p.holding(&orig), vec![kept]);
+        assert_eq!(p.holding(&copy), vec![kept]);
+        assert_eq!(p.holding(&dir.path().join("./other.txt")), vec![referenced]);
+        assert!(p.holding(&dir.path().join("gone.txt")).is_empty());
     }
 
     #[test]
