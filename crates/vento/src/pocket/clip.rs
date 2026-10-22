@@ -4,8 +4,10 @@
 //! A copy is noticed by the clipboard's change count, which rides on the
 //! wheel's input samples ([`ClipController::observe`]); the clipboard is only
 //! read when that count moved. The snapshot is read on the main thread and
-//! its blobs are written by a worker; until that write is reported back, the
-//! snapshot is held in memory so the entry can already be put back.
+//! shown at once as a new entry; a worker hashes it and writes its blobs.
+//! Until that is reported back, the snapshot is held in memory so the entry
+//! can already be put back, and only then is a copy of content already in
+//! the history folded into one entry.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -20,7 +22,7 @@ use vento_core::clip::{
     ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_secret,
     plain_text, snapshot_hash, summarize,
 };
-use vento_core::clip_history::{ClipEntry, ClipHistory, Recorded, clipboard_dir, clipboard_path};
+use vento_core::clip_history::{ClipEntry, ClipHistory, clipboard_dir, clipboard_path};
 use vento_core::clip_store::{delete_entry, read_entry, sweep, write_entry};
 use vento_core::settings::Settings;
 use vento_platform::{Dropped, Platform};
@@ -73,6 +75,9 @@ pub(super) struct ClipController {
     /// Ids taken out by [`remove`](Self::remove) or [`clear`](Self::clear)
     /// that an Undo may still put back: neither restored nor discarded yet.
     held: RefCell<Vec<u64>>,
+    /// Hashes of held entries, found by the worker after they were taken
+    /// out; a [`restore`](Self::restore) gives them back.
+    late_hashes: RefCell<HashMap<u64, u64>>,
     /// The change count at the last sample.
     baseline: Cell<i64>,
     /// A sample has set the baseline since the last launch, resume or
@@ -126,6 +131,7 @@ impl ClipController {
             history: RefCell::new(history),
             pending: RefCell::new(HashMap::new()),
             held: RefCell::new(Vec::new()),
+            late_hashes: RefCell::new(HashMap::new()),
             baseline: Cell::new(0),
             primed: Cell::new(false),
             own_write: Cell::new(None),
@@ -181,35 +187,29 @@ impl ClipController {
             debug!("clipboard: nothing to show in the copy, not recorded");
             return;
         };
-        let hash = snapshot_hash(&snapshot);
         let picture = matches!(summary, Summary::Image { .. });
         let types = snapshot
             .items
             .iter()
             .map(|item| item.iter().map(|r| r.ty.clone()).collect())
             .collect();
-        let recorded = self
+        // Added without its hash: hashing scales with the copy, so it is
+        // the worker's job, and a duplicate is folded in once it is known.
+        let (id, evicted) = self
             .history
             .borrow_mut()
-            .record(hash, summary, types, now_unix());
-        match recorded {
-            Recorded::New { id, evicted } => {
-                debug!("clipboard: recorded entry {id}");
-                let snapshot = Arc::new(snapshot);
-                self.pending.borrow_mut().insert(id, snapshot.clone());
-                self.spawn_write(id, snapshot, evicted, picture);
-            }
-            Recorded::Bumped { id } => {
-                debug!("clipboard: entry {id} copied again");
-                self.save();
-            }
-        }
+            .insert_new(summary, types, now_unix());
+        debug!("clipboard: recorded entry {id}");
+        let snapshot = Arc::new(snapshot);
+        self.pending.borrow_mut().insert(id, snapshot.clone());
+        self.spawn_write(id, snapshot, evicted, picture);
         (self.on_change)();
     }
 
-    /// Writes entry `id`'s blobs on a worker thread, with a thumbnail beside
-    /// them for a `picture`, then deletes the folders of `evicted`; the
-    /// result is reported back on the main thread.
+    /// Hashes entry `id`'s snapshot and writes its blobs on a worker
+    /// thread, with a thumbnail beside them for a `picture`, then deletes
+    /// the folders of `evicted`; the hash, or the failure, is reported back
+    /// on the main thread.
     fn spawn_write(
         &self,
         id: u64,
@@ -230,7 +230,10 @@ impl ClipController {
             .name("vento-clip-store".into())
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let written = write_entry(&dir, id, &snapshot).map_err(|e| e.to_string());
+                    let hash = snapshot_hash(&snapshot);
+                    let written = write_entry(&dir, id, &snapshot)
+                        .map(|()| hash)
+                        .map_err(|e| e.to_string());
                     // Here, not on the main thread: decoding scales with
                     // the picture. Without a thumbnail the row shows an icon.
                     if written.is_ok()
@@ -262,23 +265,16 @@ impl ClipController {
         }
     }
 
-    /// Entry `id`'s blobs were written, or failed to be: an entry whose
-    /// data could not be stored can never be put back, so it goes. A stored
-    /// image is reported as a change: its thumbnail can be read now.
-    fn stored(&self, id: u64, result: Result<(), String>) {
+    /// Entry `id`'s snapshot was hashed and its blobs written, or they
+    /// failed to be: an entry whose data could not be stored can never be
+    /// put back, so it goes. A stored entry whose content the history
+    /// already held is folded into one with it ([`ClipHistory::set_hash`]),
+    /// and the folder of the one that goes is deleted. A stored image is
+    /// reported as a change: its thumbnail can be read now.
+    fn stored(&self, id: u64, result: Result<u64, String>) {
         self.pending.borrow_mut().remove(&id);
-        match result {
-            Ok(()) => {
-                self.save();
-                let image = self
-                    .history
-                    .borrow()
-                    .get(id)
-                    .is_some_and(|e| matches!(e.summary, Summary::Image { .. }));
-                if image {
-                    (self.on_change)();
-                }
-            }
+        let hash = match result {
+            Ok(hash) => hash,
             Err(e) => {
                 warn!("cannot store clipboard entry {id}: {e}");
                 let removed = self.history.borrow_mut().remove(&[id]);
@@ -286,7 +282,32 @@ impl ClipController {
                 if !removed.is_empty() {
                     (self.on_change)();
                 }
+                return;
             }
+        };
+        if self.history.borrow().get(id).is_none() {
+            if self.held.borrow().contains(&id) {
+                // Taken out meanwhile; an Undo may still bring it back.
+                self.late_hashes.borrow_mut().insert(id, hash);
+            } else {
+                // Gone for good while it was being written.
+                delete_entry(&self.dir, id);
+            }
+            return;
+        }
+        let twin = self.history.borrow_mut().set_hash(id, hash);
+        if let Some(twin) = &twin {
+            debug!("clipboard: entry {} was copied again", twin.id);
+            delete_entry(&self.dir, twin.id);
+        }
+        self.save();
+        let image = self
+            .history
+            .borrow()
+            .get(id)
+            .is_some_and(|e| matches!(e.summary, Summary::Image { .. }));
+        if twin.is_some() || image {
+            (self.on_change)();
         }
     }
 
@@ -414,12 +435,25 @@ impl ClipController {
     /// copied again meanwhile is already there, so it is dropped instead;
     /// it and whatever the cap then pushes out lose their blobs.
     pub(super) fn restore(&self, entries: Vec<ClipEntry>) {
+        let entries: Vec<ClipEntry> = {
+            let mut late = self.late_hashes.borrow_mut();
+            entries
+                .into_iter()
+                .map(|mut e| {
+                    if let Some(hash) = late.remove(&e.id) {
+                        e.hash = Some(hash);
+                    }
+                    e
+                })
+                .collect()
+        };
         self.release(&entries);
+        // An entry whose hash is still unknown matches nothing.
         let (copied_again, back): (Vec<ClipEntry>, Vec<ClipEntry>) = {
             let history = self.history.borrow();
             entries
                 .into_iter()
-                .partition(|e| history.entries().iter().any(|h| h.hash == e.hash))
+                .partition(|e| e.hash.is_some_and(|h| history.has_hash(h)))
         };
         debug!(
             "clipboard: restored {} entries, {} copied again meanwhile",
@@ -441,6 +475,7 @@ impl ClipController {
 
     /// Discards whatever an Undo still holds. Call when vento quits.
     pub(super) fn flush(&self) {
+        self.late_hashes.borrow_mut().clear();
         let held = self.held.take();
         if !held.is_empty() {
             debug!("clipboard: {} held entries deleted at quit", held.len());
@@ -453,6 +488,10 @@ impl ClipController {
         self.held
             .borrow_mut()
             .retain(|id| !entries.iter().any(|e| e.id == *id));
+        let mut late = self.late_hashes.borrow_mut();
+        for e in entries {
+            late.remove(&e.id);
+        }
     }
 
     /// Deletes the blobs (on disk and in memory) of each of `ids` that is
@@ -595,6 +634,7 @@ mod tests {
 
     use raw_window_handle::RawWindowHandle;
     use vento_core::clip::{ClipRep, TYPE_FILE_URL, TYPE_PNG, TYPE_TEXT, TYPE_URL, snapshot_hash};
+    use vento_core::clip_history::MAX_ENTRIES;
     use vento_core::geometry::{Point, Rect};
     use vento_platform::{
         AppInfo, DropCatcher, IslandHome, MenuEntry, PlatformError, RgbaImage, TerminalApp,
@@ -796,11 +836,34 @@ mod tests {
         c.history.borrow().entries()[0].id
     }
 
+    fn ids(c: &ClipController) -> Vec<u64> {
+        c.history.borrow().entries().iter().map(|e| e.id).collect()
+    }
+
+    /// Waits up to five seconds for a store worker to make `done` true.
+    fn wait_until(done: impl Fn() -> bool) {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !done() {
+            assert!(std::time::Instant::now() < until, "store worker timed out");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    /// Plays the event loop for entry `id`'s store worker: waits for its
+    /// folder, then reports the result as the worker would. (Tests have no
+    /// event loop, so the worker's own report never arrives.)
+    fn report(c: &ClipController, id: u64) {
+        let folder = c.dir.join(id.to_string());
+        wait_until(|| folder.is_dir());
+        let snapshot = c.pending.borrow()[&id].clone();
+        c.stored(id, Ok(snapshot_hash(&snapshot)));
+    }
+
     fn entry(id: u64, copied_unix: u64, summary: Summary, types: Vec<Vec<String>>) -> ClipEntry {
         ClipEntry {
             id,
             copied_unix,
-            hash: id,
+            hash: Some(id),
             summary,
             types,
         }
@@ -873,6 +936,102 @@ mod tests {
         fake.set(text("b"), &[]);
         tick(&fake, &c, 3);
         assert_eq!(c.len(), 1);
+    }
+
+    #[test]
+    fn duplicate_copy_resolves_to_one_row_at_the_top() {
+        let (tmp, fake, c) = setup(true);
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let a = top_id(&c);
+        report(&c, a);
+        fake.set(text("b"), &[]);
+        tick(&fake, &c, 3);
+        let b = top_id(&c);
+        report(&c, b);
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 4);
+        // Shown at once, before its hash is known.
+        let again = top_id(&c);
+        assert_eq!(ids(&c), [again, b, a]);
+        report(&c, again);
+        assert_eq!(ids(&c), [again, b]);
+        let dir = tmp.path().join("clipboard");
+        assert!(!dir.join(a.to_string()).exists());
+        assert!(dir.join(again.to_string()).is_dir());
+        let saved = ClipHistory::load(&tmp.path().join("clipboard.json"));
+        assert_eq!(saved.len(), 2);
+        assert_eq!(
+            saved.get(again).unwrap().hash,
+            Some(snapshot_hash(&text("a")))
+        );
+    }
+
+    #[test]
+    fn unique_copy_keeps_its_row() {
+        let (_tmp, fake, c) = setup(true);
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let a = top_id(&c);
+        assert_eq!(c.history.borrow().get(a).unwrap().hash, None);
+        report(&c, a);
+        assert_eq!(ids(&c), [a]);
+        assert_eq!(
+            c.history.borrow().get(a).unwrap().hash,
+            Some(snapshot_hash(&text("a")))
+        );
+        assert!(c.pending.borrow().is_empty());
+    }
+
+    #[test]
+    fn eviction_still_deletes_folders() {
+        let (tmp, fake, c) = setup(true);
+        tick(&fake, &c, 0);
+        let mut first = None;
+        for n in 1..=MAX_ENTRIES as i64 + 1 {
+            fake.set(text(&format!("n{n}")), &[]);
+            tick(&fake, &c, n);
+            let id = top_id(&c);
+            first.get_or_insert(id);
+            report(&c, id);
+        }
+        assert_eq!(c.len(), MAX_ENTRIES);
+        let gone = tmp
+            .path()
+            .join("clipboard")
+            .join(first.unwrap().to_string());
+        wait_until(|| !gone.exists());
+    }
+
+    #[test]
+    fn hash_found_while_held_for_undo_comes_back_with_the_entry() {
+        let (_tmp, fake, c) = setup(true);
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let a = top_id(&c);
+        let removed = c.remove(&[a]);
+        report(&c, a);
+        c.restore(removed);
+        assert_eq!(
+            c.history.borrow().get(a).unwrap().hash,
+            Some(snapshot_hash(&text("a")))
+        );
+    }
+
+    #[test]
+    fn folder_of_an_entry_gone_while_stored_is_deleted() {
+        let (tmp, fake, c) = setup(true);
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let a = top_id(&c);
+        // Pushed out while its blobs were being written (not held).
+        c.history.borrow_mut().remove(&[a]);
+        report(&c, a);
+        assert!(!tmp.path().join("clipboard").join(a.to_string()).exists());
     }
 
     #[test]
@@ -1051,11 +1210,12 @@ mod tests {
         tick(&fake, &c, 1);
         tick(&fake, &c, 2);
         let kept = top_id(&c);
+        report(&c, kept);
         // An undone removal of the same content, whose blobs are on disk.
         let folder = tmp.path().join("clipboard").join("40");
         std::fs::create_dir_all(&folder).unwrap();
         let old = ClipEntry {
-            hash: snapshot_hash(&text("a")),
+            hash: Some(snapshot_hash(&text("a"))),
             ..entry(
                 40,
                 0,

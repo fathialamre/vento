@@ -166,7 +166,7 @@ mod tests {
         ClipEntry {
             id,
             copied_unix: 0,
-            hash: 0,
+            hash: Some(0),
             summary: Summary::Text {
                 preview: String::new(),
             },
