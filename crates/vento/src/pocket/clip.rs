@@ -20,7 +20,7 @@ use jiff::tz::TimeZone;
 use log::{debug, warn};
 use vento_core::clip::{
     ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_file_reference,
-    is_secret, plain_text, snapshot_hash, summarize,
+    is_secret, plain_text, shown_picture, snapshot_hash, summarize,
 };
 use vento_core::clip_history::{
     ClipEntry, ClipHistory, Loaded, clipboard_dir, clipboard_path, has_backup, remove_backup,
@@ -29,7 +29,7 @@ use vento_core::clip_store::{delete_entry, highest_id, read_entry, sweep, write_
 use vento_core::settings::Settings;
 use vento_platform::{Dropped, Platform};
 
-use super::clip_thumb::{THUMB_FILE, write_thumb};
+use super::clip_thumb::{THUMB_FILE, write_file_thumb, write_thumb};
 use super::display_name;
 
 thread_local! {
@@ -45,6 +45,14 @@ pub(super) enum ClipKind {
     Files,
     Link,
     Image,
+}
+
+/// Where a copy's thumbnail comes from.
+enum Picture {
+    /// The image data that was copied.
+    Pasted,
+    /// The picture file that was copied (in Finder).
+    File(PathBuf),
 }
 
 /// One row of the Clipboard view.
@@ -256,7 +264,10 @@ impl ClipController {
             },
             other => other,
         };
-        let picture = matches!(summary, Summary::Image { .. });
+        let picture = match &summary {
+            Summary::Image { .. } => Some(Picture::Pasted),
+            other => shown_picture(other).map(|p| Picture::File(p.to_path_buf())),
+        };
         let types = snapshot
             .items
             .iter()
@@ -276,7 +287,7 @@ impl ClipController {
     }
 
     /// Hashes entry `id`'s snapshot and writes its blobs on a worker
-    /// thread, with a thumbnail beside them for a `picture`, then deletes
+    /// thread, with a thumbnail of its `picture` beside them, then deletes
     /// the folders of `evicted`; the hash, or the failure, is reported back
     /// on the main thread.
     fn spawn_write(
@@ -284,7 +295,7 @@ impl ClipController {
         id: u64,
         snapshot: Arc<ClipSnapshot>,
         evicted: Vec<ClipEntry>,
-        picture: bool,
+        picture: Option<Picture>,
     ) {
         let evicted: Vec<u64> = evicted.iter().map(|e| e.id).collect();
         {
@@ -309,10 +320,16 @@ impl ClipController {
                     // Here, not on the main thread: decoding scales with
                     // the picture. Without a thumbnail the row shows an icon.
                     if written.is_ok()
-                        && picture
-                        && let Err(e) = write_thumb(&dir.join(id.to_string()), &snapshot)
+                        && let Some(picture) = &picture
                     {
-                        debug!("clipboard: no thumbnail for entry {id}: {e}");
+                        let folder = dir.join(id.to_string());
+                        let thumb = match picture {
+                            Picture::Pasted => write_thumb(&folder, &snapshot),
+                            Picture::File(path) => write_file_thumb(&folder, path),
+                        };
+                        if let Err(e) = thumb {
+                            debug!("clipboard: no thumbnail for entry {id}: {e}");
+                        }
                     }
                     for old in gone {
                         delete_entry(&dir, old);
@@ -373,11 +390,10 @@ impl ClipController {
             self.delete(twin.id);
         }
         self.save();
-        let image = self
-            .history
-            .borrow()
-            .get(id)
-            .is_some_and(|e| matches!(e.summary, Summary::Image { .. }));
+        let image = self.history.borrow().get(id).is_some_and(|e| {
+            matches!(e.summary, Summary::Image { .. }) || shown_picture(&e.summary).is_some()
+        });
+        // A picture's thumbnail is there now.
         if twin.is_some() || image {
             (self.on_change)();
         }
@@ -688,12 +704,21 @@ fn build_rows(
         .map(|e| {
             let (kind, label, missing, thumb) = match &e.summary {
                 Summary::Text { preview } => (ClipKind::Text, preview.clone(), false, None),
-                Summary::Files { paths } => (
-                    ClipKind::Files,
-                    files_label(paths),
-                    !paths.is_empty() && paths.iter().all(|p| !exists(p)),
-                    None,
-                ),
+                // Picture files (a photo copied in Finder) show as the
+                // picture, with a thumbnail made from the file.
+                Summary::Files { paths } => {
+                    let picture = shown_picture(&e.summary).is_some();
+                    (
+                        if picture {
+                            ClipKind::Image
+                        } else {
+                            ClipKind::Files
+                        },
+                        files_label(paths),
+                        !paths.is_empty() && paths.iter().all(|p| !exists(p)),
+                        picture.then(|| dir.join(e.id.to_string()).join(THUMB_FILE)),
+                    )
+                }
                 Summary::Link { url } => (ClipKind::Link, link_label(url), false, None),
                 Summary::Image { width, height, .. } => (
                     ClipKind::Image,
@@ -1253,6 +1278,37 @@ mod tests {
         std::fs::remove_file(&real).unwrap();
         assert!(c.rows(0)[0].missing);
         assert!(!c.put_back(id));
+    }
+
+    #[test]
+    fn copied_picture_files_are_shown_as_pictures() {
+        let dir = Path::new("/data/clipboard");
+        let entries = vec![
+            entry(
+                1,
+                0,
+                Summary::Files {
+                    paths: vec![PathBuf::from("/x/Photo.jpg")],
+                },
+                vec![],
+            ),
+            entry(
+                2,
+                0,
+                Summary::Files {
+                    paths: vec![PathBuf::from("/x/a.png"), PathBuf::from("/x/b.txt")],
+                },
+                vec![],
+            ),
+        ];
+        let rows = build_rows(&entries, 0, |_| true, dir);
+        assert_eq!(rows[0].kind, ClipKind::Image);
+        assert_eq!(rows[0].label, "Photo.jpg");
+        assert_eq!(rows[0].thumb, Some(dir.join("1").join("thumb.png")));
+        assert_eq!(rows[1].kind, ClipKind::Files);
+        assert_eq!(rows[1].thumb, None);
+        // Gone, it is dimmed like any file.
+        assert!(build_rows(&entries, 0, |_| false, dir)[0].missing);
     }
 
     #[test]

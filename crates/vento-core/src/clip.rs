@@ -179,6 +179,30 @@ pub fn file_url_to_path(url: &[u8]) -> Option<PathBuf> {
     Some(PathBuf::from(path.into_owned()))
 }
 
+/// Extensions of the picture files a file copy is shown as a picture for.
+const PICTURE_EXTS: [&str; 10] = [
+    "png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp", "bmp",
+];
+
+/// For a copy of picture files only (a photo copied in Finder), the first
+/// of them, so the copy can be shown as the picture it is; `None` for any
+/// other summary.
+pub fn shown_picture(summary: &Summary) -> Option<&Path> {
+    let Summary::Files { paths } = summary else {
+        return None;
+    };
+    let is_picture = |p: &PathBuf| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| PICTURE_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+    };
+    paths
+        .iter()
+        .all(is_picture)
+        .then(|| paths.first().map(PathBuf::as_path))
+        .flatten()
+}
+
 /// Whether `path` is a file reference (`/.file/id=…`), the form Finder's
 /// file reference URLs decode to; only the system can tell which file it is.
 pub fn is_file_reference(path: &Path) -> bool {
@@ -429,6 +453,25 @@ mod tests {
         for other in [one_byte, one_type, order] {
             assert_ne!(snapshot_hash(&other), snapshot_hash(&base()));
         }
+    }
+
+    #[test]
+    fn copied_picture_files_show_as_pictures() {
+        let files = |ps: &[&str]| Summary::Files {
+            paths: ps.iter().map(PathBuf::from).collect(),
+        };
+        let one = files(&["/d/Photo.JPG"]);
+        assert_eq!(shown_picture(&one), Some(Path::new("/d/Photo.JPG")));
+        let all = files(&["/d/a.png", "/d/b.heic", "/d/c.webp"]);
+        assert_eq!(shown_picture(&all), Some(Path::new("/d/a.png")));
+        // One file that is not a picture makes it a file copy.
+        assert_eq!(shown_picture(&files(&["/d/a.png", "/d/notes.txt"])), None);
+        assert_eq!(shown_picture(&files(&["/d/png"])), None);
+        assert_eq!(shown_picture(&files(&[])), None);
+        let text = Summary::Text {
+            preview: "a.png".into(),
+        };
+        assert_eq!(shown_picture(&text), None);
     }
 
     #[test]

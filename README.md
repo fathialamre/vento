@@ -211,7 +211,8 @@ restarting the Mac. Recording never opens the island by itself.
 - **Each row** shows an icon (or a thumbnail for an image), one line (the first
   line of text, the file names, a link without its scheme, or `Image 800×600`)
   and its age: `now`, `5m`, `3h`, a weekday within a week, then a date like
-  `20 Oct`.
+  `20 Oct`. Picture files copied in Finder show as pictures, with a thumbnail
+  and under the images filter; they still go back as files.
 - **Click a row** to put it back exactly as you copied it, formatting included
   (cells paste as cells, styled text as styled text), and the island closes. It
   moves to the top of the list. A file entry whose files are all gone is dimmed

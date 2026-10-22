@@ -35,6 +35,7 @@ mod screens;
 mod terminal;
 mod trash;
 
+pub(crate) use icons::picture_thumbnail;
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 

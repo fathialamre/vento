@@ -30,8 +30,24 @@ pub(super) fn write_thumb(folder: &Path, s: &ClipSnapshot) -> io::Result<()> {
         return Err(bad("not a PNG"));
     }
     let full = decode_png(&bytes).ok_or_else(|| bad("cannot decode the PNG"))?;
-    let small = shrink(&full.pixels, full.width, full.height, THUMB_PX);
-    let png = encode_png(&small).ok_or_else(|| bad("cannot encode the thumbnail"))?;
+    save_thumb(
+        folder,
+        &shrink(&full.pixels, full.width, full.height, THUMB_PX),
+    )
+}
+
+/// Writes the thumbnail of the picture file `picture` (copied in Finder)
+/// into `folder`. Any format macOS reads works, HEIC included.
+pub(super) fn write_file_thumb(folder: &Path, picture: &Path) -> io::Result<()> {
+    let small = vento_platform::picture_thumbnail(picture, THUMB_PX, THUMB_MAX_RATIO)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "cannot read the picture"))?;
+    save_thumb(folder, &small)
+}
+
+/// Saves `small` as the thumbnail in `folder`, through a temporary file.
+fn save_thumb(folder: &Path, small: &RgbaImage) -> io::Result<()> {
+    let png = encode_png(small)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "cannot encode the thumbnail"))?;
     let tmp = folder.join(format!("{THUMB_FILE}.tmp"));
     fs::write(&tmp, png)?;
     fs::rename(&tmp, folder.join(THUMB_FILE)).inspect_err(|_| {
@@ -180,6 +196,19 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, [THUMB_FILE]);
+    }
+
+    #[test]
+    fn copied_picture_file_gets_a_thumb() {
+        let tmp = tempfile::tempdir().unwrap();
+        let photo = tmp.path().join("photo.png");
+        fs::write(&photo, encode_png(&flat(400, 200)).unwrap()).unwrap();
+        let folder = tmp.path().join("7");
+        fs::create_dir(&folder).unwrap();
+        write_file_thumb(&folder, &photo).unwrap();
+        let thumb = decode_png(&fs::read(folder.join(THUMB_FILE)).unwrap()).unwrap();
+        assert_eq!((thumb.width, thumb.height), (112, 56));
+        assert!(write_file_thumb(&folder, &tmp.path().join("gone.png")).is_err());
     }
 
     #[test]

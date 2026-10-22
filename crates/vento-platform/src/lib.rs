@@ -320,6 +320,22 @@ pub fn is_package(path: &Path) -> bool {
     }
 }
 
+/// A thumbnail of the picture file at `path`: its shorter side `short_px`
+/// pixels, its longer one in proportion but at most `max_ratio` times as
+/// long. `None` if it is missing or not a readable picture. A free function
+/// so a worker thread can call it. Always `None` where unsupported.
+pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<RgbaImage> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::picture_thumbnail(path, short_px, max_ratio)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, short_px, max_ratio);
+        None
+    }
+}
+
 /// Make file reads on the calling thread fail on cloud-only files instead
 /// of downloading them. Call it on the thread that walks, before walking.
 /// Does nothing where unsupported.
