@@ -11,6 +11,7 @@
 //! and the island opens on a shake during a drag or on the global shortcut.
 
 mod add;
+mod clip;
 mod geometry;
 mod menu;
 mod out;
@@ -41,6 +42,7 @@ use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
 use add::{AddPlan, Entry, plan_new, store};
+use clip::ClipController;
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
@@ -187,6 +189,8 @@ pub struct PocketController {
     /// over the expanded window then, to replay hover moves.
     last_cursor: Cell<Option<Point>>,
     pointer_in: Cell<bool>,
+    /// The clipboard history.
+    clip: Rc<ClipController>,
     this: Weak<Self>,
 }
 
@@ -210,6 +214,7 @@ impl PocketController {
         let ghosts = Rc::new(VecModel::default());
         window.set_ghosts(ModelRc::from(ghosts.clone()));
         let home = platform.pocket_home();
+        let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
         let controller = Rc::new_cyclic(|this| Self {
             platform,
             settings,
@@ -242,6 +247,7 @@ impl PocketController {
             paused: Cell::new(false),
             last_cursor: Cell::new(None),
             pointer_in: Cell::new(false),
+            clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -250,6 +256,24 @@ impl PocketController {
         controller.connect();
         MAIN_POCKET.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
         controller
+    }
+
+    /// The clipboard history, refreshing the island through `this` on every
+    /// change to it.
+    fn clip_history(
+        platform: Rc<dyn Platform>,
+        settings: &RefCell<Settings>,
+        this: Weak<Self>,
+    ) -> Rc<ClipController> {
+        ClipController::new(
+            platform,
+            settings,
+            Box::new(move || {
+                if let Some(c) = this.upgrade() {
+                    c.refresh();
+                }
+            }),
+        )
     }
 
     /// Routes the island's presses, moves and buttons to the controller.
@@ -718,6 +742,7 @@ impl PocketController {
     /// Moves every file still waiting for its Undo window or drop grace to
     /// the Trash now. Call when vento quits.
     pub fn flush_pending(&self) {
+        self.clip.flush();
         let items = self.pending.take_all();
         if !items.is_empty() {
             info!(
@@ -745,6 +770,7 @@ impl PocketController {
     /// sample decides again.
     pub fn set_paused(&self, paused: bool) {
         self.paused.set(paused);
+        self.clip.set_paused(paused);
         if !paused || !self.warm.get() {
             return;
         }
@@ -913,6 +939,7 @@ impl PocketController {
     /// Updates the island from one input sample; `dragging` is whether a drag
     /// of any type is under way. Called on every poll tick of the wheel.
     pub fn observe(&self, sample: &InputSample, dragging: bool) {
+        self.clip.observe(sample.clip_change_count);
         if !self.warm.get() || self.paused.get() {
             return;
         }
