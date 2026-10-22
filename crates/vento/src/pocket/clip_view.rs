@@ -171,15 +171,23 @@ impl PocketController {
     }
 
     /// A row was clicked: its entry goes back on the clipboard and the
-    /// island closes at once. A row with nothing to put back does nothing.
+    /// island closes on the next turn of the event loop, once the window
+    /// has finished with the click (closing inside it would leave the row's
+    /// hover behind). A row with nothing to put back does nothing.
     fn clip_pressed(&self, id: u64) {
         if !self.clip.put_back(id) {
             return;
         }
         self.pinned.set(false);
-        if self.warm.get() && !self.paused.get() {
-            self.settle_now();
-        }
+        let this = self.this.clone();
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(c) = this.upgrade()
+                && c.warm.get()
+                && !c.paused.get()
+            {
+                c.settle_now();
+            }
+        });
     }
 
     /// A switch button was clicked. Going to the shorter Pocket view leaves

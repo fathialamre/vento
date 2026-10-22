@@ -35,6 +35,18 @@ pub struct ClipEntry {
     pub types: Vec<Vec<String>>,
 }
 
+/// How [`ClipHistory::load`] found the history file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Loaded {
+    /// There was none: the history starts empty.
+    Missing,
+    /// It was read.
+    Read,
+    /// It could not be used and was moved aside to `<name>.bak` (or could
+    /// not even be moved). The blob folders may belong to it.
+    SetAside,
+}
+
 /// The remembered copies, newest first.
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct ClipHistory {
@@ -123,6 +135,22 @@ impl ClipHistory {
         self.entries.iter().any(|e| e.hash == Some(hash))
     }
 
+    /// Keeps only the entries `keep` accepts and returns the others, in
+    /// order. Only the entries go; no blob is touched.
+    pub fn retain(&mut self, mut keep: impl FnMut(&ClipEntry) -> bool) -> Vec<ClipEntry> {
+        let (kept, dropped) = std::mem::take(&mut self.entries)
+            .into_iter()
+            .partition(|e| keep(e));
+        self.entries = kept;
+        dropped
+    }
+
+    /// Never hands out `id`, or any id below it, from now on: blobs of an
+    /// entry the history no longer knows may still sit under that id.
+    pub fn skip_ids_through(&mut self, id: u64) {
+        self.next_id = self.next_id.max(id.saturating_add(1));
+    }
+
     /// Moves the entry to the top and sets its time to `now_unix` (it was
     /// pasted again). `false` when there is no such entry.
     pub fn touch(&mut self, id: u64, now_unix: u64) -> bool {
@@ -169,26 +197,29 @@ impl ClipHistory {
         self.enforce_cap()
     }
 
-    /// Loads the history from `path`. Never fails: a missing file gives an
-    /// empty history; an unreadable one, or one written by a newer version,
-    /// gives an empty history and is moved aside to `<name>.bak` (replacing
-    /// an older backup) so the next save cannot destroy it.
-    pub fn load(path: &Path) -> ClipHistory {
+    /// Loads the history from `path`, and says how. Never fails: a missing
+    /// file gives an empty history; an unreadable one, or one written by a
+    /// newer version, gives an empty history and is moved aside to
+    /// `<name>.bak` (replacing an older backup) so the next save cannot
+    /// destroy it.
+    pub fn load(path: &Path) -> (ClipHistory, Loaded) {
         let text = match std::fs::read_to_string(path) {
             Ok(t) => t,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return ClipHistory::default(),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return (ClipHistory::default(), Loaded::Missing);
+            }
             Err(e) => {
                 warn!("cannot read clipboard history {}: {e}", path.display());
                 Self::set_aside(path);
-                return ClipHistory::default();
+                return (ClipHistory::default(), Loaded::SetAside);
             }
         };
         match Self::parse(&text) {
-            Ok(history) => history,
+            Ok(history) => (history, Loaded::Read),
             Err(why) => {
                 warn!("ignoring clipboard history {}: {why}", path.display());
                 Self::set_aside(path);
-                ClipHistory::default()
+                (ClipHistory::default(), Loaded::SetAside)
             }
         }
     }
@@ -271,20 +302,35 @@ impl ClipHistory {
     }
 }
 
-/// Location of the history file.
-pub fn clipboard_path() -> PathBuf {
-    match ProjectDirs::from("", "", "vento") {
-        Some(dirs) => dirs.data_dir().join("clipboard.json"),
-        None => PathBuf::from("clipboard.json"),
+/// Whether a history file set aside by [`ClipHistory::load`] is still
+/// beside `path`.
+pub fn has_backup(path: &Path) -> bool {
+    with_suffix(path, ".bak").exists()
+}
+
+/// Deletes the history file set aside by [`ClipHistory::load`] beside
+/// `path`, if there is one: it holds previews of old copies. Failures are
+/// logged.
+pub fn remove_backup(path: &Path) {
+    let bak = with_suffix(path, ".bak");
+    if let Err(e) = std::fs::remove_file(&bak)
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        warn!("cannot delete {}: {e}", bak.display());
     }
 }
 
-/// Folder holding the blobs of the remembered copies (`<id>/<item>-<rep>`).
-pub fn clipboard_dir() -> PathBuf {
-    match ProjectDirs::from("", "", "vento") {
-        Some(dirs) => dirs.data_dir().join("clipboard"),
-        None => PathBuf::from("clipboard"),
-    }
+/// Location of the history file; `None` when the user's data folder is
+/// unknown (no home directory), and then there is no history.
+pub fn clipboard_path() -> Option<PathBuf> {
+    ProjectDirs::from("", "", "vento").map(|d| d.data_dir().join("clipboard.json"))
+}
+
+/// Folder holding the blobs of the remembered copies (`<id>/<item>-<rep>`);
+/// `None` when the user's data folder is unknown. Never a relative path:
+/// the launch sweep deletes what it finds there.
+pub fn clipboard_dir() -> Option<PathBuf> {
+    ProjectDirs::from("", "", "vento").map(|d| d.data_dir().join("clipboard"))
 }
 
 #[cfg(test)]
@@ -411,7 +457,7 @@ mod tests {
         let b = new_id(&mut h, 2);
         h.remove(&[b]);
         h.save(&path).unwrap();
-        let mut loaded = ClipHistory::load(&path);
+        let (mut loaded, _) = ClipHistory::load(&path);
         let c = new_id(&mut loaded, 3);
         assert!(c > a && c > b);
     }
@@ -426,8 +472,40 @@ mod tests {
             entries: vec![entry(7, 1)],
         };
         std::fs::write(&path, serde_json::to_string(&raw).unwrap()).unwrap();
-        let mut h = ClipHistory::load(&path);
+        let (mut h, _) = ClipHistory::load(&path);
         assert!(new_id(&mut h, 2) > 7);
+    }
+
+    #[test]
+    fn retain_returns_what_it_drops() {
+        let mut h = ClipHistory::default();
+        let all: Vec<u64> = (0..4).map(|n| new_id(&mut h, n)).collect();
+        let dropped = h.retain(|e| e.id % 2 == 0);
+        let dropped: Vec<u64> = dropped.iter().map(|e| e.id).collect();
+        assert_eq!(dropped, [all[3], all[1]]);
+        assert_eq!(ids(&h), [all[2], all[0]]);
+    }
+
+    #[test]
+    fn skipped_ids_are_never_handed_out() {
+        let mut h = ClipHistory::default();
+        h.skip_ids_through(41);
+        assert_eq!(new_id(&mut h, 1), 42);
+        h.skip_ids_through(3); // never lowers
+        assert_eq!(new_id(&mut h, 2), 43);
+    }
+
+    #[test]
+    fn remove_backup_deletes_only_the_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clipboard.json");
+        remove_backup(&path); // none yet: fine
+        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(dir.path().join("clipboard.json.bak"), "old").unwrap();
+        assert!(has_backup(&path));
+        remove_backup(&path);
+        assert!(!has_backup(&path));
+        assert!(path.exists());
     }
 
     #[test]
@@ -502,7 +580,8 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("clipboard.json");
             std::fs::write(&path, body).unwrap();
-            let h = ClipHistory::load(&path);
+            let (h, loaded) = ClipHistory::load(&path);
+            assert_eq!(loaded, Loaded::SetAside);
             assert!(h.is_empty());
             assert!(!path.exists());
             let bak = dir.path().join("clipboard.json.bak");
@@ -520,7 +599,7 @@ mod tests {
         h.save(&path).unwrap();
         let json = std::fs::read_to_string(&path).unwrap();
         assert_eq!(json.matches("\"hash\"").count(), 1);
-        let mut loaded = ClipHistory::load(&path);
+        let (mut loaded, _) = ClipHistory::load(&path);
         assert_eq!(ids(&loaded), [kept]);
         // Its id is still never handed out again.
         assert!(new_id(&mut loaded, 3) > pending);
@@ -529,7 +608,8 @@ mod tests {
     #[test]
     fn missing_file_is_an_empty_history() {
         let dir = tempfile::tempdir().unwrap();
-        let h = ClipHistory::load(&dir.path().join("clipboard.json"));
+        let (h, loaded) = ClipHistory::load(&dir.path().join("clipboard.json"));
+        assert_eq!(loaded, Loaded::Missing);
         assert!(h.is_empty());
         assert!(!dir.path().join("clipboard.json.bak").exists());
     }
@@ -565,6 +645,6 @@ mod tests {
                 .join("clipboard.json.tmp")
                 .exists()
         );
-        assert_eq!(ClipHistory::load(&path), h);
+        assert_eq!(ClipHistory::load(&path), (h, Loaded::Read));
     }
 }

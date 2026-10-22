@@ -239,7 +239,10 @@ fn pick(s: &ClipSnapshot) -> Option<(Summary, Source)> {
 /// First non-blank line of `data`, trimmed and capped; `None` if all blank.
 fn preview(data: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(data);
-    let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let line = text
+        .split(['\n', '\r', '\u{2028}'])
+        .map(str::trim)
+        .find(|l| !l.is_empty())?;
     Some(line.chars().take(MAX_PREVIEW_CHARS).collect())
 }
 
@@ -367,6 +370,17 @@ mod tests {
                 preview: "hello world".into()
             })
         );
+        // A lone CR (classic Mac text) and U+2028 end a line too.
+        for text in ["one\rtwo", "one\u{2028}two", "one\r\ntwo"] {
+            let s = snap(vec![vec![rep(TYPE_TEXT, text.as_bytes())]]);
+            assert_eq!(
+                summarize(&s),
+                Some(Summary::Text {
+                    preview: "one".into()
+                }),
+                "{text:?}"
+            );
+        }
         let long = "x".repeat(300);
         let s = snap(vec![vec![rep(TYPE_TEXT, long.as_bytes())]]);
         assert_eq!(

@@ -128,6 +128,17 @@ pub fn sweep(dir: &Path, keep: &[u64]) {
     }
 }
 
+/// The highest id that names anything directly in `dir` (an entry folder,
+/// or whatever else took that name: [`write_entry`] refuses it either way),
+/// `None` when there is none or `dir` can't be read.
+pub fn highest_id(dir: &Path) -> Option<u64> {
+    fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|c| c.file_name().to_str()?.parse::<u64>().ok())
+        .max()
+}
+
 /// Removes one direct child of the history folder: a real folder with its
 /// contents, anything else (file or symlink, never followed) as a single file.
 fn remove_child(path: &Path) -> io::Result<()> {
@@ -241,6 +252,19 @@ mod tests {
         left.sort();
         assert_eq!(left, ["1", "3"]);
         assert!(tmp.path().join("1").join("0-0").is_file());
+    }
+
+    #[test]
+    fn highest_id_reads_folder_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(highest_id(&tmp.path().join("none")), None);
+        assert_eq!(highest_id(tmp.path()), None);
+        for name in ["3", "12", "40.tmp", "stray", "7x"] {
+            fs::create_dir(tmp.path().join(name)).unwrap();
+        }
+        assert_eq!(highest_id(tmp.path()), Some(12));
+        fs::write(tmp.path().join("99"), b"a file still takes the name").unwrap();
+        assert_eq!(highest_id(tmp.path()), Some(99));
     }
 
     #[cfg(unix)]

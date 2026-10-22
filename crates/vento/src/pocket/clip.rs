@@ -22,8 +22,10 @@ use vento_core::clip::{
     ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_secret,
     plain_text, snapshot_hash, summarize,
 };
-use vento_core::clip_history::{ClipEntry, ClipHistory, clipboard_dir, clipboard_path};
-use vento_core::clip_store::{delete_entry, read_entry, sweep, write_entry};
+use vento_core::clip_history::{
+    ClipEntry, ClipHistory, Loaded, clipboard_dir, clipboard_path, has_backup, remove_backup,
+};
+use vento_core::clip_store::{delete_entry, highest_id, read_entry, sweep, write_entry};
 use vento_core::settings::Settings;
 use vento_platform::{Dropped, Platform};
 
@@ -65,10 +67,9 @@ pub(super) struct ClipRowData {
 /// thread only.
 pub(super) struct ClipController {
     platform: Rc<dyn Platform>,
-    /// `clipboard.json`.
-    json: PathBuf,
-    /// The folder holding each entry's blobs.
-    dir: PathBuf,
+    /// Where the history is kept; `None` when the data folder is unknown,
+    /// and then the history stays off and empty.
+    store: Option<Store>,
     history: RefCell<ClipHistory>,
     /// Snapshots of new entries whose blobs are still being written.
     pending: RefCell<HashMap<u64, Arc<ClipSnapshot>>>,
@@ -91,26 +92,37 @@ pub(super) struct ClipController {
     on_change: Box<dyn Fn()>,
 }
 
+/// Where the clipboard history lives on disk.
+struct Store {
+    /// `clipboard.json`.
+    json: PathBuf,
+    /// The folder holding each entry's blobs.
+    dir: PathBuf,
+}
+
 impl ClipController {
     /// Loads the history from its usual place; `on_change` is called after
-    /// every change to it.
+    /// every change to it. Without a known data folder the history stays
+    /// off: nothing is loaded, swept or recorded.
     pub(super) fn new(
         platform: Rc<dyn Platform>,
         settings: &RefCell<Settings>,
         on_change: Box<dyn Fn()>,
     ) -> Rc<Self> {
-        Self::with_paths(
-            clipboard_path(),
-            clipboard_dir(),
-            platform,
-            settings,
-            on_change,
-        )
+        match (clipboard_path(), clipboard_dir()) {
+            (Some(json), Some(dir)) => Self::with_paths(json, dir, platform, settings, on_change),
+            _ => {
+                warn!("no data folder: the clipboard history stays off");
+                Self::build(None, ClipHistory::default(), platform, settings, on_change)
+            }
+        }
     }
 
-    /// Loads the history from `json`, with the blobs under `dir`, and
-    /// deletes every folder there no entry names (left by a crash, or by a
-    /// write that finished after its entry left).
+    /// Loads the history from `json`, with the blobs under `dir`. Deletes
+    /// every folder there no entry names (left by a crash, or by a write
+    /// that finished after its entry left), except while a history file set
+    /// aside as unusable is kept: the folders may be its. Then drops the
+    /// entries whose folder is gone, as they can never be put back.
     pub(super) fn with_paths(
         json: PathBuf,
         dir: PathBuf,
@@ -118,16 +130,55 @@ impl ClipController {
         settings: &RefCell<Settings>,
         on_change: Box<dyn Fn()>,
     ) -> Rc<Self> {
-        let history = ClipHistory::load(&json);
+        let (mut history, loaded) = ClipHistory::load(&json);
         debug!("clipboard history loaded: {} entries", history.len());
         // Before anything is recorded: a sweep running alongside a write
         // could delete the fresh folder.
-        let ids: Vec<u64> = history.entries().iter().map(|e| e.id).collect();
-        sweep(&dir, &ids);
+        if loaded == Loaded::SetAside || has_backup(&json) {
+            debug!("clipboard: no sweep while a set-aside history is kept");
+        } else {
+            let ids: Vec<u64> = history.entries().iter().map(|e| e.id).collect();
+            sweep(&dir, &ids);
+        }
+        // Folders the sweep kept for a set-aside history still own their ids.
+        if let Some(top) = highest_id(&dir) {
+            history.skip_ids_through(top);
+        }
+        // Saved before its blobs were written (vento quit at once), or
+        // removed by hand.
+        let dead = history.retain(|e| dir.join(e.id.to_string()).is_dir());
+        if !dead.is_empty() {
+            warn!(
+                "clipboard: {} entries without their data dropped",
+                dead.len()
+            );
+            if let Err(e) = history.save(&json) {
+                warn!(
+                    "cannot save the clipboard history to {}: {e}",
+                    json.display()
+                );
+            }
+        }
+        Self::build(
+            Some(Store { json, dir }),
+            history,
+            platform,
+            settings,
+            on_change,
+        )
+    }
+
+    /// The controller over `history`, kept in `store`.
+    fn build(
+        store: Option<Store>,
+        history: ClipHistory,
+        platform: Rc<dyn Platform>,
+        settings: &RefCell<Settings>,
+        on_change: Box<dyn Fn()>,
+    ) -> Rc<Self> {
         let controller = Rc::new(Self {
             platform,
-            json,
-            dir,
+            store,
             history: RefCell::new(history),
             pending: RefCell::new(HashMap::new()),
             held: RefCell::new(Vec::new()),
@@ -149,7 +200,7 @@ impl ClipController {
     /// is a copy to record.
     pub(super) fn observe(&self, count: i64) {
         let before = self.baseline.replace(count);
-        if !self.enabled.get() || self.paused.get() || !self.primed.replace(true) {
+        if !self.enabled() || self.paused.get() || !self.primed.replace(true) {
             return;
         }
         if count == before || self.own_write.get() == Some(count) {
@@ -224,7 +275,10 @@ impl ClipController {
                 pending.remove(old);
             }
         }
-        let dir = self.dir.clone();
+        // Always there: nothing is recorded without a store.
+        let Some(dir) = self.dir().map(Path::to_path_buf) else {
+            return;
+        };
         let gone = evicted.clone();
         let spawned = std::thread::Builder::new()
             .name("vento-clip-store".into())
@@ -259,7 +313,7 @@ impl ClipController {
             });
         if let Err(e) = spawned {
             for old in evicted {
-                delete_entry(&self.dir, old);
+                self.delete(old);
             }
             self.stored(id, Err(format!("cannot start writing: {e}")));
         }
@@ -291,14 +345,14 @@ impl ClipController {
                 self.late_hashes.borrow_mut().insert(id, hash);
             } else {
                 // Gone for good while it was being written.
-                delete_entry(&self.dir, id);
+                self.delete(id);
             }
             return;
         }
         let twin = self.history.borrow_mut().set_hash(id, hash);
         if let Some(twin) = &twin {
             debug!("clipboard: entry {} was copied again", twin.id);
-            delete_entry(&self.dir, twin.id);
+            self.delete(twin.id);
         }
         self.save();
         let image = self
@@ -325,9 +379,10 @@ impl ClipController {
         self.primed.set(false);
     }
 
-    /// Whether the history records copies.
+    /// Whether the history records copies: switched on, and with a place
+    /// to keep them.
     pub(super) fn enabled(&self) -> bool {
-        self.enabled.get()
+        self.enabled.get() && self.store.is_some()
     }
 
     /// How many entries the history holds.
@@ -372,13 +427,16 @@ impl ClipController {
         true
     }
 
-    /// What entry `id` adds to the Pocket: its files, its whole text, its
-    /// link or its image. `None` for an unknown entry, or when its data
-    /// can't be read.
+    /// What entry `id` adds to the Pocket: its files still there, its whole
+    /// text, its link or its image. `None` for an unknown entry, one whose
+    /// files are all gone, or when its data can't be read.
     pub(super) fn to_pocket(&self, id: u64) -> Option<Dropped> {
         let entry = self.history.borrow().get(id).cloned()?;
         match entry.summary {
-            Summary::Files { paths } => Some(Dropped::Files(paths)),
+            Summary::Files { paths } => {
+                let paths: Vec<PathBuf> = paths.into_iter().filter(|p| p.exists()).collect();
+                (!paths.is_empty()).then_some(Dropped::Files(paths))
+            }
             Summary::Link { url } => Some(Dropped::Url(url)),
             Summary::Text { .. } => Some(Dropped::Text(plain_text(&self.snapshot(id)?.1)?)),
             Summary::Image { .. } => {
@@ -395,7 +453,7 @@ impl ClipController {
         if let Some(s) = self.pending.borrow().get(&id) {
             return Some((entry, s.clone()));
         }
-        match read_entry(&self.dir, &entry) {
+        match read_entry(self.dir()?, &entry) {
             Ok(s) => Some((entry, Arc::new(s))),
             Err(e) => {
                 warn!("cannot read clipboard entry {id}: {e}");
@@ -467,20 +525,30 @@ impl ClipController {
     }
 
     /// Lets go of removed entries for good (their Undo ended): their blobs
-    /// are deleted, unless an entry is back in the history.
+    /// are deleted, unless an entry is back in the history. Letting go of
+    /// the last ones (a Clear, or × on the last row) forgets the history
+    /// file set aside, if any, too.
     pub(super) fn discard(&self, entries: Vec<ClipEntry>) {
         self.release(&entries);
+        let any = !entries.is_empty();
         self.delete_unless_back(entries.iter().map(|e| e.id));
+        if any && self.is_empty() {
+            self.forget_backup();
+        }
     }
 
     /// Discards whatever an Undo still holds. Call when vento quits.
     pub(super) fn flush(&self) {
         self.late_hashes.borrow_mut().clear();
         let held = self.held.take();
-        if !held.is_empty() {
-            debug!("clipboard: {} held entries deleted at quit", held.len());
+        if held.is_empty() {
+            return;
         }
+        debug!("clipboard: {} held entries deleted at quit", held.len());
         self.delete_unless_back(held);
+        if self.is_empty() {
+            self.forget_backup();
+        }
     }
 
     /// `entries` are no longer held for an Undo.
@@ -502,26 +570,47 @@ impl ClipController {
                 continue;
             }
             self.pending.borrow_mut().remove(&id);
-            delete_entry(&self.dir, id);
+            self.delete(id);
         }
     }
 
     /// The rows of the Clipboard view, newest first, aged against
     /// `now_unix` in the local time zone.
     pub(super) fn rows(&self, now_unix: u64) -> Vec<ClipRowData> {
-        build_rows(
-            self.history.borrow().entries(),
-            now_unix,
-            Path::exists,
-            &self.dir,
-        )
+        let Some(dir) = self.dir() else {
+            return Vec::new();
+        };
+        build_rows(self.history.borrow().entries(), now_unix, Path::exists, dir)
+    }
+
+    /// Deletes the history file an unusable one was set aside as, if any
+    /// (it holds previews of old copies), so the next launch sweeps again.
+    pub(super) fn forget_backup(&self) {
+        if let Some(store) = &self.store {
+            remove_backup(&store.json);
+        }
+    }
+
+    /// The folder holding each entry's blobs.
+    fn dir(&self) -> Option<&Path> {
+        self.store.as_ref().map(|s| s.dir.as_path())
+    }
+
+    /// Deletes entry `id`'s blobs.
+    fn delete(&self, id: u64) {
+        if let Some(dir) = self.dir() {
+            delete_entry(dir, id);
+        }
     }
 
     fn save(&self) {
-        if let Err(e) = self.history.borrow().save(&self.json) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        if let Err(e) = self.history.borrow().save(&store.json) {
             warn!(
                 "cannot save the clipboard history to {}: {e}",
-                self.json.display()
+                store.json.display()
             );
         }
     }
@@ -811,18 +900,24 @@ mod tests {
     fn setup(enabled: bool) -> (tempfile::TempDir, Rc<FakeClipPlatform>, Rc<ClipController>) {
         let tmp = tempfile::tempdir().unwrap();
         let fake = Rc::new(FakeClipPlatform::default());
+        let c = launch(tmp.path(), &fake, enabled);
+        (tmp, fake, c)
+    }
+
+    /// A controller over `clipboard.json` and `clipboard/` in `at`, as
+    /// vento launching there.
+    fn launch(at: &Path, fake: &Rc<FakeClipPlatform>, enabled: bool) -> Rc<ClipController> {
         let settings = RefCell::new(Settings {
             clipboard_history: enabled,
             ..Settings::default()
         });
-        let c = ClipController::with_paths(
-            tmp.path().join("clipboard.json"),
-            tmp.path().join("clipboard"),
+        ClipController::with_paths(
+            at.join("clipboard.json"),
+            at.join("clipboard"),
             fake.clone(),
             &settings,
             Box::new(|| {}),
-        );
-        (tmp, fake, c)
+        )
     }
 
     /// An input sample carrying change count `n`, which the clipboard
@@ -853,7 +948,7 @@ mod tests {
     /// folder, then reports the result as the worker would. (Tests have no
     /// event loop, so the worker's own report never arrives.)
     fn report(c: &ClipController, id: u64) {
-        let folder = c.dir.join(id.to_string());
+        let folder = c.dir().unwrap().join(id.to_string());
         wait_until(|| folder.is_dir());
         let snapshot = c.pending.borrow()[&id].clone();
         c.stored(id, Ok(snapshot_hash(&snapshot)));
@@ -960,7 +1055,7 @@ mod tests {
         let dir = tmp.path().join("clipboard");
         assert!(!dir.join(a.to_string()).exists());
         assert!(dir.join(again.to_string()).is_dir());
-        let saved = ClipHistory::load(&tmp.path().join("clipboard.json"));
+        let (saved, _) = ClipHistory::load(&tmp.path().join("clipboard.json"));
         assert_eq!(saved.len(), 2);
         assert_eq!(
             saved.get(again).unwrap().hash,
@@ -1032,6 +1127,126 @@ mod tests {
         c.history.borrow_mut().remove(&[a]);
         report(&c, a);
         assert!(!tmp.path().join("clipboard").join(a.to_string()).exists());
+    }
+
+    #[test]
+    fn set_aside_history_keeps_its_blobs_until_its_backup_goes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Rc::new(FakeClipPlatform::default());
+        let json = tmp.path().join("clipboard.json");
+        let bak = tmp.path().join("clipboard.json.bak");
+        let old = tmp.path().join("clipboard").join("3");
+        std::fs::write(&json, "not json").unwrap();
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("0-0"), b"old copy").unwrap();
+
+        let c = launch(tmp.path(), &fake, true);
+        assert!(c.is_empty());
+        assert!(bak.exists());
+        assert!(old.join("0-0").exists(), "the set-aside file's blobs stay");
+        // A new copy never takes a kept folder's id.
+        fake.set(text("new"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let id = top_id(&c);
+        assert!(id > 3);
+        report(&c, id);
+        assert_eq!(c.len(), 1);
+
+        // Next launch: the file reads fine, but its backup is still there.
+        let c = launch(tmp.path(), &fake, true);
+        assert_eq!(c.len(), 1);
+        assert!(old.exists());
+        c.forget_backup();
+        assert!(!bak.exists());
+        // Once the backup is gone the sweep runs again.
+        let c = launch(tmp.path(), &fake, true);
+        assert_eq!(c.len(), 1);
+        assert!(!old.exists());
+    }
+
+    #[test]
+    fn letting_go_of_the_last_entries_removes_the_backup() {
+        let (tmp, fake, c) = setup(true);
+        let bak = tmp.path().join("clipboard.json.bak");
+        std::fs::write(&bak, "old previews").unwrap();
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        report(&c, top_id(&c));
+        let removed = c.clear();
+        // Held for the Undo: nothing is forgotten yet.
+        assert!(bak.exists());
+        c.discard(removed);
+        assert!(!bak.exists());
+    }
+
+    #[test]
+    fn entry_without_its_folder_is_dropped_at_launch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Rc::new(FakeClipPlatform::default());
+        let json = tmp.path().join("clipboard.json");
+        let text_entry = |id| {
+            entry(
+                id,
+                id,
+                Summary::Text {
+                    preview: "x".into(),
+                },
+                vec![vec![TYPE_TEXT.to_owned()]],
+            )
+        };
+        let mut h = ClipHistory::default();
+        h.restore(vec![text_entry(1), text_entry(2)]);
+        h.save(&json).unwrap();
+        std::fs::create_dir_all(tmp.path().join("clipboard").join("1")).unwrap();
+
+        let c = launch(tmp.path(), &fake, true);
+        assert_eq!(ids(&c), [1]);
+        // Saved, so the dead row is gone from the file too.
+        assert_eq!(ClipHistory::load(&json).0.len(), 1);
+    }
+
+    #[test]
+    fn unknown_data_folder_keeps_the_history_off() {
+        let fake = Rc::new(FakeClipPlatform::default());
+        let settings = RefCell::new(Settings::default());
+        let c = ClipController::build(
+            None,
+            ClipHistory::default(),
+            fake.clone(),
+            &settings,
+            Box::new(|| {}),
+        );
+        assert!(!c.enabled());
+        c.set_enabled(true);
+        assert!(!c.enabled());
+        fake.set(text("a"), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        assert!(c.is_empty());
+        assert_eq!(fake.data_reads.get(), 0);
+        c.forget_backup();
+        c.discard(c.clear());
+        c.flush();
+        assert!(c.rows(0).is_empty());
+    }
+
+    #[test]
+    fn to_pocket_leaves_missing_files_out() {
+        let (tmp, fake, c) = setup(true);
+        let here = tmp.path().join("here.txt");
+        std::fs::write(&here, b"x").unwrap();
+        fake.set(
+            files(&[here.to_str().unwrap(), "/nonexistent/gone.txt"]),
+            &[],
+        );
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let id = top_id(&c);
+        assert_eq!(c.to_pocket(id), Some(Dropped::Files(vec![here.clone()])));
+        std::fs::remove_file(&here).unwrap();
+        assert_eq!(c.to_pocket(id), None);
     }
 
     #[test]

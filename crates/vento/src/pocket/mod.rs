@@ -1303,11 +1303,13 @@ impl PocketController {
 
     /// Empties the clipboard history at once, with no Undo (the settings'
     /// "Clear history"). An Undo of the history on offer is withdrawn too,
-    /// its entries let go with the rest.
+    /// its entries let go with the rest, and a history file set aside as
+    /// unusable is deleted.
     pub fn clear_clip_history(&self) {
         let gone = self.clip.clear();
         self.clip.discard(gone);
         self.withdraw_clip_undo();
+        self.clip.forget_backup();
         self.refresh();
     }
 
