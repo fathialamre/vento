@@ -46,7 +46,9 @@ pub struct HotkeyHandle {
 
 impl Drop for HotkeyHandle {
     fn drop(&mut self) {
-        // Runs before the manager field drops and unregisters the key.
+        // Runs before the manager field drops and unregisters the key. It
+        // removes by id, so drop the old handle of a key before installing
+        // the same key again, or the old drop would forget the new action.
         forget(self.id);
     }
 }
