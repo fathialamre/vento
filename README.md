@@ -156,6 +156,13 @@ pocket_keep_copies = false
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
 # (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
 pocket_shortcut = "ctrl+alt+p"
+
+# Clipboard: record what you copy into the island's Clipboard history
+clipboard_history = true
+
+# Global shortcut that opens the island on the Clipboard history; same form
+# as pocket_shortcut
+clipboard_shortcut = "ctrl+alt+v"
 ```
 
 ## Pocket
