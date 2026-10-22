@@ -318,6 +318,7 @@ mod tests {
 
     use objc2_foundation::{NSData, NSString};
 
+    use super::super::test_support::TempPasteboard;
     use super::*;
 
     #[derive(Default)]
@@ -465,25 +466,6 @@ mod tests {
             ..Fake::default()
         };
         assert_eq!(read_dropped(&empty), None);
-    }
-
-    /// A private pasteboard, released when dropped.
-    struct TempPasteboard(Retained<NSPasteboard>);
-
-    impl TempPasteboard {
-        fn new() -> Self {
-            let pb = NSPasteboard::pasteboardWithUniqueName();
-            pb.clearContents();
-            Self(pb)
-        }
-    }
-
-    impl Drop for TempPasteboard {
-        fn drop(&mut self) {
-            // SAFETY: `releaseGlobally` takes no arguments and returns void;
-            // objc2 does not expose it.
-            let _: () = unsafe { msg_send![&*self.0, releaseGlobally] };
-        }
     }
 
     #[test]

@@ -73,6 +73,7 @@ pub(super) fn sample(cache: &DragPasteboardCache) -> InputSample {
         ),
         drag_change_count: count,
         drag_has_files,
+        clip_change_count: NSPasteboard::generalPasteboard().changeCount() as i64,
         cursor,
     }
 }

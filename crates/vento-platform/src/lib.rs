@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use vento_core::clip::ClipSnapshot;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
@@ -151,6 +152,16 @@ pub trait Platform {
     fn copy_files(&self, paths: &[PathBuf]) -> Result<(), PlatformError>;
     /// Replace the clipboard with this text.
     fn copy_text(&self, text: &str) -> Result<(), PlatformError>;
+    /// Every pasteboard type name of every clipboard item, in order,
+    /// duplicates kept. Cheap: reads names only, never data.
+    fn clipboard_types(&self) -> Vec<String>;
+    /// The whole clipboard: per item, every representation that has data.
+    /// Items left with none are dropped.
+    fn read_clipboard(&self) -> ClipSnapshot;
+    /// Replace the clipboard with this snapshot, one pasteboard item per
+    /// snapshot item. Returns the clipboard's change counter after writing,
+    /// so the caller can tell its own write from a copy.
+    fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError>;
     /// Installed terminal apps; on macOS Terminal is always first.
     fn terminals(&self) -> Vec<TerminalApp>;
     /// Open a terminal in `dir`. `terminal` is a [`TerminalApp::id`]; an

@@ -48,6 +48,8 @@ pub struct InputSample {
     pub drag_change_count: i64,
     /// Whether the drag pasteboard carries file URLs.
     pub drag_has_files: bool,
+    /// Change counter of the general pasteboard; it bumps on every copy.
+    pub clip_change_count: i64,
     pub cursor: Point,
 }
 
@@ -177,6 +179,7 @@ mod tests {
             escape_down: escape,
             drag_change_count: cc,
             drag_has_files: files,
+            clip_change_count: 0,
             cursor: CURSOR,
         }
     }
