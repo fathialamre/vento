@@ -1,8 +1,10 @@
-//! The global shortcut that opens the Pocket: a Carbon hot key through
-//! `global-hotkey`, which needs no Accessibility or Input Monitoring
-//! permission.
+//! Global shortcuts, such as the ones that open the Pocket and the Clipboard
+//! history: Carbon hot keys through `global-hotkey`, which need no
+//! Accessibility or Input Monitoring permission. Any number can be registered
+//! at once; each keeps its own action.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Once;
 
@@ -11,21 +13,42 @@ use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use log::{debug, warn};
 use vento_core::settings::parse_shortcut;
 
-/// The action for the registered hot key, by id.
-type Pressed = (u32, Rc<dyn Fn()>);
-
 thread_local! {
-    /// What the current hot key does; lives on the main thread, where the
-    /// non-`Send` controllers are.
-    static ON_PRESS: RefCell<Option<Pressed>> = const { RefCell::new(None) };
+    /// What each registered hot key does, by hot key id; lives on the main
+    /// thread, where the non-`Send` controllers are.
+    static ON_PRESS: RefCell<HashMap<u32, Rc<dyn Fn()>>> = RefCell::new(HashMap::new());
+}
+
+/// Records what the hot key `id` does.
+fn remember(id: u32, action: Rc<dyn Fn()>) {
+    ON_PRESS.with(|map| map.borrow_mut().insert(id, action));
+}
+
+/// Drops the action of the hot key `id`.
+fn forget(id: u32) {
+    ON_PRESS.with(|map| map.borrow_mut().remove(&id));
+}
+
+/// The action of the hot key `id`, cloned out so it may replace hot keys.
+fn action_for(id: u32) -> Option<Rc<dyn Fn()>> {
+    ON_PRESS.with(|map| map.borrow().get(&id).cloned())
 }
 
 /// `global-hotkey` keeps one event handler for the whole process.
 static HANDLER: Once = Once::new();
 
-/// Keeps the hot key registered; dropping it unregisters the key.
+/// Keeps the hot key registered; dropping it forgets its action and
+/// unregisters the key.
 pub struct HotkeyHandle {
+    id: u32,
     _manager: GlobalHotKeyManager,
+}
+
+impl Drop for HotkeyHandle {
+    fn drop(&mut self) {
+        // Runs before the manager field drops and unregisters the key.
+        forget(self.id);
+    }
 }
 
 /// The hot key for a spec such as `"ctrl+alt+p"`; see [`parse_shortcut`].
@@ -90,8 +113,9 @@ fn key_code(key: char) -> Option<Code> {
 }
 
 /// Registers `spec` as a global shortcut and calls `on_press` on the main
-/// thread each time it is pressed. Replaces any earlier action; drop the
-/// earlier handle first, so its key is free to register again.
+/// thread each time it is pressed. Other shortcuts stay registered with their
+/// own actions; to register the same key again, drop its earlier handle
+/// first, so the key is free.
 ///
 /// # Errors
 /// If the spec is invalid or the key cannot be registered (for example,
@@ -100,7 +124,8 @@ pub fn install_hotkey(spec: &str, on_press: Box<dyn Fn()>) -> Result<HotkeyHandl
     let hotkey = to_hotkey(spec)?;
     let manager = GlobalHotKeyManager::new().map_err(|e| e.to_string())?;
     manager.register(hotkey).map_err(|e| e.to_string())?;
-    ON_PRESS.with(|slot| *slot.borrow_mut() = Some((hotkey.id(), Rc::from(on_press))));
+    let id = hotkey.id();
+    remember(id, Rc::from(on_press));
     // Hot key events may arrive on any thread: forward only the (Send) id to
     // the main thread and act on it there.
     HANDLER.call_once(|| {
@@ -110,14 +135,7 @@ pub fn install_hotkey(spec: &str, on_press: Box<dyn Fn()>) -> Result<HotkeyHandl
             }
             let id = event.id();
             if let Err(e) = slint::invoke_from_event_loop(move || {
-                // Clone it out, so the action may replace the hot key.
-                let action = ON_PRESS.with(|slot| {
-                    slot.borrow()
-                        .as_ref()
-                        .filter(|(current, _)| *current == id)
-                        .map(|(_, f)| f.clone())
-                });
-                if let Some(action) = action {
+                if let Some(action) = action_for(id) {
                     action();
                 }
             }) {
@@ -125,8 +143,11 @@ pub fn install_hotkey(spec: &str, on_press: Box<dyn Fn()>) -> Result<HotkeyHandl
             }
         }));
     });
-    debug!("pocket shortcut {spec} registered");
-    Ok(HotkeyHandle { _manager: manager })
+    debug!("shortcut {spec} registered");
+    Ok(HotkeyHandle {
+        id,
+        _manager: manager,
+    })
 }
 
 #[cfg(test)]
@@ -155,5 +176,24 @@ mod tests {
         assert_eq!(to_hotkey("p").unwrap_err(), "invalid shortcut \"p\"");
         assert!(to_hotkey("ctrl+alt+").is_err());
         assert!(to_hotkey("hyper+p").is_err());
+    }
+
+    #[test]
+    fn two_actions_are_kept_by_id() {
+        let hits = Rc::new(RefCell::new(Vec::new()));
+        let first = hits.clone();
+        let second = hits.clone();
+        remember(1, Rc::new(move || first.borrow_mut().push("first")));
+        remember(2, Rc::new(move || second.borrow_mut().push("second")));
+
+        action_for(1).expect("first is kept")();
+        action_for(2).expect("second is kept")();
+        assert_eq!(*hits.borrow(), ["first", "second"]);
+
+        forget(1);
+        assert!(action_for(1).is_none());
+        assert!(action_for(2).is_some());
+        forget(2);
+        assert!(action_for(2).is_none());
     }
 }
