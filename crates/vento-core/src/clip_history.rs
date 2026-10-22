@@ -138,6 +138,26 @@ impl ClipHistory {
         Some(gone)
     }
 
+    /// Replaces each file path of the file entries that `new_path` gives a
+    /// new one for. Returns whether any changed.
+    pub fn rewrite_file_paths(
+        &mut self,
+        mut new_path: impl FnMut(&Path) -> Option<PathBuf>,
+    ) -> bool {
+        let mut changed = false;
+        for entry in &mut self.entries {
+            if let Summary::Files { paths } = &mut entry.summary {
+                for path in paths.iter_mut() {
+                    if let Some(new) = new_path(path) {
+                        *path = new;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        changed
+    }
+
     /// Pins or unpins entry `id`. `false` when there is no such entry.
     pub fn set_pinned(&mut self, id: u64, pinned: bool) -> bool {
         let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else {
@@ -534,6 +554,31 @@ mod tests {
         assert!(!loaded.get(b).unwrap().pinned);
         let text = std::fs::read_to_string(&path).unwrap();
         assert_eq!(text.matches("pinned").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn file_paths_can_be_rewritten() {
+        let mut h = ClipHistory::default();
+        let (files, _) = h.insert_new(
+            Summary::Files {
+                paths: vec![PathBuf::from("/.file/id=1.2"), PathBuf::from("/a.txt")],
+            },
+            types(),
+            1,
+        );
+        let plain = new_id(&mut h, 2);
+        let changed = h.rewrite_file_paths(|p| {
+            (p == Path::new("/.file/id=1.2")).then(|| PathBuf::from("/real.png"))
+        });
+        assert!(changed);
+        assert_eq!(
+            h.get(files).unwrap().summary,
+            Summary::Files {
+                paths: vec![PathBuf::from("/real.png"), PathBuf::from("/a.txt")]
+            }
+        );
+        assert_eq!(h.get(plain).unwrap().summary, text("2"));
+        assert!(!h.rewrite_file_paths(|_| None));
     }
 
     #[test]

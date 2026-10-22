@@ -97,6 +97,10 @@ impl Platform for StubPlatform {
         Err(PlatformError::Unsupported)
     }
 
+    fn resolve_file_reference(&self, _path: &Path) -> Option<PathBuf> {
+        None
+    }
+
     fn terminals(&self) -> Vec<TerminalApp> {
         Vec::new()
     }

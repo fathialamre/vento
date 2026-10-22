@@ -165,6 +165,9 @@ pub trait Platform {
     /// snapshot item. Returns the clipboard's change counter after writing,
     /// so the caller can tell its own write from a copy.
     fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError>;
+    /// The real path of a file reference (`/.file/id=…`: Finder copies
+    /// files as reference URLs), or `None` if it leads to no file now.
+    fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf>;
     /// Installed terminal apps; on macOS Terminal is always first.
     fn terminals(&self) -> Vec<TerminalApp>;
     /// Open a terminal in `dir`. `terminal` is a [`TerminalApp::id`]; an

@@ -19,8 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use jiff::tz::TimeZone;
 use log::{debug, warn};
 use vento_core::clip::{
-    ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_secret,
-    plain_text, snapshot_hash, summarize,
+    ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_file_reference,
+    is_secret, plain_text, snapshot_hash, summarize,
 };
 use vento_core::clip_history::{
     ClipEntry, ClipHistory, Loaded, clipboard_dir, clipboard_path, has_backup, remove_backup,
@@ -154,12 +154,20 @@ impl ClipController {
                 "clipboard: {} entries without their data dropped",
                 dead.len()
             );
-            if let Err(e) = history.save(&json) {
-                warn!(
-                    "cannot save the clipboard history to {}: {e}",
-                    json.display()
-                );
-            }
+        }
+        // Entries recorded before Finder's file references were resolved.
+        let resolved = history.rewrite_file_paths(|p| {
+            is_file_reference(p)
+                .then(|| platform.resolve_file_reference(p))
+                .flatten()
+        });
+        if (!dead.is_empty() || resolved)
+            && let Err(e) = history.save(&json)
+        {
+            warn!(
+                "cannot save the clipboard history to {}: {e}",
+                json.display()
+            );
         }
         Self::build(
             Some(Store { json, dir }),
@@ -239,6 +247,14 @@ impl ClipController {
         let Some(summary) = summarize(&snapshot) else {
             debug!("clipboard: nothing to show in the copy, not recorded");
             return;
+        };
+        // Finder copies files as references: keep their real paths, which
+        // the list names and the Pocket takes.
+        let summary = match summary {
+            Summary::Files { paths } => Summary::Files {
+                paths: paths.iter().map(|p| self.real_path(p)).collect(),
+            },
+            other => other,
         };
         let picture = matches!(summary, Summary::Image { .. });
         let types = snapshot
@@ -406,10 +422,11 @@ impl ClipController {
             return false;
         };
         let snapshot = match entry.summary {
-            Summary::Files { .. } => Arc::new(drop_missing_files(
-                ClipSnapshot::clone(&snapshot),
-                Path::exists,
-            )),
+            Summary::Files { .. } => {
+                Arc::new(drop_missing_files(ClipSnapshot::clone(&snapshot), |p| {
+                    self.real_path(p).exists()
+                }))
+            }
             _ => snapshot,
         };
         if snapshot.items.is_empty() {
@@ -595,7 +612,23 @@ impl ClipController {
         let Some(dir) = self.dir() else {
             return Vec::new();
         };
-        build_rows(self.history.borrow().entries(), now_unix, Path::exists, dir)
+        build_rows(
+            self.history.borrow().entries(),
+            now_unix,
+            |p| self.real_path(p).exists(),
+            dir,
+        )
+    }
+
+    /// `path`, or the file it refers to when it is a file reference.
+    fn real_path(&self, path: &Path) -> PathBuf {
+        if is_file_reference(path) {
+            self.platform
+                .resolve_file_reference(path)
+                .unwrap_or_else(|| path.to_path_buf())
+        } else {
+            path.to_path_buf()
+        }
     }
 
     /// Deletes the history file an unusable one was set aside as, if any
@@ -760,6 +793,8 @@ mod tests {
         copy_during_read: Cell<bool>,
         /// How often the data (not just the type names) was read.
         data_reads: Cell<usize>,
+        /// File references (`/.file/id=…`) and the files they lead to.
+        references: RefCell<HashMap<PathBuf, PathBuf>>,
     }
 
     impl FakeClipPlatform {
@@ -796,6 +831,9 @@ mod tests {
         }
         fn clipboard_change_count(&self) -> i64 {
             self.live.get()
+        }
+        fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf> {
+            self.references.borrow().get(path).cloned()
         }
         fn read_clipboard(&self) -> ClipSnapshot {
             self.data_reads.set(self.data_reads.get() + 1);
@@ -1182,6 +1220,39 @@ mod tests {
         let c = launch(tmp.path(), &fake, true);
         assert_eq!(c.len(), 1);
         assert!(!old.exists());
+    }
+
+    #[test]
+    fn finder_file_references_become_real_paths() {
+        let (tmp, fake, c) = setup(true);
+        let real = tmp.path().join("photo.png");
+        std::fs::write(&real, b"x").unwrap();
+        let reference = PathBuf::from("/.file/id=6571367.6922287");
+        fake.references
+            .borrow_mut()
+            .insert(reference.clone(), real.clone());
+        let copy = files(&[reference.to_str().unwrap()]);
+        fake.set(copy.clone(), &[]);
+        tick(&fake, &c, 1);
+        tick(&fake, &c, 2);
+        let id = top_id(&c);
+        assert_eq!(
+            c.history.borrow().get(id).unwrap().summary,
+            Summary::Files {
+                paths: vec![real.clone()]
+            }
+        );
+        let row = &c.rows(0)[0];
+        assert!(!row.missing);
+        assert_eq!(row.label, "photo.png");
+        // Put back as Finder wrote it: the reference itself.
+        assert!(c.put_back(id));
+        assert_eq!(*fake.written.borrow(), vec![copy]);
+        // Once the file is gone, the reference leads nowhere.
+        fake.references.borrow_mut().clear();
+        std::fs::remove_file(&real).unwrap();
+        assert!(c.rows(0)[0].missing);
+        assert!(!c.put_back(id));
     }
 
     #[test]

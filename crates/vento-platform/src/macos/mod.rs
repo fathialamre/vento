@@ -132,6 +132,10 @@ impl Platform for MacPlatform {
         clipboard::write_to(&NSPasteboard::generalPasteboard(), snapshot)
     }
 
+    fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf> {
+        clipboard::resolve_file_reference(path)
+    }
+
     fn terminals(&self) -> Vec<TerminalApp> {
         terminal::installed()
     }

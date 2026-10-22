@@ -179,6 +179,12 @@ pub fn file_url_to_path(url: &[u8]) -> Option<PathBuf> {
     Some(PathBuf::from(path.into_owned()))
 }
 
+/// Whether `path` is a file reference (`/.file/id=…`), the form Finder's
+/// file reference URLs decode to; only the system can tell which file it is.
+pub fn is_file_reference(path: &Path) -> bool {
+    path.to_str().is_some_and(|p| p.starts_with("/.file/id="))
+}
+
 /// Removes the items whose file URL points at something `exists` denies (or
 /// cannot be decoded). Items without a file URL stay.
 pub fn drop_missing_files(s: ClipSnapshot, exists: impl Fn(&Path) -> bool) -> ClipSnapshot {

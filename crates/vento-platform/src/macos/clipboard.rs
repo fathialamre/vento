@@ -115,6 +115,15 @@ pub(super) fn write_to(pb: &NSPasteboard, s: &ClipSnapshot) -> Result<i64, Platf
     }
 }
 
+/// The real path of a file reference (`/.file/id=…`, the path of the
+/// reference URL Finder puts on the clipboard), or `None` if it no longer
+/// leads to a file.
+pub(super) fn resolve_file_reference(path: &Path) -> Option<PathBuf> {
+    let url = NSURL::URLWithString(&NSString::from_str(&format!("file://{}", path.to_str()?)))?;
+    let path = url.filePathURL()?.path()?;
+    Some(PathBuf::from(path.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::TempPasteboard;
@@ -125,6 +134,31 @@ mod tests {
             ty: ty.into(),
             data: data.to_vec(),
         }
+    }
+
+    #[test]
+    fn file_reference_resolves_to_the_files_path() {
+        let dir = std::env::temp_dir().join(format!("vento-ref-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a b.txt");
+        std::fs::write(&file, "x").unwrap();
+        // What Finder puts on the clipboard: a file reference URL, which
+        // vento's URL decoding turns into a `/.file/id=…` path.
+        let url = file_url(&file)
+            .unwrap()
+            .fileReferenceURL()
+            .and_then(|u| u.absoluteString())
+            .expect("a reference URL")
+            .to_string();
+        let reference = vento_core::clip::file_url_to_path(url.as_bytes()).unwrap();
+        assert!(reference.starts_with("/.file"), "{}", reference.display());
+        let resolved = resolve_file_reference(&reference).expect("resolved");
+        assert_eq!(
+            std::fs::canonicalize(resolved).unwrap(),
+            std::fs::canonicalize(&file).unwrap()
+        );
+        assert_eq!(resolve_file_reference(Path::new("/.file/id=1.1")), None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
