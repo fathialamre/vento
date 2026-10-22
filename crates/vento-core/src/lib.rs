@@ -2,6 +2,7 @@
 
 pub mod actions;
 pub mod archive;
+pub mod clip;
 pub mod destinations;
 pub mod fileops;
 pub mod geometry;
