@@ -5,6 +5,7 @@ pub mod archive;
 pub mod clip;
 pub mod clip_history;
 pub mod clip_store;
+pub mod convert;
 pub mod destinations;
 pub mod fileops;
 pub mod geometry;
