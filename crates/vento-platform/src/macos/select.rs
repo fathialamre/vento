@@ -591,8 +591,10 @@ define_class!(
 );
 
 impl SelectObserver {
-    /// An observer that cancels session `session`, registered for both
-    /// notifications. The center holds it weakly; the session keeps it.
+    /// An observer for session `session`: it cancels the session when the
+    /// screens change or vento stops being active, and shows the crosshair
+    /// again when vento becomes active. The center holds it weakly; the
+    /// session keeps it.
     fn install(mtm: MainThreadMarker, session: u64) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(session);
         // SAFETY: `init` is NSObject's designated initializer.

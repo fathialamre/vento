@@ -61,7 +61,8 @@ pub struct HotkeyHandle {
 impl Drop for HotkeyHandle {
     fn drop(&mut self) {
         // Removes by id, so drop the old handle of a key before installing
-        // the same key again, or the old drop would forget the new action.
+        // the same key again, or the old drop would forget the new action
+        // and unregister the new key from the shared manager.
         forget(self.hotkey.id());
         if let Err(e) = self.manager.unregister(self.hotkey) {
             warn!("cannot unregister a shortcut: {e}");
@@ -200,6 +201,13 @@ mod tests {
         let second = install_hotkey("ctrl+alt+shift+cmd+9", Box::new(|| {}));
         assert!(first.is_ok(), "first: {:?}", first.as_ref().err());
         assert!(second.is_ok(), "second: {:?}", second.as_ref().err());
+    }
+
+    #[test]
+    fn the_same_key_twice_is_refused() {
+        let _held = install_hotkey("ctrl+alt+shift+cmd+6", Box::new(|| {})).unwrap();
+        let again = install_hotkey("ctrl+alt+shift+cmd+6", Box::new(|| {}));
+        assert!(again.is_err());
     }
 
     #[test]
