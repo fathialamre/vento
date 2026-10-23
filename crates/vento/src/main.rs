@@ -120,6 +120,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let supported = os.supported();
     let screen_text = supported.then(|| {
         let access = screen_text::ScreenAccessView::new(platform.clone(), os.clone());
+        let hider = access.clone();
         let (pause, copier, toaster) = (pause.clone(), platform.clone(), toaster.clone());
         screen_text::ScreenTextController::new(screen_text::ScreenTextDeps {
             os,
@@ -128,6 +129,7 @@ fn main() -> Result<(), slint::PlatformError> {
             copy: Box::new(move |text| copier.copy_text(text)),
             notify: Box::new(move |text, at| toaster.show(text, None, at)),
             ask_access: Box::new(move || access.show()),
+            hide_access: Box::new(move || hider.hide_if_shown()),
         })
     });
     let screen_slot = screen_text

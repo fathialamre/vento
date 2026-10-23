@@ -46,6 +46,8 @@ pub struct ScreenTextDeps {
     pub notify: Notify,
     /// Asks for Screen Recording (the permission window).
     pub ask_access: Box<dyn Fn()>,
+    /// Hides the permission window, if it is showing.
+    pub hide_access: Box<dyn Fn()>,
 }
 
 /// Runs one Copy from screen at a time: overlay, read, clipboard, toast.
@@ -65,7 +67,8 @@ impl ScreenTextController {
     }
 
     /// Starts Copy from screen, unless vento is paused or one is already
-    /// running. Without Screen Recording it asks for it and selects nothing.
+    /// running. Without Screen Recording it asks for it and selects nothing;
+    /// with it, a permission window still up from before goes away.
     pub fn start(self: &Rc<Self>) {
         if (self.deps.is_paused)() || self.busy.get() {
             return;
@@ -74,6 +77,7 @@ impl ScreenTextController {
             (self.deps.ask_access)();
             return;
         }
+        (self.deps.hide_access)();
         self.busy.set(true);
         let this = Rc::downgrade(self);
         self.deps.os.select_area(Box::new(move |sel| {
@@ -268,6 +272,14 @@ impl ScreenAccessView {
         self.platform.deactivate_app();
     }
 
+    /// Hides the window if it is showing; focus is left where it is, since
+    /// the overlay that follows takes it.
+    pub fn hide_if_shown(&self) {
+        if self.window.window().is_visible() {
+            self.hide();
+        }
+    }
+
     fn hide(&self) {
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the Screen Recording window: {e}");
@@ -310,6 +322,7 @@ mod tests {
     struct Log {
         paused: Cell<bool>,
         asks: Cell<usize>,
+        hides: Cell<usize>,
         reads: RefCell<Vec<Selection>>,
         pending: RefCell<Option<ReadDone>>,
         copied: RefCell<Vec<String>>,
@@ -358,6 +371,10 @@ mod tests {
                 ask_access: Box::new({
                     let log = log.clone();
                     move || log.asks.set(log.asks.get() + 1)
+                }),
+                hide_access: Box::new({
+                    let log = log.clone();
+                    move || log.hides.set(log.hides.get() + 1)
                 }),
             };
             Self {
@@ -452,6 +469,19 @@ mod tests {
         assert_eq!(rig.log.asks.get(), 1);
         assert_eq!(rig.os.selects.get(), 0);
         assert!(rig.log.copied.borrow().is_empty());
+        assert_eq!(rig.log.hides.get(), 0);
+    }
+
+    #[test]
+    fn access_granted_hides_the_access_window() {
+        let rig = Rig::new(false);
+        rig.controller.start();
+        assert_eq!(rig.log.asks.get(), 1);
+        // The user switches Screen Recording on and presses again.
+        rig.os.access.set(true);
+        rig.controller.start();
+        assert_eq!(rig.log.hides.get(), 1);
+        assert_eq!(rig.os.selects.get(), 1);
     }
 
     #[test]
