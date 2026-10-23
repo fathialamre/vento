@@ -418,7 +418,8 @@ define_class!(
         }
 
         /// Cursor rects only work in the key panel; the tracking area set up
-        /// in `new` brings the crosshair to the others.
+        /// in `new` (active while vento is) brings the crosshair to the
+        /// others.
         #[unsafe(method(cursorUpdate:))]
         fn cursor_update(&self, _event: &NSEvent) {
             NSCursor::crosshairCursor().set();
@@ -487,8 +488,10 @@ impl SelectView {
             NSTrackingArea::initWithRect_options_owner_userInfo(
                 NSTrackingArea::alloc(),
                 NSRect::ZERO,
+                // Not `ActiveAlways`: AppKit does not support it for cursor
+                // updates. The app is active while the overlay is up.
                 NSTrackingAreaOptions::CursorUpdate
-                    | NSTrackingAreaOptions::ActiveAlways
+                    | NSTrackingAreaOptions::ActiveInActiveApp
                     | NSTrackingAreaOptions::InVisibleRect,
                 Some(owner),
                 None,
