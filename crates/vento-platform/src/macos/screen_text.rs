@@ -102,13 +102,14 @@ pub(crate) fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, Platform
     })
 }
 
-/// A value handed from a ScreenCaptureKit queue to the waiting thread.
-struct Handed<T>(T);
+/// The shareable content, handed from a ScreenCaptureKit queue to the
+/// waiting thread.
+struct Handed(Retained<SCShareableContent>);
 
-// SAFETY: the value is created on ScreenCaptureKit's queue and, once sent,
-// only used by the one thread that receives it; the queue keeps no
-// reference it changes afterwards.
-unsafe impl<T> Send for Handed<T> {}
+// SAFETY: the `SCShareableContent` is created on ScreenCaptureKit's queue
+// and, once sent, only used by the one thread that receives it; the queue
+// keeps no reference it changes afterwards.
+unsafe impl Send for Handed {}
 
 /// Waits for a completion handler's answer; `what` names the step in errors.
 fn wait<T>(rx: &Receiver<Result<T, String>>, what: &str) -> Result<T, PlatformError> {
