@@ -8,9 +8,15 @@
 //!
 //! Items come in from the wheel's Pocket action ([`PocketController::add`]),
 //! by a drop on the expanded island (through the platform's drop catcher),
-//! and the island opens on a shake during a drag or on the global shortcut.
+//! and the island opens as a drag nears it or on the global shortcut.
+//!
+//! With the clipboard history on, the expanded island has a second view, the
+//! Clipboard ([`View`]), and a bar under either view to switch between them.
 
 mod add;
+mod clip;
+mod clip_thumb;
+mod clip_view;
 mod geometry;
 mod menu;
 mod out;
@@ -30,17 +36,21 @@ use slint::{
     ComponentHandle, Image, LogicalPosition, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
     TimerMode, VecModel,
 };
+use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
-use vento_core::pocket_zone::{IslandState, Presence, ShakeDetector};
+use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::Settings;
 use vento_core::trigger::InputSample;
 use vento_platform::{CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, RgbaImage};
 
+use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
-use add::{AddPlan, Entry, plan_new, store};
+use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
+use clip::ClipController;
+use clip_view::ClipView;
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
@@ -87,6 +97,44 @@ fn toast_late_open_error(reason: String) {
     });
     if let Err(e) = delivered {
         warn!("cannot report a failed open: {e}");
+    }
+}
+
+/// What the expanded island shows. The last one used is kept in memory only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+    /// The Pocket's items.
+    Pocket,
+    /// The clipboard history.
+    Clipboard,
+}
+
+/// The view the island shows after a request for `asked`, when it shows
+/// `current` (`None` while not held open): it opens on `asked`, switches to
+/// it, or closes when it already shows it.
+fn next_open(current: Option<View>, asked: View) -> Option<View> {
+    match current {
+        Some(v) if v == asked => None,
+        _ => Some(asked),
+    }
+}
+
+/// What the island's Undo puts back.
+enum Undo {
+    /// The items of this trash job, taken out of the Pocket.
+    Pocket(u64),
+    /// Entries taken out of the clipboard history.
+    Clip(Vec<ClipEntry>),
+}
+
+impl Undo {
+    /// The window's number for this kind of Undo: only the view it belongs
+    /// to (0 the Pocket, 1 the Clipboard) shows its ring.
+    fn kind(&self) -> i32 {
+        match self {
+            Undo::Pocket(_) => 0,
+            Undo::Clip(_) => 1,
+        }
     }
 }
 
@@ -150,11 +198,6 @@ pub struct PocketController {
     pinned: Cell<bool>,
     /// Kept open until then, to confirm an add.
     pin_until: Cell<Option<Instant>>,
-    /// Kept open by a shake until the drag ends.
-    shaken: Cell<bool>,
-    shake: RefCell<ShakeDetector>,
-    /// The shake detector has been fed since the last mouse-up.
-    shake_fed: Cell<bool>,
     /// The native drop target over the expanded island, once created.
     catcher: RefCell<Option<Rc<dyn DropCatcher>>>,
     /// Where the catcher is shown, or `None` while hidden.
@@ -175,8 +218,8 @@ pub struct PocketController {
     latch: PressLatch,
     /// Items taken out whose files wait to go to the Trash.
     pending: PendingTrash,
-    /// The Undo on offer: its trash job, and when the offer ends.
-    undo: Cell<Option<(u64, Instant)>>,
+    /// The Undo on offer, and when the offer ends.
+    undo: RefCell<Option<(Undo, Instant)>>,
     /// Counts the offered Undo down.
     undo_timer: Timer,
     /// The cells a clear took, shown faded while its Undo is offered.
@@ -187,6 +230,12 @@ pub struct PocketController {
     /// over the expanded window then, to replay hover moves.
     last_cursor: Cell<Option<Point>>,
     pointer_in: Cell<bool>,
+    /// The clipboard history.
+    clip: Rc<ClipController>,
+    /// The view shown expanded (or last shown).
+    view: Cell<View>,
+    /// The Clipboard view's rows.
+    clip_view: ClipView,
     this: Weak<Self>,
 }
 
@@ -209,7 +258,9 @@ impl PocketController {
         window.set_cells(ModelRc::from(cells.clone()));
         let ghosts = Rc::new(VecModel::default());
         window.set_ghosts(ModelRc::from(ghosts.clone()));
+        let clip_view = ClipView::new(&window);
         let home = platform.pocket_home();
+        let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
         let controller = Rc::new_cyclic(|this| Self {
             platform,
             settings,
@@ -223,9 +274,6 @@ impl PocketController {
             cells,
             pinned: Cell::new(false),
             pin_until: Cell::new(None),
-            shaken: Cell::new(false),
-            shake: RefCell::new(ShakeDetector::new()),
-            shake_fed: Cell::new(false),
             catcher: RefCell::new(None),
             catcher_rect: Cell::new(None),
             copying: RefCell::new(Vec::new()),
@@ -236,20 +284,42 @@ impl PocketController {
             selected: RefCell::new(Vec::new()),
             latch: PressLatch::default(),
             pending: PendingTrash::default(),
-            undo: Cell::new(None),
+            undo: RefCell::new(None),
             undo_timer: Timer::default(),
             ghosts,
             paused: Cell::new(false),
             last_cursor: Cell::new(None),
             pointer_in: Cell::new(false),
+            clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
+            view: Cell::new(View::Pocket),
+            clip_view,
             this: this.clone(),
         });
         if let Some(home) = home {
             controller.apply_home(&home);
         }
         controller.connect();
+        controller.connect_clip();
         MAIN_POCKET.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
         controller
+    }
+
+    /// The clipboard history, refreshing the island through `this` on every
+    /// change to it.
+    fn clip_history(
+        platform: Rc<dyn Platform>,
+        settings: &RefCell<Settings>,
+        this: Weak<Self>,
+    ) -> Rc<ClipController> {
+        ClipController::new(
+            platform,
+            settings,
+            Box::new(move || {
+                if let Some(c) = this.upgrade() {
+                    c.refresh();
+                }
+            }),
+        )
     }
 
     /// Routes the island's presses, moves and buttons to the controller.
@@ -647,7 +717,7 @@ impl PocketController {
     fn trash_later(&self, items: Vec<PocketItem>, after: Duration, undo: Option<Vec<PocketCell>>) {
         let job = self.pending.add(items);
         if let Some(ghosts) = undo {
-            self.offer_undo(job, ghosts);
+            self.offer_undo(Undo::Pocket(job), ghosts);
         }
         let this = self.this.clone();
         Timer::single_shot(after, move || {
@@ -659,11 +729,19 @@ impl PocketController {
         });
     }
 
-    /// Offers Undo for trash job `job` in the island for [`UNDO_LIFETIME`],
-    /// replacing any Undo already offered (whose files still go on their
-    /// own timer). The island stays up meanwhile, even with nothing in it.
-    fn offer_undo(&self, job: u64, ghosts: Vec<PocketCell>) {
-        self.undo.set(Some((job, Instant::now() + UNDO_LIFETIME)));
+    /// Offers `undo` in the island for [`UNDO_LIFETIME`], showing `ghosts`
+    /// (a Pocket clear's cells) faded meanwhile. It replaces any Undo already
+    /// offered: a Pocket job's files still go on their own timer, history
+    /// entries are let go now. The island stays up meanwhile, even with
+    /// nothing in it.
+    fn offer_undo(&self, undo: Undo, ghosts: Vec<PocketCell>) {
+        self.window.set_undo_kind(undo.kind());
+        let replaced = self
+            .undo
+            .replace(Some((undo, Instant::now() + UNDO_LIFETIME)));
+        if let Some((Undo::Clip(entries), _)) = replaced {
+            self.clip.discard(entries);
+        }
         self.ghosts.set_vec(ghosts);
         self.window.set_undo_active(true);
         self.tick_undo();
@@ -679,12 +757,15 @@ impl PocketController {
 
     /// Redraws the Undo countdown, or withdraws the offer once it is up.
     fn tick_undo(&self) {
-        let Some((_, until)) = self.undo.get() else {
+        let Some(until) = self.undo.borrow().as_ref().map(|(_, until)| *until) else {
             return;
         };
         let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            self.end_undo();
+            // A Pocket job's files go on their own timer.
+            if let Some(Undo::Clip(entries)) = self.end_undo() {
+                self.clip.discard(entries);
+            }
             return;
         }
         self.window
@@ -693,31 +774,35 @@ impl PocketController {
             .set_undo_secs(i32::try_from(left.as_millis().div_ceil(1000)).unwrap_or(0));
     }
 
-    /// The island's Undo: puts back what the offered job took.
+    /// The island's Undo: puts back what the offered Undo took.
     fn undo(&self) {
-        let Some((job, _)) = self.undo.get() else {
-            return;
-        };
-        self.end_undo();
-        if let Some(items) = self.pending.take(job) {
-            self.restore(items);
+        match self.end_undo() {
+            Some(Undo::Pocket(job)) => {
+                if let Some(items) = self.pending.take(job) {
+                    self.restore(items);
+                }
+            }
+            Some(Undo::Clip(entries)) => self.clip.restore(entries),
+            None => {}
         }
     }
 
-    /// Withdraws the offered Undo.
-    fn end_undo(&self) {
-        if self.undo.take().is_none() {
-            return;
-        }
+    /// Withdraws the offered Undo and returns it.
+    fn end_undo(&self) -> Option<Undo> {
+        let (undo, _) = self.undo.take()?;
         self.undo_timer.stop();
         self.window.set_undo_active(false);
         self.ghosts.set_vec(Vec::new());
         self.fit_panel();
+        Some(undo)
     }
 
     /// Moves every file still waiting for its Undo window or drop grace to
     /// the Trash now. Call when vento quits.
     pub fn flush_pending(&self) {
+        // The history's entries an offered Undo holds are among those the
+        // history still holds for an Undo, which this deletes.
+        self.clip.flush();
         let items = self.pending.take_all();
         if !items.is_empty() {
             info!(
@@ -745,6 +830,7 @@ impl PocketController {
     /// sample decides again.
     pub fn set_paused(&self, paused: bool) {
         self.paused.set(paused);
+        self.clip.set_paused(paused);
         if !paused || !self.warm.get() {
             return;
         }
@@ -760,7 +846,6 @@ impl PocketController {
         let before = self.island.borrow().presence();
         let after = self.island.borrow_mut().settle(has_items);
         self.pin_until.set(None);
-        self.shaken.set(false);
         if after != before {
             self.present(before, after);
         }
@@ -893,31 +978,14 @@ impl PocketController {
         }
     }
 
-    /// Feeds the shake detector while dragging; a shake keeps the island
-    /// open until the drag ends. The detector re-arms on mouse-up.
-    fn track_shake(&self, sample: &InputSample, dragging: bool, now: Instant) {
-        if dragging {
-            self.shake_fed.set(true);
-            if self.shake.borrow_mut().feed(sample.cursor.x, now) {
-                debug!("pocket shake");
-                self.shaken.set(true);
-            }
-        } else {
-            self.shaken.set(false);
-        }
-        if !sample.left_down && self.shake_fed.replace(false) {
-            self.shake.borrow_mut().reset();
-        }
-    }
-
     /// Updates the island from one input sample; `dragging` is whether a drag
     /// of any type is under way. Called on every poll tick of the wheel.
     pub fn observe(&self, sample: &InputSample, dragging: bool) {
+        self.clip.observe(sample.clip_change_count);
         if !self.warm.get() || self.paused.get() {
             return;
         }
         let now = Instant::now();
-        self.track_shake(sample, dragging, now);
         let screens_changed = self.platform.screens_changed();
         if screens_changed || dragging && !self.was_dragging.get() {
             // The screens changed, or a drag may be headed for the island:
@@ -939,6 +1007,11 @@ impl PocketController {
         if changed {
             self.rehome();
             self.present(before, after);
+        }
+        // A drag over the island is headed for the Pocket; one elsewhere
+        // leaves a pinned Clipboard alone.
+        if dragging && hits(&f, after, sample.cursor) && self.view.get() == View::Clipboard {
+            self.set_view(View::Pocket);
         }
         let f = self.island_frames().unwrap_or(f);
         let inside = hits(&f, after, sample.cursor);
@@ -997,7 +1070,7 @@ impl PocketController {
         if self.pin_until.get().is_some_and(|until| now >= until) {
             self.pin_until.set(None);
         }
-        self.pinned.get() || self.shaken.get() || self.pin_until.get().is_some()
+        self.pinned.get() || self.pin_until.get().is_some()
     }
 
     /// Shows, hides, expands or collapses the window for a presence change.
@@ -1039,6 +1112,7 @@ impl PocketController {
     fn apply_home(&self, home: &IslandHome) {
         let f = self.frames_of(home);
         self.window.set_panel_w(f.expanded.w as f32);
+        self.window.set_panel_h((f.expanded.h - f.top_h) as f32);
         self.window.set_notch_style(f.notch_style);
         self.window.set_notch_w(f.notch_w as f32);
         self.window.set_top_h(f.top_h as f32);
@@ -1056,20 +1130,29 @@ impl PocketController {
         self.pin_until.set(Some(Instant::now() + pin_open_for));
     }
 
-    /// Adds what was dropped on the island. Files already in the Pocket are
-    /// skipped silently; anything that fails is reported in a toast. Kept
-    /// copies are made on a worker thread and added when done; each drop
-    /// runs its own job, so drops keep working meanwhile.
+    /// Adds what was dropped on the island. Files already in the Pocket, and
+    /// text, links or images it already saved, are skipped silently;
+    /// anything that fails is reported in a toast. Kept copies are made on a
+    /// worker thread and added when done; each drop runs its own job, so
+    /// drops keep working meanwhile.
     fn add_dropped(&self, d: Dropped) {
         let keep_copies = self.settings.borrow().pocket_keep_copies;
-        let plan = {
+        let (plan, held) = {
             let pocket = self.pocket.borrow();
             let copying = self.copying.borrow();
-            plan_new(&d, keep_copies, |p| {
+            let plan = plan_new(&d, keep_copies, |p| {
                 pocket.contains(p) || copying.iter().any(|c| c == p)
-            })
+            });
+            let saved = pocket
+                .items()
+                .iter()
+                .filter(|i| i.source == ItemSource::Saved)
+                .map(|i| i.path.as_path());
+            let held = saved_content(&plan).is_some_and(|bytes| holds_content(saved, &bytes));
+            (plan, held)
         };
         match plan {
+            _ if held => debug!("pocket already holds this content"),
             AddPlan::Copies(paths) if paths.is_empty() => {}
             AddPlan::Copies(paths) => self.spawn_copies(paths),
             plan => {
@@ -1163,20 +1246,68 @@ impl PocketController {
         }
     }
 
-    /// Keeps the island open, or lets it close again.
-    pub fn toggle_pinned(&self) {
-        let pinned = !self.pinned.get();
-        self.pinned.set(pinned);
-        debug!("pocket pinned {pinned}");
-        // Closing with the shortcut is a request to close now: skip the
-        // hover collapse delay that would otherwise hold the island open.
-        if !pinned && self.warm.get() && !self.paused.get() {
-            self.settle_now();
+    /// The Pocket and Clipboard shortcuts: keeps the island open on view
+    /// `v`; switches to it if the island is held open on the other view;
+    /// lets it close if it already shows `v`.
+    pub fn open_view(&self, v: View) {
+        let current = self.pinned.get().then(|| self.shown_view());
+        let next = next_open(current, v);
+        self.pinned.set(next.is_some());
+        debug!("pocket pinned on {next:?}");
+        match next {
+            Some(v) => self.set_view(v),
+            // Closing with the shortcut is a request to close now: skip the
+            // hover collapse delay that would otherwise hold the island open.
+            None if self.warm.get() && !self.paused.get() => {
+                self.settle_now();
+            }
+            None => {}
+        }
+    }
+
+    /// Follows the history setting of `s`. Switched on or off, the next
+    /// sample only sets the baseline, so what is on the clipboard then is
+    /// not recorded. Switched off, the island falls back to the Pocket view
+    /// and an Undo of the history is withdrawn; the stored history stays.
+    pub fn apply_clip_settings(&self, s: &Settings) {
+        let on = s.clipboard_history;
+        if on == self.clip.enabled() {
+            return;
+        }
+        debug!("clipboard history {}", if on { "on" } else { "off" });
+        self.clip.set_enabled(on);
+        if !on {
+            self.withdraw_clip_undo();
+            self.set_view(View::Pocket);
+        }
+        self.refresh();
+    }
+
+    /// Empties the clipboard history at once, with no Undo (the settings'
+    /// "Clear history"). An Undo of the history on offer is withdrawn too,
+    /// its entries let go with the rest, and a history file set aside as
+    /// unusable is deleted.
+    pub fn clear_clip_history(&self) {
+        let gone = self.clip.clear();
+        self.clip.discard(gone);
+        self.withdraw_clip_undo();
+        self.clip.forget_backup();
+        self.refresh();
+    }
+
+    /// Withdraws the Undo on offer if it puts history entries back, and
+    /// lets those entries go.
+    fn withdraw_clip_undo(&self) {
+        let is_clip = matches!(*self.undo.borrow(), Some((Undo::Clip(_), _)));
+        if is_clip && let Some(Undo::Clip(entries)) = self.end_undo() {
+            self.clip.discard(entries);
         }
     }
 
     /// Re-reads which files are missing, loads icons not yet cached, and
-    /// pushes the cells and the count into the window.
+    /// pushes the cells and the count into the window, and the clipboard
+    /// history with them. Only rows that changed are touched, so a copy
+    /// made while the island is open keeps its hover and presses.
     pub fn refresh(&self) {
         let pocket = self.pocket.borrow();
         let missing = pocket.missing();
@@ -1205,18 +1336,24 @@ impl PocketController {
                 None => fallback.clone(),
             }
         });
-        self.cells.set_vec(cells);
+        set_rows(&self.cells, cells);
         let count = pocket.items().len();
         self.window
             .set_count(i32::try_from(count).unwrap_or(i32::MAX));
         drop((icons, selected, pocket));
+        self.refresh_clip();
         self.fit_panel();
     }
 
-    /// Widens or narrows the panel to what it shows (ruling P18).
+    /// Widens or narrows the panel to what it shows (ruling P18), and sizes
+    /// it for the view shown.
     fn fit_panel(&self) {
-        if let Some(home) = self.home.get()
-            && self.window.get_panel_w() != frames(&home, self.shown_count()).expanded.w as f32
+        let Some(home) = self.home.get() else {
+            return;
+        };
+        let f = self.frames_of(&home);
+        if self.window.get_panel_w() != f.expanded.w as f32
+            || self.window.get_panel_h() != (f.expanded.h - f.top_h) as f32
         {
             self.apply_home(&home);
         }
@@ -1228,9 +1365,12 @@ impl PocketController {
         items.max(self.ghosts.row_count())
     }
 
-    /// The island has something to show: items, or an Undo on offer.
+    /// The island has something to show: items, an Undo on offer, or a
+    /// clipboard history.
     fn has_content(&self) -> bool {
-        !self.pocket.borrow().is_empty() || self.undo.get().is_some()
+        !self.pocket.borrow().is_empty()
+            || self.undo.borrow().is_some()
+            || (self.clip.enabled() && !self.clip.is_empty())
     }
 
     fn save(&self) {
@@ -1255,9 +1395,10 @@ impl PocketController {
         })
     }
 
-    /// The island's frames for `home`, sized for the cells it shows now.
+    /// The island's frames for `home`, sized for the view and the cells it
+    /// shows now.
     fn frames_of(&self, home: &IslandHome) -> Frames {
-        frames(home, self.shown_count())
+        frames(home, self.shown_count(), self.panel())
     }
 
     fn island_frames(&self) -> Option<Frames> {
@@ -1303,6 +1444,26 @@ mod tests {
         assert!(!cells[1].missing);
         assert!(cells[1].selected);
         assert_eq!(cells.iter().filter(|c| c.selected).count(), 1);
+    }
+
+    #[test]
+    fn open_view_toggles_and_switches() {
+        use View::{Clipboard, Pocket};
+        assert_eq!(next_open(None, Clipboard), Some(Clipboard));
+        assert_eq!(next_open(None, Pocket), Some(Pocket));
+        // Asked for the view it shows: it closes.
+        assert_eq!(next_open(Some(Clipboard), Clipboard), None);
+        assert_eq!(next_open(Some(Pocket), Pocket), None);
+        // Asked for the other view: it switches and stays open.
+        assert_eq!(next_open(Some(Pocket), Clipboard), Some(Clipboard));
+        assert_eq!(next_open(Some(Clipboard), Pocket), Some(Pocket));
+    }
+
+    #[test]
+    fn each_undo_belongs_to_its_view() {
+        // The window shows a ring in the view whose number is the kind.
+        assert_eq!(Undo::Pocket(3).kind(), 0);
+        assert_eq!(Undo::Clip(Vec::new()).kind(), 1);
     }
 
     #[test]

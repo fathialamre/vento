@@ -75,12 +75,20 @@ your screen: <img src=".github/assets/menu-bar.png" alt="Vento menu bar icon" he
 1. In Finder, **start dragging** a file or folder.
 2. **While you are still dragging, press Ctrl.** The order matters: press Ctrl
    after the drag has started, not before.
+   Or, without the keyboard, **shake the pointer** quickly back and forth, in
+   any direction.
 3. The wheel opens under the pointer. Move onto an action and let go.
 
 Let go outside the wheel and the file drops wherever the pointer is, as usual.
 Esc closes the wheel, where macOS lets Vento read the key without extra permission.
 
 You can change the key from Ctrl to Option, Shift or Command in the settings.
+
+A shake counts when the pointer comes back along the way it just moved four
+times within about half a second, each swing at least 40 points. Small wiggles
+and a drag that turns corners don't count. Shaking only works while dragging
+files, like the wheel itself; turn it off with **Shake to open** in the
+settings panel's General tab.
 
 ## The actions
 
@@ -96,8 +104,8 @@ from the island into any folder or app.
 
 ![Releasing a file on Pocket, the island appearing at the top of the screen, then dragging the file from the island into the Clients folder](.github/assets/pocket.gif)
 
-Other ways to add to the Pocket: drop onto the island, shake the pointer while
-dragging, or press **⌃⌥P** (Control-Option-P). Click items to select several and
+Other ways to add to the Pocket: drop onto the island, or press **⌃⌥P**
+(Control-Option-P). Click items to select several and
 drag them together, or use **Drag all**. The x on an item removes it and
 **Clear** empties the Pocket; both can be undone. Removing an item never deletes
 your file.
@@ -155,6 +163,28 @@ the three biggest things inside it.
 
 <img src=".github/assets/info.png" alt="Info window for the Photos folder: 15.7 MB, 5 files, with the three biggest files listed" width="346">
 
+## Clipboard
+
+Vento remembers what you copy, so you can copy several things in one place and
+paste them one by one somewhere else. Open the island and switch to the
+**Clipboard** with the buttons at its bottom left, or press **⌃⌥V**
+(Control-Option-V). Copying never opens the island by itself.
+
+- **Click a copy** to put it back on the clipboard exactly as it was, formatting
+  included (spreadsheet cells paste as cells), then press ⌘V anywhere.
+- **Hover a copy** for three buttons: the **pin** keeps it until you remove it,
+  the **Pocket** button adds it to the Pocket, and **x** removes it.
+- **Filters** beside the list show everything, pinned copies only, or only
+  text, links, pictures or files. Pictures copied in Finder show as pictures.
+- **Clear** removes everything except pinned copies, and can be undone.
+- Vento keeps the **50** newest copies plus every pinned one, and skips copies
+  that password managers mark as concealed, and anything copied while Vento is
+  paused.
+
+The history stays after you quit or restart. It is stored **unencrypted** in
+`~/Library/Application Support/vento`; see [SETTINGS.md](SETTINGS.md). Switch it
+off, or change its shortcut, in the settings panel's **Clipboard** tab.
+
 ## Settings
 
 **Click** the Vento icon in the menu bar to open the settings panel. Changes apply
@@ -168,7 +198,10 @@ right away.
 | Pocket | General |
 |:---:|:---:|
 | <img src=".github/assets/settings-pocket.png" alt="Pocket tab: shortcut and two switches" width="300"> | <img src=".github/assets/settings-general.png" alt="General tab: trigger key, terminal app and Copy path format" width="300"> |
-| The Pocket shortcut, and what happens after you drag items out. | The key that opens the wheel, your terminal app, and how paths are copied. |
+| The Pocket shortcut, and what happens after you drag items out. | The key that opens the wheel, shaking to open it, your terminal app, and how paths are copied. |
+
+The **Clipboard** tab switches the clipboard history on or off, sets its
+shortcut, and clears it.
 
 **Right-click** the icon for the menu: undo the last move, copy or archive, pause
 Vento, or quit.
@@ -181,8 +214,8 @@ Prefer a text file? Everything is also in `settings.toml`; see
 ## Uninstall
 
 Right-click the menu bar icon, choose **Quit Vento**, and move `Vento.app` from
-Applications to the Trash. To remove its settings and Pocket too, delete the
-folder `~/Library/Application Support/vento`.
+Applications to the Trash. To remove its settings, Pocket and clipboard history
+too, delete the folder `~/Library/Application Support/vento`.
 
 ## For developers
 

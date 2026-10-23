@@ -248,7 +248,7 @@ impl WheelController {
     ) -> Rc<Self> {
         let window = Wheel::new().expect("cannot create the wheel window");
         let geometry = WheelGeometry::new(settings.layout, settings.actions.len());
-        let machine = TriggerMachine::new(settings.trigger);
+        let machine = TriggerMachine::new(settings.trigger).with_shake(settings.shake_to_open);
         let tracker = ring_tracker(&settings);
         let controller = Rc::new_cyclic(|this| Self {
             platform,
@@ -311,8 +311,11 @@ impl WheelController {
     }
 
     fn reset_trigger(&self) {
-        let trigger = self.state.borrow().settings.trigger;
-        *self.machine.borrow_mut() = TriggerMachine::new(trigger);
+        let (trigger, shake) = {
+            let state = self.state.borrow();
+            (state.settings.trigger, state.settings.shake_to_open)
+        };
+        *self.machine.borrow_mut() = TriggerMachine::new(trigger).with_shake(shake);
     }
 
     /// Replaces the settings; the layout and the number of actions may change.

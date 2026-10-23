@@ -38,7 +38,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     use vento_core::actions::ActionId;
     use vento_core::destinations::{RecentDestinations, recent_path};
-    use vento_core::settings::settings_path;
+    use vento_core::settings::{Settings, settings_path};
 
     /// How long the island stays open to confirm an add from the wheel.
     const POCKET_CONFIRM: Duration = Duration::from_millis(1500);
@@ -96,42 +96,37 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
-    // The Pocket shortcut, registered at startup and again whenever it
-    // changes, and tried by the panel when one is recorded. Registering the
-    // spec already registered does nothing, so a shortcut the panel has
-    // registered is not registered a second time when its change is saved.
-    let shortcut: Rc<RefCell<Option<(String, hotkey::HotkeyHandle)>>> = Rc::new(RefCell::new(None));
-    let register_shortcut = Rc::new({
+    // The Pocket shortcut opens the island on the Pocket, the Clipboard
+    // shortcut on the history. Each is registered at startup (the Clipboard
+    // one only while the history is on) and again whenever it changes, and
+    // tried by the panel when one is recorded.
+    let open_on = |view: pocket::View| -> Rc<dyn Fn()> {
         let pocket = Rc::downgrade(&pocket);
-        move |spec: &str| -> Result<(), String> {
-            if shortcut
-                .borrow()
-                .as_ref()
-                .is_some_and(|(registered, _)| registered == spec)
-            {
-                return Ok(());
+        Rc::new(move || {
+            if let Some(pocket) = pocket.upgrade() {
+                pocket.open_view(view);
             }
-            // Free the old key first, so the same key can be registered again.
-            shortcut.borrow_mut().take();
-            let pocket = pocket.clone();
-            let on_press = Box::new(move || {
-                if let Some(pocket) = pocket.upgrade() {
-                    pocket.toggle_pinned();
-                }
-            });
-            let handle = hotkey::install_hotkey(spec, on_press)?;
-            *shortcut.borrow_mut() = Some((spec.to_owned(), handle));
-            Ok(())
-        }
-    });
+        })
+    };
+    let pocket_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Pocket)));
+    let clip_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Clipboard)));
     let panel = {
         let pause = pause.clone();
-        let register_shortcut = register_shortcut.clone();
+        let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
+        let clearer = Rc::downgrade(&pocket);
         panel::PanelController::new(
             platform.clone(),
             hub.clone(),
             recent.clone(),
-            Box::new(move |spec| register_shortcut(spec)),
+            Box::new(move |which, spec| match which {
+                panel::ShortcutFor::Pocket => pocket_slot.register(spec),
+                panel::ShortcutFor::Clipboard => clip_slot.register(spec),
+            }),
+            Box::new(move || {
+                if let Some(pocket) = clearer.upgrade() {
+                    pocket.clear_clip_history();
+                }
+            }),
             Box::new(move |paused| pause.set(paused)),
         )
     };
@@ -173,22 +168,48 @@ fn main() -> Result<(), slint::PlatformError> {
         observer.observe(sample, dragging);
     }));
 
-    let apply_shortcut = Rc::new({
+    // Registers a shortcut, saying in a toast why one cannot be.
+    let try_slot = {
         let toaster = toaster.clone();
         let platform = platform.clone();
-        move |spec: &str| {
-            if let Err(reason) = register_shortcut(spec) {
-                log::warn!("pocket shortcut {spec:?} unavailable: {reason}");
+        move |slot: &ShortcutSlot, name: &str, spec: &str| {
+            if let Err(reason) = slot.register(spec) {
+                log::warn!("{name} shortcut {spec:?} unavailable: {reason}");
                 let at = platform.sample_input().cursor;
-                toaster.show(&format!("Pocket shortcut unavailable: {reason}"), None, at);
+                toaster.show(&format!("{name} shortcut unavailable: {reason}"), None, at);
+            }
+        }
+    };
+    let apply_pocket_shortcut = Rc::new({
+        let (try_slot, slot) = (try_slot.clone(), pocket_slot);
+        move |s: &Settings| try_slot(&slot, "Pocket", &s.pocket_shortcut)
+    });
+    // The Clipboard shortcut is free while the history is off.
+    let apply_clip_shortcut = Rc::new({
+        let slot = clip_slot;
+        move |s: &Settings| {
+            if s.clipboard_history {
+                try_slot(&slot, "Clipboard", &s.clipboard_shortcut);
+            } else {
+                slot.unregister();
             }
         }
     });
     {
-        let apply_shortcut = apply_shortcut.clone();
+        let apply_pocket_shortcut = apply_pocket_shortcut.clone();
+        let apply_clip_shortcut = apply_clip_shortcut.clone();
+        let pocket = Rc::downgrade(&pocket);
         hub.on_change(Box::new(move |old, new| {
             if old.pocket_shortcut != new.pocket_shortcut {
-                apply_shortcut(&new.pocket_shortcut);
+                apply_pocket_shortcut(new);
+            }
+            if old.clipboard_history != new.clipboard_history
+                || old.clipboard_shortcut != new.clipboard_shortcut
+            {
+                apply_clip_shortcut(new);
+            }
+            if let Some(pocket) = pocket.upgrade() {
+                pocket.apply_clip_settings(new);
             }
         }));
     }
@@ -198,7 +219,9 @@ fn main() -> Result<(), slint::PlatformError> {
     let keep = tray_handle.clone();
     let tray_info = info.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
-        apply_shortcut(&hub.current().pocket_shortcut);
+        let settings = hub.current();
+        apply_pocket_shortcut(&settings);
+        apply_clip_shortcut(&settings);
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
@@ -214,6 +237,52 @@ fn main() -> Result<(), slint::PlatformError> {
     info.dismiss();
     pocket.flush_pending();
     result
+}
+
+/// One global shortcut and what it does: holds the key registered for it,
+/// if any.
+#[cfg(target_os = "macos")]
+struct ShortcutSlot {
+    action: std::rc::Rc<dyn Fn()>,
+    held: std::cell::RefCell<Option<(String, hotkey::HotkeyHandle)>>,
+}
+
+#[cfg(target_os = "macos")]
+impl ShortcutSlot {
+    /// A slot with no key registered yet, calling `action` on each press.
+    fn new(action: std::rc::Rc<dyn Fn()>) -> Self {
+        Self {
+            action,
+            held: std::cell::RefCell::new(None),
+        }
+    }
+
+    /// Registers `spec` in place of the key this slot holds. Registering the
+    /// spec already registered does nothing, so a shortcut the panel has
+    /// registered is not registered a second time when its change is saved.
+    fn register(&self, spec: &str) -> Result<(), String> {
+        if self
+            .held
+            .borrow()
+            .as_ref()
+            .is_some_and(|(registered, _)| registered == spec)
+        {
+            return Ok(());
+        }
+        // Free the old key first, so the same key can be registered again.
+        self.unregister();
+        let action = self.action.clone();
+        let handle = hotkey::install_hotkey(spec, Box::new(move || action()))?;
+        *self.held.borrow_mut() = Some((spec.to_owned(), handle));
+        Ok(())
+    }
+
+    /// Frees the key this slot holds, if any.
+    fn unregister(&self) {
+        if let Some((spec, _)) = self.held.borrow_mut().take() {
+            log::debug!("shortcut {spec} unregistered");
+        }
+    }
 }
 
 /// Uses winit with an Accessory app that never activates itself at launch,

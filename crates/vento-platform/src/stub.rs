@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use vento_core::clip::ClipSnapshot;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 
@@ -54,6 +55,7 @@ impl Platform for StubPlatform {
             escape_down: false,
             drag_change_count: 0,
             drag_has_files: false,
+            clip_change_count: 0,
             cursor: Point { x: 0.0, y: 0.0 },
         }
     }
@@ -77,6 +79,26 @@ impl Platform for StubPlatform {
 
     fn copy_text(&self, _text: &str) -> Result<(), PlatformError> {
         Err(PlatformError::Unsupported)
+    }
+
+    fn clipboard_types(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn clipboard_change_count(&self) -> i64 {
+        0
+    }
+
+    fn read_clipboard(&self) -> ClipSnapshot {
+        ClipSnapshot::default()
+    }
+
+    fn write_clipboard(&self, _snapshot: &ClipSnapshot) -> Result<i64, PlatformError> {
+        Err(PlatformError::Unsupported)
+    }
+
+    fn resolve_file_reference(&self, _path: &Path) -> Option<PathBuf> {
+        None
     }
 
     fn terminals(&self) -> Vec<TerminalApp> {
@@ -193,6 +215,7 @@ mod tests {
         let s = p.sample_input();
         assert!(!s.left_down && !s.escape_down && !s.drag_has_files);
         assert_eq!(s.drag_change_count, 0);
+        assert_eq!(s.clip_change_count, 0);
         assert_eq!(p.screens().len(), 1);
     }
 
@@ -222,6 +245,13 @@ mod tests {
         let p = StubPlatform;
         assert!(matches!(p.copy_text("x"), Err(PlatformError::Unsupported)));
         assert!(matches!(p.copy_files(&[]), Err(PlatformError::Unsupported)));
+        assert!(p.clipboard_types().is_empty());
+        assert_eq!(p.clipboard_change_count(), 0);
+        assert!(p.read_clipboard().items.is_empty());
+        assert!(matches!(
+            p.write_clipboard(&ClipSnapshot::default()),
+            Err(PlatformError::Unsupported)
+        ));
         assert!(matches!(
             p.open_terminal(None, Path::new("/")),
             Err(PlatformError::Unsupported)

@@ -10,7 +10,8 @@ Vento lives in the menu bar.
 - **Left click** the icon to open the settings panel. Its tabs are Wheel
   (layout, which actions show and in what order), Move (pinned and recent
   folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
-  copy) and General (trigger, terminal, Copy path format); Pause and Quit are at
+  copy), Clipboard (history on or off, its shortcut, Clear history) and General
+  (trigger, shake to open, terminal, Copy path format); Pause and Quit are at
   the bottom. It follows the system light or dark appearance. Changes apply and
   are saved at once.
 - **Right click** for the menu: Undo last move/copy/archive, Pause, Open
@@ -36,6 +37,10 @@ layout = "honeycomb"
 
 # Modifier held while dragging: "ctrl", "alt", "shift" or "meta"
 trigger = "ctrl"
+
+# A quick back-and-forth shake of the pointer (any direction) while dragging
+# files opens the wheel too
+shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
 # "terminal", "copy_to", "archive", "info". A file that already lists `actions`
@@ -71,6 +76,13 @@ pocket_keep_copies = false
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
 # (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
 pocket_shortcut = "ctrl+alt+p"
+
+# Clipboard: record what you copy into the island's Clipboard history
+clipboard_history = true
+
+# Global shortcut that opens the island on the Clipboard history; same form
+# as pocket_shortcut
+clipboard_shortcut = "ctrl+alt+v"
 ```
 
 ## Where Vento keeps its data
@@ -81,6 +93,8 @@ pocket_shortcut = "ctrl+alt+p"
 | Recent Move and Copy to destinations | `~/Library/Application Support/vento/recent.json` |
 | Pocket item list | `~/Library/Application Support/vento/pocket.json` |
 | Pocket files Vento saved or kept | `~/Library/Application Support/vento/pocket/` |
+| Clipboard history list | `~/Library/Application Support/vento/clipboard.json` |
+| What each copy contained | `~/Library/Application Support/vento/clipboard/` |
 
 Files Vento saves (non-file content) and keeps (copies, with
 `pocket_keep_copies`) live in `~/Library/Application Support/vento/pocket/saved`
@@ -88,6 +102,18 @@ and `.../kept`; the item list is `~/Library/Application Support/vento/pocket.jso
 beside the `pocket/` folder. When such a Vento file leaves the Pocket it goes to
 the Trash (after the Undo, or a minute after a drop), never deleted outright.
 Your own files are only forgotten, never deleted, trashed or moved.
+
+The clipboard history is stored **unencrypted**: anything you copy that Vento
+does not skip (copies password managers mark as concealed or transient, and
+copies made while Vento is paused or the history is off) is readable there until
+it leaves the history. When a copy leaves (it falls off the 50-copy limit, you
+remove it, or you clear the list and the Undo time passes), its folder in
+`clipboard/` is deleted outright, not moved to the Trash. Pinned copies stay
+until you remove them. Vento only ever deletes folders inside `clipboard/` and
+never touches the files you copied. If `clipboard.json` cannot be read (damaged,
+or written by a newer Vento), it is kept as `clipboard.json.bak` together with
+the folders, and the history starts empty; emptying the history deletes that
+backup too.
 
 ## Archive details
 

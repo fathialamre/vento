@@ -1,4 +1,4 @@
-//! Pocket island presence and shake detection: pure logic, driven by the shell.
+//! Pocket island presence: pure logic, driven by the shell.
 
 use std::time::{Duration, Instant};
 
@@ -13,12 +13,6 @@ pub const HOVER_DWELL: Duration = Duration::from_millis(150);
 /// How long the expand conditions must stay false before the island leaves
 /// `Expanded`, so a cursor wobbling at the edge doesn't flicker it.
 pub const COLLAPSE_DELAY: Duration = Duration::from_millis(400);
-/// Horizontal direction reversals that make a shake.
-pub const SHAKE_REVERSALS: usize = 4;
-/// Minimum horizontal travel, in logical pixels, of the leg a reversal ends.
-pub const SHAKE_MIN_LEG: f64 = 40.0;
-/// All reversals of a shake must fall within this span.
-pub const SHAKE_WINDOW: Duration = Duration::from_millis(600);
 
 /// How much of the island is showing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,82 +124,6 @@ fn resting(has_items: bool) -> Presence {
 /// Whether `p` is inside `r`, edges included.
 fn contains(r: &Rect, p: Point) -> bool {
     p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
-}
-
-/// Spots a quick side-to-side shake of the cursor during a drag.
-#[derive(Clone, Debug)]
-pub struct ShakeDetector {
-    /// Where the current leg started: the first sample, then each turning point.
-    pivot: Option<f64>,
-    /// Furthest x reached on the current leg.
-    extreme: f64,
-    /// Direction of the current leg: 1 right, -1 left, 0 not yet moving.
-    dir: i8,
-    reversals: Vec<Instant>,
-    fired: bool,
-}
-
-impl Default for ShakeDetector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ShakeDetector {
-    pub fn new() -> Self {
-        Self {
-            pivot: None,
-            extreme: 0.0,
-            dir: 0,
-            reversals: Vec::new(),
-            fired: false,
-        }
-    }
-
-    /// Feeds one cursor x position; returns true once, when a shake completes.
-    pub fn feed(&mut self, x: f64, now: Instant) -> bool {
-        let Some(pivot) = self.pivot else {
-            self.pivot = Some(x);
-            self.extreme = x;
-            return false;
-        };
-        if self.dir == 0 {
-            if x != pivot {
-                self.dir = if x > pivot { 1 } else { -1 };
-                self.extreme = x;
-            }
-            return false;
-        }
-        let dir = f64::from(self.dir);
-        if x * dir >= self.extreme * dir {
-            self.extreme = x;
-            return false;
-        }
-        // Moving back against the leg: it is a reversal only if the leg that
-        // just ended was long enough; smaller back-steps are jitter.
-        if (self.extreme - pivot).abs() < SHAKE_MIN_LEG {
-            return false;
-        }
-        self.pivot = Some(self.extreme);
-        self.extreme = x;
-        self.dir = -self.dir;
-        if self.fired {
-            return false;
-        }
-        self.reversals.push(now);
-        self.reversals
-            .retain(|t| now.saturating_duration_since(*t) <= SHAKE_WINDOW);
-        if self.reversals.len() >= SHAKE_REVERSALS {
-            self.fired = true;
-            return true;
-        }
-        false
-    }
-
-    /// Forgets everything and re-arms; call on mouse-up.
-    pub fn reset(&mut self) {
-        *self = Self::new();
-    }
 }
 
 #[cfg(test)]
@@ -431,63 +349,5 @@ mod tests {
             s.update(&inputs(false, false, OUTSIDE, true), t0),
             Presence::Expanded
         );
-    }
-
-    /// Feeds x positions 50 ms apart starting at `t0`; returns how many times
-    /// the detector fired.
-    fn shake(d: &mut ShakeDetector, t0: Instant, step_ms: u64, xs: &[f64]) -> usize {
-        xs.iter()
-            .enumerate()
-            .filter(|(k, x)| d.feed(**x, ms(t0, step_ms * *k as u64)))
-            .count()
-    }
-
-    const FOUR_REVERSALS: [f64; 6] = [0.0, 50.0, 0.0, 50.0, 0.0, 50.0];
-
-    #[test]
-    fn shake_fires_on_four_quick_reversals() {
-        let mut d = ShakeDetector::new();
-        assert_eq!(shake(&mut d, Instant::now(), 50, &FOUR_REVERSALS), 1);
-    }
-
-    #[test]
-    fn three_reversals_do_not_shake() {
-        let mut d = ShakeDetector::new();
-        assert_eq!(shake(&mut d, Instant::now(), 50, &FOUR_REVERSALS[..5]), 0);
-    }
-
-    #[test]
-    fn small_wiggles_do_not_shake() {
-        let mut d = ShakeDetector::new();
-        let xs = [0.0, 20.0, 0.0, 20.0, 0.0, 20.0, 0.0, 20.0, 0.0, 20.0];
-        assert_eq!(shake(&mut d, Instant::now(), 50, &xs), 0);
-    }
-
-    #[test]
-    fn slow_reversals_do_not_shake() {
-        // Four reversals, but they span 900 ms (sampled 300 ms apart).
-        let mut d = ShakeDetector::new();
-        assert_eq!(shake(&mut d, Instant::now(), 300, &FOUR_REVERSALS), 0);
-    }
-
-    #[test]
-    fn jitter_within_a_leg_is_not_a_reversal() {
-        let mut d = ShakeDetector::new();
-        // Each leg stutters back 5 px on the way; still only 4 real reversals.
-        let xs = [
-            0.0, 30.0, 25.0, 50.0, 0.0, 20.0, 15.0, 50.0, 0.0, 50.0, 0.0, 50.0,
-        ];
-        assert_eq!(shake(&mut d, Instant::now(), 20, &xs), 1);
-    }
-
-    #[test]
-    fn shake_fires_once_until_reset() {
-        let t0 = Instant::now();
-        let mut d = ShakeDetector::new();
-        assert_eq!(shake(&mut d, t0, 50, &FOUR_REVERSALS), 1);
-        let more = [0.0, 50.0, 0.0, 50.0, 0.0, 50.0];
-        assert_eq!(shake(&mut d, ms(t0, 1000), 50, &more), 0);
-        d.reset();
-        assert_eq!(shake(&mut d, ms(t0, 2000), 50, &FOUR_REVERSALS), 1);
     }
 }

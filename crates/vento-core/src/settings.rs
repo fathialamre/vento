@@ -19,6 +19,9 @@ pub struct Settings {
     pub layout: Layout,
     /// Modifier that opens the wheel during a drag.
     pub trigger: Modifier,
+    /// Whether a quick back-and-forth shake during a file drag opens the
+    /// wheel too.
+    pub shake_to_open: bool,
     /// Actions shown on the wheel, in order (unique, at most `MAX_ACTIONS`).
     pub actions: Vec<ActionId>,
     /// Format used by the Copy path action.
@@ -33,6 +36,11 @@ pub struct Settings {
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].
     pub pocket_shortcut: String,
+    /// Whether copies are recorded into the Clipboard history.
+    pub clipboard_history: bool,
+    /// Global shortcut that shows the island on the Clipboard history, in the
+    /// same form as [`Settings::pocket_shortcut`].
+    pub clipboard_shortcut: String,
     /// Folders pinned to the move ring, in order (unique, at most
     /// [`MAX_PINNED`]).
     pub pinned_folders: Vec<PathBuf>,
@@ -59,6 +67,10 @@ fn default_pocket_shortcut() -> String {
     "ctrl+alt+p".to_owned()
 }
 
+fn default_clipboard_shortcut() -> String {
+    "ctrl+alt+v".to_owned()
+}
+
 fn default_actions() -> Vec<ActionId> {
     vec![
         ActionId::Pocket,
@@ -74,12 +86,15 @@ impl Default for Settings {
         Settings {
             layout: Layout::Honeycomb,
             trigger: Modifier::Ctrl,
+            shake_to_open: true,
             actions: default_actions(),
             copy_path_format: PathFormat::Plain,
             terminal: None,
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
             pocket_shortcut: default_pocket_shortcut(),
+            clipboard_history: true,
+            clipboard_shortcut: default_clipboard_shortcut(),
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
@@ -94,12 +109,15 @@ impl Default for Settings {
 struct RawSettings {
     layout: Layout,
     trigger: Modifier,
+    shake_to_open: bool,
     actions: Vec<String>,
     copy_path_format: PathFormat,
     terminal: Option<String>,
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
     pocket_shortcut: String,
+    clipboard_history: bool,
+    clipboard_shortcut: String,
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
@@ -116,12 +134,15 @@ impl From<&Settings> for RawSettings {
         RawSettings {
             layout: s.layout,
             trigger: s.trigger,
+            shake_to_open: s.shake_to_open,
             actions: s.actions.iter().map(|a| a.key().to_owned()).collect(),
             copy_path_format: s.copy_path_format,
             terminal: s.terminal.clone(),
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
             pocket_shortcut: s.pocket_shortcut.clone(),
+            clipboard_history: s.clipboard_history,
+            clipboard_shortcut: s.clipboard_shortcut.clone(),
             pinned_folders: s.pinned_folders.clone(),
             move_hold_ms: s.move_hold_ms,
             hidden_actions: s
@@ -171,12 +192,15 @@ impl From<RawSettings> for Settings {
         Settings {
             layout: raw.layout,
             trigger: raw.trigger,
+            shake_to_open: raw.shake_to_open,
             actions,
             copy_path_format: raw.copy_path_format,
             terminal: raw.terminal,
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
             pocket_shortcut: raw.pocket_shortcut,
+            clipboard_history: raw.clipboard_history,
+            clipboard_shortcut: raw.clipboard_shortcut,
             pinned_folders,
             move_hold_ms,
             hidden_actions,
@@ -452,6 +476,61 @@ mod tests {
             pocket_remove_after_drop: true,
             pocket_keep_copies: true,
             pocket_shortcut: "cmd+shift+9".into(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn clipboard_defaults() {
+        let s = Settings::default();
+        assert!(s.clipboard_history);
+        assert_eq!(s.clipboard_shortcut, "ctrl+alt+v");
+    }
+
+    #[test]
+    fn old_file_without_clipboard_keys_loads() {
+        // A file from before the Clipboard, with the Pocket keys already set.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(
+            &p,
+            "layout = \"honeycomb\"\ntrigger = \"ctrl\"\n\
+             pocket_shortcut = \"cmd+shift+9\"\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&p).unwrap();
+        assert!(s.clipboard_history);
+        assert_eq!(s.clipboard_shortcut, "ctrl+alt+v");
+        assert_eq!(s.pocket_shortcut, "cmd+shift+9");
+    }
+
+    #[test]
+    fn clipboard_keys_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        // Non-default values, so a key lost on save would load back as its
+        // default and fail the comparison.
+        let s = Settings {
+            clipboard_history: false,
+            clipboard_shortcut: "cmd+shift+c".into(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn shake_to_open_defaults_on_and_round_trips() {
+        assert!(Settings::default().shake_to_open);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        // A file from before the key: on.
+        std::fs::write(&p, "trigger = \"ctrl\"\n").unwrap();
+        assert!(Settings::try_load(&p).unwrap().shake_to_open);
+        let s = Settings {
+            shake_to_open: false,
             ..Settings::default()
         };
         s.save(&p).unwrap();

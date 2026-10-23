@@ -9,8 +9,9 @@ use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy, NSMenu,
-    NSRunningApplication, NSWorkspace,
+    NSPasteboard, NSRunningApplication, NSWorkspace,
 };
+use vento_core::clip::ClipSnapshot;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
@@ -34,6 +35,7 @@ mod screens;
 mod terminal;
 mod trash;
 
+pub(crate) use icons::picture_thumbnail;
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 
@@ -101,6 +103,38 @@ impl Platform for MacPlatform {
 
     fn copy_text(&self, text: &str) -> Result<(), PlatformError> {
         clipboard::copy_text(text)
+    }
+
+    fn clipboard_types(&self) -> Vec<String> {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("clipboard_types called off the main thread; ignored");
+            return Vec::new();
+        }
+        clipboard::types_of(&NSPasteboard::generalPasteboard())
+    }
+
+    fn clipboard_change_count(&self) -> i64 {
+        NSPasteboard::generalPasteboard().changeCount() as i64
+    }
+
+    fn read_clipboard(&self) -> ClipSnapshot {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("read_clipboard called off the main thread; ignored");
+            return ClipSnapshot::default();
+        }
+        clipboard::read_from(&NSPasteboard::generalPasteboard())
+    }
+
+    fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError> {
+        if MainThreadMarker::new().is_none() {
+            log::warn!("write_clipboard called off the main thread; ignored");
+            return Err(PlatformError::Failed("not on the main thread".into()));
+        }
+        clipboard::write_to(&NSPasteboard::generalPasteboard(), snapshot)
+    }
+
+    fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf> {
+        clipboard::resolve_file_reference(path)
     }
 
     fn terminals(&self) -> Vec<TerminalApp> {
@@ -315,5 +349,32 @@ impl Platform for MacPlatform {
         entries: &[MenuEntry],
     ) -> Option<u32> {
         menu::context_menu(window, at, entries)
+    }
+}
+
+/// Helpers shared by the tests of several modules.
+#[cfg(test)]
+pub(super) mod test_support {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2_app_kit::NSPasteboard;
+
+    /// A private pasteboard, released when dropped.
+    pub struct TempPasteboard(pub Retained<NSPasteboard>);
+
+    impl TempPasteboard {
+        pub fn new() -> Self {
+            let pb = NSPasteboard::pasteboardWithUniqueName();
+            pb.clearContents();
+            Self(pb)
+        }
+    }
+
+    impl Drop for TempPasteboard {
+        fn drop(&mut self) {
+            // SAFETY: `releaseGlobally` takes no arguments and returns void;
+            // objc2 does not expose it.
+            let _: () = unsafe { msg_send![&*self.0, releaseGlobally] };
+        }
     }
 }

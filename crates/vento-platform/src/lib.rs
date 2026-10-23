@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use vento_core::clip::ClipSnapshot;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
@@ -151,6 +152,22 @@ pub trait Platform {
     fn copy_files(&self, paths: &[PathBuf]) -> Result<(), PlatformError>;
     /// Replace the clipboard with this text.
     fn copy_text(&self, text: &str) -> Result<(), PlatformError>;
+    /// Every pasteboard type name of every clipboard item, in order,
+    /// duplicates kept. Cheap: reads names only, never data.
+    fn clipboard_types(&self) -> Vec<String>;
+    /// The clipboard's change counter now (the one input samples carry as
+    /// `clip_change_count`). Cheap: reads no content. Main thread only.
+    fn clipboard_change_count(&self) -> i64;
+    /// The whole clipboard: per item, every representation that has data.
+    /// Items left with none are dropped.
+    fn read_clipboard(&self) -> ClipSnapshot;
+    /// Replace the clipboard with this snapshot, one pasteboard item per
+    /// snapshot item. Returns the clipboard's change counter after writing,
+    /// so the caller can tell its own write from a copy.
+    fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError>;
+    /// The real path of a file reference (`/.file/id=…`: Finder copies
+    /// files as reference URLs), or `None` if it leads to no file now.
+    fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf>;
     /// Installed terminal apps; on macOS Terminal is always first.
     fn terminals(&self) -> Vec<TerminalApp>;
     /// Open a terminal in `dir`. `terminal` is a [`TerminalApp::id`]; an
@@ -300,6 +317,22 @@ pub fn is_package(path: &Path) -> bool {
     #[cfg(not(target_os = "macos"))]
     {
         stub::is_package(path)
+    }
+}
+
+/// A thumbnail of the picture file at `path`: its shorter side `short_px`
+/// pixels, its longer one in proportion but at most `max_ratio` times as
+/// long. `None` if it is missing or not a readable picture. A free function
+/// so a worker thread can call it. Always `None` where unsupported.
+pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<RgbaImage> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::picture_thumbnail(path, short_px, max_ratio)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, short_px, max_ratio);
+        None
     }
 }
 

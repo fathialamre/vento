@@ -31,6 +31,7 @@ objc2-foundation = { version = "0.3", features = [
 objc2-app-kit = { version = "0.3", features = [
     "NSEvent",
     "NSPasteboard",
+    "NSPasteboardItem",
     "NSScreen",
     "NSApplication",
     "NSRunningApplication",
@@ -53,3 +54,7 @@ objc2-core-graphics = { version = "0.3", features = ["CGEventSource"] }
 rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
+
+[dev-dependencies]
+# Writes the PNG files the picture thumbnail tests read.
+png = "0.18"
