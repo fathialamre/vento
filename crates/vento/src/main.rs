@@ -219,6 +219,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let keep = tray_handle.clone();
     let tray_info = info.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
+        screen_text_probe(&*platform);
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
         apply_clip_shortcut(&settings);
@@ -301,6 +302,65 @@ fn select_backend() -> Result<(), slint::PlatformError> {
         .backend_name("winit".into())
         .with_winit_event_loop_builder(event_loop)
         .select()
+}
+
+/// Temporary check of Copy from screen, until the feature itself lands: with
+/// `VENTO_SCREEN_TEXT_PROBE` set, reads the top-left 900 × 500 pt of the main
+/// display on a worker thread and logs the text, or asks for Screen
+/// Recording when it is not granted.
+#[cfg(target_os = "macos")]
+fn screen_text_probe(platform: &dyn vento_platform::Platform) {
+    use std::time::Instant;
+
+    use vento_core::geometry::Rect;
+    use vento_core::screen_text::{Selection, assemble};
+
+    if std::env::var_os("VENTO_SCREEN_TEXT_PROBE").is_none() {
+        return;
+    }
+    let screen_text = vento_platform::screen_text();
+    let has_access = screen_text.has_access();
+    log::info!("screen text probe: has_access: {has_access}");
+    if !has_access {
+        screen_text.request_access();
+        return;
+    }
+    // The main display is the primary screen, at the global origin; only
+    // that origin matters to the capture.
+    let Some(work) = platform.screens().first().copied() else {
+        log::info!("screen text probe: no screen");
+        return;
+    };
+    unsafe extern "C" {
+        fn CGMainDisplayID() -> u32;
+    }
+    // SAFETY: takes nothing and returns the main display's id; CoreGraphics
+    // is linked through vento-platform.
+    let display_id = unsafe { CGMainDisplayID() };
+    let sel = Selection {
+        display_id,
+        display: Rect {
+            x: 0.0,
+            y: 0.0,
+            w: work.w,
+            h: work.y + work.h,
+        },
+        rect: Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 900.0,
+            h: 500.0,
+        },
+    };
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        let result = vento_platform::read_screen_text(&sel).map(|boxes| assemble(&boxes));
+        let ms = start.elapsed().as_millis();
+        match result {
+            Ok(text) => log::info!("screen text probe ({ms} ms):\n{text}"),
+            Err(e) => log::info!("screen text probe failed ({ms} ms): {e}"),
+        }
+    });
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -27,6 +27,7 @@ objc2-foundation = { version = "0.3", features = [
     "NSError",
     "NSNotification",
     "NSBundle",
+    "NSProcessInfo",
 ] }
 objc2-app-kit = { version = "0.3", features = [
     "NSEvent",
@@ -50,7 +51,34 @@ objc2-app-kit = { version = "0.3", features = [
     "NSMenu",
     "NSMenuItem",
 ] }
-objc2-core-graphics = { version = "0.3", features = ["CGEventSource"] }
+objc2-core-graphics = { version = "0.3", features = [
+    "CGEventSource",
+    "CGImage",
+    "CGWindow",
+] }
+# Holds on to the CGImage a screen capture hands back.
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std"] }
+# Copy from screen: capture an area, then read its text. Only what that needs;
+# every class is looked up at run time, so the app still starts on macOS 13.
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "libc",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "SCShareableContent",
+    "SCStream",
+    "SCScreenshotManager",
+] }
+objc2-vision = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "VNRequest",
+    "VNRecognizeTextRequest",
+    "VNObservation",
+    "VNRequestHandler",
+] }
 rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
