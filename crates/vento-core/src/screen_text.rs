@@ -81,13 +81,15 @@ pub const MAX_INDENT: usize = 40;
 /// row in reading order, rows indented by their left edge, joined with `\n`.
 /// Blank boxes are ignored; no usable box gives an empty string.
 ///
-/// A row reads right to left when it holds at least as many Arabic/Hebrew
-/// words as Latin-style ones, so `اضغط Ctrl` keeps the Arabic first even when
-/// OCR splits it into boxes, while an English line ending in an Arabic phrase
-/// stays left to right. Rows read left to right are indented from the leftmost
-/// box, at most [`MAX_INDENT`] spaces; right-to-left rows are not, and nothing
-/// is indented in a capture that is mostly right-to-left, where lines align
-/// right.
+/// A row of several boxes reads right to left when it holds at least as many
+/// Arabic/Hebrew words as Latin-style ones, so `اضغط Ctrl` keeps the Arabic
+/// first even when OCR splits it into boxes, while an English line ending in
+/// an Arabic phrase stays left to right. A row of one box, whose text OCR
+/// already gives in reading order, takes the direction of its first letter,
+/// as bidirectional text does, so `s = "مرحبا"` stays a left-to-right code
+/// line. Rows read left to right are indented from the leftmost box, at most
+/// [`MAX_INDENT`] spaces; right-to-left rows are not, and nothing is indented
+/// in a capture that is mostly right-to-left, where lines align right.
 pub fn assemble(boxes: &[TextBox]) -> String {
     let mut boxes: Vec<&TextBox> = boxes.iter().filter(|b| !b.text.trim().is_empty()).collect();
     if boxes.is_empty() {
@@ -95,14 +97,17 @@ pub fn assemble(boxes: &[TextBox]) -> String {
     }
     boxes.sort_by(|a, b| centre_y(a).total_cmp(&centre_y(b)));
 
-    let capture_rtl = letters(&boxes).rtl_majority();
+    let capture_rtl = letters(boxes.iter().flat_map(|b| b.text.chars())).rtl_majority();
     let left = boxes.iter().map(|b| b.rect.x).fold(f64::INFINITY, f64::min);
     let char_w = char_width(&boxes);
 
     let lines: Vec<String> = group_rows(&boxes)
         .into_iter()
         .map(|mut row| {
-            let rtl = reads_right_to_left(&row);
+            let rtl = match row.as_slice() {
+                [only] => first_letter_is_rtl(&only.text),
+                _ => reads_right_to_left(&row),
+            };
             row.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
             let row = reading_order(row, rtl);
             let indent = if capture_rtl || rtl || char_w <= 0.0 {
@@ -158,15 +163,26 @@ impl Letters {
     }
 }
 
-/// Whether `c` is an Arabic or Hebrew letter (or form).
+/// Whether `c` is an Arabic or Hebrew letter (or presentation form). Their
+/// digits and punctuation are not letters, and neither are the variation
+/// selectors and small or vertical forms between the presentation blocks.
 fn is_rtl(c: char) -> bool {
-    matches!(c, '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FEFF}')
+    c.is_alphabetic()
+        && matches!(
+            c,
+            '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFC}'
+        )
 }
 
-/// Counts the letters of each direction in `boxes`.
-fn letters(boxes: &[&TextBox]) -> Letters {
+/// Whether the first letter of `text` is Arabic/Hebrew.
+fn first_letter_is_rtl(text: &str) -> bool {
+    text.chars().find(|c| c.is_alphabetic()).is_some_and(is_rtl)
+}
+
+/// Counts the letters of each direction in `chars`.
+fn letters(chars: impl Iterator<Item = char>) -> Letters {
     let mut n = Letters::default();
-    for c in boxes.iter().flat_map(|b| b.text.chars()) {
+    for c in chars {
         if is_rtl(c) {
             n.rtl += 1;
         } else if c.is_alphabetic() {
@@ -176,16 +192,17 @@ fn letters(boxes: &[&TextBox]) -> Letters {
     n
 }
 
-/// How many right-to-left and left-to-right words `boxes` hold. A word with
-/// any Arabic/Hebrew letter is right-to-left; numbers and punctuation are
-/// neither.
+/// How many right-to-left and left-to-right words `boxes` hold. A word goes
+/// with the script of most of its letters (a tie to Arabic/Hebrew), so
+/// `print("تم")` is a Latin word; numbers and punctuation are neither.
 fn word_counts(boxes: &[&TextBox]) -> (usize, usize) {
     let (mut rtl, mut ltr) = (0, 0);
     for word in boxes.iter().flat_map(|b| b.text.split_whitespace()) {
-        if word.chars().any(is_rtl) {
-            rtl += 1;
-        } else if word.chars().any(char::is_alphabetic) {
-            ltr += 1;
+        let n = letters(word.chars());
+        match (n.rtl, n.ltr) {
+            (0, 0) => {}
+            (r, l) if r >= l => rtl += 1,
+            _ => ltr += 1,
         }
     }
     (rtl, ltr)
@@ -387,8 +404,8 @@ mod tests {
     }
 
     #[test]
-    fn tie_row_in_arabic_capture_reads_right_to_left() {
-        // Vision split a clipped line in two: four Latin letters, four Arabic.
+    fn word_tie_row_reads_right_to_left() {
+        // Vision split a clipped line in two: one Latin word, one Arabic.
         let boxes = [
             b(0.0, 0.0, 40.0, 20.0, "Ctrl"),
             b(60.0, 0.0, 40.0, 20.0, "اضغط"),
@@ -398,8 +415,8 @@ mod tests {
     }
 
     #[test]
-    fn latin_heavy_mixed_row_in_arabic_capture_reads_right_to_left() {
-        // Five Latin letters to four Arabic on the row; the capture is Arabic.
+    fn more_latin_letters_but_a_word_tie_reads_right_to_left() {
+        // Five Latin letters to four Arabic, but one word each: a tie.
         let boxes = [
             b(0.0, 0.0, 50.0, 20.0, "Enter"),
             b(70.0, 0.0, 40.0, 20.0, "اضغط"),
@@ -505,6 +522,35 @@ mod tests {
             b(170.0, 0.0, 40.0, 20.0, "اضغط"),
         ];
         assert_eq!(assemble(&boxes), "اضغط على Ctrl Enter");
+    }
+
+    #[test]
+    fn code_with_arabic_strings_keeps_its_indent() {
+        // 10 px per character.
+        let boxes = [
+            b(0.0, 0.0, 60.0, 20.0, "if ok:"),
+            b(40.0, 30.0, 110.0, 20.0, "print(\"تم\")"),
+            b(40.0, 60.0, 110.0, 20.0, "s = \"مرحبا\""),
+            b(40.0, 90.0, 80.0, 20.0, "return x"),
+        ];
+        assert_eq!(
+            assemble(&boxes),
+            "if ok:\n    print(\"تم\")\n    s = \"مرحبا\"\n    return x"
+        );
+    }
+
+    #[test]
+    fn arabic_digits_and_presentation_marks_are_not_letters() {
+        let boxes = [
+            b(0.0, 0.0, 40.0, 20.0, "Page"),
+            b(60.0, 0.0, 10.0, 20.0, "٣"),
+        ];
+        assert_eq!(assemble(&boxes), "Page ٣");
+        let boxes = [
+            b(0.0, 0.0, 50.0, 20.0, "Hello"),
+            b(60.0, 0.0, 10.0, 20.0, "﹐"),
+        ];
+        assert_eq!(assemble(&boxes), "Hello ﹐");
     }
 
     #[test]
