@@ -81,9 +81,10 @@ It removes the "downloaded from the internet" mark from Vento only.
 Vento lives in the menu bar, not in the Dock. Look for this icon at the top of
 your screen: <img src=".github/assets/menu-bar.png" alt="Vento menu bar icon" height="22">
 
-If you use [Copy from screen](#copy-from-screen), macOS asks you to switch on
-Screen Recording for Vento. After you switch it on, macOS may ask you to reopen
-Vento. After each Vento update, switch it on again; if the switch does nothing,
+The first time you use [Copy from screen](#copy-from-screen), a Vento window
+explains why it needs Screen Recording and opens System Settings, where you switch
+it on for Vento (macOS may also show its own prompt). After you switch it on,
+macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing,
 remove Vento with the minus button and add it again.
 
 ## Your first drag
@@ -209,10 +210,13 @@ that won't let you select it. Press **⌃⌥T** (Control-Option-T), or choose
 the text and let go: the text inside it is on your clipboard, ready to paste with
 ⌘V. Esc, a right click, or a click without dragging cancels.
 
-It reads Arabic and English, on your Mac, with nothing sent anywhere. It needs
-macOS 14 or later, and asks for **Screen Recording** the first time you use it
-(see [install](#install-and-first-launch) for what to do after an update). Change
-the shortcut in the settings panel's **General** tab.
+It reads English and Arabic on your Mac, with nothing sent anywhere. Arabic needs
+a recent macOS; older versions may read only some languages. It needs macOS 14 or
+later, and asks for **Screen Recording** the first time you use it (see
+[install](#install-and-first-launch) for what to do after an update). macOS 15
+and later may ask you from time to time to confirm that Vento can keep recording
+the screen; that is normal. Change the shortcut in the settings panel's
+**General** tab.
 
 ## Settings
 
