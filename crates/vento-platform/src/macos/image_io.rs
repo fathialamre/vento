@@ -3,12 +3,15 @@
 //! functions run on any thread.
 
 use std::ffi::c_void;
+use std::fs::File;
 use std::path::Path;
 use std::ptr;
+use std::sync::OnceLock;
 
+use objc2::rc::autoreleasepool;
 use objc2_core_foundation::{
-    CFDictionary, CFMutableDictionary, CFNumber, CFRetained, CFString, CFType, CFURL, CGPoint,
-    CGRect, CGSize,
+    CFDictionary, CFMutableData, CFMutableDictionary, CFNumber, CFRetained, CFString, CFType,
+    CFURL, CGPoint, CGRect, CGSize,
 };
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGBitmapContextCreateImage, CGColorSpace, CGColorSpaceModel, CGContext,
@@ -32,24 +35,31 @@ const LOSSY_QUALITY: f64 = 0.9;
 /// The format the file at `path` decodes as, judged by its content, not its
 /// name. `None` for a readable image of another format (AVIF, RAW).
 pub(crate) fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
-    let source = open_source(path)?;
-    // SAFETY: `source` is a valid image source.
-    let Some(uti) = (unsafe { source.r#type() }) else {
-        return Ok(None);
-    };
-    Ok(format_of_type(&uti.to_string()))
+    // Worker threads live long: drain what ImageIO autoreleases per file.
+    autoreleasepool(|_| {
+        let source = open_source(path)?;
+        // SAFETY: `source` is a valid image source.
+        let Some(uti) = (unsafe { source.r#type() }) else {
+            return Ok(None);
+        };
+        Ok(format_of_type(&uti.to_string()))
+    })
 }
 
 /// Writes the first frame of `src`, upright, into the existing file `dst` as
 /// `format`, keeping the source's metadata and colour profile.
 pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
+    // Worker threads live long: drain what ImageIO autoreleases per file.
+    autoreleasepool(|_| write(src, dst, format))
+}
+
+fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
     if format == ImageFormat::Webp {
         return Err(ConvertError::Unsupported(
             "WebP is not supported yet".into(),
         ));
     }
-    let uti = CFString::from_static_str(type_of_format(format));
-    if format == ImageFormat::Heic && !can_write_type(&uti) {
+    if format == ImageFormat::Heic && !heic_encoder_works() {
         return Err(ConvertError::Unsupported(
             "HEIC is not supported on this Mac".into(),
         ));
@@ -61,15 +71,16 @@ pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result
         .map(|props| unsafe { CFRetained::cast_unchecked::<Properties>(props) });
     let mut image = upright_first_frame(&source, source_props.as_deref())?;
     image = match format {
-        // Neither keeps transparency well: lay the picture on white.
-        ImageFormat::Jpeg | ImageFormat::Bmp if has_alpha(&image) => {
-            redraw(&image, Background::White, format == ImageFormat::Bmp)?
-        }
+        // JPEG keeps no transparency: lay the picture on white.
+        ImageFormat::Jpeg if has_alpha(&image) => redraw(&image, Background::White, false)?,
+        // GIF and BMP carry no colour profile: match the pixels to sRGB.
+        ImageFormat::Bmp => redraw(&image, Background::White, true)?,
         ImageFormat::Gif => redraw(&image, Background::Clear, true)?,
         _ => image,
     };
     let props = destination_properties(source_props.as_deref(), format);
     let failed = || ConvertError::Encode(format!("couldn't write {}", format.name()));
+    let uti = CFString::from_static_str(type_of_format(format));
     let url = CFURL::from_file_path(dst).ok_or_else(failed)?;
     // SAFETY: valid URL and type; no options.
     let dest = unsafe { CGImageDestination::with_url(&url, &uti, 1, None) }.ok_or_else(failed)?;
@@ -84,14 +95,25 @@ pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result
 }
 
 fn open_source(path: &Path) -> Result<CFRetained<CGImageSource>, ConvertError> {
-    let url = CFURL::from_file_path(path).ok_or(ConvertError::NotAnImage)?;
-    // SAFETY: valid URL; no options.
-    let source = unsafe { CGImageSource::with_url(&url, None) }.ok_or(ConvertError::NotAnImage)?;
-    // SAFETY: `source` is a valid image source.
-    if unsafe { source.count() } == 0 {
-        return Err(ConvertError::NotAnImage);
+    let source = CFURL::from_file_path(path)
+        // SAFETY: valid URL; no options.
+        .and_then(|url| unsafe { CGImageSource::with_url(&url, None) })
+        // SAFETY: `source` is a valid image source.
+        .filter(|source| unsafe { source.count() } > 0);
+    match source {
+        Some(source) => Ok(source),
+        // ImageIO says the same for a locked file as for a text file; only
+        // the second is not an image.
+        None => match File::open(path) {
+            Err(e) => Err(ConvertError::Io(e)),
+            Ok(_) => Err(ConvertError::NotAnImage),
+        },
     }
-    Ok(source)
+}
+
+/// The error for a file that probed as an image but won't decode.
+fn unreadable() -> ConvertError {
+    ConvertError::Encode("couldn't read the image".into())
 }
 
 /// The first frame at full size with its orientation applied to the pixels,
@@ -110,7 +132,7 @@ fn upright_first_frame(
     } else {
         // No size in the metadata: decode the frame to learn it.
         // SAFETY: `source` is a valid image source; no options.
-        let image = unsafe { source.image_at_index(0, None) }.ok_or(ConvertError::NotAnImage)?;
+        let image = unsafe { source.image_at_index(0, None) }.ok_or_else(unreadable)?;
         CGImage::width(Some(&image)).max(CGImage::height(Some(&image))) as i64
     };
     let yes = CFNumber::new_i32(1);
@@ -126,8 +148,7 @@ fn upright_first_frame(
     let values: [&CFType; 3] = [&yes, &yes, &max];
     let options = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
     // SAFETY: `options` holds thumbnail option keys with number values.
-    unsafe { source.thumbnail_at_index(0, Some(options.as_opaque())) }
-        .ok_or(ConvertError::NotAnImage)
+    unsafe { source.thumbnail_at_index(0, Some(options.as_opaque())) }.ok_or_else(unreadable)
 }
 
 fn has_alpha(image: &CGImage) -> bool {
@@ -250,12 +271,27 @@ fn number(props: &Properties, key: &CFString) -> Option<i64> {
     props.get(key)?.downcast::<CFNumber>().ok()?.as_i64()
 }
 
-fn can_write_type(uti: &CFString) -> bool {
-    // SAFETY: no arguments; the array holds CFStrings.
-    let types = unsafe { CGImageDestination::type_identifiers() };
-    // SAFETY: the array holds type identifier strings.
-    let types = unsafe { types.cast_unchecked::<CFString>() };
-    types.iter().any(|t| *t == *uti)
+/// Whether this Mac can encode HEIC. ImageIO lists the type even where no
+/// HEVC encoder runs (some virtual machines), so a 1×1 image is encoded in
+/// memory once to find out.
+fn heic_encoder_works() -> bool {
+    static WORKS: OnceLock<bool> = OnceLock::new();
+    *WORKS.get_or_init(|| autoreleasepool(|_| trial_heic_encode().is_some()))
+}
+
+fn trial_heic_encode() -> Option<()> {
+    // SAFETY: a valid system colour space name.
+    let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))?;
+    let context = bitmap_context(1, 1, &space, CGImageAlphaInfo::NoneSkipLast)?;
+    let image = CGBitmapContextCreateImage(Some(&context))?;
+    let data = CFMutableData::new(None, 0)?;
+    let uti = CFString::from_static_str(type_of_format(ImageFormat::Heic));
+    // SAFETY: valid data and type; no options.
+    let dest = unsafe { CGImageDestination::with_data(&data, &uti, 1, None) }?;
+    // SAFETY: no properties.
+    unsafe { dest.add_image(&image, None) };
+    // SAFETY: exactly one image was added, as declared.
+    (unsafe { dest.finalize() } && !data.is_empty()).then_some(())
 }
 
 /// The uniform type identifier ImageIO writes `format` as.
@@ -482,6 +518,10 @@ mod tests {
         let src = dir.path().join("in.png");
         Fixture::new(30, 20).write(&src, ImageFormat::Png);
         for &format in ImageFormat::TARGETS {
+            // A Mac (or CI virtual machine) without a working HEVC encoder.
+            if format == ImageFormat::Heic && !super::heic_encoder_works() {
+                continue;
+            }
             let out = convert(&src, dir.path(), format);
             assert_eq!(probe_image(&out).unwrap(), Some(format), "{format:?}");
             assert_eq!(size(&out), (30, 20), "{format:?}");
@@ -502,6 +542,19 @@ mod tests {
         let src = dir.path().join("notes.png");
         fs::write(&src, "just some words, not pixels\n").unwrap();
         assert!(matches!(probe_image(&src), Err(ConvertError::NotAnImage)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_file_is_an_io_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("locked.png");
+        Fixture::new(8, 8).write(&src, ImageFormat::Png);
+        fs::set_permissions(&src, fs::Permissions::from_mode(0o000)).unwrap();
+        let result = probe_image(&src);
+        fs::set_permissions(&src, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(matches!(result, Err(ConvertError::Io(_))), "{result:?}");
     }
 
     #[test]
@@ -600,6 +653,30 @@ mod tests {
         }
         .write(&src, ImageFormat::Png);
         let out = convert(&src, dir.path(), ImageFormat::Gif);
+        let profile = string(&properties(&out), unsafe { kCGImagePropertyProfileName });
+        assert!(
+            profile.as_deref().is_none_or(|p| p.contains("sRGB")),
+            "profile {profile:?}"
+        );
+        // The colour looks the same, so the pixels were matched to sRGB
+        // rather than copied raw from Display P3.
+        let (want, got) = (corner_pixel(&src), corner_pixel(&out));
+        for i in 0..3 {
+            assert!(want[i].abs_diff(got[i]) <= 4, "want {want:?}, got {got:?}");
+        }
+    }
+
+    #[test]
+    fn bmp_output_is_srgb() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            space: unsafe { kCGColorSpaceDisplayP3 },
+            fill: Fill::Color([0.2, 0.6, 0.2]),
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Bmp);
         let profile = string(&properties(&out), unsafe { kCGImagePropertyProfileName });
         assert!(
             profile.as_deref().is_none_or(|p| p.contains("sRGB")),

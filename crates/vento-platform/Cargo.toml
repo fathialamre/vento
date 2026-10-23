@@ -62,7 +62,7 @@ objc2-core-foundation = { version = "0.3", features = [
     "CFDictionary",
     "CFString",
     "CFNumber",
-    "CFArray",
+    "CFData",
 ] }
 # Reads and writes image files for the Convert action.
 objc2-image-io = { version = "0.3", features = [
