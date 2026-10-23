@@ -614,12 +614,14 @@ impl WheelController {
                 let shown = fit_path(&display_path(path, self.home.as_deref()), DEST_PATH_CHARS);
                 self.window.set_dest_path(shown.into());
                 self.window.set_dest_icon(self.folder_icon(path));
+                self.window.set_dest_icon_tint(false);
             }
             RingItems::Formats(formats) => {
                 self.window.set_dest_name(formats[d].name().into());
                 self.window.set_dest_path("".into());
                 self.window
                     .set_dest_icon(self.window.global::<Icons>().get_photo());
+                self.window.set_dest_icon_tint(true);
             }
         }
     }
@@ -736,6 +738,7 @@ impl WheelController {
                 line2: label.line2.unwrap_or_default().into(),
                 line2_dim: label.line2_dim,
                 pinned,
+                tint: matches!(items, RingItems::Formats(_)),
             })
             .collect();
         self.set_covered(Some(&ring));
