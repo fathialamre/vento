@@ -81,14 +81,12 @@ pub const MAX_INDENT: usize = 40;
 /// row in reading order, rows indented by their left edge, joined with `\n`.
 /// Blank boxes are ignored; no usable box gives an empty string.
 ///
-/// The capture as a whole reads right to left when it holds more
-/// Arabic/Hebrew letters than Latin-style ones. A row takes its own direction
-/// only when it is clear: all its letters are of one script. A row with both
-/// scripts (or with no letters) follows the capture, so `اضغط Ctrl` in an
-/// Arabic capture keeps the Arabic first even when OCR splits it into boxes
-/// and the Latin letters are as many or more. Rows read left to right are
-/// indented from the leftmost box, at most [`MAX_INDENT`] spaces; nothing is
-/// indented in a right-to-left capture, where lines align right.
+/// A row with any Arabic/Hebrew letter reads right to left, so `اضغط Ctrl`
+/// keeps the Arabic first even when OCR splits it into boxes, the Latin
+/// letters are as many or more, or the rest of the capture is English. Rows
+/// read left to right are indented from the leftmost box, at most
+/// [`MAX_INDENT`] spaces; right-to-left rows are not, and nothing is indented
+/// in a capture that is mostly right-to-left, where lines align right.
 pub fn assemble(boxes: &[TextBox]) -> String {
     let mut boxes: Vec<&TextBox> = boxes.iter().filter(|b| !b.text.trim().is_empty()).collect();
     if boxes.is_empty() {
@@ -103,7 +101,7 @@ pub fn assemble(boxes: &[TextBox]) -> String {
     let lines: Vec<String> = group_rows(&boxes)
         .into_iter()
         .map(|mut row| {
-            let rtl = letters(&row).clear_direction().unwrap_or(capture_rtl);
+            let rtl = letters(&row).rtl > 0;
             row.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
             if rtl {
                 row.reverse();
@@ -158,16 +156,6 @@ impl Letters {
     /// More right-to-left letters than left-to-right ones.
     fn rtl_majority(self) -> bool {
         self.rtl > self.ltr
-    }
-
-    /// `Some(true)` for right-to-left letters only, `Some(false)` for
-    /// left-to-right only; `None` when both scripts are there, or neither.
-    fn clear_direction(self) -> Option<bool> {
-        match (self.rtl > 0, self.ltr > 0) {
-            (true, false) => Some(true),
-            (false, true) => Some(false),
-            _ => None,
-        }
     }
 }
 
@@ -371,6 +359,36 @@ mod tests {
             b(90.0, 60.0, 40.0, 20.0, "Ctrl"),
         ];
         assert_eq!(assemble(&boxes), "مرحبا بالعالم\nاهلا\nCtrl");
+    }
+
+    #[test]
+    fn arabic_row_in_english_capture_reads_right_to_left() {
+        // The gate's case: English menus around a clipped line split in two
+        // boxes, as many Latin letters as Arabic. Not indented either.
+        let boxes = [
+            b(0.0, 0.0, 200.0, 20.0, "Preview File Edit View"),
+            b(0.0, 30.0, 160.0, 20.0, "Screen Recording"),
+            b(400.0, 60.0, 40.0, 20.0, "Ctrl"),
+            b(460.0, 60.0, 40.0, 20.0, "اضغط"),
+        ];
+        assert_eq!(
+            assemble(&boxes),
+            "Preview File Edit View\nScreen Recording\nاضغط Ctrl"
+        );
+    }
+
+    #[test]
+    fn arabic_heavy_row_in_english_capture_reads_right_to_left() {
+        let boxes = [
+            b(0.0, 0.0, 200.0, 20.0, "Preview File Edit View"),
+            b(0.0, 30.0, 160.0, 20.0, "Screen Recording"),
+            b(300.0, 60.0, 60.0, 20.0, "Finder"),
+            b(380.0, 60.0, 120.0, 20.0, "افتح الملف من"),
+        ];
+        assert_eq!(
+            assemble(&boxes),
+            "Preview File Edit View\nScreen Recording\nافتح الملف من Finder"
+        );
     }
 
     #[test]
