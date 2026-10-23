@@ -28,7 +28,7 @@ fn archives(n: usize) -> String {
 }
 
 /// Toast for a job the user cancelled.
-const CANCELLED_TEXT: &str = "Cancelled";
+pub(super) const CANCELLED_TEXT: &str = "Cancelled";
 
 /// What a finished Archive job did, as its toast tells it.
 #[derive(Debug)]
@@ -168,17 +168,17 @@ fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> Archiv
 }
 
 /// Has the main thread's progress window follow `progress`.
-fn show_progress(progress: &Arc<Progress>, verb: &'static str, at: Point) {
+pub(super) fn show_progress(progress: &Arc<Progress>, verb: &'static str, at: Point) {
     let progress = Arc::clone(progress);
     if let Err(e) = on_main(move |executor| executor.progress.track(progress, verb, at)) {
-        warn!("cannot show the archive progress: {e}");
+        warn!("cannot show the progress: {e}");
     }
 }
 
-/// The `mark` of an extraction: gives everything extracted from an archive
-/// that archive's quarantine attribute, read once per archive. A failure
-/// fails that archive's extraction.
-fn copy_quarantine() -> impl Fn(&Path, &Path) -> io::Result<()> {
+/// The `mark` of an extraction or conversion: gives everything made from a
+/// source (an archive, an image) that source's quarantine attribute, read
+/// once per source. A failure fails that source's job.
+pub(super) fn copy_quarantine() -> impl Fn(&Path, &Path) -> io::Result<()> {
     let read: RefCell<Option<(PathBuf, Option<Vec<u8>>)>> = RefCell::new(None);
     move |archive: &Path, entry: &Path| {
         let mut read = read.borrow_mut();

@@ -11,6 +11,7 @@ use log::{debug, info, warn};
 use slint::Timer;
 use vento_core::actions::ActionId;
 use vento_core::archive::Progress;
+use vento_core::convert::{ImageFormat, ring_formats};
 use vento_core::destinations::{RecentDestinations, recent_path};
 use vento_core::fileops::{
     CopyOutcome, CopyRecord, CopyUndoOutcome, FileOpError, MoveOutcome, MoveRecord, copy_items,
@@ -26,6 +27,7 @@ use crate::toast::Toaster;
 use crate::wheel::WheelDrop;
 
 mod archive;
+mod convert;
 
 use archive::archive_undo_toast_text;
 
@@ -190,6 +192,8 @@ pub enum UndoKind {
     Copy,
     /// The last Archive (what it compressed or extracted).
     Archive,
+    /// The last Convert (the images it wrote).
+    Convert,
 }
 
 /// Callback told which undo, if any, is available.
@@ -197,6 +201,9 @@ type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 
 /// Toast shown when a move, copy or undo is requested while one is running.
 const BUSY_TEXT: &str = "Busy — still working";
+
+/// Toast shown when Convert is released without a format chosen.
+const HOLD_FOR_FORMAT_TEXT: &str = "Hold on Convert to pick a format";
 
 /// Longest vento waits, when quitting, for a running job to stop.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
@@ -262,6 +269,8 @@ enum LastOp {
     Copy(CopyRecord),
     /// What an Archive job made, undone like a Copy to.
     Archive(CopyRecord),
+    /// What a Convert job made, undone like an Archive.
+    Convert(CopyRecord),
 }
 
 impl LastOp {
@@ -270,6 +279,7 @@ impl LastOp {
             LastOp::Move(_) => UndoKind::Move,
             LastOp::Copy(_) => UndoKind::Copy,
             LastOp::Archive(_) => UndoKind::Archive,
+            LastOp::Convert(_) => UndoKind::Convert,
         }
     }
 }
@@ -360,7 +370,7 @@ impl Executor {
             paths,
             at,
             dest,
-            format: _,
+            format,
         } = drop;
         if paths.is_empty() {
             debug!("{action:?} with no files");
@@ -399,7 +409,13 @@ impl Executor {
             }
             ActionId::Archive => self.archive(paths, at),
             ActionId::Info => warn!("Info is handled by the info controller"),
-            ActionId::Convert => warn!("convert not wired yet"),
+            ActionId::Convert => match format {
+                Some(format) => self.convert(paths, format, at),
+                None if ring_formats(&paths, ImageFormat::TARGETS).is_empty() => {
+                    self.toast_error(action, "no images", at);
+                }
+                None => self.toast.show(HOLD_FOR_FORMAT_TEXT, None, at),
+            },
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);
@@ -437,6 +453,7 @@ impl Executor {
             LastOp::Move(record) => self.undo_move(record, at),
             LastOp::Copy(record) => self.undo_copy(record, UndoKind::Copy, at),
             LastOp::Archive(record) => self.undo_copy(record, UndoKind::Archive, at),
+            LastOp::Convert(record) => self.undo_copy(record, UndoKind::Convert, at),
         }
         true
     }
@@ -482,15 +499,20 @@ impl Executor {
         self.toast.show(&undo_toast_text(&outcome), None, at);
     }
 
-    /// Undoes a Copy to, or an Archive (`kind`), in two steps. The worker
+    /// Undoes a Copy to, an Archive or a Convert (`kind`), in two steps. The worker
     /// finds the items that are still exactly as vento made them (the
     /// platform is not `Send`, so it cannot trash from there); the main
     /// thread then trashes just those. Nothing else is re-checked in between.
     fn undo_copy(&self, record: CopyRecord, kind: UndoKind, at: Point) {
-        let (text, action) = if kind == UndoKind::Archive {
+        let (text, action) = if matches!(kind, UndoKind::Archive | UndoKind::Convert) {
             let outputs: Vec<&Path> = record.copies.iter().map(|(_, o, _)| o.as_path()).collect();
             let text = format!("Moving {} to the Trash…", name_or_count(&outputs, items));
-            (text, ActionId::Archive)
+            let action = if kind == UndoKind::Archive {
+                ActionId::Archive
+            } else {
+                ActionId::Convert
+            };
+            (text, action)
         } else {
             let text = format!("Removing {}…", plural_copies(record.copies.len()));
             (text, ActionId::CopyTo)
@@ -542,7 +564,7 @@ impl Executor {
             outcome.failed.len()
         );
         self.notify_undo_changed();
-        let text = if kind == UndoKind::Archive {
+        let text = if matches!(kind, UndoKind::Archive | UndoKind::Convert) {
             archive_undo_toast_text(&outcome, &trashed)
         } else {
             copy_undo_toast_text(&outcome)
