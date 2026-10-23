@@ -104,9 +104,7 @@ pub fn assemble(boxes: &[TextBox]) -> String {
         .map(|mut row| {
             let rtl = reads_right_to_left(&row);
             row.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
-            if rtl {
-                row.reverse();
-            }
+            let row = reading_order(row, rtl);
             let indent = if capture_rtl || rtl || char_w <= 0.0 {
                 0
             } else {
@@ -178,19 +176,71 @@ fn letters(boxes: &[&TextBox]) -> Letters {
     n
 }
 
-/// Whether a row reads right to left: it has an Arabic/Hebrew word and at
-/// least as many of them as Latin-style words. A word with any Arabic/Hebrew
-/// letter counts as right-to-left; numbers and punctuation count as neither.
-fn reads_right_to_left(row: &[&TextBox]) -> bool {
+/// How many right-to-left and left-to-right words `boxes` hold. A word with
+/// any Arabic/Hebrew letter is right-to-left; numbers and punctuation are
+/// neither.
+fn word_counts(boxes: &[&TextBox]) -> (usize, usize) {
     let (mut rtl, mut ltr) = (0, 0);
-    for word in row.iter().flat_map(|b| b.text.split_whitespace()) {
+    for word in boxes.iter().flat_map(|b| b.text.split_whitespace()) {
         if word.chars().any(is_rtl) {
             rtl += 1;
         } else if word.chars().any(char::is_alphabetic) {
             ltr += 1;
         }
     }
+    (rtl, ltr)
+}
+
+/// Whether a row reads right to left: it has an Arabic/Hebrew word and at
+/// least as many of them as Latin-style words.
+fn reads_right_to_left(row: &[&TextBox]) -> bool {
+    let (rtl, ltr) = word_counts(row);
     rtl > 0 && rtl >= ltr
+}
+
+/// A box's own direction, or `None` when it holds no letters (numbers,
+/// punctuation).
+fn box_direction(b: &TextBox) -> Option<bool> {
+    match word_counts(&[b]) {
+        (0, 0) => None,
+        (rtl, ltr) => Some(rtl >= ltr),
+    }
+}
+
+/// Puts a row's boxes, sorted left to right as they appear on screen, in
+/// reading order, the way bidirectional text is laid out: the runs of boxes
+/// follow the row's direction, and each run reads in its own direction, so
+/// Arabic words OCR split apart inside an English row (or English words
+/// inside an Arabic row) keep their order. A box with no letters takes the
+/// direction of the boxes around it when both agree, else the row's.
+fn reading_order(visual: Vec<&TextBox>, rtl: bool) -> Vec<&TextBox> {
+    let strong: Vec<Option<bool>> = visual.iter().map(|b| box_direction(b)).collect();
+    let mut runs: Vec<(bool, Vec<&TextBox>)> = Vec::new();
+    for (i, b) in visual.into_iter().enumerate() {
+        let dir = strong[i].unwrap_or_else(|| {
+            let before = strong[..i].iter().rev().find_map(|d| *d);
+            let after = strong[i + 1..].iter().find_map(|d| *d);
+            match (before, after) {
+                (Some(x), Some(y)) if x == y => x,
+                _ => rtl,
+            }
+        });
+        match runs.last_mut() {
+            Some((run_dir, run)) if *run_dir == dir => run.push(b),
+            _ => runs.push((dir, vec![b])),
+        }
+    }
+    if rtl {
+        runs.reverse();
+    }
+    runs.into_iter()
+        .flat_map(|(dir, mut run)| {
+            if dir {
+                run.reverse();
+            }
+            run
+        })
+        .collect()
 }
 
 /// Typical width of one character: the median of width per character.
@@ -424,6 +474,37 @@ mod tests {
             assemble(&boxes),
             "Line 12: The quick brown افتح الملف من Finder"
         );
+    }
+
+    #[test]
+    fn arabic_words_split_in_an_english_row_keep_their_order() {
+        // Owner's full-screen check: Vision gave each Arabic word its own box,
+        // placed as shown on screen (right to left within each Arabic run).
+        let boxes = [
+            b(0.0, 0.0, 180.0, 20.0, "Line 1: The quick brown fox"),
+            b(200.0, 0.0, 30.0, 20.0, "من"),
+            b(240.0, 0.0, 50.0, 20.0, "الملف"),
+            b(300.0, 0.0, 40.0, 20.0, "افتح"),
+            b(360.0, 0.0, 60.0, 20.0, "Finder"),
+            b(430.0, 0.0, 40.0, 20.0, "اضغط"),
+            b(480.0, 0.0, 60.0, 20.0, "وبعدين"),
+            b(560.0, 0.0, 40.0, 20.0, "Ctrl"),
+        ];
+        assert_eq!(
+            assemble(&boxes),
+            "Line 1: The quick brown fox افتح الملف من Finder وبعدين اضغط Ctrl"
+        );
+    }
+
+    #[test]
+    fn english_words_split_in_an_arabic_row_keep_their_order() {
+        let boxes = [
+            b(0.0, 0.0, 40.0, 20.0, "Ctrl"),
+            b(50.0, 0.0, 50.0, 20.0, "Enter"),
+            b(120.0, 0.0, 30.0, 20.0, "على"),
+            b(170.0, 0.0, 40.0, 20.0, "اضغط"),
+        ];
+        assert_eq!(assemble(&boxes), "اضغط على Ctrl Enter");
     }
 
     #[test]
