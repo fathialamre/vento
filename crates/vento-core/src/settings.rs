@@ -863,7 +863,8 @@ mod tests {
             .home_dir()
             .to_path_buf();
         let (_dir, p) = write_temp(&format!(
-            "pinned_folders = [\"~/Work\", \"~\", \"{}\", \"~other/x\", \"/a/~/b\"]\n",
+            // A literal string: a Windows path's `\` is not an escape there.
+            "pinned_folders = [\"~/Work\", \"~\", '{}', \"~other/x\", \"/a/~/b\"]\n",
             home.join("Work").display()
         ));
         let want = [

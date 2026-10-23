@@ -910,14 +910,14 @@ mod tests {
 
         let summary: Vec<_> = entries
             .iter()
-            .map(|e| (e.path.to_str().unwrap(), e.kind, e.size, e.mode))
+            .map(|e| (e.path.as_path(), e.kind, e.size, e.mode))
             .collect();
         assert_eq!(
             summary,
             [
-                ("d", EntryKind::Dir, 0, None),
-                ("d/f.txt", EntryKind::File, 5, Some(0o640)),
-                ("d/plain", EntryKind::File, 1, None),
+                (Path::new("d"), EntryKind::Dir, 0, None),
+                (Path::new("d/f.txt"), EntryKind::File, 5, Some(0o640)),
+                (Path::new("d/plain"), EntryKind::File, 1, None),
             ]
         );
     }

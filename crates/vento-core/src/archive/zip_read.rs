@@ -191,7 +191,7 @@ mod tests {
     #[cfg(unix)]
     use crate::archive::test_support::stored;
     use crate::archive::test_support::{
-        ZipEntry as E, listing, make_encrypted, make_zip, no_mark, tree,
+        ZipEntry as E, listing, make_encrypted, make_zip, no_mark, slashed, tree,
     };
     use crate::fileops::{Fingerprint, partial_name};
     use std::ffi::OsStr;
@@ -596,12 +596,7 @@ mod tests {
         let mut relative: Vec<String> = marked
             .iter()
             .filter(|path| **path != partial)
-            .map(|path| {
-                path.strip_prefix(&partial)
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
-            })
+            .map(|path| slashed(path.strip_prefix(&partial).unwrap()))
             .collect();
         relative.sort();
         assert_eq!(relative, tree(&made.output));
