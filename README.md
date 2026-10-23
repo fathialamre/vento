@@ -47,7 +47,10 @@ with a warning. You only need to get past this once.
    ![macOS dialog saying Vento could not be verified](.github/assets/gatekeeper-15-blocked.png)
 
 2. Open **System Settings → Privacy & Security** and scroll down to the message
-   about Vento. Click **Open Anyway**, then confirm with your password or Touch ID.
+   about Vento. Click **Open Anyway**, confirm with your password or Touch ID,
+   then click **Open** in the last dialog.
+
+   ![Privacy & Security settings: "Vento" was blocked to protect your Mac, with an Open Anyway button](.github/assets/gatekeeper-15-open-anyway.png)
 
 **macOS 13 Ventura and 14 Sonoma**
 
@@ -196,13 +199,15 @@ right away.
 | <img src=".github/assets/settings-wheel.png" alt="Wheel tab: layout and the list of actions with on and off switches" width="300"> | <img src=".github/assets/settings-move.png" alt="Move tab: pinned folders, recent folders and the hold time" width="300"> |
 | Honeycomb or petals layout; which actions show and in what order. | Pinned and recent folders for the Move ring, and how long to hold. |
 
-| Pocket | General |
+| Pocket | Clipboard |
 |:---:|:---:|
-| <img src=".github/assets/settings-pocket.png" alt="Pocket tab: shortcut and two switches" width="300"> | <img src=".github/assets/settings-general.png" alt="General tab: trigger key, terminal app and Copy path format" width="300"> |
-| The Pocket shortcut, and what happens after you drag items out. | The key that opens the wheel, shaking to open it, your terminal app, and how paths are copied. |
+| <img src=".github/assets/settings-pocket.png" alt="Pocket tab: shortcut and two switches" width="300"> | <img src=".github/assets/settings-clipboard.png" alt="Clipboard tab: clipboard history switch, its shortcut and Clear history" width="300"> |
+| The Pocket shortcut, and what happens after you drag items out. | Clipboard history on or off, its shortcut, and clearing it. |
 
-The **Clipboard** tab switches the clipboard history on or off, sets its
-shortcut, and clears it.
+| General | |
+|:---:|:---:|
+| <img src=".github/assets/settings-general.png" alt="General tab: trigger key, Shake to open, terminal app and Copy path format" width="300"> | |
+| The key that opens the wheel, shaking to open it, your terminal app, and how paths are copied. | |
 
 **Right-click** the icon for the menu: undo the last move, copy or archive, pause
 Vento, or quit.
