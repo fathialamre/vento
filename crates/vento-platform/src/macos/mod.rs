@@ -33,6 +33,7 @@ mod patch;
 mod quarantine;
 mod screen_text;
 mod screens;
+mod select;
 mod terminal;
 mod trash;
 

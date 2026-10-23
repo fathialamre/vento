@@ -70,9 +70,7 @@ impl ScreenText for MacScreenText {
     }
 
     fn select_area(&self, done: Box<dyn FnOnce(Option<Selection>)>) {
-        // The selection overlay is not built yet: every selection is
-        // cancelled.
-        done(None);
+        super::select::select_area(done);
     }
 }
 

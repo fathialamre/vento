@@ -50,6 +50,11 @@ objc2-app-kit = { version = "0.3", features = [
     "NSColor",
     "NSMenu",
     "NSMenuItem",
+    # The Copy from screen overlay: its crosshair, the selection's border,
+    # and the crosshair on screens whose panel is not key.
+    "NSCursor",
+    "NSBezierPath",
+    "NSTrackingArea",
 ] }
 objc2-core-graphics = { version = "0.3", features = [
     "CGEventSource",
