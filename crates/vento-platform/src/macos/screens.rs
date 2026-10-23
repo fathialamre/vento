@@ -77,7 +77,7 @@ pub(super) fn scale_factor_at(p: Point) -> f64 {
 }
 
 /// Whether `p` is inside `r` (left and top edges included).
-fn frame_contains(r: Rect, p: Point) -> bool {
+pub(super) fn frame_contains(r: Rect, p: Point) -> bool {
     p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h
 }
 

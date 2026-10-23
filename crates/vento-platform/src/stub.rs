@@ -6,10 +6,12 @@ use std::rc::Rc;
 use vento_core::clip::ClipSnapshot;
 use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
+use vento_core::screen_text::{Selection, TextBox};
 use vento_core::trigger::{InputSample, Modifiers};
 
 use crate::{
-    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, TerminalApp,
+    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, ScreenText,
+    TerminalApp,
 };
 
 /// No quarantine attribute exists here.
@@ -60,6 +62,40 @@ pub(crate) fn write_image(
     _format: ImageFormat,
 ) -> Result<(), ConvertError> {
     Err(ConvertError::Unsupported(NO_IMAGE_CONVERSION.into()))
+}
+
+/// Nothing to capture here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn read_screen_text(_sel: &Selection) -> Result<Vec<TextBox>, PlatformError> {
+    Err(PlatformError::Unsupported)
+}
+
+/// No text reader here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn screen_text_languages() -> Vec<String> {
+    Vec::new()
+}
+
+/// Inert [`ScreenText`]: unsupported, never granted, selects nothing.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StubScreenText;
+
+impl ScreenText for StubScreenText {
+    fn supported(&self) -> bool {
+        false
+    }
+
+    fn has_access(&self) -> bool {
+        false
+    }
+
+    fn request_access(&self) {}
+
+    fn open_access_settings(&self) {}
+
+    fn select_area(&self, done: Box<dyn FnOnce(Option<Selection>)>) {
+        done(None);
+    }
 }
 
 /// Inert [`Platform`]: reports no input and supports nothing.
@@ -289,6 +325,39 @@ mod tests {
         p.watch_outside_clicks(Box::new(|| panic!("the stub reports no clicks")));
         p.stop_watching_outside_clicks();
         assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
+    }
+
+    #[test]
+    fn stub_screen_text_does_nothing() {
+        let s = StubScreenText;
+        assert!(!s.supported());
+        assert!(!s.has_access());
+        s.request_access();
+        s.open_access_settings();
+        let got = std::rc::Rc::new(std::cell::Cell::new(None));
+        let seen = got.clone();
+        s.select_area(Box::new(move |sel| seen.set(Some(sel))));
+        assert_eq!(got.get(), Some(None));
+        let sel = Selection {
+            display_id: 1,
+            display: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 1440.0,
+                h: 900.0,
+            },
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 100.0,
+            },
+        };
+        assert!(matches!(
+            read_screen_text(&sel),
+            Err(PlatformError::Unsupported)
+        ));
+        assert!(screen_text_languages().is_empty());
     }
 
     #[test]

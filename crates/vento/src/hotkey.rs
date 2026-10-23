@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Once;
+use std::sync::{Once, OnceLock};
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
@@ -17,6 +17,20 @@ thread_local! {
     /// What each registered hot key does, by hot key id; lives on the main
     /// thread, where the non-`Send` controllers are.
     static ON_PRESS: RefCell<HashMap<u32, Rc<dyn Fn()>>> = RefCell::new(HashMap::new());
+}
+
+/// The one manager every hot key registers with. Each manager installs the
+/// same Carbon event handler on the application, and macOS refuses it a
+/// second time in the process, so a second manager could never register a
+/// key.
+static MANAGER: OnceLock<Result<GlobalHotKeyManager, String>> = OnceLock::new();
+
+/// The shared hot key manager, created on first use; see [`MANAGER`].
+fn manager() -> Result<&'static GlobalHotKeyManager, String> {
+    MANAGER
+        .get_or_init(|| GlobalHotKeyManager::new().map_err(|e| e.to_string()))
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
 /// Records what the hot key `id` does.
@@ -40,16 +54,19 @@ static HANDLER: Once = Once::new();
 /// Keeps the hot key registered; dropping it forgets its action and
 /// unregisters the key.
 pub struct HotkeyHandle {
-    id: u32,
-    _manager: GlobalHotKeyManager,
+    hotkey: HotKey,
+    manager: &'static GlobalHotKeyManager,
 }
 
 impl Drop for HotkeyHandle {
     fn drop(&mut self) {
-        // Runs before the manager field drops and unregisters the key. It
-        // removes by id, so drop the old handle of a key before installing
-        // the same key again, or the old drop would forget the new action.
-        forget(self.id);
+        // Removes by id, so drop the old handle of a key before installing
+        // the same key again, or the old drop would forget the new action
+        // and unregister the new key from the shared manager.
+        forget(self.hotkey.id());
+        if let Err(e) = self.manager.unregister(self.hotkey) {
+            warn!("cannot unregister a shortcut: {e}");
+        }
     }
 }
 
@@ -124,7 +141,7 @@ fn key_code(key: char) -> Option<Code> {
 /// another app holds it).
 pub fn install_hotkey(spec: &str, on_press: Box<dyn Fn()>) -> Result<HotkeyHandle, String> {
     let hotkey = to_hotkey(spec)?;
-    let manager = GlobalHotKeyManager::new().map_err(|e| e.to_string())?;
+    let manager = manager()?;
     manager.register(hotkey).map_err(|e| e.to_string())?;
     let id = hotkey.id();
     remember(id, Rc::from(on_press));
@@ -146,10 +163,7 @@ pub fn install_hotkey(spec: &str, on_press: Box<dyn Fn()>) -> Result<HotkeyHandl
         }));
     });
     debug!("shortcut {spec} registered");
-    Ok(HotkeyHandle {
-        id,
-        _manager: manager,
-    })
+    Ok(HotkeyHandle { hotkey, manager })
 }
 
 #[cfg(test)]
@@ -178,6 +192,30 @@ mod tests {
         assert_eq!(to_hotkey("p").unwrap_err(), "invalid shortcut \"p\"");
         assert!(to_hotkey("ctrl+alt+").is_err());
         assert!(to_hotkey("hyper+p").is_err());
+    }
+
+    #[test]
+    fn two_shortcuts_register_side_by_side() {
+        // Keys no one else holds, so only vento's own registrations can clash.
+        let first = install_hotkey("ctrl+alt+shift+cmd+8", Box::new(|| {}));
+        let second = install_hotkey("ctrl+alt+shift+cmd+9", Box::new(|| {}));
+        assert!(first.is_ok(), "first: {:?}", first.as_ref().err());
+        assert!(second.is_ok(), "second: {:?}", second.as_ref().err());
+    }
+
+    #[test]
+    fn the_same_key_twice_is_refused() {
+        let _held = install_hotkey("ctrl+alt+shift+cmd+6", Box::new(|| {})).unwrap();
+        let again = install_hotkey("ctrl+alt+shift+cmd+6", Box::new(|| {}));
+        assert!(again.is_err());
+    }
+
+    #[test]
+    fn a_dropped_shortcut_frees_its_key() {
+        let held = install_hotkey("ctrl+alt+shift+cmd+7", Box::new(|| {})).unwrap();
+        drop(held);
+        let again = install_hotkey("ctrl+alt+shift+cmd+7", Box::new(|| {}));
+        assert!(again.is_ok(), "again: {:?}", again.as_ref().err());
     }
 
     #[test]

@@ -258,7 +258,7 @@ impl<'a> Staging<'a> {
         }
         for (path, mtime) in &self.dir_times {
             // Checked to be a real folder when it was made; nothing replaces it.
-            let dir = File::open(path)?;
+            let dir = open_dir_for_times(path)?;
             set_time(path, *mtime, |time| dir.set_modified(time));
         }
         let layout = match layout {
@@ -597,6 +597,26 @@ fn set_dir_mode(_path: &Path, _mode: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// Opens the folder at `path` so its modified time can be set.
+#[cfg(not(windows))]
+fn open_dir_for_times(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
+/// Opens the folder at `path` so its modified time can be set. Windows opens
+/// a folder only with backup semantics, and setting a time needs the right to
+/// write attributes, which a plain read-only open lacks.
+#[cfg(windows)]
+fn open_dir_for_times(path: &Path) -> io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    OpenOptions::new()
+        .access_mode(FILE_WRITE_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+}
+
 /// Creates an empty file under the first free partial name in `dir`.
 ///
 /// An item already at a partial name is skipped and left alone: the file is
@@ -679,6 +699,7 @@ mod tests {
         assert_eq!(asked.get(), Some(SystemTime::UNIX_EPOCH));
     }
 
+    #[cfg(unix)]
     #[test]
     fn staging_never_writes_through_a_symlink() {
         let dir = tempfile::tempdir().unwrap();

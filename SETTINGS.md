@@ -11,11 +11,12 @@ Vento lives in the menu bar.
   (layout, which actions show and in what order), Move (pinned and recent
   folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
   copy), Clipboard (history on or off, its shortcut, Clear history) and General
-  (trigger, shake to open, terminal, Copy path format); Pause and Quit are at
+  (trigger, shake to open, terminal, Copy path format, and the Copy from screen
+  shortcut); Pause and Quit are at
   the bottom. It follows the system light or dark appearance. Changes apply and
   are saved at once.
-- **Right click** for the menu: Undo last move/copy/archive, Pause, Open
-  settings file, Quit.
+- **Right click** for the menu: Undo last move/copy/archive, Copy from screen
+  (macOS 14 or later), Pause, Open settings file, Quit.
 
 ## The settings file
 
@@ -89,7 +90,14 @@ clipboard_history = true
 # Global shortcut that opens the island on the Clipboard history; same form
 # as pocket_shortcut
 clipboard_shortcut = "ctrl+alt+v"
+
+# Global shortcut for Copy from screen; same form as pocket_shortcut
+screen_text_shortcut = "ctrl+alt+t"
 ```
+
+Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the
+General tab field are hidden and the shortcut is not registered. The first use
+asks for Screen Recording; see the [README](README.md#copy-from-screen).
 
 ## Where Vento keeps its data
 

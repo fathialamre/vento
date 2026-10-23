@@ -41,6 +41,9 @@ pub struct Settings {
     /// Global shortcut that shows the island on the Clipboard history, in the
     /// same form as [`Settings::pocket_shortcut`].
     pub clipboard_shortcut: String,
+    /// Global shortcut that starts Copy from screen, in the same form as
+    /// [`Settings::pocket_shortcut`].
+    pub screen_text_shortcut: String,
     /// Folders pinned to the move ring, in order (unique, at most
     /// [`MAX_PINNED`]).
     pub pinned_folders: Vec<PathBuf>,
@@ -75,6 +78,10 @@ fn default_clipboard_shortcut() -> String {
     "ctrl+alt+v".to_owned()
 }
 
+fn default_screen_text_shortcut() -> String {
+    "ctrl+alt+t".to_owned()
+}
+
 fn default_actions() -> Vec<ActionId> {
     vec![
         ActionId::Pocket,
@@ -99,6 +106,7 @@ impl Default for Settings {
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
+            screen_text_shortcut: default_screen_text_shortcut(),
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
@@ -123,6 +131,7 @@ struct RawSettings {
     pocket_shortcut: String,
     clipboard_history: bool,
     clipboard_shortcut: String,
+    screen_text_shortcut: String,
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
@@ -149,6 +158,7 @@ impl From<&Settings> for RawSettings {
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
+            screen_text_shortcut: s.screen_text_shortcut.clone(),
             pinned_folders: s.pinned_folders.clone(),
             move_hold_ms: s.move_hold_ms,
             hidden_actions: s
@@ -218,6 +228,7 @@ impl From<RawSettings> for Settings {
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
             clipboard_shortcut: raw.clipboard_shortcut,
+            screen_text_shortcut: raw.screen_text_shortcut,
             pinned_folders,
             move_hold_ms,
             hidden_actions,
@@ -548,6 +559,32 @@ mod tests {
         let s = Settings {
             clipboard_history: false,
             clipboard_shortcut: "cmd+shift+c".into(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn screen_text_defaults() {
+        assert_eq!(Settings::default().screen_text_shortcut, "ctrl+alt+t");
+    }
+
+    #[test]
+    fn old_file_without_screen_text_key_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(&p, "trigger = \"ctrl\"\n").unwrap();
+        let s = Settings::try_load(&p).unwrap();
+        assert_eq!(s.screen_text_shortcut, "ctrl+alt+t");
+    }
+
+    #[test]
+    fn screen_text_key_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            screen_text_shortcut: "cmd+shift+e".into(),
             ..Settings::default()
         };
         s.save(&p).unwrap();
@@ -960,7 +997,8 @@ mod tests {
             .home_dir()
             .to_path_buf();
         let (_dir, p) = write_temp(&format!(
-            "pinned_folders = [\"~/Work\", \"~\", \"{}\", \"~other/x\", \"/a/~/b\"]\n",
+            // A literal string: a Windows path's `\` is not an escape there.
+            "pinned_folders = [\"~/Work\", \"~\", '{}', \"~other/x\", \"/a/~/b\"]\n",
             home.join("Work").display()
         ));
         let want = [

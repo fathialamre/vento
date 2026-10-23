@@ -17,17 +17,18 @@ pub(crate) fn listing(dir: &Path) -> Vec<String> {
     out
 }
 
-/// Every path below `dir`, relative to it, sorted.
+/// `path` with its parts joined by `/` on every system.
+pub(crate) fn slashed(path: &Path) -> String {
+    let parts: Vec<_> = path.iter().map(|part| part.to_string_lossy()).collect();
+    parts.join("/")
+}
+
+/// Every path below `dir`, relative to it and [`slashed`], sorted.
 pub(crate) fn tree(dir: &Path) -> Vec<String> {
     fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
-            out.push(
-                path.strip_prefix(root)
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned(),
-            );
+            out.push(slashed(path.strip_prefix(root).unwrap()));
             if fs::symlink_metadata(&path).unwrap().is_dir() {
                 walk(root, &path, out);
             }

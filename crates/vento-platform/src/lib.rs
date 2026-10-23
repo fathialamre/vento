@@ -10,15 +10,16 @@ use std::rc::Rc;
 use vento_core::clip::ClipSnapshot;
 use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
+use vento_core::screen_text::{Selection, TextBox};
 use vento_core::trigger::InputSample;
 
 mod stub;
-pub use stub::StubPlatform;
+pub use stub::{StubPlatform, StubScreenText};
 
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use macos::MacPlatform;
+pub use macos::{MacPlatform, MacScreenText};
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -276,6 +277,63 @@ pub trait Platform {
         at: Point,
         entries: &[MenuEntry],
     ) -> Option<u32>;
+}
+
+/// What Copy from screen needs from the operating system, apart from
+/// [`read_screen_text`]: the Screen Recording permission and the area
+/// selection. A trait of its own, so [`Platform`] fakes need not change.
+pub trait ScreenText {
+    /// Whether this Mac can run Copy from screen (macOS 14 or later).
+    fn supported(&self) -> bool;
+    /// Screen Recording granted (`CGPreflightScreenCaptureAccess`). Shows nothing.
+    fn has_access(&self) -> bool;
+    /// `CGRequestScreenCaptureAccess`: macOS's own prompt the first time, then nothing.
+    fn request_access(&self);
+    /// Opens Privacy & Security → Screen Recording.
+    fn open_access_settings(&self);
+    /// Dims every screen and lets the user drag a rectangle; `done` gets the
+    /// selection, or `None` when cancelled. Main thread only.
+    fn select_area(&self, done: Box<dyn FnOnce(Option<Selection>)>);
+}
+
+/// The [`ScreenText`] implementation for the running OS.
+pub fn screen_text() -> Rc<dyn ScreenText> {
+    #[cfg(target_os = "macos")]
+    {
+        Rc::new(MacScreenText)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Rc::new(StubScreenText)
+    }
+}
+
+/// Captures `sel` and reads the text in it. Blocks; call off the main thread.
+/// The picture is never written to disk and is dropped before this returns.
+/// `Unsupported` where [`ScreenText::supported`] is false.
+pub fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::read_screen_text(sel)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::read_screen_text(sel)
+    }
+}
+
+/// The languages the text reader recognises, as language codes (`en-US`,
+/// `ar-SA`, ...), for the log. Empty where [`ScreenText::supported`] is
+/// false or the list cannot be had. Loads Vision; call off the main thread.
+pub fn screen_text_languages() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::screen_text_languages()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::screen_text_languages()
+    }
 }
 
 /// The quarantine attribute (`com.apple.quarantine`) of `path` itself, never

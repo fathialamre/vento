@@ -27,6 +27,7 @@ objc2-foundation = { version = "0.3", features = [
     "NSError",
     "NSNotification",
     "NSBundle",
+    "NSProcessInfo",
 ] }
 objc2-app-kit = { version = "0.3", features = [
     "NSEvent",
@@ -49,20 +50,50 @@ objc2-app-kit = { version = "0.3", features = [
     "NSColor",
     "NSMenu",
     "NSMenuItem",
+    # The Copy from screen overlay: its crosshair, the selection's border,
+    # and the crosshair on screens whose panel is not key.
+    "NSCursor",
+    "NSBezierPath",
+    "NSTrackingArea",
 ] }
 objc2-core-graphics = { version = "0.3", features = [
     "CGEventSource",
     "CGImage",
+    "CGWindow",
     "CGColorSpace",
     "CGContext",
     "CGBitmapContext",
 ] }
-objc2-core-foundation = { version = "0.3", features = [
+# Holds on to the CGImage a screen capture hands back, and carries the
+# Convert action's file URLs and image properties.
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "std",
     "CFURL",
     "CFDictionary",
     "CFString",
     "CFNumber",
     "CFData",
+] }
+# Copy from screen: capture an area, then read its text. Only what that needs;
+# every class is looked up at run time, so the app still starts on macOS 13.
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "libc",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "SCShareableContent",
+    "SCStream",
+    "SCScreenshotManager",
+] }
+objc2-vision = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "VNRequest",
+    "VNRecognizeTextRequest",
+    "VNObservation",
+    "VNRequestHandler",
 ] }
 # Reads and writes image files for the Convert action.
 objc2-image-io = { version = "0.3", features = [
