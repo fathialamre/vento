@@ -157,6 +157,7 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::CopyTo => icons.get_copy_to(),
         ActionId::Archive => icons.get_archive(),
         ActionId::Info => icons.get_info(),
+        ActionId::Convert => icons.get_convert(),
     }
 }
 
@@ -496,7 +497,11 @@ impl WheelController {
             state.highlighted = None;
             state.last_offset = Vec2 { x: 0.0, y: 0.0 };
             state.dropped.clear();
-            let rings = state.settings.actions.iter().any(|a| a.takes_ring());
+            let rings = state
+                .settings
+                .actions
+                .iter()
+                .any(|a| matches!(a, ActionId::Move | ActionId::CopyTo));
             (extent, rings)
         };
         self.label_archive_cell();

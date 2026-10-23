@@ -722,7 +722,7 @@ mod tests {
         assert!(s.pinned_folders.is_empty());
         assert_eq!(s.move_hold_ms, 400);
         assert!(s.hidden_actions.is_empty());
-        assert_eq!(s.action_rows().last(), Some(&(ActionId::Info, false)));
+        assert_eq!(s.action_rows().last(), Some(&(ActionId::Convert, false)));
     }
 
     #[test]
@@ -730,6 +730,13 @@ mod tests {
         let rows = Settings::default().action_rows();
         assert!(rows.contains(&(ActionId::Archive, false)));
         assert!(!Settings::default().actions.contains(&ActionId::Archive));
+    }
+
+    #[test]
+    fn convert_is_off_by_default() {
+        let rows = Settings::default().action_rows();
+        assert_eq!(rows.last(), Some(&(ActionId::Convert, false)));
+        assert!(!Settings::default().actions.contains(&ActionId::Convert));
     }
 
     #[test]
@@ -790,6 +797,7 @@ mod tests {
                 (ActionId::CopyTo, false),
                 (ActionId::Archive, false),
                 (ActionId::Info, false),
+                (ActionId::Convert, false),
             ]
         );
     }
@@ -808,6 +816,7 @@ mod tests {
             (ActionId::CopyPath, false),
             (ActionId::Archive, false),
             (ActionId::Info, false),
+            (ActionId::Convert, false),
         ];
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);

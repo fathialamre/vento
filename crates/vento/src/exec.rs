@@ -398,6 +398,7 @@ impl Executor {
             }
             ActionId::Archive => self.archive(paths, at),
             ActionId::Info => warn!("Info is handled by the info controller"),
+            ActionId::Convert => warn!("convert not wired yet"),
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);

@@ -1355,7 +1355,8 @@ mod tests {
                 ActionId::Pocket,
                 ActionId::CopyTo,
                 ActionId::Archive,
-                ActionId::Info
+                ActionId::Info,
+                ActionId::Convert
             ]
         );
         move_action(&mut s, 5, 1);
@@ -1365,12 +1366,13 @@ mod tests {
                 ActionId::CopyTo,
                 ActionId::Pocket,
                 ActionId::Archive,
-                ActionId::Info
+                ActionId::Info,
+                ActionId::Convert
             ]
         );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();
-        move_action(&mut s, 9, 0);
+        move_action(&mut s, 10, 0);
         assert_eq!(s, before);
     }
 
