@@ -217,10 +217,13 @@ impl ScreenAccessView {
         let this = view.this.clone();
         view.window.on_open_settings(move || {
             if let Some(view) = this.upgrade() {
+                // Hide and hand focus back first: that also forgets the app
+                // vento took focus from, which a later `deactivate_app`
+                // could otherwise give focus to out of turn. System
+                // Settings then comes forward and keeps it.
+                view.cancel();
                 view.os.request_access();
                 view.os.open_access_settings();
-                // System Settings comes forward; focus stays with it.
-                view.hide();
             }
         });
         let this = view.this.clone();
