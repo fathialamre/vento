@@ -31,13 +31,17 @@ mod notify;
 mod overlay;
 mod patch;
 mod quarantine;
+mod screen_text;
 mod screens;
+mod select;
 mod terminal;
 mod trash;
 
 pub(crate) use icons::picture_thumbnail;
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
+pub use screen_text::MacScreenText;
+pub(crate) use screen_text::{read_screen_text, screen_text_languages};
 
 /// AppKit-backed [`Platform`].
 pub struct MacPlatform {

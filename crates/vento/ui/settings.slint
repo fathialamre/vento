@@ -677,10 +677,20 @@ component GeneralTab inherits VerticalLayout {
     in property <int> terminal;
     // 0 Plain, 1 Shell-quoted.
     in property <int> path-format;
+    // Whether this Mac can read text from the screen; the Copy from screen
+    // section is left out when it cannot.
+    in property <bool> screen-text-supported;
+    // The Copy from screen shortcut as symbols, and why the last one
+    // recorded was refused (empty when it was not).
+    in property <string> screen-shortcut;
+    in-out property <string> screen-shortcut-error;
+    in-out property <bool> screen-shortcut-recording;
     callback trigger-chosen(int);
     callback shake-to-open-toggled(bool);
     callback terminal-chosen(int);
     callback path-format-chosen(int);
+    callback screen-shortcut-recording-started();
+    callback screen-shortcut-recording-cancelled();
 
     spacing: 8px;
 
@@ -723,6 +733,30 @@ component GeneralTab inherits VerticalLayout {
         items: ["Plain", "Shell-quoted"];
         current: root.path-format;
         chosen(i) => { root.path-format-chosen(i); }
+    }
+
+    if root.screen-text-supported: Separator { }
+
+    if root.screen-text-supported: SectionHeading {
+        text: "Copy from screen";
+    }
+
+    if root.screen-text-supported: ShortcutField {
+        text: root.screen-shortcut;
+        label: "Copy from screen shortcut";
+        recording <=> root.screen-shortcut-recording;
+        started => {
+            root.screen-shortcut-error = "";
+            root.screen-shortcut-recording-started();
+        }
+        cancelled => { root.screen-shortcut-recording-cancelled(); }
+    }
+
+    if root.screen-text-supported && root.screen-shortcut-error != "": Text {
+        text: root.screen-shortcut-error;
+        font-size: 12px;
+        color: Theme.danger;
+        wrap: word-wrap;
     }
 }
 
@@ -894,6 +928,13 @@ export component SettingsPanel inherits Window {
     in property <string> clip-shortcut;
     in-out property <string> clip-shortcut-error;
     in-out property <bool> clip-shortcut-recording;
+    // Whether Copy from screen is available, its shortcut as symbols, why
+    // a recorded one was refused, and whether its field is waiting for a
+    // key combination.
+    in property <bool> screen-text-supported;
+    in property <string> screen-shortcut;
+    in-out property <string> screen-shortcut-error;
+    in-out property <bool> screen-shortcut-recording;
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
@@ -924,6 +965,7 @@ export component SettingsPanel inherits Window {
     // `stop-recording`).
     callback shortcut-recording-started();
     callback clip-shortcut-recording-started();
+    callback screen-shortcut-recording-started();
     callback shortcut-recording-stopped();
 
     callback pause-clicked();
@@ -959,14 +1001,16 @@ export component SettingsPanel inherits Window {
     public function stop-recording() {
         root.shortcut-recording = false;
         root.clip-shortcut-recording = false;
+        root.screen-shortcut-recording = false;
         keys.focus();
         root.shortcut-recording-stopped();
     }
 
-    // Leaving the Pocket or the Clipboard tab removes the field that was
-    // recording.
+    // Leaving the Pocket, Clipboard or General tab removes the field that
+    // was recording.
     changed tab => {
-        if (root.shortcut-recording || root.clip-shortcut-recording) {
+        if (root.shortcut-recording || root.clip-shortcut-recording
+            || root.screen-shortcut-recording) {
             root.stop-recording();
         }
     }
@@ -1068,6 +1112,12 @@ export component SettingsPanel inherits Window {
                         terminals: root.terminals;
                         terminal: root.terminal;
                         path-format: root.path-format;
+                        screen-text-supported: root.screen-text-supported;
+                        screen-shortcut: root.screen-shortcut;
+                        screen-shortcut-error <=> root.screen-shortcut-error;
+                        screen-shortcut-recording <=> root.screen-shortcut-recording;
+                        screen-shortcut-recording-started => { root.screen-shortcut-recording-started(); }
+                        screen-shortcut-recording-cancelled => { root.stop-recording(); }
                         trigger-chosen(i) => { root.trigger-chosen(i); }
                         shake-to-open-toggled(on) => { root.shake-to-open-toggled(on); }
                         terminal-chosen(i) => { root.terminal-chosen(i); }

@@ -14,6 +14,7 @@ pub mod pocket;
 pub mod pocket_content;
 pub mod pocket_zone;
 pub mod ring;
+pub mod screen_text;
 pub mod settings;
 pub mod shake;
 pub mod sizes;

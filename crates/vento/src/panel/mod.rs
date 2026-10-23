@@ -90,14 +90,17 @@ pub enum ShortcutFor {
     Pocket,
     /// Opens the island on the clipboard history.
     Clipboard,
+    /// Starts Copy from screen.
+    ScreenText,
 }
 
 impl ShortcutFor {
-    /// The other shortcut.
-    fn other(self) -> Self {
+    /// The two other shortcuts.
+    fn others(self) -> [Self; 2] {
         match self {
-            Self::Pocket => Self::Clipboard,
-            Self::Clipboard => Self::Pocket,
+            Self::Pocket => [Self::Clipboard, Self::ScreenText],
+            Self::Clipboard => [Self::Pocket, Self::ScreenText],
+            Self::ScreenText => [Self::Pocket, Self::Clipboard],
         }
     }
 
@@ -106,6 +109,7 @@ impl ShortcutFor {
         match self {
             Self::Pocket => &settings.pocket_shortcut,
             Self::Clipboard => &settings.clipboard_shortcut,
+            Self::ScreenText => &settings.screen_text_shortcut,
         }
     }
 
@@ -114,6 +118,7 @@ impl ShortcutFor {
         match self {
             Self::Pocket => settings.pocket_shortcut = spec.to_owned(),
             Self::Clipboard => settings.clipboard_shortcut = spec.to_owned(),
+            Self::ScreenText => settings.screen_text_shortcut = spec.to_owned(),
         }
     }
 
@@ -122,6 +127,7 @@ impl ShortcutFor {
         match self {
             Self::Pocket => "The Pocket uses this shortcut",
             Self::Clipboard => "The Clipboard uses this shortcut",
+            Self::ScreenText => "Copy from screen uses this shortcut",
         }
     }
 }
@@ -172,10 +178,11 @@ pub struct PanelController {
 
 impl PanelController {
     /// Creates the (hidden) panel. `recent` is the recent-folders list the
-    /// wheel and the executor share; `try_shortcut` registers a recorded
-    /// Pocket or Clipboard shortcut; `on_clear_history` empties the
-    /// clipboard history; `on_pause` is called with the state the Pause
-    /// item asks for.
+    /// wheel and the executor share; `screen_text_supported` says whether
+    /// the General tab offers Copy from screen; `try_shortcut` registers a
+    /// recorded Pocket, Clipboard or Copy from screen shortcut;
+    /// `on_clear_history` empties the clipboard history; `on_pause` is
+    /// called with the state the Pause item asks for.
     ///
     /// # Panics
     /// If the Slint window cannot be created.
@@ -183,6 +190,7 @@ impl PanelController {
         platform: Rc<dyn Platform>,
         hub: Rc<SettingsHub>,
         recent: Rc<RefCell<RecentDestinations>>,
+        screen_text_supported: bool,
         try_shortcut: TryShortcut,
         on_clear_history: Box<dyn Fn()>,
         on_pause: Box<dyn Fn(bool)>,
@@ -194,6 +202,7 @@ impl PanelController {
         window.set_pinned(ModelRc::from(pinned.clone()));
         let recent_rows = Rc::new(VecModel::default());
         window.set_recent(ModelRc::from(recent_rows.clone()));
+        window.set_screen_text_supported(screen_text_supported);
         let panel = Rc::new_cyclic(|this| Self {
             platform,
             hub,
@@ -359,6 +368,13 @@ impl PanelController {
             }
         });
         let this = self.this.clone();
+        self.window.on_screen_shortcut_recording_started(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.recording.set(ShortcutFor::ScreenText);
+                panel.platform.suspend_app_menu();
+            }
+        });
+        let this = self.this.clone();
         self.window.on_shortcut_recording_stopped(move || {
             if let Some(panel) = this.upgrade() {
                 panel.platform.restore_app_menu();
@@ -501,7 +517,9 @@ impl PanelController {
 
     /// Whether a shortcut field is waiting for a key combination.
     fn is_recording(&self) -> bool {
-        self.window.get_shortcut_recording() || self.window.get_clip_shortcut_recording()
+        self.window.get_shortcut_recording()
+            || self.window.get_clip_shortcut_recording()
+            || self.window.get_screen_shortcut_recording()
     }
 
     /// Ends the recording with `spec` and applies it to the shortcut being
@@ -529,6 +547,7 @@ impl PanelController {
         match target {
             ShortcutFor::Pocket => self.window.set_shortcut_error(error),
             ShortcutFor::Clipboard => self.window.set_clip_shortcut_error(error),
+            ShortcutFor::ScreenText => self.window.set_screen_shortcut_error(error),
         }
         self.show_settings();
     }
@@ -591,6 +610,8 @@ impl PanelController {
         self.window.set_clip_history(settings.clipboard_history);
         self.window
             .set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
+        self.window
+            .set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
     }
 
     /// Lists the pinned folders (a missing one too, dimmed, so it can be
@@ -734,6 +755,7 @@ impl PanelController {
         self.show_notice();
         self.window.set_shortcut_error(SharedString::new());
         self.window.set_clip_shortcut_error(SharedString::new());
+        self.window.set_screen_shortcut_error(SharedString::new());
         self.load_terminals();
         // Also lists the recent folders as they are now.
         self.show_settings();
@@ -1025,19 +1047,24 @@ fn key_char(code: KeyCode) -> Option<char> {
 
 /// Why the recorded shortcut `spec` is refused before trying to register
 /// it, or `None` when it may be tried. Shift alone only types a capital, so
-/// it is not a modifier for this. The same keys as `other`'s shortcut,
-/// `other_spec`, are refused too, even while `other` is not registered.
-fn shortcut_refusal(spec: &str, other: ShortcutFor, other_spec: &str) -> Option<&'static str> {
+/// it is not a modifier for this. The same keys as either of the shortcuts
+/// `target` is not, as `saved` holds them, are refused too, even while one is
+/// not registered.
+fn shortcut_refusal(spec: &str, target: ShortcutFor, saved: &Settings) -> Option<&'static str> {
     let shift_only = Modifiers {
         shift: true,
         ..Modifiers::default()
     };
-    match parse_shortcut(spec) {
+    let keys = parse_shortcut(spec);
+    match keys {
         None => Some(NOT_A_SHORTCUT),
         Some((m, _)) if m == shift_only => Some(NOT_A_SHORTCUT),
         Some(_) if is_reserved_shortcut(spec) => Some(RESERVED_SHORTCUT),
-        keys if keys == parse_shortcut(other_spec) => Some(other.in_use()),
-        Some(_) => None,
+        Some(_) => target
+            .others()
+            .into_iter()
+            .find(|other| keys == parse_shortcut(other.saved(saved)))
+            .map(ShortcutFor::in_use),
     }
 }
 
@@ -1054,7 +1081,7 @@ enum ShortcutOutcome {
 }
 
 /// Applies the recorded shortcut `spec` as `target`'s, in place of the one
-/// `saved` holds: refuses one that is invalid, reserved or the other
+/// `saved` holds: refuses one that is invalid, reserved or another
 /// shortcut's without trying it; otherwise registers it with `register`
 /// (which frees the old key first) and saves it with `save` (given the
 /// change to make) only once that worked, and only if it differs from the
@@ -1073,8 +1100,7 @@ fn apply_shortcut(
             warn!("{target:?} shortcut {old:?} unavailable: {e}");
         }
     };
-    let other = target.other();
-    if let Some(reason) = shortcut_refusal(spec, other, other.saved(saved)) {
+    if let Some(reason) = shortcut_refusal(spec, target, saved) {
         debug!("shortcut {spec:?} refused: {reason}");
         return ShortcutOutcome::Refused(reason);
     }
@@ -1441,7 +1467,8 @@ mod tests {
 
     #[test]
     fn refused_shortcuts_say_why() {
-        let refusal = |spec| shortcut_refusal(spec, ShortcutFor::Clipboard, "ctrl+alt+v");
+        let defaults = Settings::default();
+        let refusal = |spec| shortcut_refusal(spec, ShortcutFor::Pocket, &defaults);
         assert_eq!(refusal("ctrl+alt+k"), None);
         assert_eq!(refusal("p"), Some(NOT_A_SHORTCUT));
         assert_eq!(refusal("ctrl+alt+?"), Some(NOT_A_SHORTCUT));
@@ -1452,6 +1479,27 @@ mod tests {
         assert_eq!(
             refusal("ctrl+alt+v"),
             Some("The Clipboard uses this shortcut")
+        );
+    }
+
+    #[test]
+    fn screen_text_refuses_the_clipboard_and_pocket_keys() {
+        let defaults = Settings::default();
+        assert_eq!(
+            shortcut_refusal("ctrl+alt+v", ShortcutFor::ScreenText, &defaults),
+            Some("The Clipboard uses this shortcut")
+        );
+        assert_eq!(
+            shortcut_refusal("ctrl+alt+p", ShortcutFor::ScreenText, &defaults),
+            Some("The Pocket uses this shortcut")
+        );
+        assert_eq!(
+            shortcut_refusal("ctrl+alt+t", ShortcutFor::Pocket, &defaults),
+            Some("Copy from screen uses this shortcut")
+        );
+        assert_eq!(
+            shortcut_refusal("ctrl+alt+e", ShortcutFor::ScreenText, &defaults),
+            None
         );
     }
 

@@ -16,6 +16,8 @@ mod pause;
 #[cfg(target_os = "macos")]
 mod pocket;
 #[cfg(target_os = "macos")]
+mod screen_text;
+#[cfg(target_os = "macos")]
 mod settings_hub;
 #[cfg(target_os = "macos")]
 mod toast;
@@ -97,9 +99,11 @@ fn main() -> Result<(), slint::PlatformError> {
         }));
     }
     // The Pocket shortcut opens the island on the Pocket, the Clipboard
-    // shortcut on the history. Each is registered at startup (the Clipboard
-    // one only while the history is on) and again whenever it changes, and
-    // tried by the panel when one is recorded.
+    // shortcut on the history, and the Copy from screen shortcut starts
+    // that. Each is registered at startup (the Clipboard one only while the
+    // history is on, the Copy from screen one only on macOS 14 or later)
+    // and again whenever it changes, and tried by the panel when one is
+    // recorded.
     let open_on = |view: pocket::View| -> Rc<dyn Fn()> {
         let pocket = Rc::downgrade(&pocket);
         Rc::new(move || {
@@ -110,17 +114,44 @@ fn main() -> Result<(), slint::PlatformError> {
     };
     let pocket_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Pocket)));
     let clip_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Clipboard)));
+    // Copy from screen needs macOS 14: on macOS 13 it has no shortcut, no
+    // menu item and no settings field.
+    let os = vento_platform::screen_text();
+    let supported = os.supported();
+    let screen_text = supported.then(|| {
+        let access = screen_text::ScreenAccessView::new(platform.clone(), os.clone());
+        let hider = access.clone();
+        let (pause, copier, toaster) = (pause.clone(), platform.clone(), toaster.clone());
+        screen_text::ScreenTextController::new(screen_text::ScreenTextDeps {
+            os,
+            is_paused: Box::new(move || pause.is_paused()),
+            read: Box::new(screen_text::read_on_worker),
+            copy: Box::new(move |text| copier.copy_text(text)),
+            notify: Box::new(move |text, at| toaster.show(text, None, at)),
+            ask_access: Box::new(move || access.show()),
+            hide_access: Box::new(move || hider.hide_if_shown()),
+        })
+    });
+    let screen_slot = screen_text
+        .clone()
+        .map(|controller| Rc::new(ShortcutSlot::new(Rc::new(move || controller.start()))));
     let panel = {
         let pause = pause.clone();
         let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
+        let screen_slot = screen_slot.clone();
         let clearer = Rc::downgrade(&pocket);
         panel::PanelController::new(
             platform.clone(),
             hub.clone(),
             recent.clone(),
+            supported,
             Box::new(move |which, spec| match which {
                 panel::ShortcutFor::Pocket => pocket_slot.register(spec),
                 panel::ShortcutFor::Clipboard => clip_slot.register(spec),
+                panel::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
+                    || Err("Copy from screen needs macOS 14 or later".into()),
+                    |slot| slot.register(spec),
+                ),
             }),
             Box::new(move || {
                 if let Some(pocket) = clearer.upgrade() {
@@ -184,6 +215,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let (try_slot, slot) = (try_slot.clone(), pocket_slot);
         move |s: &Settings| try_slot(&slot, "Pocket", &s.pocket_shortcut)
     });
+    let apply_screen_shortcut = Rc::new({
+        let (try_slot, slot) = (try_slot.clone(), screen_slot);
+        move |s: &Settings| {
+            if let Some(slot) = &slot {
+                try_slot(slot, "Copy from screen", &s.screen_text_shortcut);
+            }
+        }
+    });
     // The Clipboard shortcut is free while the history is off.
     let apply_clip_shortcut = Rc::new({
         let slot = clip_slot;
@@ -198,10 +237,14 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let apply_pocket_shortcut = apply_pocket_shortcut.clone();
         let apply_clip_shortcut = apply_clip_shortcut.clone();
+        let apply_screen_shortcut = apply_screen_shortcut.clone();
         let pocket = Rc::downgrade(&pocket);
         hub.on_change(Box::new(move |old, new| {
             if old.pocket_shortcut != new.pocket_shortcut {
                 apply_pocket_shortcut(new);
+            }
+            if old.screen_text_shortcut != new.screen_text_shortcut {
+                apply_screen_shortcut(new);
             }
             if old.clipboard_history != new.clipboard_history
                 || old.clipboard_shortcut != new.clipboard_shortcut
@@ -222,6 +265,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
         apply_clip_shortcut(&settings);
+        apply_screen_shortcut(&settings);
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
@@ -230,6 +274,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 panel.toggle_at(icon);
             }),
             pause,
+            on_copy_from_screen: screen_text
+                .map(|controller| Box::new(move || controller.start()) as Box<dyn Fn()>),
         }));
     });
     let result = slint::run_event_loop_until_quit();

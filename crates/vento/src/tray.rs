@@ -1,5 +1,5 @@
 //! Menu-bar icon: a left click opens the panel, a right click shows the menu
-//! with undo, pause, settings file access and quit.
+//! with Copy from screen, undo, pause, settings file access and quit.
 
 use std::cell::RefCell;
 use std::process::Command;
@@ -158,6 +158,8 @@ pub struct TrayDeps {
     pub on_open_panel: Box<dyn Fn(Rect)>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
+    /// Starts Copy from screen; `None` leaves the item out (macOS 13).
+    pub on_copy_from_screen: Option<Box<dyn Fn()>>,
 }
 
 /// Creates the menu-bar icon. Call on the main thread once the event loop is
@@ -171,7 +173,10 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         platform,
         on_open_panel,
         pause,
+        on_copy_from_screen,
     } = deps;
+    let copy_from_screen =
+        on_copy_from_screen.map(|start| (MenuItem::new("Copy from screen", true, None), start));
     let undo = MenuItem::new(
         undo_menu_text(exec.has_undo()),
         exec.has_undo().is_some(),
@@ -182,6 +187,10 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let quit = MenuItem::new("Quit Vento", true, None);
 
     let menu = Menu::new();
+    if let Some((item, _)) = &copy_from_screen {
+        menu.append_items(&[item, &PredefinedMenuItem::separator()])
+            .expect("cannot build the tray menu");
+    }
     menu.append_items(&[
         &undo,
         &pause_item,
@@ -221,7 +230,11 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     // only the (Send) item id to the main thread and act on it there.
     DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |id: &MenuId| {
-            if id == undo.id() {
+            if let Some((item, start)) = &copy_from_screen
+                && id == item.id()
+            {
+                start();
+            } else if id == undo.id() {
                 exec.undo_last();
             } else if id == pause_item.id() {
                 pause.set(pause_item.is_checked());
