@@ -32,11 +32,25 @@ pub struct Selection {
 }
 
 /// The rectangle between two drag points, in either direction, clamped to
-/// `display`. `None` when either side is under [`MIN_SIDE`] after clamping.
+/// `display`. `None` when either side is under [`MIN_SIDE`] after clamping,
+/// when a point is not finite, or when `display` is not a real rectangle (not
+/// finite, or negative in size). Never panics, whatever the input: the
+/// overlay calls it from AppKit event handlers.
 pub fn selection_from_drag(start: Point, end: Point, display: Rect) -> Option<Rect> {
+    let real = [
+        display.x, display.y, display.w, display.h, start.x, start.y, end.x, end.y,
+    ]
+    .iter()
+    .all(|v| v.is_finite())
+        && display.w >= 0.0
+        && display.h >= 0.0;
+    if !real {
+        return None;
+    }
+    // `max`/`min`, not `clamp`, which panics on bad bounds.
     let clamp = |p: Point| Point {
-        x: p.x.clamp(display.x, display.x + display.w),
-        y: p.y.clamp(display.y, display.y + display.h),
+        x: p.x.max(display.x).min(display.x + display.w),
+        y: p.y.max(display.y).min(display.y + display.h),
     };
     let (a, b) = (clamp(start), clamp(end));
     let rect = Rect {
@@ -193,6 +207,20 @@ mod tests {
             selection_from_drag(Point { x: 10.0, y: 10.0 }, Point { x: 10.0, y: 10.0 }, D),
             None
         );
+    }
+
+    #[test]
+    fn degenerate_display_does_not_panic() {
+        let (a, z) = (Point { x: 10.0, y: 10.0 }, Point { x: 200.0, y: 200.0 });
+        let nan_w = Rect { w: f64::NAN, ..D };
+        assert_eq!(selection_from_drag(a, z, nan_w), None);
+        let negative = Rect { w: -100.0, ..D };
+        assert_eq!(selection_from_drag(a, z, negative), None);
+        let nan_point = Point {
+            x: f64::NAN,
+            y: 10.0,
+        };
+        assert_eq!(selection_from_drag(nan_point, z, D), None);
     }
 
     #[test]
