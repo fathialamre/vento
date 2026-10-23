@@ -158,9 +158,9 @@ Password-protected archives ask for the password. Vento never overwrites a file
 ### Convert *(off at first)*
 
 Changes an image to another format. **Hold** on Convert for a moment and a ring
-of formats opens: JPEG, PNG, HEIC, TIFF, GIF and BMP. Let go on one and the new
-image appears next to the original, which is never touched. Drop several images
-and they are all converted.
+of formats opens: JPEG, PNG, HEIC, WebP, TIFF, GIF and BMP. Let go on one and
+the new image appears next to the original, which is never touched. Drop several
+images and they are all converted.
 
 Vento reads the picture itself, not the file name, so a `.png` that is really a
 JPEG still works. Photos stay upright, colours are kept, and transparent areas

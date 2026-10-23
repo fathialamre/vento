@@ -3,10 +3,10 @@
 //! functions run on any thread.
 
 use std::ffi::c_void;
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::Path;
-use std::ptr;
 use std::sync::OnceLock;
+use std::{ptr, slice};
 
 use objc2::rc::autoreleasepool;
 use objc2_core_foundation::{
@@ -14,11 +14,12 @@ use objc2_core_foundation::{
     CFURL, CGPoint, CGRect, CGSize,
 };
 use objc2_core_graphics::{
-    CGBitmapContextCreate, CGBitmapContextCreateImage, CGColorSpace, CGColorSpaceModel, CGContext,
-    CGImage, CGImageAlphaInfo, kCGColorSpaceSRGB,
+    CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetData, CGColorSpace,
+    CGColorSpaceModel, CGContext, CGImage, CGImageAlphaInfo, kCGColorSpaceSRGB,
 };
 use objc2_image_io::{
     CGImageDestination, CGImageSource, kCGImageDestinationLossyCompressionQuality,
+    kCGImagePropertyExifDictionary, kCGImagePropertyGPSDictionary, kCGImagePropertyIPTCDictionary,
     kCGImagePropertyOrientation, kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
     kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
     kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceCreateThumbnailWithTransform,
@@ -26,11 +27,16 @@ use objc2_image_io::{
 };
 use vento_core::convert::{ConvertError, ImageFormat};
 
+use super::webp;
+
 /// Property dictionaries as ImageIO hands them out: string keys, any values.
 type Properties = CFDictionary<CFString, CFType>;
 
 /// JPEG and HEIC quality: visually lossless, about half the size of 1.0.
 const LOSSY_QUALITY: f64 = 0.9;
+
+/// The longest side a WebP image can have.
+const WEBP_MAX_SIDE: usize = 16383;
 
 /// The format the file at `path` decodes as, judged by its content, not its
 /// name. `None` for a readable image of another format (AVIF, RAW).
@@ -54,11 +60,6 @@ pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result
 }
 
 fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
-    if format == ImageFormat::Webp {
-        return Err(ConvertError::Unsupported(
-            "WebP is not supported yet".into(),
-        ));
-    }
     if format == ImageFormat::Heic && !heic_encoder_works() {
         return Err(ConvertError::Unsupported(
             "HEIC is not supported on this Mac".into(),
@@ -70,6 +71,9 @@ fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError
         // SAFETY: ImageIO property dictionaries have string keys.
         .map(|props| unsafe { CFRetained::cast_unchecked::<Properties>(props) });
     let mut image = upright_first_frame(&source, source_props.as_deref())?;
+    if format == ImageFormat::Webp {
+        return write_webp(&image, source_props.as_deref(), dst);
+    }
     image = match format {
         // JPEG keeps no transparency: lay the picture on white.
         ImageFormat::Jpeg if has_alpha(&image) => redraw(&image, Background::White, false)?,
@@ -92,6 +96,74 @@ fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError
     } else {
         Err(failed())
     }
+}
+
+/// WebP goes through libwebp, as ImageIO reads it but can't write it. The
+/// pixels are drawn in sRGB, so the file needs no colour profile.
+fn write_webp(
+    image: &CGImage,
+    source: Option<&Properties>,
+    dst: &Path,
+) -> Result<(), ConvertError> {
+    let failed = || ConvertError::Encode("couldn't write WebP".into());
+    let (w, h) = (CGImage::width(Some(image)), CGImage::height(Some(image)));
+    if w > WEBP_MAX_SIDE || h > WEBP_MAX_SIDE {
+        return Err(ConvertError::Unsupported(format!(
+            "WebP can't be larger than {WEBP_MAX_SIDE} pixels a side"
+        )));
+    }
+    // SAFETY: a valid system colour space name.
+    let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).ok_or_else(failed)?;
+    let context =
+        bitmap_context(w, h, &srgb, CGImageAlphaInfo::PremultipliedLast).ok_or_else(failed)?;
+    let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64));
+    CGContext::clear_rect(Some(&context), rect);
+    CGContext::draw_image(Some(&context), rect, Some(image));
+    let data = CGBitmapContextGetData(Some(&context)).cast::<u8>();
+    if data.is_null() {
+        return Err(failed());
+    }
+    // SAFETY: the context owns `h` rows of `w * 4` bytes, as `bitmap_context`
+    // set it up, and outlives the slice.
+    let pixels = unsafe { slice::from_raw_parts_mut(data, w * h * 4) };
+    let (exif, xmp) = source.map(metadata_blocks).unwrap_or_default();
+    let webp = webp::encode(pixels, w, h, exif.as_deref(), xmp.as_deref()).ok_or_else(failed)?;
+    fs::write(dst, webp)?;
+    Ok(())
+}
+
+/// The source's Exif and XMP as the raw blocks a WebP file carries, saying
+/// upright. ImageIO hands metadata out only as dictionaries, so it writes
+/// them into a 1×1 JPEG in memory and the blocks are read back from that.
+fn metadata_blocks(source: &Properties) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    // SAFETY: the keys are ImageIO's own statics.
+    let keys = unsafe {
+        [
+            kCGImagePropertyExifDictionary,
+            kCGImagePropertyTIFFDictionary,
+            kCGImagePropertyGPSDictionary,
+            kCGImagePropertyIPTCDictionary,
+        ]
+    };
+    if !keys.iter().any(|key| source.get(key).is_some()) {
+        return (None, None);
+    }
+    let jpeg = || {
+        // SAFETY: a valid system colour space name.
+        let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))?;
+        let context = bitmap_context(1, 1, &space, CGImageAlphaInfo::NoneSkipLast)?;
+        let image = CGBitmapContextCreateImage(Some(&context))?;
+        let props = destination_properties(Some(source), ImageFormat::Jpeg);
+        let data = CFMutableData::new(None, 0)?;
+        let uti = CFString::from_static_str(type_of_format(ImageFormat::Jpeg));
+        // SAFETY: valid data and type; no options.
+        let dest = unsafe { CGImageDestination::with_data(&data, &uti, 1, None) }?;
+        // SAFETY: `props` holds ImageIO property keys and plist values.
+        unsafe { dest.add_image(&image, Some(props.as_opaque())) };
+        // SAFETY: exactly one image was added, as declared.
+        unsafe { dest.finalize() }.then(|| data.to_vec())
+    };
+    jpeg().map_or((None, None), |bytes| webp::jpeg_metadata(&bytes))
 }
 
 fn open_source(path: &Path) -> Result<CFRetained<CGImageSource>, ConvertError> {
@@ -485,7 +557,8 @@ mod tests {
     use objc2_core_graphics::kCGColorSpaceDisplayP3;
     use objc2_image_io::{
         kCGImagePropertyDepth, kCGImagePropertyExifDateTimeOriginal,
-        kCGImagePropertyExifDictionary, kCGImagePropertyHasAlpha, kCGImagePropertyOrientation,
+        kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelXDimension,
+        kCGImagePropertyExifPixelYDimension, kCGImagePropertyHasAlpha, kCGImagePropertyOrientation,
         kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth, kCGImagePropertyProfileName,
         kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
     };
@@ -558,16 +631,108 @@ mod tests {
     }
 
     #[test]
-    fn webp_cannot_be_written_yet() {
+    fn webp_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("in.png");
-        Fixture::new(8, 8).write(&src, ImageFormat::Png);
-        let dst = dir.path().join("out.webp");
-        fs::write(&dst, b"").unwrap();
-        assert!(matches!(
-            write_image(&src, &dst, ImageFormat::Webp),
-            Err(ConvertError::Unsupported(_))
-        ));
+        Fixture::new(30, 20).write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Webp);
+        assert_eq!(probe_image(&out).unwrap(), Some(ImageFormat::Webp));
+        assert_eq!(size(&out), (30, 20));
+    }
+
+    #[test]
+    fn webp_keeps_alpha() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            fill: Fill::Clear,
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Webp);
+        let props = properties(&out);
+        assert_eq!(
+            boolean(&props, unsafe { kCGImagePropertyHasAlpha }),
+            Some(true)
+        );
+        assert_eq!(corner_pixel(&out)[3], 0);
+    }
+
+    #[test]
+    fn webp_orientation_is_applied() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.jpg");
+        Fixture {
+            orientation: Some(6),
+            ..Fixture::new(40, 20)
+        }
+        .write(&src, ImageFormat::Jpeg);
+        let out = convert(&src, dir.path(), ImageFormat::Webp);
+        assert_eq!(size(&out), (20, 40));
+        let props = properties(&out);
+        let top = number(&props, unsafe { kCGImagePropertyOrientation });
+        assert!(matches!(top, None | Some(1)), "orientation {top:?}");
+        if let Some(tiff) = dictionary(&props, unsafe { kCGImagePropertyTIFFDictionary }) {
+            let inner = number(&tiff, unsafe { kCGImagePropertyTIFFOrientation });
+            assert!(
+                matches!(inner, None | Some(1)),
+                "TIFF orientation {inner:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn webp_keeps_exif_date() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.tiff");
+        let date = "2024:05:06 07:08:09";
+        Fixture {
+            date: Some(date),
+            orientation: Some(6),
+            ..Fixture::new(16, 8)
+        }
+        .write(&src, ImageFormat::Tiff);
+        let out = convert(&src, dir.path(), ImageFormat::Webp);
+        let props = properties(&out);
+        let exif =
+            dictionary(&props, unsafe { kCGImagePropertyExifDictionary }).expect("Exif dictionary");
+        assert_eq!(
+            string(&exif, unsafe { kCGImagePropertyExifDateTimeOriginal }).as_deref(),
+            Some(date)
+        );
+        // The Exif block says upright and the right size, as the pixels are.
+        let top = number(&props, unsafe { kCGImagePropertyOrientation });
+        assert!(matches!(top, None | Some(1)), "orientation {top:?}");
+        assert_eq!(size(&out), (8, 16));
+        let exif_size = (
+            number(&exif, unsafe { kCGImagePropertyExifPixelXDimension }),
+            number(&exif, unsafe { kCGImagePropertyExifPixelYDimension }),
+        );
+        assert_eq!(exif_size, (Some(8), Some(16)));
+    }
+
+    #[test]
+    fn webp_from_display_p3_is_srgb() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        // A red inside sRGB's gamut: its Display P3 numbers are some 15
+        // levels off its sRGB ones, so a raw copy would show.
+        Fixture {
+            space: unsafe { kCGColorSpaceDisplayP3 },
+            fill: Fill::Color([0.8, 0.2, 0.2]),
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Webp);
+        let profile = string(&properties(&out), unsafe { kCGImagePropertyProfileName });
+        assert!(
+            profile.as_deref().is_none_or(|p| p.contains("sRGB")),
+            "profile {profile:?}"
+        );
+        let (want, got) = (corner_pixel(&src), corner_pixel(&out));
+        for i in 0..3 {
+            assert!(want[i].abs_diff(got[i]) <= 3, "want {want:?}, got {got:?}");
+        }
     }
 
     #[test]

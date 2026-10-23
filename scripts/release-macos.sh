@@ -27,6 +27,22 @@ cp LICENSE "$stage/LICENSE"
 cp crates/vento/ui/icons/LICENSE-tabler "$stage/LICENSE-tabler"
 cargo about generate --fail about.hbs >"$stage/THIRD-PARTY-NOTICES.txt"
 
+# cargo-about lists Rust crates only. libwebp-sys builds Google's libwebp C
+# library into the app, so that library's own licence goes in as well.
+webp=$(cargo metadata --format-version 1 --locked |
+	grep -o '"manifest_path":"[^"]*/libwebp-sys-[^"/]*/Cargo.toml"' | head -n 1 |
+	sed 's|^"manifest_path":"\(.*\)/Cargo.toml"$|\1|')
+if [ -z "$webp" ] || [ ! -f "$webp/vendor/COPYING" ]; then
+	echo "release-macos.sh: libwebp's COPYING not found" >&2
+	exit 1
+fi
+{
+	printf '\n--------------------------------------------------------------------------------\n'
+	printf 'libwebp licence (BSD-3-Clause)\n\nUsed by:\n'
+	printf '  - libwebp, the C library built into %s\n\n' "$(basename "$webp")"
+	cat "$webp/vendor/COPYING"
+} >>"$stage/THIRD-PARTY-NOTICES.txt"
+
 (cd "$out" && ditto -c -k --norsrc --noextattr --noacl --keepParent "$name" "$zip")
 
 echo "$out/$zip"

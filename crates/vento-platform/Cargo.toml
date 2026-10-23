@@ -70,6 +70,9 @@ objc2-image-io = { version = "0.3", features = [
     "CGImageDestination",
     "CGImageProperties",
 ] }
+# Encodes WebP for the Convert action; ImageIO reads WebP but can't write it.
+# Builds the bundled C library with cc (no bindgen by default).
+libwebp-sys = "0.14"
 rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"

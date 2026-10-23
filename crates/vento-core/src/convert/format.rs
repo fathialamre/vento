@@ -3,8 +3,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-/// An image format Vento can name. Most are conversion targets; `Webp` joins
-/// `TARGETS` once the encoder for it lands.
+/// An image format Vento converts to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ImageFormat {
     Jpeg,
@@ -27,6 +26,7 @@ impl ImageFormat {
         ImageFormat::Jpeg,
         ImageFormat::Png,
         ImageFormat::Heic,
+        ImageFormat::Webp,
         ImageFormat::Tiff,
         ImageFormat::Gif,
         ImageFormat::Bmp,
@@ -154,13 +154,14 @@ mod tests {
     }
 
     #[test]
-    fn targets_order_without_webp() {
+    fn targets_order() {
         assert_eq!(
             ImageFormat::TARGETS,
             [
                 ImageFormat::Jpeg,
                 ImageFormat::Png,
                 ImageFormat::Heic,
+                ImageFormat::Webp,
                 ImageFormat::Tiff,
                 ImageFormat::Gif,
                 ImageFormat::Bmp,

@@ -35,6 +35,7 @@ mod quarantine;
 mod screens;
 mod terminal;
 mod trash;
+mod webp;
 
 pub(crate) use icons::picture_thumbnail;
 pub(crate) use image_io::{probe_image, write_image};
