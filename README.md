@@ -19,6 +19,9 @@ works as it always did.
 **[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)**
 (`vento-…-macos-arm64.zip`)
 
+Vento is in **early beta**. If something breaks or feels off, please
+[open an issue](https://github.com/fathialamre/vento/issues).
+
 Needs macOS 13 or later on an Apple Silicon Mac (M1 or newer). Vento asks for no
 special permissions: no Accessibility, no Input Monitoring.
 
@@ -45,8 +48,6 @@ with a warning. You only need to get past this once.
 
 2. Open **System Settings → Privacy & Security** and scroll down to the message
    about Vento. Click **Open Anyway**, then confirm with your password or Touch ID.
-
-   ![Privacy & Security settings with the Open Anyway button next to Vento](.github/assets/gatekeeper-15-open-anyway.png)
 
 **macOS 13 Ventura and 14 Sonoma**
 
