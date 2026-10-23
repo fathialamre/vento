@@ -321,6 +321,20 @@ pub fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, PlatformError> 
     }
 }
 
+/// The languages the text reader recognises, as language codes (`en-US`,
+/// `ar-SA`, ...), for the log. Empty where [`ScreenText::supported`] is
+/// false or the list cannot be had. Loads Vision; call off the main thread.
+pub fn screen_text_languages() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::screen_text_languages()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::screen_text_languages()
+    }
+}
+
 /// The quarantine attribute (`com.apple.quarantine`) of `path` itself, never
 /// of what a link points to. `None` when there is none, and also when it
 /// can't be read. A free function so a worker thread can call it. Always

@@ -222,6 +222,36 @@ fn capture(sel: &Selection) -> Result<CFRetained<CGImage>, PlatformError> {
     wait(&rx, "capture")
 }
 
+/// The languages [`text_request`] recognises; empty before macOS 14 or
+/// when Vision cannot say. Blocks while Vision loads; call it off the main
+/// thread.
+pub(crate) fn screen_text_languages() -> Vec<String> {
+    if !supported() {
+        return Vec::new();
+    }
+    autoreleasepool(|_| {
+        // SAFETY: a plain query of a valid, configured request.
+        match unsafe { text_request().supportedRecognitionLanguagesAndReturnError() } {
+            Ok(languages) => languages.iter().map(|l| l.to_string()).collect(),
+            Err(e) => {
+                log::debug!("no Vision languages: {}", e.localizedDescription());
+                Vec::new()
+            }
+        }
+    })
+}
+
+/// A text request with the Vision settings Copy from screen uses.
+fn text_request() -> Retained<VNRecognizeTextRequest> {
+    let request = VNRecognizeTextRequest::new();
+    request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);
+    // SAFETY: revision 3 exists from macOS 13 on.
+    unsafe { request.setRevision(VNRecognizeTextRequestRevision3) };
+    request.setAutomaticallyDetectsLanguage(true);
+    request.setUsesLanguageCorrection(false);
+    request
+}
+
 /// The text Vision reads in `image`, one box per observation, in image
 /// pixels with a top-left origin.
 fn recognise(image: &CGImage) -> Result<Vec<TextBox>, PlatformError> {
@@ -235,13 +265,7 @@ fn recognise(image: &CGImage) -> Result<Vec<TextBox>, PlatformError> {
             &NSDictionary::new(),
         )
     };
-    let request = VNRecognizeTextRequest::new();
-    request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);
-    // SAFETY: revision 3 exists from macOS 13 on.
-    unsafe { request.setRevision(VNRecognizeTextRequestRevision3) };
-    request.setAutomaticallyDetectsLanguage(true);
-    request.setUsesLanguageCorrection(false);
-
+    let request = text_request();
     let as_request: &VNRequest = &request;
     // Synchronous: returns once Vision has read the whole image.
     handler

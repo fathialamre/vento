@@ -49,6 +49,12 @@ pub(crate) fn read_screen_text(_sel: &Selection) -> Result<Vec<TextBox>, Platfor
     Err(PlatformError::Unsupported)
 }
 
+/// No text reader here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn screen_text_languages() -> Vec<String> {
+    Vec::new()
+}
+
 /// Inert [`ScreenText`]: unsupported, never granted, selects nothing.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StubScreenText;
@@ -330,6 +336,7 @@ mod tests {
             read_screen_text(&sel),
             Err(PlatformError::Unsupported)
         ));
+        assert!(screen_text_languages().is_empty());
     }
 
     #[test]

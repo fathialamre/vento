@@ -179,10 +179,10 @@ pub struct PanelController {
 impl PanelController {
     /// Creates the (hidden) panel. `recent` is the recent-folders list the
     /// wheel and the executor share; `screen_text_supported` says whether
-    /// the General tab offers Copy from screen; `try_shortcut` registers a recorded
-    /// Pocket or Clipboard shortcut; `on_clear_history` empties the
-    /// clipboard history; `on_pause` is called with the state the Pause
-    /// item asks for.
+    /// the General tab offers Copy from screen; `try_shortcut` registers a
+    /// recorded Pocket, Clipboard or Copy from screen shortcut;
+    /// `on_clear_history` empties the clipboard history; `on_pause` is
+    /// called with the state the Pause item asks for.
     ///
     /// # Panics
     /// If the Slint window cannot be created.
