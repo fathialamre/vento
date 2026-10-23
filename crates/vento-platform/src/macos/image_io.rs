@@ -1,0 +1,666 @@
+//! Reading and writing image files with ImageIO, for the Convert action.
+//! Core Foundation, Core Graphics and ImageIO are thread-safe, so both
+//! functions run on any thread.
+
+use std::ffi::c_void;
+use std::path::Path;
+use std::ptr;
+
+use objc2_core_foundation::{
+    CFDictionary, CFMutableDictionary, CFNumber, CFRetained, CFString, CFType, CFURL, CGPoint,
+    CGRect, CGSize,
+};
+use objc2_core_graphics::{
+    CGBitmapContextCreate, CGBitmapContextCreateImage, CGColorSpace, CGColorSpaceModel, CGContext,
+    CGImage, CGImageAlphaInfo, kCGColorSpaceSRGB,
+};
+use objc2_image_io::{
+    CGImageDestination, CGImageSource, kCGImageDestinationLossyCompressionQuality,
+    kCGImagePropertyOrientation, kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
+    kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
+    kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceCreateThumbnailWithTransform,
+    kCGImageSourceThumbnailMaxPixelSize,
+};
+use vento_core::convert::{ConvertError, ImageFormat};
+
+/// Property dictionaries as ImageIO hands them out: string keys, any values.
+type Properties = CFDictionary<CFString, CFType>;
+
+/// JPEG and HEIC quality: visually lossless, about half the size of 1.0.
+const LOSSY_QUALITY: f64 = 0.9;
+
+/// The format the file at `path` decodes as, judged by its content, not its
+/// name. `None` for a readable image of another format (AVIF, RAW).
+pub(crate) fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
+    let source = open_source(path)?;
+    // SAFETY: `source` is a valid image source.
+    let Some(uti) = (unsafe { source.r#type() }) else {
+        return Ok(None);
+    };
+    Ok(format_of_type(&uti.to_string()))
+}
+
+/// Writes the first frame of `src`, upright, into the existing file `dst` as
+/// `format`, keeping the source's metadata and colour profile.
+pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
+    if format == ImageFormat::Webp {
+        return Err(ConvertError::Unsupported(
+            "WebP is not supported yet".into(),
+        ));
+    }
+    let uti = CFString::from_static_str(type_of_format(format));
+    if format == ImageFormat::Heic && !can_write_type(&uti) {
+        return Err(ConvertError::Unsupported(
+            "HEIC is not supported on this Mac".into(),
+        ));
+    }
+    let source = open_source(src)?;
+    // SAFETY: `source` is a valid image source; no options.
+    let source_props = unsafe { source.properties_at_index(0, None) }
+        // SAFETY: ImageIO property dictionaries have string keys.
+        .map(|props| unsafe { CFRetained::cast_unchecked::<Properties>(props) });
+    let mut image = upright_first_frame(&source, source_props.as_deref())?;
+    image = match format {
+        // Neither keeps transparency well: lay the picture on white.
+        ImageFormat::Jpeg | ImageFormat::Bmp if has_alpha(&image) => {
+            redraw(&image, Background::White, format == ImageFormat::Bmp)?
+        }
+        ImageFormat::Gif => redraw(&image, Background::Clear, true)?,
+        _ => image,
+    };
+    let props = destination_properties(source_props.as_deref(), format);
+    let failed = || ConvertError::Encode(format!("couldn't write {}", format.name()));
+    let url = CFURL::from_file_path(dst).ok_or_else(failed)?;
+    // SAFETY: valid URL and type; no options.
+    let dest = unsafe { CGImageDestination::with_url(&url, &uti, 1, None) }.ok_or_else(failed)?;
+    // SAFETY: `props` holds ImageIO property keys and plist values.
+    unsafe { dest.add_image(&image, Some(props.as_opaque())) };
+    // SAFETY: exactly one image was added, as declared.
+    if unsafe { dest.finalize() } {
+        Ok(())
+    } else {
+        Err(failed())
+    }
+}
+
+fn open_source(path: &Path) -> Result<CFRetained<CGImageSource>, ConvertError> {
+    let url = CFURL::from_file_path(path).ok_or(ConvertError::NotAnImage)?;
+    // SAFETY: valid URL; no options.
+    let source = unsafe { CGImageSource::with_url(&url, None) }.ok_or(ConvertError::NotAnImage)?;
+    // SAFETY: `source` is a valid image source.
+    if unsafe { source.count() } == 0 {
+        return Err(ConvertError::NotAnImage);
+    }
+    Ok(source)
+}
+
+/// The first frame at full size with its orientation applied to the pixels,
+/// so it shows upright without any orientation tag.
+fn upright_first_frame(
+    source: &CGImageSource,
+    props: Option<&Properties>,
+) -> Result<CFRetained<CGImage>, ConvertError> {
+    let dimension = |key: &CFString| props.and_then(|p| number(p, key)).unwrap_or(0);
+    // SAFETY: the keys are ImageIO's own statics.
+    let longest = unsafe {
+        dimension(kCGImagePropertyPixelWidth).max(dimension(kCGImagePropertyPixelHeight))
+    };
+    let longest = if longest > 0 {
+        longest
+    } else {
+        // No size in the metadata: decode the frame to learn it.
+        // SAFETY: `source` is a valid image source; no options.
+        let image = unsafe { source.image_at_index(0, None) }.ok_or(ConvertError::NotAnImage)?;
+        CGImage::width(Some(&image)).max(CGImage::height(Some(&image))) as i64
+    };
+    let yes = CFNumber::new_i32(1);
+    let max = CFNumber::new_i64(longest);
+    // SAFETY: the keys are ImageIO's own statics.
+    let keys: [&CFString; 3] = unsafe {
+        [
+            kCGImageSourceCreateThumbnailFromImageAlways,
+            kCGImageSourceCreateThumbnailWithTransform,
+            kCGImageSourceThumbnailMaxPixelSize,
+        ]
+    };
+    let values: [&CFType; 3] = [&yes, &yes, &max];
+    let options = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
+    // SAFETY: `options` holds thumbnail option keys with number values.
+    unsafe { source.thumbnail_at_index(0, Some(options.as_opaque())) }
+        .ok_or(ConvertError::NotAnImage)
+}
+
+fn has_alpha(image: &CGImage) -> bool {
+    !matches!(
+        CGImage::alpha_info(Some(image)),
+        CGImageAlphaInfo::None | CGImageAlphaInfo::NoneSkipLast | CGImageAlphaInfo::NoneSkipFirst
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Background {
+    /// Transparent pixels become white; the result has no alpha.
+    White,
+    /// Transparency is kept.
+    Clear,
+}
+
+/// `image` drawn into an 8-bit RGB bitmap: in sRGB when `srgb` (for formats
+/// that carry no colour profile) or when its own space is not RGB, else in
+/// its own space.
+fn redraw(
+    image: &CGImage,
+    background: Background,
+    srgb: bool,
+) -> Result<CFRetained<CGImage>, ConvertError> {
+    let failed = || ConvertError::Encode("couldn't draw the image".into());
+    let own = CGImage::color_space(Some(image))
+        .filter(|space| CGColorSpace::model(Some(space)) == CGColorSpaceModel::RGB);
+    // SAFETY: a valid system colour space name.
+    let srgb_space =
+        CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).ok_or_else(failed)?;
+    let (w, h) = (CGImage::width(Some(image)), CGImage::height(Some(image)));
+    let alpha = match background {
+        Background::White => CGImageAlphaInfo::NoneSkipLast,
+        Background::Clear => CGImageAlphaInfo::PremultipliedLast,
+    };
+    let candidates = [own.filter(|_| !srgb), Some(srgb_space)];
+    // An exotic own space (extended range, say) has no 8-bit bitmap; sRGB does.
+    let context = candidates
+        .iter()
+        .flatten()
+        .find_map(|space| bitmap_context(w, h, space, alpha))
+        .ok_or_else(failed)?;
+    let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64));
+    if background == Background::White {
+        CGContext::set_rgb_fill_color(Some(&context), 1.0, 1.0, 1.0, 1.0);
+        CGContext::fill_rect(Some(&context), rect);
+    }
+    CGContext::draw_image(Some(&context), rect, Some(image));
+    CGBitmapContextCreateImage(Some(&context)).ok_or_else(failed)
+}
+
+fn bitmap_context(
+    width: usize,
+    height: usize,
+    space: &CGColorSpace,
+    alpha: CGImageAlphaInfo,
+) -> Option<CFRetained<CGContext>> {
+    // SAFETY: a null buffer makes the context allocate (and own) its pixels;
+    // 8 bits per component and 4 bytes per pixel match `alpha`'s layouts.
+    unsafe {
+        CGBitmapContextCreate(
+            ptr::null_mut::<c_void>(),
+            width,
+            height,
+            8,
+            width * 4,
+            Some(space),
+            alpha.0,
+        )
+    }
+}
+
+/// The source's metadata, upright, plus the encoder settings for `format`.
+fn destination_properties(
+    source: Option<&Properties>,
+    format: ImageFormat,
+) -> CFRetained<CFMutableDictionary<CFString, CFType>> {
+    let props = source
+        .and_then(copy_mutable)
+        .unwrap_or_else(CFMutableDictionary::empty);
+    let upright = CFNumber::new_i32(1);
+    // SAFETY: the keys are ImageIO's own statics.
+    let (orientation, tiff_key, tiff_orientation) = unsafe {
+        (
+            kCGImagePropertyOrientation,
+            kCGImagePropertyTIFFDictionary,
+            kCGImagePropertyTIFFOrientation,
+        )
+    };
+    // The pixels are already turned; a leftover tag would turn them again.
+    props.set(orientation, &upright);
+    let tiff = props
+        .get(tiff_key)
+        .and_then(|v| v.downcast::<CFDictionary>().ok())
+        // SAFETY: ImageIO property dictionaries have string keys.
+        .and_then(|d| copy_mutable(unsafe { d.cast_unchecked::<CFString, CFType>() }));
+    if let Some(tiff) = tiff {
+        tiff.set(tiff_orientation, &upright);
+        props.set(tiff_key, &tiff);
+    }
+    if matches!(format, ImageFormat::Jpeg | ImageFormat::Heic) {
+        let quality = CFNumber::new_f64(LOSSY_QUALITY);
+        // SAFETY: an ImageIO static.
+        props.set(
+            unsafe { kCGImageDestinationLossyCompressionQuality },
+            &quality,
+        );
+    }
+    props
+}
+
+fn copy_mutable(dict: &Properties) -> Option<CFRetained<CFMutableDictionary<CFString, CFType>>> {
+    // SAFETY: the copy keeps the original's string keys and CF values.
+    unsafe { CFMutableDictionary::new_copy(None, 0, Some(dict.as_opaque())) }
+        .map(|d| unsafe { CFRetained::cast_unchecked(d) })
+}
+
+fn number(props: &Properties, key: &CFString) -> Option<i64> {
+    props.get(key)?.downcast::<CFNumber>().ok()?.as_i64()
+}
+
+fn can_write_type(uti: &CFString) -> bool {
+    // SAFETY: no arguments; the array holds CFStrings.
+    let types = unsafe { CGImageDestination::type_identifiers() };
+    // SAFETY: the array holds type identifier strings.
+    let types = unsafe { types.cast_unchecked::<CFString>() };
+    types.iter().any(|t| *t == *uti)
+}
+
+/// The uniform type identifier ImageIO writes `format` as.
+fn type_of_format(format: ImageFormat) -> &'static str {
+    match format {
+        ImageFormat::Jpeg => "public.jpeg",
+        ImageFormat::Png => "public.png",
+        ImageFormat::Heic => "public.heic",
+        ImageFormat::Webp => "org.webmproject.webp",
+        ImageFormat::Tiff => "public.tiff",
+        ImageFormat::Gif => "com.compuserve.gif",
+        ImageFormat::Bmp => "com.microsoft.bmp",
+    }
+}
+
+fn format_of_type(uti: &str) -> Option<ImageFormat> {
+    Some(match uti {
+        "public.jpeg" => ImageFormat::Jpeg,
+        "public.png" => ImageFormat::Png,
+        "public.heic" | "public.heif" => ImageFormat::Heic,
+        "org.webmproject.webp" => ImageFormat::Webp,
+        "public.tiff" => ImageFormat::Tiff,
+        "com.compuserve.gif" => ImageFormat::Gif,
+        "com.microsoft.bmp" => ImageFormat::Bmp,
+        _ => return None,
+    })
+}
+
+/// Builds test images with ImageIO itself, so no binary fixtures are kept.
+#[cfg(test)]
+mod test_support {
+    use std::path::Path;
+
+    use super::*;
+    use objc2_core_foundation::CFBoolean;
+    use objc2_image_io::{kCGImagePropertyExifDateTimeOriginal, kCGImagePropertyExifDictionary};
+
+    pub(super) enum Fill {
+        /// Opaque, in the fixture's colour space, components 0 to 1.
+        Color([f64; 3]),
+        /// Fully transparent.
+        Clear,
+    }
+
+    /// An image file to write: a single colour, with optional metadata.
+    pub(super) struct Fixture {
+        pub width: usize,
+        pub height: usize,
+        pub fill: Fill,
+        pub space: &'static CFString,
+        pub sixteen_bit: bool,
+        pub frames: usize,
+        /// The top-level orientation tag.
+        pub orientation: Option<i32>,
+        /// `{Exif}.DateTimeOriginal`.
+        pub date: Option<&'static str>,
+    }
+
+    impl Fixture {
+        pub fn new(width: usize, height: usize) -> Fixture {
+            Fixture {
+                width,
+                height,
+                fill: Fill::Color([0.8, 0.3, 0.1]),
+                // SAFETY: a Core Graphics static.
+                space: unsafe { kCGColorSpaceSRGB },
+                sixteen_bit: false,
+                frames: 1,
+                orientation: None,
+                date: None,
+            }
+        }
+
+        pub fn write(&self, path: &Path, format: ImageFormat) {
+            let image = self.image();
+            let props = CFMutableDictionary::<CFString, CFType>::empty();
+            if let Some(orientation) = self.orientation {
+                let orientation = CFNumber::new_i32(orientation);
+                props.set(unsafe { kCGImagePropertyOrientation }, &orientation);
+                let tiff = CFMutableDictionary::<CFString, CFType>::empty();
+                tiff.set(unsafe { kCGImagePropertyTIFFOrientation }, &orientation);
+                props.set(unsafe { kCGImagePropertyTIFFDictionary }, &tiff);
+            }
+            if let Some(date) = self.date {
+                let exif = CFMutableDictionary::<CFString, CFType>::empty();
+                exif.set(
+                    unsafe { kCGImagePropertyExifDateTimeOriginal },
+                    &CFString::from_str(date),
+                );
+                props.set(unsafe { kCGImagePropertyExifDictionary }, &exif);
+            }
+            let url = CFURL::from_file_path(path).unwrap();
+            let uti = CFString::from_static_str(type_of_format(format));
+            let dest = unsafe { CGImageDestination::with_url(&url, &uti, self.frames, None) }
+                .expect("destination");
+            for _ in 0..self.frames {
+                unsafe { dest.add_image(&image, Some(props.as_opaque())) };
+            }
+            assert!(unsafe { dest.finalize() }, "fixture {format:?} not written");
+        }
+
+        fn image(&self) -> CFRetained<CGImage> {
+            let (bits, alpha) = match self.fill {
+                Fill::Clear => (8, CGImageAlphaInfo::PremultipliedLast),
+                Fill::Color(_) => (8, CGImageAlphaInfo::NoneSkipLast),
+            };
+            let bits = if self.sixteen_bit { 16 } else { bits };
+            let space = CGColorSpace::with_name(Some(self.space)).unwrap();
+            let context = unsafe {
+                CGBitmapContextCreate(
+                    ptr::null_mut(),
+                    self.width,
+                    self.height,
+                    bits,
+                    self.width * 4 * bits / 8,
+                    Some(&space),
+                    alpha.0,
+                )
+            }
+            .expect("fixture bitmap");
+            if let Fill::Color([r, g, b]) = self.fill {
+                CGContext::set_rgb_fill_color(Some(&context), r, g, b, 1.0);
+                let size = CGSize::new(self.width as f64, self.height as f64);
+                CGContext::fill_rect(Some(&context), CGRect::new(CGPoint::new(0.0, 0.0), size));
+            }
+            CGBitmapContextCreateImage(Some(&context)).unwrap()
+        }
+    }
+
+    fn source(path: &Path) -> CFRetained<CGImageSource> {
+        open_source(path).expect("readable image")
+    }
+
+    pub(super) fn properties(path: &Path) -> CFRetained<Properties> {
+        let props = unsafe { source(path).properties_at_index(0, None) }.expect("properties");
+        unsafe { CFRetained::cast_unchecked(props) }
+    }
+
+    pub(super) fn dictionary(props: &Properties, key: &CFString) -> Option<CFRetained<Properties>> {
+        let dict = props.get(key)?.downcast::<CFDictionary>().ok()?;
+        Some(unsafe { CFRetained::cast_unchecked(dict) })
+    }
+
+    pub(super) fn string(props: &Properties, key: &CFString) -> Option<String> {
+        Some(props.get(key)?.downcast::<CFString>().ok()?.to_string())
+    }
+
+    pub(super) fn boolean(props: &Properties, key: &CFString) -> Option<bool> {
+        Some(props.get(key)?.downcast::<CFBoolean>().ok()?.as_bool())
+    }
+
+    pub(super) fn frame_count(path: &Path) -> usize {
+        unsafe { source(path).count() }
+    }
+
+    /// The top-left pixel of the first frame drawn in sRGB, as 8-bit
+    /// premultiplied RGBA.
+    pub(super) fn corner_pixel(path: &Path) -> [u8; 4] {
+        let image = unsafe { source(path).image_at_index(0, None) }.expect("frame");
+        let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).unwrap();
+        let (w, h) = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
+        let mut pixels = vec![0u8; w * h * 4];
+        let context = unsafe {
+            CGBitmapContextCreate(
+                pixels.as_mut_ptr().cast(),
+                w,
+                h,
+                8,
+                w * 4,
+                Some(&space),
+                CGImageAlphaInfo::PremultipliedLast.0,
+            )
+        }
+        .expect("bitmap");
+        let size = CGSize::new(w as f64, h as f64);
+        CGContext::draw_image(
+            Some(&context),
+            CGRect::new(CGPoint::new(0.0, 0.0), size),
+            Some(&image),
+        );
+        drop(context);
+        [pixels[0], pixels[1], pixels[2], pixels[3]]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use objc2_core_graphics::kCGColorSpaceDisplayP3;
+    use objc2_image_io::{
+        kCGImagePropertyDepth, kCGImagePropertyExifDateTimeOriginal,
+        kCGImagePropertyExifDictionary, kCGImagePropertyHasAlpha, kCGImagePropertyOrientation,
+        kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth, kCGImagePropertyProfileName,
+        kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
+    };
+    use vento_core::convert::{ConvertError, ImageFormat};
+
+    use super::test_support::{
+        Fill, Fixture, boolean, corner_pixel, dictionary, frame_count, properties, string,
+    };
+    use super::{number, probe_image, write_image};
+
+    /// Converts `src` into a fresh empty file in `dir`, as the batch does.
+    fn convert(src: &Path, dir: &Path, format: ImageFormat) -> PathBuf {
+        let dst = dir.join(format!(".out.{}.vento-partial-1", format.extension()));
+        fs::write(&dst, b"").unwrap();
+        write_image(src, &dst, format).unwrap();
+        dst
+    }
+
+    fn size(path: &Path) -> (i64, i64) {
+        let props = properties(path);
+        (
+            number(&props, unsafe { kCGImagePropertyPixelWidth }).unwrap(),
+            number(&props, unsafe { kCGImagePropertyPixelHeight }).unwrap(),
+        )
+    }
+
+    #[test]
+    fn every_target_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture::new(30, 20).write(&src, ImageFormat::Png);
+        for &format in ImageFormat::TARGETS {
+            let out = convert(&src, dir.path(), format);
+            assert_eq!(probe_image(&out).unwrap(), Some(format), "{format:?}");
+            assert_eq!(size(&out), (30, 20), "{format:?}");
+        }
+    }
+
+    #[test]
+    fn probe_reads_content_not_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("x.png");
+        Fixture::new(8, 8).write(&src, ImageFormat::Jpeg);
+        assert_eq!(probe_image(&src).unwrap(), Some(ImageFormat::Jpeg));
+    }
+
+    #[test]
+    fn non_image_is_not_an_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("notes.png");
+        fs::write(&src, "just some words, not pixels\n").unwrap();
+        assert!(matches!(probe_image(&src), Err(ConvertError::NotAnImage)));
+    }
+
+    #[test]
+    fn webp_cannot_be_written_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture::new(8, 8).write(&src, ImageFormat::Png);
+        let dst = dir.path().join("out.webp");
+        fs::write(&dst, b"").unwrap();
+        assert!(matches!(
+            write_image(&src, &dst, ImageFormat::Webp),
+            Err(ConvertError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn orientation_is_applied_to_pixels() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.jpg");
+        Fixture {
+            orientation: Some(6),
+            ..Fixture::new(40, 20)
+        }
+        .write(&src, ImageFormat::Jpeg);
+        let out = convert(&src, dir.path(), ImageFormat::Jpeg);
+        assert_eq!(size(&out), (20, 40));
+        let props = properties(&out);
+        let top = number(&props, unsafe { kCGImagePropertyOrientation });
+        assert!(matches!(top, None | Some(1)), "orientation {top:?}");
+        if let Some(tiff) = dictionary(&props, unsafe { kCGImagePropertyTIFFDictionary }) {
+            let inner = number(&tiff, unsafe { kCGImagePropertyTIFFOrientation });
+            assert!(
+                matches!(inner, None | Some(1)),
+                "TIFF orientation {inner:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn transparency_becomes_white_in_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            fill: Fill::Clear,
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Jpeg);
+        let [r, g, b, _] = corner_pixel(&out);
+        assert!(r >= 250 && g >= 250 && b >= 250, "corner {r} {g} {b}");
+    }
+
+    #[test]
+    fn transparency_is_kept_in_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            fill: Fill::Clear,
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Png);
+        let props = properties(&out);
+        assert_eq!(
+            boolean(&props, unsafe { kCGImagePropertyHasAlpha }),
+            Some(true)
+        );
+        assert_eq!(corner_pixel(&out)[3], 0);
+    }
+
+    #[test]
+    fn display_p3_profile_is_kept_in_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            space: unsafe { kCGColorSpaceDisplayP3 },
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Jpeg);
+        let profile = string(&properties(&out), unsafe { kCGImagePropertyProfileName });
+        assert!(
+            profile.as_deref().is_some_and(|p| p.contains("P3")),
+            "profile {profile:?}"
+        );
+    }
+
+    #[test]
+    fn gif_output_is_srgb() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            space: unsafe { kCGColorSpaceDisplayP3 },
+            fill: Fill::Color([0.2, 0.6, 0.2]),
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Png);
+        let out = convert(&src, dir.path(), ImageFormat::Gif);
+        let profile = string(&properties(&out), unsafe { kCGImagePropertyProfileName });
+        assert!(
+            profile.as_deref().is_none_or(|p| p.contains("sRGB")),
+            "profile {profile:?}"
+        );
+        // The colour looks the same, so the pixels were matched to sRGB
+        // rather than copied raw from Display P3.
+        let (want, got) = (corner_pixel(&src), corner_pixel(&out));
+        for i in 0..3 {
+            assert!(want[i].abs_diff(got[i]) <= 4, "want {want:?}, got {got:?}");
+        }
+    }
+
+    #[test]
+    fn animated_gif_gives_one_frame() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.gif");
+        Fixture {
+            frames: 2,
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Gif);
+        assert_eq!(frame_count(&src), 2);
+        let out = convert(&src, dir.path(), ImageFormat::Tiff);
+        assert_eq!(frame_count(&out), 1);
+    }
+
+    #[test]
+    fn sixteen_bit_png_converts_to_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.png");
+        Fixture {
+            sixteen_bit: true,
+            ..Fixture::new(24, 12)
+        }
+        .write(&src, ImageFormat::Png);
+        assert_eq!(
+            number(&properties(&src), unsafe { kCGImagePropertyDepth }),
+            Some(16)
+        );
+        let out = convert(&src, dir.path(), ImageFormat::Jpeg);
+        assert_eq!(probe_image(&out).unwrap(), Some(ImageFormat::Jpeg));
+        assert_eq!(size(&out), (24, 12));
+    }
+
+    #[test]
+    fn exif_date_survives_to_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.tiff");
+        let date = "2024:05:06 07:08:09";
+        Fixture {
+            date: Some(date),
+            ..Fixture::new(16, 16)
+        }
+        .write(&src, ImageFormat::Tiff);
+        let out = convert(&src, dir.path(), ImageFormat::Jpeg);
+        let exif = dictionary(&properties(&out), unsafe { kCGImagePropertyExifDictionary })
+            .expect("Exif dictionary");
+        assert_eq!(
+            string(&exif, unsafe { kCGImagePropertyExifDateTimeOriginal }).as_deref(),
+            Some(date)
+        );
+    }
+}

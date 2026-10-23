@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use vento_core::clip::ClipSnapshot;
+use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 
@@ -39,6 +40,26 @@ pub(crate) fn block_cloud_downloads_on_this_thread() -> Result<(), PlatformError
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) fn volume_scope(_start: &Path) -> vento_core::sizes::VolumeScope {
     vento_core::sizes::VolumeScope::default()
+}
+
+/// Message of the image conversion stubs.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+const NO_IMAGE_CONVERSION: &str = "image conversion is not available on this system";
+
+/// No image codec here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn probe_image(_path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
+    Err(ConvertError::Unsupported(NO_IMAGE_CONVERSION.into()))
+}
+
+/// No image codec here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn write_image(
+    _src: &Path,
+    _dst: &Path,
+    _format: ImageFormat,
+) -> Result<(), ConvertError> {
+    Err(ConvertError::Unsupported(NO_IMAGE_CONVERSION.into()))
 }
 
 /// Inert [`Platform`]: reports no input and supports nothing.

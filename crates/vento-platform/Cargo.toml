@@ -50,7 +50,26 @@ objc2-app-kit = { version = "0.3", features = [
     "NSMenu",
     "NSMenuItem",
 ] }
-objc2-core-graphics = { version = "0.3", features = ["CGEventSource"] }
+objc2-core-graphics = { version = "0.3", features = [
+    "CGEventSource",
+    "CGImage",
+    "CGColorSpace",
+    "CGContext",
+    "CGBitmapContext",
+] }
+objc2-core-foundation = { version = "0.3", features = [
+    "CFURL",
+    "CFDictionary",
+    "CFString",
+    "CFNumber",
+    "CFArray",
+] }
+# Reads and writes image files for the Convert action.
+objc2-image-io = { version = "0.3", features = [
+    "CGImageSource",
+    "CGImageDestination",
+    "CGImageProperties",
+] }
 rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
@@ -58,3 +77,4 @@ xattr = "1"
 [dev-dependencies]
 # Writes the PNG files the picture thumbnail tests read.
 png = "0.18"
+tempfile = "3"
