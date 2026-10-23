@@ -81,12 +81,13 @@ pub const MAX_INDENT: usize = 40;
 /// row in reading order, rows indented by their left edge, joined with `\n`.
 /// Blank boxes are ignored; no usable box gives an empty string.
 ///
-/// A row with any Arabic/Hebrew letter reads right to left, so `اضغط Ctrl`
-/// keeps the Arabic first even when OCR splits it into boxes, the Latin
-/// letters are as many or more, or the rest of the capture is English. Rows
-/// read left to right are indented from the leftmost box, at most
-/// [`MAX_INDENT`] spaces; right-to-left rows are not, and nothing is indented
-/// in a capture that is mostly right-to-left, where lines align right.
+/// A row reads right to left when it holds at least as many Arabic/Hebrew
+/// words as Latin-style ones, so `اضغط Ctrl` keeps the Arabic first even when
+/// OCR splits it into boxes, while an English line ending in an Arabic phrase
+/// stays left to right. Rows read left to right are indented from the leftmost
+/// box, at most [`MAX_INDENT`] spaces; right-to-left rows are not, and nothing
+/// is indented in a capture that is mostly right-to-left, where lines align
+/// right.
 pub fn assemble(boxes: &[TextBox]) -> String {
     let mut boxes: Vec<&TextBox> = boxes.iter().filter(|b| !b.text.trim().is_empty()).collect();
     if boxes.is_empty() {
@@ -101,7 +102,7 @@ pub fn assemble(boxes: &[TextBox]) -> String {
     let lines: Vec<String> = group_rows(&boxes)
         .into_iter()
         .map(|mut row| {
-            let rtl = letters(&row).rtl > 0;
+            let rtl = reads_right_to_left(&row);
             row.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
             if rtl {
                 row.reverse();
@@ -159,17 +160,37 @@ impl Letters {
     }
 }
 
+/// Whether `c` is an Arabic or Hebrew letter (or form).
+fn is_rtl(c: char) -> bool {
+    matches!(c, '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FEFF}')
+}
+
 /// Counts the letters of each direction in `boxes`.
 fn letters(boxes: &[&TextBox]) -> Letters {
     let mut n = Letters::default();
     for c in boxes.iter().flat_map(|b| b.text.chars()) {
-        if matches!(c, '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FEFF}') {
+        if is_rtl(c) {
             n.rtl += 1;
         } else if c.is_alphabetic() {
             n.ltr += 1;
         }
     }
     n
+}
+
+/// Whether a row reads right to left: it has an Arabic/Hebrew word and at
+/// least as many of them as Latin-style words. A word with any Arabic/Hebrew
+/// letter counts as right-to-left; numbers and punctuation count as neither.
+fn reads_right_to_left(row: &[&TextBox]) -> bool {
+    let (mut rtl, mut ltr) = (0, 0);
+    for word in row.iter().flat_map(|b| b.text.split_whitespace()) {
+        if word.chars().any(is_rtl) {
+            rtl += 1;
+        } else if word.chars().any(char::is_alphabetic) {
+            ltr += 1;
+        }
+    }
+    rtl > 0 && rtl >= ltr
 }
 
 /// Typical width of one character: the median of width per character.
@@ -388,6 +409,20 @@ mod tests {
         assert_eq!(
             assemble(&boxes),
             "Preview File Edit View\nScreen Recording\nافتح الملف من Finder"
+        );
+    }
+
+    #[test]
+    fn english_row_with_an_arabic_phrase_reads_left_to_right() {
+        // Owner's full-screen check: five English words to three Arabic.
+        let boxes = [
+            b(260.0, 0.0, 130.0, 20.0, "افتح الملف من"),
+            b(0.0, 0.0, 240.0, 20.0, "Line 12: The quick brown"),
+            b(400.0, 0.0, 60.0, 20.0, "Finder"),
+        ];
+        assert_eq!(
+            assemble(&boxes),
+            "Line 12: The quick brown افتح الملف من Finder"
         );
     }
 
