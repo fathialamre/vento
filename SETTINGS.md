@@ -48,8 +48,13 @@ shake_to_open = true
 # it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
-# Actions turned off in the panel (the panel lists them below the shown ones)
+# Actions turned off in the panel
 hidden_actions = []
+
+# Every action in the panel's order, shown or hidden, so switching one on or
+# off keeps its place. Written by the panel; ignored when the shown actions in
+# it are not in the same order as `actions`
+action_order = []
 
 # Folders pinned to the Move and Copy to ring, in order; only the first 7 count
 pinned_folders = []
