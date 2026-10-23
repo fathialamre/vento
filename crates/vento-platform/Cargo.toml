@@ -60,9 +60,20 @@ objc2-core-graphics = { version = "0.3", features = [
     "CGEventSource",
     "CGImage",
     "CGWindow",
+    "CGColorSpace",
+    "CGContext",
+    "CGBitmapContext",
 ] }
-# Holds on to the CGImage a screen capture hands back.
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std"] }
+# Holds on to the CGImage a screen capture hands back, and carries the
+# Convert action's file URLs and image properties.
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "CFURL",
+    "CFDictionary",
+    "CFString",
+    "CFNumber",
+    "CFData",
+] }
 # Copy from screen: capture an area, then read its text. Only what that needs;
 # every class is looked up at run time, so the app still starts on macOS 13.
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = [
@@ -84,6 +95,15 @@ objc2-vision = { version = "0.3", default-features = false, features = [
     "VNObservation",
     "VNRequestHandler",
 ] }
+# Reads and writes image files for the Convert action.
+objc2-image-io = { version = "0.3", features = [
+    "CGImageSource",
+    "CGImageDestination",
+    "CGImageProperties",
+] }
+# Encodes WebP for the Convert action; ImageIO reads WebP but can't write it.
+# Builds the bundled C library with cc (no bindgen by default).
+libwebp-sys = "0.14"
 rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
@@ -91,3 +111,4 @@ xattr = "1"
 [dev-dependencies]
 # Writes the PNG files the picture thumbnail tests read.
 png = "0.18"
+tempfile = "3"

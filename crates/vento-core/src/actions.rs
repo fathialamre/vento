@@ -19,12 +19,14 @@ pub enum ActionId {
     Archive,
     /// Show the size of the dragged files and folders in a window.
     Info,
+    /// Convert the dragged images to another format, chosen from a ring.
+    Convert,
 }
 
 impl ActionId {
     /// Every action, in the order the settings list offers the ones not yet
     /// placed.
-    pub const ALL: [ActionId; 8] = [
+    pub const ALL: [ActionId; 9] = [
         ActionId::Pocket,
         ActionId::Copy,
         ActionId::Move,
@@ -33,12 +35,13 @@ impl ActionId {
         ActionId::CopyTo,
         ActionId::Archive,
         ActionId::Info,
+        ActionId::Convert,
     ];
 
     /// Whether the action opens the folder ring when the pointer rests on its
     /// cell.
     pub fn takes_ring(self) -> bool {
-        matches!(self, ActionId::Move | ActionId::CopyTo)
+        matches!(self, ActionId::Move | ActionId::CopyTo | ActionId::Convert)
     }
 
     /// Stable key used in the settings file.
@@ -52,6 +55,7 @@ impl ActionId {
             ActionId::CopyTo => "copy_to",
             ActionId::Archive => "archive",
             ActionId::Info => "info",
+            ActionId::Convert => "convert",
         }
     }
 
@@ -66,6 +70,7 @@ impl ActionId {
             ActionId::CopyTo => "Copy to",
             ActionId::Archive => "Archive",
             ActionId::Info => "Info",
+            ActionId::Convert => "Convert",
         }
     }
 
@@ -80,6 +85,7 @@ impl ActionId {
             "copy_to" => Some(ActionId::CopyTo),
             "archive" => Some(ActionId::Archive),
             "info" => Some(ActionId::Info),
+            "convert" => Some(ActionId::Convert),
             _ => None,
         }
     }
@@ -113,7 +119,10 @@ mod tests {
             .into_iter()
             .filter(|a| a.takes_ring())
             .collect();
-        assert_eq!(ringed, [ActionId::Move, ActionId::CopyTo]);
+        assert_eq!(
+            ringed,
+            [ActionId::Move, ActionId::CopyTo, ActionId::Convert]
+        );
     }
 
     #[test]
@@ -130,6 +139,14 @@ mod tests {
         assert_eq!(ActionId::Info.label(), "Info");
         assert_eq!(ActionId::from_key("info"), Some(ActionId::Info));
         assert!(!ActionId::Info.takes_ring());
-        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Info));
+    }
+
+    #[test]
+    fn convert_key_label_and_ring() {
+        assert_eq!(ActionId::Convert.key(), "convert");
+        assert_eq!(ActionId::Convert.label(), "Convert");
+        assert_eq!(ActionId::from_key("convert"), Some(ActionId::Convert));
+        assert!(ActionId::Convert.takes_ring());
+        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Convert));
     }
 }

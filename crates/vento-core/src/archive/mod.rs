@@ -21,4 +21,5 @@ pub use detect::{
 pub use entries::extract_one;
 pub use extract::{BatchOutcome, PasswordAsk, extract_batch};
 pub use job::{ArchiveError, Made, Progress, ProgressSnapshot};
+pub(crate) use staging::{Partial, claim_partial_file};
 pub use zeroize::Zeroizing;

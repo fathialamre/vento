@@ -54,6 +54,10 @@ pub struct Settings {
     /// list but are not on the wheel; an action is never in both this and
     /// `actions`.
     pub hidden_actions: Vec<ActionId>,
+    /// Every action in the settings list's order, shown or not, so turning
+    /// one on or off never moves it. Ignored when its shown actions are not
+    /// in `actions`' order (a hand-edited file); empty in older files.
+    pub action_order: Vec<ActionId>,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -106,6 +110,7 @@ impl Default for Settings {
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
+            action_order: Vec::new(),
         }
     }
 }
@@ -130,6 +135,7 @@ struct RawSettings {
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
+    action_order: Vec<String>,
 }
 
 impl Default for RawSettings {
@@ -160,6 +166,7 @@ impl From<&Settings> for RawSettings {
                 .iter()
                 .map(|a| a.key().to_owned())
                 .collect(),
+            action_order: s.action_order.iter().map(|a| a.key().to_owned()).collect(),
         }
     }
 }
@@ -188,6 +195,16 @@ impl From<RawSettings> for Settings {
             }
         }
         let home = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf());
+        let mut action_order: Vec<ActionId> = Vec::new();
+        for id in raw
+            .action_order
+            .iter()
+            .filter_map(|k| ActionId::from_key(k))
+        {
+            if !action_order.contains(&id) {
+                action_order.push(id);
+            }
+        }
         let mut pinned_folders: Vec<PathBuf> = Vec::new();
         for folder in raw.pinned_folders {
             let folder = expand_home(folder, home.as_deref());
@@ -215,6 +232,7 @@ impl From<RawSettings> for Settings {
             pinned_folders,
             move_hold_ms,
             hidden_actions,
+            action_order,
         }
     }
 }
@@ -304,11 +322,24 @@ impl Settings {
         written
     }
 
-    /// Every action with whether it is shown on the wheel: the shown ones in
-    /// wheel order, then the hidden ones, then any action in neither list
-    /// (for example one added by a newer version), each exactly once.
+    /// Every action with whether it is shown on the wheel, each exactly once:
+    /// in `action_order` when that agrees with the wheel order, otherwise
+    /// the shown ones in wheel order then the hidden ones; any action in
+    /// neither list (for example one added by a newer version) comes last.
     pub fn action_rows(&self) -> Vec<(ActionId, bool)> {
-        let mut rows: Vec<(ActionId, bool)> = self.actions.iter().map(|a| (*a, true)).collect();
+        let shown_in_order = self
+            .action_order
+            .iter()
+            .filter(|a| self.actions.contains(a))
+            .eq(&self.actions);
+        let mut rows: Vec<(ActionId, bool)> = if shown_in_order {
+            self.action_order
+                .iter()
+                .map(|a| (*a, self.actions.contains(a)))
+                .collect()
+        } else {
+            self.actions.iter().map(|a| (*a, true)).collect()
+        };
         for id in self.hidden_actions.iter().chain(&ActionId::ALL) {
             if !rows.iter().any(|(a, _)| a == id) {
                 rows.push((*id, false));
@@ -319,7 +350,8 @@ impl Settings {
 
     /// Stores `rows` (as returned by [`Settings::action_rows`], possibly
     /// reordered or toggled): the shown rows become `actions`, the others
-    /// `hidden_actions`. Returns `false` and changes nothing when no row is
+    /// `hidden_actions`, and the rows' order is kept as `action_order`.
+    /// Returns `false` and changes nothing when no row is
     /// shown or more than [`MAX_ACTIONS`] are.
     pub fn set_action_rows(&mut self, rows: &[(ActionId, bool)]) -> bool {
         let shown: Vec<ActionId> = rows.iter().filter(|(_, on)| *on).map(|(a, _)| *a).collect();
@@ -332,6 +364,7 @@ impl Settings {
             .map(|(a, _)| *a)
             .collect();
         self.actions = shown;
+        self.action_order = rows.iter().map(|(a, _)| *a).collect();
         true
     }
 }
@@ -759,7 +792,7 @@ mod tests {
         assert!(s.pinned_folders.is_empty());
         assert_eq!(s.move_hold_ms, 400);
         assert!(s.hidden_actions.is_empty());
-        assert_eq!(s.action_rows().last(), Some(&(ActionId::Info, false)));
+        assert_eq!(s.action_rows().last(), Some(&(ActionId::Convert, false)));
     }
 
     #[test]
@@ -767,6 +800,13 @@ mod tests {
         let rows = Settings::default().action_rows();
         assert!(rows.contains(&(ActionId::Archive, false)));
         assert!(!Settings::default().actions.contains(&ActionId::Archive));
+    }
+
+    #[test]
+    fn convert_is_off_by_default() {
+        let rows = Settings::default().action_rows();
+        assert_eq!(rows.last(), Some(&(ActionId::Convert, false)));
+        assert!(!Settings::default().actions.contains(&ActionId::Convert));
     }
 
     #[test]
@@ -827,6 +867,7 @@ mod tests {
                 (ActionId::CopyTo, false),
                 (ActionId::Archive, false),
                 (ActionId::Info, false),
+                (ActionId::Convert, false),
             ]
         );
     }
@@ -845,11 +886,67 @@ mod tests {
             (ActionId::CopyPath, false),
             (ActionId::Archive, false),
             (ActionId::Info, false),
+            (ActionId::Convert, false),
         ];
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p).action_rows(), rows);
+    }
+
+    /// `rows` with the action `id` switched to `on`.
+    fn toggled(rows: &[(ActionId, bool)], id: ActionId, on: bool) -> Vec<(ActionId, bool)> {
+        rows.iter()
+            .map(|&(a, shown)| (a, if a == id { on } else { shown }))
+            .collect()
+    }
+
+    #[test]
+    fn turning_an_action_off_keeps_its_place() {
+        let mut s = Settings::default();
+        let rows = toggled(&s.action_rows(), ActionId::Copy, false);
+        assert!(s.set_action_rows(&rows));
+        assert_eq!(s.action_rows(), rows);
+        assert!(!s.actions.contains(&ActionId::Copy));
+    }
+
+    #[test]
+    fn turning_an_action_on_keeps_its_place_and_wheel_order() {
+        let mut s = Settings::default();
+        let off = toggled(&s.action_rows(), ActionId::Copy, false);
+        assert!(s.set_action_rows(&off));
+        let on = toggled(&s.action_rows(), ActionId::Copy, true);
+        assert!(s.set_action_rows(&on));
+        assert_eq!(s.action_rows(), on);
+        assert_eq!(s.actions, default_actions());
+    }
+
+    #[test]
+    fn action_order_survives_save_and_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let mut s = Settings::default();
+        let rows = toggled(&s.action_rows(), ActionId::Move, false);
+        assert!(s.set_action_rows(&rows));
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p).action_rows(), rows);
+    }
+
+    #[test]
+    fn hand_edited_actions_win_over_a_stale_order() {
+        let (_dir, p) = write_temp(
+            "actions = [\"move\", \"copy\"]\nhidden_actions = [\"terminal\"]\n\
+             action_order = [\"copy\", \"terminal\", \"move\"]\n",
+        );
+        let rows = Settings::load(&p).action_rows();
+        assert_eq!(
+            rows[..3],
+            [
+                (ActionId::Move, true),
+                (ActionId::Copy, true),
+                (ActionId::Terminal, false),
+            ]
+        );
     }
 
     #[test]

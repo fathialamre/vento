@@ -9,12 +9,14 @@ export enum WheelLayout { honeycomb, petals }
 // `covered`: a ring cell sits on this cell while the ring is open.
 export struct WheelCell { x: length, y: length, r: length, label: string, icon: image, covered: bool }
 
-// One folder on the destination ring; `line2` is empty for a one-line label.
+// One folder (or image format) on the ring; `line2` is empty for a one-line
+// label. `tint`: the icon is a monochrome symbol, drawn white like the wheel's.
 export struct RingCell {
     x: length,
     y: length,
     r: length,
     icon: image,
+    tint: bool,
     line1: string,
     line2: string,
     line2-dim: bool,
@@ -40,6 +42,7 @@ export global Icons {
     out property <image> archive: @image-url("icons/file-zip.svg");
     out property <image> extract: @image-url("icons/package-export.svg");
     out property <image> info: @image-url("icons/info-circle.svg");
+    out property <image> convert: @image-url("icons/transform.svg");
     out property <image> clipboard: @image-url("icons/clipboard.svg");
     out property <image> photo: @image-url("icons/photo.svg");
     out property <image> text: @image-url("icons/align-left.svg");
@@ -72,6 +75,7 @@ export component Wheel inherits Window {
     in property <string> dest-name;
     in property <string> dest-path;
     in property <image> dest-icon;
+    in property <bool> dest-icon-tint;
     // Top-left of that label, as an offset from the wheel centre.
     in property <length> dest-x;
     in property <length> dest-y;
@@ -203,9 +207,10 @@ export component Wheel inherits Window {
             border-color: hot ? root.hot-border : root.border;
         }
 
-        // Petals are smaller than hexagons: a smaller icon and type.
+        // Petals are smaller than hexagons: a smaller icon and type. A tinted
+        // symbol is sized like the wheel's own icons.
         property <bool> roomy: dest.r > 30px;
-        property <length> icon-size: roomy ? 24px : 16px;
+        property <length> icon-size: dest.tint ? min(18px, dest.r * 0.48) : roomy ? 24px : 16px;
         property <length> type-size: roomy ? 11px : 9px;
         property <length> line-height: type-size + 2px;
         property <length> stack: icon-size + 2px + (dest.line2 == "" ? 1 : 2) * line-height;
@@ -213,6 +218,7 @@ export component Wheel inherits Window {
 
         Image {
             source: dest.icon;
+            colorize: dest.tint ? white : transparent;
             width: icon-size;
             height: icon-size;
             x: (parent.width - self.width) / 2;
@@ -325,6 +331,7 @@ export component Wheel inherits Window {
                 alignment: center;
                 Image {
                     source: root.dest-icon;
+                    colorize: root.dest-icon-tint ? white : transparent;
                     width: 24px;
                     height: 24px;
                 }
@@ -353,7 +360,8 @@ export component Wheel inherits Window {
                     }
                 }
 
-                Text {
+                // Formats have no path; the line would still reserve its height.
+                if root.dest-path != "": Text {
                     text: root.dest-path;
                     color: #ffffff8c;
                     font-size: 10px;

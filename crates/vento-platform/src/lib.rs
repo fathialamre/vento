@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use vento_core::clip::ClipSnapshot;
+use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
 use vento_core::screen_text::{Selection, TextBox};
 use vento_core::trigger::InputSample;
@@ -391,6 +392,36 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     {
         let _ = (path, short_px, max_ratio);
         None
+    }
+}
+
+/// The format the image file at `path` decodes as, judged by its content:
+/// `None` for a readable image of another format, `Err(NotAnImage)` when it
+/// cannot be decoded. A free function so a worker thread can call it.
+/// Always `Err(Unsupported)` where unsupported.
+pub fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::probe_image(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::probe_image(path)
+    }
+}
+
+/// Converts the image at `src` to `format`, filling the existing empty file
+/// at `dst`: the first frame, upright, with the source's metadata. A free
+/// function so a worker thread can call it. Always `Err(Unsupported)` where
+/// unsupported.
+pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::write_image(src, dst, format)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::write_image(src, dst, format)
     }
 }
 

@@ -44,12 +44,18 @@ trigger = "ctrl"
 shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to", "archive", "info". A file that already lists `actions`
-# must add "pocket", "copy_to", "archive" or "info" to show it.
+# "terminal", "copy_to", "archive", "info", "convert". A file that already lists
+# `actions` must add "pocket", "copy_to", "archive", "info" or "convert" to show
+# it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
-# Actions turned off in the panel (the panel lists them below the shown ones)
+# Actions turned off in the panel
 hidden_actions = []
+
+# Every action in the panel's order, shown or hidden, so switching one on or
+# off keeps its place. Written by the panel; ignored when the shown actions in
+# it are not in the same order as `actions`
+action_order = []
 
 # Folders pinned to the Move and Copy to ring, in order; only the first 7 count
 pinned_folders = []
