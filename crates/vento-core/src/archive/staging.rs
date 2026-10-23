@@ -679,6 +679,7 @@ mod tests {
         assert_eq!(asked.get(), Some(SystemTime::UNIX_EPOCH));
     }
 
+    #[cfg(unix)]
     #[test]
     fn staging_never_writes_through_a_symlink() {
         let dir = tempfile::tempdir().unwrap();

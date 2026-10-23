@@ -188,16 +188,22 @@ mod tests {
     use crate::archive::detect::Format;
     use crate::archive::entries::extract_one;
     use crate::archive::job::Progress;
+    #[cfg(unix)]
+    use crate::archive::test_support::stored;
     use crate::archive::test_support::{
-        ZipEntry as E, listing, make_encrypted, make_zip, no_mark, stored, tree,
+        ZipEntry as E, listing, make_encrypted, make_zip, no_mark, tree,
     };
     use crate::fileops::{Fingerprint, partial_name};
     use std::ffi::OsStr;
     use std::fs;
     use std::io;
+    #[cfg(unix)]
     use std::path::PathBuf;
     use std::sync::Mutex;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    #[cfg(unix)]
+    use std::time::{Duration, UNIX_EPOCH};
+    #[cfg(unix)]
     use zip::ZipWriter;
 
     fn extract(archive: &Path) -> Result<crate::archive::Made, ArchiveError> {
