@@ -25,6 +25,11 @@ Vento is in **early beta**. If something breaks or feels off, please
 Needs macOS 13 or later on an Apple Silicon Mac (M1 or newer). Vento asks for no
 special permissions: no Accessibility, no Input Monitoring.
 
+Vento is free and open source, but not signed or notarized by Apple yet, so
+macOS warns you the first time you open it. [Getting past that](#install-and-first-launch)
+takes a minute, once. You can also read the code, or
+[build it yourself](BUILDING.md).
+
 On an Intel Mac, [build it yourself](BUILDING.md).
 
 > **This is the macOS version.** Support for Linux and Windows is in progress:
