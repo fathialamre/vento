@@ -1,11 +1,11 @@
-# vento settings
+# Vento settings
 
 Everything here is optional: the settings panel under the menu bar icon covers
 the same options. This page is for reading or editing the settings file by hand.
 
 ## The menu bar icon
 
-vento lives in the menu bar.
+Vento lives in the menu bar.
 
 - **Left click** the icon to open the settings panel. Its tabs are Wheel
   (layout, which actions show and in what order), Move (pinned and recent
@@ -20,12 +20,12 @@ vento lives in the menu bar.
 
 `~/Library/Application Support/vento/settings.toml`
 
-The settings panel writes this file; you can also edit it by hand, and vento
+The settings panel writes this file; you can also edit it by hand, and Vento
 picks up your edit when the panel next opens or changes something. All keys are
 optional; omitted keys use their defaults. If the file cannot be parsed, or a
 value has the wrong type or a spelling not listed below (for `layout`,
 `trigger` or `copy_path_format`, say), the whole file is rejected: at
-startup all defaults apply and a warning is logged; while vento runs the current
+startup all defaults apply and a warning is logged; while Vento runs the current
 settings stay and the panel shows the reason. Unknown or duplicate action names
 are dropped individually. Values shown are the defaults, except `terminal`,
 which is an example.
@@ -73,19 +73,19 @@ pocket_keep_copies = false
 pocket_shortcut = "ctrl+alt+p"
 ```
 
-## Where vento keeps its data
+## Where Vento keeps its data
 
 | What | Where |
 |------|-------|
 | Settings | `~/Library/Application Support/vento/settings.toml` |
 | Recent Move and Copy to destinations | `~/Library/Application Support/vento/recent.json` |
 | Pocket item list | `~/Library/Application Support/vento/pocket.json` |
-| Pocket files vento saved or kept | `~/Library/Application Support/vento/pocket/` |
+| Pocket files Vento saved or kept | `~/Library/Application Support/vento/pocket/` |
 
-Files vento saves (non-file content) and keeps (copies, with
+Files Vento saves (non-file content) and keeps (copies, with
 `pocket_keep_copies`) live in `~/Library/Application Support/vento/pocket/saved`
 and `.../kept`; the item list is `~/Library/Application Support/vento/pocket.json`,
-beside the `pocket/` folder. When such a vento file leaves the Pocket it goes to
+beside the `pocket/` folder. When such a Vento file leaves the Pocket it goes to
 the Trash (after the Undo, or a minute after a drop), never deleted outright.
 Your own files are only forgotten, never deleted, trashed or moved.
 

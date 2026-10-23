@@ -1,194 +1,213 @@
-# vento
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.png">
+    <img src=".github/assets/logo-light.png" alt="Vento" width="320">
+  </picture>
+</p>
 
-A radial actions wheel for files. Start dragging a file, then press the
-trigger modifier (it must be pressed after the drag has started) and a wheel
-of actions appears under the cursor; release the mouse over an action to run
-it. Releasing anywhere outside the wheel leaves the drop to whatever is
-underneath. Esc cancels (if your macOS allows reading key state without extra
-permission).
+<p align="center">A wheel of quick actions that opens right under the file you are dragging.</p>
 
-vento is **macOS only for now**. The core and platform crates are checked
-for Windows and Linux targets (the platform crate is a stub there, so the wheel
-does nothing); full CI runs on all three systems once the repo has a remote.
+![Dragging a PDF in Finder, pressing Ctrl to open the Vento wheel, releasing on Copy, then pasting the file into another folder](.github/assets/hero.gif)
 
-Actions: Pocket, Copy, Move (with undo), Copy to (with undo), Archive (with
-undo, off by default), Copy path, Terminal, Info (off by default).
+Start dragging a file, press **Ctrl**, and a small wheel opens under the pointer.
+Let go over an action: copy the file, move it to a folder you use often, zip it,
+park it in the Pocket for later, and more. Let go anywhere else and the drop
+works as it always did.
 
-## Move and Copy to
+## Download
 
-Release on **Move** (or **Copy to**) and a folder picker opens. To skip the
-picker, hold the pointer on the action for a moment (400 ms by default) and a
-ring of folders opens around it: the five most recent destinations first, then
-your pinned folders. Release on a folder to move (or copy) the files straight
-there. Folders that no longer exist are left out of the ring.
+**[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)**
+(`vento-…-macos-arm64.zip`)
 
-Both actions remember where files went. **Undo last move** (or **Undo last
-copy**) in the menu puts the files back; undoing a copy only trashes copies
-vento made that have not changed since.
+Needs macOS 13 or later on an Apple Silicon Mac (M1 or newer). Vento asks for no
+special permissions: no Accessibility, no Input Monitoring.
 
-Pin the folders you use most in the settings panel's Move tab with **Add
-folder**, or pin one from the recent list; up to seven fit. The same tab sets how
-long the hold takes (200 to 1000 ms) and clears the recent list.
+On an Intel Mac, [build it yourself](BUILDING.md).
 
-## Archive
+> **This is the macOS version.** Support for Linux and Windows is in progress:
+> the core already builds and is tested on both, and the parts that talk to the
+> system (drag detection, the wheel window, the Pocket) are being written for each.
 
-Release on **Archive** and vento compresses or extracts, depending on what you
-dragged. If every item is a zip, rar or 7z archive, each one is extracted;
-anything else, including a mix, is compressed into one zip. An item counts as
-an archive only when both its extension and its contents say so, so dropping a
-`.docx` or `.xlsx` zips it rather than unpacking it.
+## Install and first launch
 
-- **Compress** writes a zip next to the first item: `Report.docx` gives
-  `Report.zip`, several items give `Archive.zip`. Folders are stored whole,
-  without `.DS_Store` or a `__MACOSX` folder.
-- **Extract** reads zip, rar and 7z (including multi-volume rar sets) and puts
-  the contents next to the archive, in a folder named after it (or, like
-  Finder, directly if the archive holds one top-level item). Files from a
-  downloaded archive keep its quarantine mark, so Gatekeeper still checks them.
-- **rar is extract-only**: the RAR format's licence forbids writing it.
-- **Passwords**: an encrypted archive opens a small window asking for the
-  password; a wrong one keeps it open, Cancel skips that archive and the rest of
-  the drop carries on. Passwords are never saved or logged.
-- **Progress**: a job that runs longer than half a second shows a progress
-  window with a **Cancel** button. Cancelling removes what vento was still
-  writing; in a drop of several archives, the ones already extracted stay.
-- Nothing is ever overwritten (`Archive (2).zip`), and a result only appears
-  when it is complete.
-- **Undo last archive** (toast or menu) moves what vento created to the Trash,
-  unless you have changed it since.
+1. Open the zip you downloaded. You get a `vento-…` folder with `Vento.app` in it.
+2. Drag `Vento.app` into your **Applications** folder.
+3. Open it.
 
-Archive is off by default: switch it on in the settings panel's Wheel tab, where
-it is listed with the hidden actions.
+Vento is not notarized by Apple yet, so the first time you open it macOS stops it
+with a warning. You only need to get past this once.
 
-## Info
+**macOS 15 Sequoia and later**
 
-Release on **Info** to open a window with the size of what you dragged. A
-folder is counted live: its size and the three biggest things inside it update
-while vento counts. The window has **Show in Finder** and **Done**; Esc or a
-click outside also closes it. Info is off by default: add it from the settings
-panel's Wheel tab.
+1. Open Vento. macOS says it could not verify it. Click **Done**.
 
-## Requirements
+   ![macOS dialog saying Vento could not be verified](.github/assets/gatekeeper-15-blocked.png)
 
-- macOS 13 or later
-- Rust via rustup: `rust-toolchain.toml` pins the toolchain (1.99.1) and
-  rustup installs it on first build; the crates need at least 1.93.
+2. Open **System Settings → Privacy & Security** and scroll down to the message
+   about Vento. Click **Open Anyway**, then confirm with your password or Touch ID.
 
-Neither Accessibility nor Input Monitoring permission is required.
+   ![Privacy & Security settings with the Open Anyway button next to Vento](.github/assets/gatekeeper-15-open-anyway.png)
 
-## Run
+**macOS 13 Ventura and 14 Sonoma**
+
+1. In Applications, hold **Control** and click `Vento.app` (or right-click it).
+2. Choose **Open**, then **Open** again in the dialog.
+
+<details>
+<summary>Still blocked?</summary>
+
+If macOS says Vento "is damaged and can't be opened", it is reacting to the
+download mark on the app, not to a real problem. Open the **Terminal** app,
+paste this line and press Return, then open Vento again:
 
 ```sh
-cargo run -p vento --release
+xattr -dr com.apple.quarantine /Applications/Vento.app
 ```
 
-Or build `target/bundle/vento.app`, which carries the app icon and stays out
-of the Dock:
+It removes the "downloaded from the internet" mark from Vento only.
+</details>
 
-```sh
-scripts/bundle-macos.sh
-open target/bundle/vento.app
-```
+Vento lives in the menu bar, not in the Dock. Look for this icon at the top of
+your screen: <img src=".github/assets/menu-bar.png" alt="Vento menu bar icon" height="22">
 
-vento lives in the menu bar.
+## Your first drag
 
-- **Left click** the icon to open the settings panel. Its tabs are Wheel
-  (layout, which actions show and in what order), Move (pinned and recent
-  folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
-  copy) and General (trigger, terminal, Copy path format); Pause and Quit are at
-  the bottom. It follows the system light or dark appearance. Changes apply and
-  are saved at once.
-- **Right click** for the menu: Undo last move/copy/archive, Pause, Open
-  settings file, Quit.
+1. In Finder, **start dragging** a file or folder.
+2. **While you are still dragging, press Ctrl.** The order matters: press Ctrl
+   after the drag has started, not before.
+3. The wheel opens under the pointer. Move onto an action and let go.
+
+Let go outside the wheel and the file drops wherever the pointer is, as usual.
+Esc closes the wheel, where macOS lets Vento read the key without extra permission.
+
+You can change the key from Ctrl to Option, Shift or Command in the settings.
+
+## The actions
+
+The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
+**Copy to, Archive** and **Info** are off until you switch them on in the
+settings panel's **Wheel** tab, where you can also change the order.
+
+### Pocket
+
+A shelf for things you are carrying between places. Drop a file on **Pocket** and
+it waits in a small island at the top of the screen, by the notch. Later, drag it
+from the island into any folder or app.
+
+![Releasing a file on Pocket, the island appearing at the top of the screen, then dragging the file from the island into the Clients folder](.github/assets/pocket.gif)
+
+Other ways to add to the Pocket: drop onto the island, shake the pointer while
+dragging, or press **⌃⌥P** (Control-Option-P). Click items to select several and
+drag them together, or use **Drag all**. The x on an item removes it and
+**Clear** empties the Pocket; both can be undone. Removing an item never deletes
+your file.
+
+### Copy
+
+Puts the file on the clipboard, as if you had pressed ⌘C in Finder. Paste it
+anywhere with ⌘V.
+
+### Move
+
+Let go on **Move** and a folder picker opens. Faster: **hold** on Move for a
+moment and a ring of folders opens around it, with the places you moved things to
+recently and the folders you pinned. Let go on a folder and the file goes there.
+
+![Holding on Move until a ring of folders opens, then releasing on Projects; a notice offers Undo](.github/assets/move-ring.gif)
+
+Changed your mind? Click **Undo** on the notice, or choose **Undo last move** from
+the menu bar icon.
+
+Pin up to seven folders in the settings panel's **Move** tab.
+
+### Copy to *(off at first)*
+
+Works like Move, with the same folder ring, but copies instead. Undo removes
+the copies, as long as you have not changed them since.
+
+### Archive *(off at first)*
+
+Zips what you dragged, or unzips it if it is already an archive. Drop a folder
+and you get a zip next to it; drop a zip, rar or 7z file and it is extracted next
+to it.
+
+![Releasing a folder on Archive to make a zip, then releasing the zip on Archive to extract it](.github/assets/archive.gif)
+
+Password-protected archives ask for the password. Vento never overwrites a file
+(you get `Archive (2).zip` instead), and **Undo** moves what it made to the Trash.
+
+![Window asking for the password of Private.zip](.github/assets/archive-password.png)
+
+### Copy path
+
+Copies the full path of the file, ready to paste into a terminal, a chat or a
+document.
+
+### Terminal
+
+Opens a Terminal window in the folder (or in the folder that holds the file).
+You can pick iTerm or another terminal app in the settings.
+
+### Info *(off at first)*
+
+Shows how big a file or folder is. For a folder, the size counts up live, with
+the three biggest things inside it.
+
+<img src=".github/assets/info.png" alt="Info window for the Photos folder: 15.7 MB, 5 files, with the three biggest files listed" width="346">
 
 ## Settings
 
-`~/Library/Application Support/vento/settings.toml`
+**Click** the Vento icon in the menu bar to open the settings panel. Changes apply
+right away.
 
-The settings panel writes this file; you can also edit it by hand, and vento
-picks up your edit when the panel next opens or changes something. All keys are
-optional; omitted keys use their defaults. If the file cannot be parsed, or a
-value has the wrong type or a spelling not listed below (for `layout`,
-`trigger` or `copy_path_format`, say), the whole file is rejected: at
-startup all defaults apply and a warning is logged; while vento runs the current
-settings stay and the panel shows the reason. Unknown or duplicate action names
-are dropped individually. Values shown are the defaults, except `terminal`,
-which is an example.
+| Wheel | Move |
+|:---:|:---:|
+| <img src=".github/assets/settings-wheel.png" alt="Wheel tab: layout and the list of actions with on and off switches" width="300"> | <img src=".github/assets/settings-move.png" alt="Move tab: pinned folders, recent folders and the hold time" width="300"> |
+| Honeycomb or petals layout; which actions show and in what order. | Pinned and recent folders for the Move ring, and how long to hold. |
 
-```toml
-# "honeycomb" or "petals"
-layout = "honeycomb"
+| Pocket | General |
+|:---:|:---:|
+| <img src=".github/assets/settings-pocket.png" alt="Pocket tab: shortcut and two switches" width="300"> | <img src=".github/assets/settings-general.png" alt="General tab: trigger key, terminal app and Copy path format" width="300"> |
+| The Pocket shortcut, and what happens after you drag items out. | The key that opens the wheel, your terminal app, and how paths are copied. |
 
-# Modifier held while dragging: "ctrl", "alt", "shift" or "meta"
-trigger = "ctrl"
+**Right-click** the icon for the menu: undo the last move, copy or archive, pause
+Vento, or quit.
 
-# Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to", "archive", "info". A file that already lists `actions`
-# must add "pocket", "copy_to", "archive" or "info" to show it.
-actions = ["pocket", "copy", "move", "copy_path", "terminal"]
+<img src=".github/assets/menu.png" alt="Vento menu with Undo last move, Pause Vento, Open settings file and Quit Vento" width="170">
 
-# Actions turned off in the panel (the panel lists them below the shown ones)
-hidden_actions = []
+Prefer a text file? Everything is also in `settings.toml`; see
+[SETTINGS.md](SETTINGS.md).
 
-# Folders pinned to the Move and Copy to ring, in order; only the first 7 count
-pinned_folders = []
+## Uninstall
 
-# How long to hold on Move or Copy to before the ring opens, in milliseconds.
-# Other values are rounded to the nearest 100 and kept between 200 and 1000.
-move_hold_ms = 400
+Right-click the menu bar icon, choose **Quit Vento**, and move `Vento.app` from
+Applications to the Trash. To remove its settings and Pocket too, delete the
+folder `~/Library/Application Support/vento`.
 
-# "plain" or "shell_quoted" (single-quoted for POSIX shells)
-copy_path_format = "plain"
+## For developers
 
-# Bundle id of the terminal app to open; the default (and the fallback when
-# the app is not installed) is Terminal.app
-# terminal = "com.googlecode.iterm2"
+Vento is written in Rust with a [Slint](https://slint.dev) interface. To run it
+from source and start adding features:
 
-# Pocket: after a successful drag-out, remove the items from the Pocket (files
-# vento saved or kept go to the Trash a minute later; references to your own
-# files are just forgotten)
-pocket_remove_after_drop = false
-
-# Pocket: keep a copy of each file inside vento's own data folder instead of
-# only a reference to the original
-pocket_keep_copies = false
-
-# Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
-# (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
-pocket_shortcut = "ctrl+alt+p"
+```sh
+git clone https://github.com/fathialamre/vento.git
+cd vento
+cargo run -p vento --release
 ```
 
-## Pocket
+[rustup](https://rustup.rs) installs the right Rust version on the first build.
+[BUILDING.md](BUILDING.md) explains how the code is laid out, how to build the
+app bundle and the release zip, and the checks to run before sending a change.
+Help with Linux and Windows support is especially welcome.
 
-The Pocket is a holding shelf for files, text, links and images you are
-carrying between places. With items in it, a small island shows at the top of
-the screen by the notch; it is hidden while empty.
+## More
 
-Add to it by any of these:
-
-- the **Pocket** action on the wheel;
-- dropping onto the island near the notch;
-- shaking while dragging;
-- the shortcut, ⌃⌥P by default.
-
-Take items out by dragging one to any app. Click items to select them, then drag
-any selected item to take the whole selection; **Drag all** takes every item.
-The x on an item removes it and **Clear** empties the Pocket; both offer Undo.
-
-Settings keys (see above): `pocket_shortcut`, `pocket_keep_copies`,
-`pocket_remove_after_drop`. A settings file that already lists `actions` must
-add `"pocket"` to show the action.
-
-Files vento saves (non-file content) and keeps (copies, with
-`pocket_keep_copies`) live in `~/Library/Application Support/vento/pocket/saved`
-and `.../kept`; the item list is `~/Library/Application Support/vento/pocket.json`,
-beside the `pocket/` folder. When such a vento file leaves the Pocket it goes to
-the Trash (after the Undo, or a minute after a drop), never deleted outright.
-Your own files are only forgotten, never deleted, trashed or moved.
+- [SETTINGS.md](SETTINGS.md): the settings file, and where Vento keeps its data
+- [BUILDING.md](BUILDING.md): build Vento from source and work on the code
 
 ## License
 
 GPL-3.0-only. See [LICENSE](LICENSE).
 
-Wheel icons are from [Tabler Icons](https://tabler.io/icons) 3.49.0, MIT-licensed (see
-[crates/vento/ui/icons/LICENSE-tabler](crates/vento/ui/icons/LICENSE-tabler)).
+Wheel icons are from [Tabler Icons](https://tabler.io/icons) 3.49.0, MIT-licensed
+(see [crates/vento/ui/icons/LICENSE-tabler](crates/vento/ui/icons/LICENSE-tabler)).
