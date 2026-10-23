@@ -11,8 +11,9 @@
 
 Start dragging a file, press **Ctrl**, and a small wheel opens under the pointer.
 Let go over an action: copy the file, move it to a folder you use often, zip it,
-park it in the Pocket for later, and more. Let go anywhere else and the drop
-works as it always did.
+turn an image into JPEG, PNG, HEIC, WebP and other formats, park it in the
+Pocket for later, and more. Let go anywhere else and the drop works as it
+always did.
 
 ## Download
 
