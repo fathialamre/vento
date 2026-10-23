@@ -102,8 +102,8 @@ settings panel's General tab.
 ## The actions
 
 The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
-**Copy to, Archive** and **Info** are off until you switch them on in the
-settings panel's **Wheel** tab, where you can also change the order.
+**Copy to, Archive, Convert** and **Info** are off until you switch them on in
+the settings panel's **Wheel** tab, where you can also change the order.
 
 ### Pocket
 
@@ -154,6 +154,18 @@ Password-protected archives ask for the password. Vento never overwrites a file
 (you get `Archive (2).zip` instead), and **Undo** moves what it made to the Trash.
 
 ![Window asking for the password of Private.zip](.github/assets/archive-password.png)
+
+### Convert *(off at first)*
+
+Changes an image to another format. **Hold** on Convert for a moment and a ring
+of formats opens: JPEG, PNG, HEIC, TIFF, GIF and BMP. Let go on one and the new
+image appears next to the original, which is never touched. Drop several images
+and they are all converted.
+
+Vento reads the picture itself, not the file name, so a `.png` that is really a
+JPEG still works. Photos stay upright, colours are kept, and transparent areas
+become white when you pick JPEG or BMP. Vento never overwrites a file (you get
+`photo (2).jpg` instead), and **Undo** moves what it made to the Trash.
 
 ### Copy path
 
