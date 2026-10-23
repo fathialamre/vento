@@ -354,7 +354,8 @@ export component Wheel inherits Window {
                     }
                 }
 
-                Text {
+                // Formats have no path; the line would still reserve its height.
+                if root.dest-path != "": Text {
                     text: root.dest-path;
                     color: #ffffff8c;
                     font-size: 10px;
