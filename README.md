@@ -23,7 +23,9 @@ Vento is in **early beta**. If something breaks or feels off, please
 [open an issue](https://github.com/fathialamre/vento/issues).
 
 Needs macOS 13 or later on an Apple Silicon Mac (M1 or newer). Vento asks for no
-special permissions: no Accessibility, no Input Monitoring.
+special permissions: no Accessibility, no Input Monitoring. Only
+[Copy from screen](#copy-from-screen) asks for Screen Recording, the first time
+you use it.
 
 Vento is free and open source, but not signed or notarized by Apple yet, so
 macOS warns you the first time you open it. [Getting past that](#install-and-first-launch)
@@ -78,6 +80,11 @@ It removes the "downloaded from the internet" mark from Vento only.
 
 Vento lives in the menu bar, not in the Dock. Look for this icon at the top of
 your screen: <img src=".github/assets/menu-bar.png" alt="Vento menu bar icon" height="22">
+
+If you use [Copy from screen](#copy-from-screen), macOS asks you to switch on
+Screen Recording for Vento. After you switch it on, macOS may ask you to reopen
+Vento. After each Vento update, switch it on again; if the switch does nothing,
+remove Vento with the minus button and add it again.
 
 ## Your first drag
 
@@ -194,6 +201,19 @@ The history stays after you quit or restart. It is stored **unencrypted** in
 `~/Library/Application Support/vento`; see [SETTINGS.md](SETTINGS.md). Switch it
 off, or change its shortcut, in the settings panel's **Clipboard** tab.
 
+## Copy from screen
+
+Copy the text from anything on your screen, even a picture, a video or an app
+that won't let you select it. Press **⌃⌥T** (Control-Option-T), or choose
+**Copy from screen** in the menu bar menu. The screen dims. Drag a rectangle over
+the text and let go: the text inside it is on your clipboard, ready to paste with
+⌘V. Esc, a right click, or a click without dragging cancels.
+
+It reads Arabic and English, on your Mac, with nothing sent anywhere. It needs
+macOS 14 or later, and asks for **Screen Recording** the first time you use it
+(see [install](#install-and-first-launch) for what to do after an update). Change
+the shortcut in the settings panel's **General** tab.
+
 ## Settings
 
 **Click** the Vento icon in the menu bar to open the settings panel. Changes apply
@@ -212,7 +232,7 @@ right away.
 | General | |
 |:---:|:---:|
 | <img src=".github/assets/settings-general.png" alt="General tab: trigger key, Shake to open, terminal app and Copy path format" width="300"> | |
-| The key that opens the wheel, shaking to open it, your terminal app, and how paths are copied. | |
+| The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, and the Copy from screen shortcut. | |
 
 **Right-click** the icon for the menu: undo the last move, copy or archive, pause
 Vento, or quit.
