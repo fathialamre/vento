@@ -1006,8 +1006,8 @@ export component SettingsPanel inherits Window {
         root.shortcut-recording-stopped();
     }
 
-    // Leaving the Pocket or the Clipboard tab removes the field that was
-    // recording.
+    // Leaving the Pocket, Clipboard or General tab removes the field that
+    // was recording.
     changed tab => {
         if (root.shortcut-recording || root.clip-shortcut-recording
             || root.screen-shortcut-recording) {
