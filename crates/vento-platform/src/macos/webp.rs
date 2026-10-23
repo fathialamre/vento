@@ -1,5 +1,6 @@
 //! WebP encoding for the Convert action, with libwebp: ImageIO reads WebP but
-//! can't write it. Exif and XMP go into an extended `RIFF/WEBP` container.
+//! can't write it. The colour profile, Exif and XMP go into an extended
+//! `RIFF/WEBP` container.
 
 use std::ffi::c_int;
 use std::{ptr, slice};
@@ -10,6 +11,7 @@ use libwebp_sys::{WebPEncodeRGBA, WebPFree};
 const QUALITY: f32 = 90.0;
 
 /// `VP8X` flags, from the WebP container specification.
+const ICC_FLAG: u8 = 0x20;
 const ALPHA_FLAG: u8 = 0x10;
 const EXIF_FLAG: u8 = 0x08;
 const XMP_FLAG: u8 = 0x04;
@@ -19,16 +21,25 @@ const EXIF_PREFIX: &[u8] = b"Exif\0\0";
 /// Where the XMP packet starts in a JPEG `APP1` segment.
 const XMP_PREFIX: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
 
+/// What a WebP file carries besides its pixels, as raw blocks.
+#[derive(Default)]
+pub(super) struct Metadata<'a> {
+    /// The ICC profile the pixels are in.
+    pub icc: Option<&'a [u8]>,
+    /// Exif, from the TIFF header on.
+    pub exif: Option<&'a [u8]>,
+    /// An XMP packet.
+    pub xmp: Option<&'a [u8]>,
+}
+
 /// Encodes premultiplied RGBA pixels, `width * 4` bytes a row, as a WebP
-/// file with the given Exif (from the TIFF header on) and XMP blocks; the
-/// Exif pixel size is set to the image's. Un-premultiplies `pixels` in
-/// place. `None` when libwebp fails.
+/// file carrying `metadata`; the Exif pixel size is set to the image's.
+/// Un-premultiplies `pixels` in place. `None` when libwebp fails.
 pub(super) fn encode(
     pixels: &mut [u8],
     width: usize,
     height: usize,
-    exif: Option<&[u8]>,
-    xmp: Option<&[u8]>,
+    metadata: &Metadata,
 ) -> Option<Vec<u8>> {
     let stride = width.checked_mul(4)?;
     if pixels.len() < stride.checked_mul(height)? {
@@ -52,15 +63,19 @@ pub(super) fn encode(
     // SAFETY: `out` came from libwebp and is not used again.
     unsafe { WebPFree(out.cast()) };
     let simple = simple?;
-    if exif.is_none() && xmp.is_none() {
+    if metadata.icc.is_none() && metadata.exif.is_none() && metadata.xmp.is_none() {
         return Some(simple);
     }
-    let exif = exif.map(|block| {
+    let exif = metadata.exif.map(|block| {
         let mut block = block.to_vec();
         set_exif_size(&mut block, width, height);
         block
     });
-    with_metadata(&simple, width, height, exif.as_deref(), xmp)
+    let metadata = Metadata {
+        exif: exif.as_deref(),
+        ..*metadata
+    };
+    with_metadata(&simple, width, height, &metadata)
 }
 
 /// The Exif (from the TIFF header on) and XMP blocks of a JPEG file.
@@ -92,14 +107,9 @@ pub(super) fn jpeg_metadata(jpeg: &[u8]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
 }
 
 /// `webp`, a file as libwebp writes it, rewrapped in an extended container
-/// that also carries `exif` and `xmp`. `None` when `webp` doesn't parse.
-fn with_metadata(
-    webp: &[u8],
-    width: usize,
-    height: usize,
-    exif: Option<&[u8]>,
-    xmp: Option<&[u8]>,
-) -> Option<Vec<u8>> {
+/// that also carries `metadata`. `None` when `webp` doesn't parse.
+fn with_metadata(webp: &[u8], width: usize, height: usize, metadata: &Metadata) -> Option<Vec<u8>> {
+    let Metadata { icc, exif, xmp } = *metadata;
     let body = webp
         .strip_prefix(b"RIFF")?
         .get(4..)?
@@ -134,6 +144,9 @@ fn with_metadata(
     if image.is_empty() {
         return None;
     }
+    if icc.is_some() {
+        flags |= ICC_FLAG;
+    }
     if exif.is_some() {
         flags |= EXIF_FLAG;
     }
@@ -146,6 +159,9 @@ fn with_metadata(
     vp8x[7..10].copy_from_slice(&canvas_side(height)?);
     let mut body = b"WEBP".to_vec();
     chunk(&mut body, b"VP8X", &vp8x);
+    if let Some(icc) = icc {
+        chunk(&mut body, b"ICCP", icc);
+    }
     body.extend_from_slice(&image);
     if let Some(exif) = exif {
         chunk(&mut body, b"EXIF", exif);
@@ -295,7 +311,12 @@ mod tests {
         let simple = riff(&[(b"VP8 ", b"pixels")]);
         let exif = b"MM\0*odd";
         let xmp = b"<x:xmpmeta/>";
-        let file = with_metadata(&simple, 300, 2, Some(exif), Some(xmp)).unwrap();
+        let metadata = Metadata {
+            icc: None,
+            exif: Some(exif),
+            xmp: Some(xmp),
+        };
+        let file = with_metadata(&simple, 300, 2, &metadata).unwrap();
         let chunks = chunks(&file);
         let names: Vec<&[u8; 4]> = chunks.iter().map(|(name, _, _)| name).collect();
         assert_eq!(names, [b"VP8X", b"VP8 ", b"EXIF", b"XMP "]);
@@ -322,7 +343,11 @@ mod tests {
             (b"ALPH", b"a"),
             (b"VP8 ", b"pixels"),
         ]);
-        let file = with_metadata(&simple, 1, 1, Some(b"II*\0"), None).unwrap();
+        let metadata = Metadata {
+            exif: Some(b"II*\0"),
+            ..Metadata::default()
+        };
+        let file = with_metadata(&simple, 1, 1, &metadata).unwrap();
         let chunks = chunks(&file);
         let names: Vec<&[u8; 4]> = chunks.iter().map(|(name, _, _)| name).collect();
         assert_eq!(names, [b"VP8X", b"ALPH", b"VP8 ", b"EXIF"]);
@@ -394,8 +419,31 @@ mod tests {
     }
 
     #[test]
+    fn profile_follows_vp8x() {
+        let simple = riff(&[
+            (b"VP8X", &[0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            (b"ALPH", b"a"),
+            (b"VP8 ", b"pixels"),
+        ]);
+        let metadata = Metadata {
+            icc: Some(b"icc"),
+            ..Metadata::default()
+        };
+        let file = with_metadata(&simple, 1, 1, &metadata).unwrap();
+        let chunks = chunks(&file);
+        let names: Vec<&[u8; 4]> = chunks.iter().map(|(name, _, _)| name).collect();
+        assert_eq!(names, [b"VP8X", b"ICCP", b"ALPH", b"VP8 "]);
+        assert_eq!(chunks[1].2, b"icc");
+        assert_eq!(chunks[0].2[0], 0x20 | 0x10, "ICC and alpha flags");
+    }
+
+    #[test]
     fn junk_is_not_rewrapped() {
-        assert_eq!(with_metadata(b"not a webp file", 1, 1, None, None), None);
+        let metadata = Metadata {
+            icc: Some(b"icc"),
+            ..Metadata::default()
+        };
+        assert_eq!(with_metadata(b"not a webp file", 1, 1, &metadata), None);
     }
 
     #[test]
@@ -432,7 +480,7 @@ mod tests {
     #[test]
     fn encodes_a_simple_file_without_metadata() {
         let mut pixels = [200, 100, 50, 255].repeat(4 * 3);
-        let file = encode(&mut pixels, 4, 3, None, None).unwrap();
+        let file = encode(&mut pixels, 4, 3, &Metadata::default()).unwrap();
         let chunks = chunks(&file);
         assert_eq!(chunks.len(), 1);
         assert_eq!(&chunks[0].0, b"VP8 ");

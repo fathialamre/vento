@@ -1,5 +1,5 @@
-//! Image conversion: which formats the ring offers and, later, the batch
-//! that writes the converted copies.
+//! Image conversion: which formats the ring offers and the batch that
+//! writes the converted copies.
 
 mod batch;
 mod format;

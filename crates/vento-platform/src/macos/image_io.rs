@@ -14,14 +14,16 @@ use objc2_core_foundation::{
     CFURL, CGPoint, CGRect, CGSize,
 };
 use objc2_core_graphics::{
-    CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetData, CGColorSpace,
-    CGColorSpaceModel, CGContext, CGImage, CGImageAlphaInfo, kCGColorSpaceSRGB,
+    CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetColorSpace,
+    CGBitmapContextGetData, CGColorSpace, CGColorSpaceModel, CGContext, CGImage, CGImageAlphaInfo,
+    kCGColorSpaceSRGB,
 };
 use objc2_image_io::{
     CGImageDestination, CGImageSource, kCGImageDestinationLossyCompressionQuality,
-    kCGImagePropertyExifDictionary, kCGImagePropertyGPSDictionary, kCGImagePropertyIPTCDictionary,
-    kCGImagePropertyOrientation, kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
-    kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
+    kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelXDimension,
+    kCGImagePropertyExifPixelYDimension, kCGImagePropertyGPSDictionary,
+    kCGImagePropertyIPTCDictionary, kCGImagePropertyOrientation, kCGImagePropertyPixelHeight,
+    kCGImagePropertyPixelWidth, kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
     kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceCreateThumbnailWithTransform,
     kCGImageSourceThumbnailMaxPixelSize,
 };
@@ -53,7 +55,8 @@ pub(crate) fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertErr
 }
 
 /// Writes the first frame of `src`, upright, into the existing file `dst` as
-/// `format`, keeping the source's metadata and colour profile.
+/// `format`, keeping the source's metadata and colour profile (GIF and BMP,
+/// which carry no profile, get the colours matched to sRGB instead).
 pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
     // Worker threads live long: drain what ImageIO autoreleases per file.
     autoreleasepool(|_| write(src, dst, format))
@@ -82,7 +85,8 @@ fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError
         ImageFormat::Gif => redraw(&image, Background::Clear, true)?,
         _ => image,
     };
-    let props = destination_properties(source_props.as_deref(), format);
+    let size = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
+    let props = destination_properties(source_props.as_deref(), format, size);
     let failed = || ConvertError::Encode(format!("couldn't write {}", format.name()));
     let uti = CFString::from_static_str(type_of_format(format));
     let url = CFURL::from_file_path(dst).ok_or_else(failed)?;
@@ -99,7 +103,8 @@ fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError
 }
 
 /// WebP goes through libwebp, as ImageIO reads it but can't write it. The
-/// pixels are drawn in sRGB, so the file needs no colour profile.
+/// pixels are drawn in the image's own colour space (or sRGB, as `redraw`
+/// falls back to), and that space's profile goes into the file.
 fn write_webp(
     image: &CGImage,
     source: Option<&Properties>,
@@ -112,13 +117,14 @@ fn write_webp(
             "WebP can't be larger than {WEBP_MAX_SIDE} pixels a side"
         )));
     }
-    // SAFETY: a valid system colour space name.
-    let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).ok_or_else(failed)?;
     let context =
-        bitmap_context(w, h, &srgb, CGImageAlphaInfo::PremultipliedLast).ok_or_else(failed)?;
+        drawing_context(image, CGImageAlphaInfo::PremultipliedLast, false).ok_or_else(failed)?;
     let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64));
     CGContext::clear_rect(Some(&context), rect);
     CGContext::draw_image(Some(&context), rect, Some(image));
+    let icc = CGBitmapContextGetColorSpace(Some(&context))
+        .and_then(|space| CGColorSpace::icc_data(Some(&space)))
+        .map(|data| data.to_vec());
     let data = CGBitmapContextGetData(Some(&context)).cast::<u8>();
     if data.is_null() {
         return Err(failed());
@@ -126,8 +132,15 @@ fn write_webp(
     // SAFETY: the context owns `h` rows of `w * 4` bytes, as `bitmap_context`
     // set it up, and outlives the slice.
     let pixels = unsafe { slice::from_raw_parts_mut(data, w * h * 4) };
-    let (exif, xmp) = source.map(metadata_blocks).unwrap_or_default();
-    let webp = webp::encode(pixels, w, h, exif.as_deref(), xmp.as_deref()).ok_or_else(failed)?;
+    let (exif, xmp) = source
+        .map(|source| metadata_blocks(source, (w, h)))
+        .unwrap_or_default();
+    let metadata = webp::Metadata {
+        icc: icc.as_deref(),
+        exif: exif.as_deref(),
+        xmp: xmp.as_deref(),
+    };
+    let webp = webp::encode(pixels, w, h, &metadata).ok_or_else(failed)?;
     fs::write(dst, webp)?;
     Ok(())
 }
@@ -135,7 +148,10 @@ fn write_webp(
 /// The source's Exif and XMP as the raw blocks a WebP file carries, saying
 /// upright. ImageIO hands metadata out only as dictionaries, so it writes
 /// them into a 1×1 JPEG in memory and the blocks are read back from that.
-fn metadata_blocks(source: &Properties) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+fn metadata_blocks(
+    source: &Properties,
+    size: (usize, usize),
+) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
     // SAFETY: the keys are ImageIO's own statics.
     let keys = unsafe {
         [
@@ -153,7 +169,7 @@ fn metadata_blocks(source: &Properties) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
         let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))?;
         let context = bitmap_context(1, 1, &space, CGImageAlphaInfo::NoneSkipLast)?;
         let image = CGBitmapContextCreateImage(Some(&context))?;
-        let props = destination_properties(Some(source), ImageFormat::Jpeg);
+        let props = destination_properties(Some(source), ImageFormat::Jpeg, size);
         let data = CFMutableData::new(None, 0)?;
         let uti = CFString::from_static_str(type_of_format(ImageFormat::Jpeg));
         // SAFETY: valid data and type; no options.
@@ -247,23 +263,12 @@ fn redraw(
     srgb: bool,
 ) -> Result<CFRetained<CGImage>, ConvertError> {
     let failed = || ConvertError::Encode("couldn't draw the image".into());
-    let own = CGImage::color_space(Some(image))
-        .filter(|space| CGColorSpace::model(Some(space)) == CGColorSpaceModel::RGB);
-    // SAFETY: a valid system colour space name.
-    let srgb_space =
-        CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).ok_or_else(failed)?;
     let (w, h) = (CGImage::width(Some(image)), CGImage::height(Some(image)));
     let alpha = match background {
         Background::White => CGImageAlphaInfo::NoneSkipLast,
         Background::Clear => CGImageAlphaInfo::PremultipliedLast,
     };
-    let candidates = [own.filter(|_| !srgb), Some(srgb_space)];
-    // An exotic own space (extended range, say) has no 8-bit bitmap; sRGB does.
-    let context = candidates
-        .iter()
-        .flatten()
-        .find_map(|space| bitmap_context(w, h, space, alpha))
-        .ok_or_else(failed)?;
+    let context = drawing_context(image, alpha, srgb).ok_or_else(failed)?;
     let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64));
     if background == Background::White {
         CGContext::set_rgb_fill_color(Some(&context), 1.0, 1.0, 1.0, 1.0);
@@ -271,6 +276,26 @@ fn redraw(
     }
     CGContext::draw_image(Some(&context), rect, Some(image));
     CGBitmapContextCreateImage(Some(&context)).ok_or_else(failed)
+}
+
+/// An 8-bit RGB bitmap the size of `image` to draw it in: in sRGB when
+/// `srgb` or when the image's own space is not RGB, else in its own space.
+fn drawing_context(
+    image: &CGImage,
+    alpha: CGImageAlphaInfo,
+    srgb: bool,
+) -> Option<CFRetained<CGContext>> {
+    let own = CGImage::color_space(Some(image))
+        .filter(|space| CGColorSpace::model(Some(space)) == CGColorSpaceModel::RGB);
+    // SAFETY: a valid system colour space name.
+    let srgb_space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))?;
+    let (w, h) = (CGImage::width(Some(image)), CGImage::height(Some(image)));
+    let candidates = [own.filter(|_| !srgb), Some(srgb_space)];
+    // An exotic own space (extended range, say) has no 8-bit bitmap; sRGB does.
+    candidates
+        .iter()
+        .flatten()
+        .find_map(|space| bitmap_context(w, h, space, alpha))
 }
 
 fn bitmap_context(
@@ -294,10 +319,12 @@ fn bitmap_context(
     }
 }
 
-/// The source's metadata, upright, plus the encoder settings for `format`.
+/// The source's metadata, upright and with the output's pixel `size`, plus
+/// the encoder settings for `format`.
 fn destination_properties(
     source: Option<&Properties>,
     format: ImageFormat,
+    size: (usize, usize),
 ) -> CFRetained<CFMutableDictionary<CFString, CFType>> {
     let props = source
         .and_then(copy_mutable)
@@ -321,6 +348,25 @@ fn destination_properties(
     if let Some(tiff) = tiff {
         tiff.set(tiff_orientation, &upright);
         props.set(tiff_key, &tiff);
+    }
+    // SAFETY: the keys are ImageIO's own statics.
+    let (exif_key, exif_width, exif_height) = unsafe {
+        (
+            kCGImagePropertyExifDictionary,
+            kCGImagePropertyExifPixelXDimension,
+            kCGImagePropertyExifPixelYDimension,
+        )
+    };
+    // Turning the pixels may have swapped the sides.
+    let exif = props
+        .get(exif_key)
+        .and_then(|v| v.downcast::<CFDictionary>().ok())
+        // SAFETY: ImageIO property dictionaries have string keys.
+        .and_then(|d| copy_mutable(unsafe { d.cast_unchecked::<CFString, CFType>() }));
+    if let Some(exif) = exif {
+        exif.set(exif_width, &CFNumber::new_i64(size.0 as i64));
+        exif.set(exif_height, &CFNumber::new_i64(size.1 as i64));
+        props.set(exif_key, &exif);
     }
     if matches!(format, ImageFormat::Jpeg | ImageFormat::Heic) {
         let quality = CFNumber::new_f64(LOSSY_QUALITY);
@@ -485,7 +531,8 @@ mod test_support {
             }
             .expect("fixture bitmap");
             if let Fill::Color([r, g, b]) = self.fill {
-                CGContext::set_rgb_fill_color(Some(&context), r, g, b, 1.0);
+                CGContext::set_fill_color_space(Some(&context), Some(&space));
+                unsafe { CGContext::set_fill_color(Some(&context), [r, g, b, 1.0].as_ptr()) };
                 let size = CGSize::new(self.width as f64, self.height as f64);
                 CGContext::fill_rect(Some(&context), CGRect::new(CGPoint::new(0.0, 0.0), size));
             }
@@ -522,8 +569,14 @@ mod test_support {
     /// The top-left pixel of the first frame drawn in sRGB, as 8-bit
     /// premultiplied RGBA.
     pub(super) fn corner_pixel(path: &Path) -> [u8; 4] {
+        corner_pixel_in(path, unsafe { kCGColorSpaceSRGB })
+    }
+
+    /// The top-left pixel of the first frame drawn in the named colour space,
+    /// as 8-bit premultiplied RGBA.
+    pub(super) fn corner_pixel_in(path: &Path, space: &CFString) -> [u8; 4] {
         let image = unsafe { source(path).image_at_index(0, None) }.expect("frame");
-        let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).unwrap();
+        let space = CGColorSpace::with_name(Some(space)).unwrap();
         let (w, h) = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
         let mut pixels = vec![0u8; w * h * 4];
         let context = unsafe {
@@ -565,7 +618,8 @@ mod tests {
     use vento_core::convert::{ConvertError, ImageFormat};
 
     use super::test_support::{
-        Fill, Fixture, boolean, corner_pixel, dictionary, frame_count, properties, string,
+        Fill, Fixture, boolean, corner_pixel, corner_pixel_in, dictionary, frame_count, properties,
+        string,
     };
     use super::{number, probe_image, write_image};
 
@@ -712,27 +766,51 @@ mod tests {
     }
 
     #[test]
-    fn webp_from_display_p3_is_srgb() {
+    fn webp_keeps_display_p3_profile() {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("in.png");
-        // A red inside sRGB's gamut: its Display P3 numbers are some 15
-        // levels off its sRGB ones, so a raw copy would show.
+        // Display P3's pure red lies outside sRGB: going through sRGB would
+        // clip it.
+        let p3 = unsafe { kCGColorSpaceDisplayP3 };
         Fixture {
-            space: unsafe { kCGColorSpaceDisplayP3 },
-            fill: Fill::Color([0.8, 0.2, 0.2]),
+            space: p3,
+            fill: Fill::Color([1.0, 0.0, 0.0]),
             ..Fixture::new(16, 16)
         }
         .write(&src, ImageFormat::Png);
         let out = convert(&src, dir.path(), ImageFormat::Webp);
         let profile = string(&properties(&out), unsafe { kCGImagePropertyProfileName });
         assert!(
-            profile.as_deref().is_none_or(|p| p.contains("sRGB")),
+            profile.as_deref().is_some_and(|p| p.contains("P3")),
             "profile {profile:?}"
         );
-        let (want, got) = (corner_pixel(&src), corner_pixel(&out));
+        let (want, got) = (corner_pixel_in(&src, p3), corner_pixel_in(&out, p3));
         for i in 0..3 {
             assert!(want[i].abs_diff(got[i]) <= 3, "want {want:?}, got {got:?}");
         }
+    }
+
+    #[test]
+    fn exif_pixel_size_matches_rotated_output_heic() {
+        // A Mac (or CI virtual machine) without a working HEVC encoder.
+        if !super::heic_encoder_works() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.jpg");
+        Fixture {
+            orientation: Some(6),
+            ..Fixture::new(40, 20)
+        }
+        .write(&src, ImageFormat::Jpeg);
+        let out = convert(&src, dir.path(), ImageFormat::Heic);
+        let exif = dictionary(&properties(&out), unsafe { kCGImagePropertyExifDictionary })
+            .expect("Exif dictionary");
+        let exif_size = (
+            number(&exif, unsafe { kCGImagePropertyExifPixelXDimension }),
+            number(&exif, unsafe { kCGImagePropertyExifPixelYDimension }),
+        );
+        assert_eq!(exif_size, (Some(20), Some(40)));
     }
 
     #[test]

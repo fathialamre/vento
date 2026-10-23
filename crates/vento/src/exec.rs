@@ -294,7 +294,8 @@ struct Last {
 /// The job running on a worker thread, kept so quitting can stop it.
 struct RunningJob {
     worker: JoinHandle<()>,
-    /// The progress to cancel, for a job that can be cancelled (Archive).
+    /// The progress to cancel, for a job that can be cancelled (Archive,
+    /// Convert).
     cancel: Option<Arc<Progress>>,
 }
 
@@ -314,11 +315,12 @@ pub struct Executor {
     last: RefCell<Option<Last>>,
     /// Folders recently moved or copied to; saved after each addition.
     recent: Rc<RefCell<RecentDestinations>>,
-    /// Whether a move, copy, archive or undo is running on a worker thread.
+    /// Whether a move, copy, archive, convert or undo is running on a worker
+    /// thread.
     busy: Cell<bool>,
     /// That job, until its result is handled on the main thread.
     running: RefCell<Option<RunningJob>>,
-    /// Follows a running Archive job.
+    /// Follows a running Archive or Convert job.
     progress: Rc<ProgressView>,
     /// Asks for the passwords an Archive job needs.
     password: Rc<PasswordView>,
@@ -333,8 +335,8 @@ pub struct Executor {
 impl Executor {
     /// `settings` is shared with the rest of the app, so a settings reload is
     /// seen by the next action; `recent` is the list the ring reads;
-    /// `progress` and `password` are the Archive windows. Call on the main
-    /// thread.
+    /// `progress` is the Archive and Convert progress window, `password` the
+    /// Archive password window. Call on the main thread.
     pub fn new(
         platform: Rc<dyn Platform>,
         settings: Rc<RefCell<Settings>>,
@@ -499,8 +501,8 @@ impl Executor {
         self.toast.show(&undo_toast_text(&outcome), None, at);
     }
 
-    /// Undoes a Copy to, an Archive or a Convert (`kind`), in two steps. The worker
-    /// finds the items that are still exactly as vento made them (the
+    /// Undoes a Copy to, an Archive or a Convert (`kind`), in two steps. The
+    /// worker finds the items that are still exactly as vento made them (the
     /// platform is not `Send`, so it cannot trash from there); the main
     /// thread then trashes just those. Nothing else is re-checked in between.
     fn undo_copy(&self, record: CopyRecord, kind: UndoKind, at: Point) {
@@ -755,10 +757,11 @@ impl Executor {
     }
 
     /// Stops the running job before vento quits, so it leaves no partial
-    /// output behind: an Archive job is cancelled (and its password window,
-    /// if open, closed), which removes its partial item; then the worker gets
-    /// up to two seconds to finish. A move or copy cannot be cancelled and
-    /// gets the same wait. Never blocks longer. Call on the main thread.
+    /// output behind: an Archive or Convert job is cancelled (and Archive's
+    /// password window, if open, closed), which removes its partial item;
+    /// then the worker gets up to two seconds to finish. A move or copy
+    /// cannot be cancelled and gets the same wait. Never blocks longer. Call
+    /// on the main thread.
     pub fn shutdown(&self) {
         let Some(job) = self.running.take() else {
             return;
