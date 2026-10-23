@@ -4,7 +4,7 @@
 //! with [`selection_from_drag`], hands the selected pixels to OCR, and feeds
 //! the recognised [`TextBox`]es to [`assemble`], which rebuilds the lines the
 //! reader saw: rows top to bottom, left to right (right to left for Arabic and
-//! Hebrew rows), with the indentation kept.
+//! Hebrew), with the indentation of left-to-right text kept.
 
 use crate::geometry::{Point, Rect};
 
@@ -72,9 +72,23 @@ pub fn local_rect(sel: &Selection) -> Rect {
     }
 }
 
+/// Most spaces a row is indented by. Very narrow characters (a box of
+/// punctuation, say) make the estimated character width tiny, and the
+/// indent huge; past this it is noise, not layout.
+pub const MAX_INDENT: usize = 40;
+
 /// Rebuilds readable text from OCR boxes: rows top to bottom, boxes within a
 /// row in reading order, rows indented by their left edge, joined with `\n`.
 /// Blank boxes are ignored; no usable box gives an empty string.
+///
+/// The capture as a whole reads right to left when it holds more
+/// Arabic/Hebrew letters than Latin-style ones. A row takes its own direction
+/// only when it is clear: all its letters are of one script. A row with both
+/// scripts (or with no letters) follows the capture, so `اضغط Ctrl` in an
+/// Arabic capture keeps the Arabic first even when OCR splits it into boxes
+/// and the Latin letters are as many or more. Rows read left to right are
+/// indented from the leftmost box, at most [`MAX_INDENT`] spaces; nothing is
+/// indented in a right-to-left capture, where lines align right.
 pub fn assemble(boxes: &[TextBox]) -> String {
     let mut boxes: Vec<&TextBox> = boxes.iter().filter(|b| !b.text.trim().is_empty()).collect();
     if boxes.is_empty() {
@@ -82,22 +96,25 @@ pub fn assemble(boxes: &[TextBox]) -> String {
     }
     boxes.sort_by(|a, b| centre_y(a).total_cmp(&centre_y(b)));
 
+    let capture_rtl = letters(&boxes).rtl_majority();
     let left = boxes.iter().map(|b| b.rect.x).fold(f64::INFINITY, f64::min);
     let char_w = char_width(&boxes);
 
     let lines: Vec<String> = group_rows(&boxes)
         .into_iter()
         .map(|mut row| {
-            let rtl = is_rtl(&row);
+            let rtl = letters(&row).clear_direction().unwrap_or(capture_rtl);
             row.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
             if rtl {
                 row.reverse();
             }
-            let indent = if rtl || char_w <= 0.0 {
+            let indent = if capture_rtl || rtl || char_w <= 0.0 {
                 0
             } else {
                 let row_left = row.iter().map(|b| b.rect.x).fold(f64::INFINITY, f64::min);
-                ((row_left - left) / char_w).round().max(0.0) as usize
+                ((row_left - left) / char_w)
+                    .round()
+                    .clamp(0.0, MAX_INDENT as f64) as usize
             };
             let texts: Vec<&str> = row.iter().map(|b| b.text.as_str()).collect();
             format!("{}{}", " ".repeat(indent), texts.join(" "))
@@ -129,18 +146,42 @@ fn group_rows<'a>(sorted: &[&'a TextBox]) -> Vec<Vec<&'a TextBox>> {
     rows
 }
 
-/// Whether a row reads right to left: more Arabic/Hebrew characters than
-/// Latin-style letters.
-fn is_rtl(row: &[&TextBox]) -> bool {
-    let (mut rtl, mut ltr) = (0usize, 0usize);
-    for c in row.iter().flat_map(|b| b.text.chars()) {
-        if matches!(c, '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FEFF}') {
-            rtl += 1;
-        } else if c.is_alphabetic() {
-            ltr += 1;
+/// How many right-to-left (Arabic, Hebrew) and left-to-right (any other
+/// alphabetic) letters some boxes hold.
+#[derive(Debug, Clone, Copy, Default)]
+struct Letters {
+    rtl: usize,
+    ltr: usize,
+}
+
+impl Letters {
+    /// More right-to-left letters than left-to-right ones.
+    fn rtl_majority(self) -> bool {
+        self.rtl > self.ltr
+    }
+
+    /// `Some(true)` for right-to-left letters only, `Some(false)` for
+    /// left-to-right only; `None` when both scripts are there, or neither.
+    fn clear_direction(self) -> Option<bool> {
+        match (self.rtl > 0, self.ltr > 0) {
+            (true, false) => Some(true),
+            (false, true) => Some(false),
+            _ => None,
         }
     }
-    rtl > ltr
+}
+
+/// Counts the letters of each direction in `boxes`.
+fn letters(boxes: &[&TextBox]) -> Letters {
+    let mut n = Letters::default();
+    for c in boxes.iter().flat_map(|b| b.text.chars()) {
+        if matches!(c, '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FEFF}') {
+            n.rtl += 1;
+        } else if c.is_alphabetic() {
+            n.ltr += 1;
+        }
+    }
+    n
 }
 
 /// Typical width of one character: the median of width per character.
@@ -284,5 +325,61 @@ mod tests {
             assemble(&[b(0.0, 0.0, 30.0, 20.0, "  "), b(0.0, 30.0, 30.0, 20.0, "")]),
             ""
         );
+    }
+
+    #[test]
+    fn tie_row_in_arabic_capture_reads_right_to_left() {
+        // Vision split a clipped line in two: four Latin letters, four Arabic.
+        let boxes = [
+            b(0.0, 0.0, 40.0, 20.0, "Ctrl"),
+            b(60.0, 0.0, 40.0, 20.0, "اضغط"),
+            b(0.0, 30.0, 130.0, 20.0, "مرحبا بالعالم"),
+        ];
+        assert_eq!(assemble(&boxes), "اضغط Ctrl\nمرحبا بالعالم");
+    }
+
+    #[test]
+    fn latin_heavy_mixed_row_in_arabic_capture_reads_right_to_left() {
+        // Five Latin letters to four Arabic on the row; the capture is Arabic.
+        let boxes = [
+            b(0.0, 0.0, 50.0, 20.0, "Enter"),
+            b(70.0, 0.0, 40.0, 20.0, "اضغط"),
+            b(0.0, 30.0, 130.0, 20.0, "مرحبا بالعالم"),
+        ];
+        assert_eq!(assemble(&boxes), "اضغط Enter\nمرحبا بالعالم");
+    }
+
+    #[test]
+    fn english_capture_keeps_left_to_right_and_indent() {
+        // 10 px per character; the middle row is split in two boxes.
+        let boxes = [
+            b(0.0, 0.0, 80.0, 20.0, "fn x() {"),
+            b(100.0, 30.0, 40.0, 20.0, "= 1;"),
+            b(40.0, 30.0, 50.0, 20.0, "let a"),
+            b(0.0, 60.0, 10.0, 20.0, "}"),
+        ];
+        assert_eq!(assemble(&boxes), "fn x() {\n    let a = 1;\n}");
+    }
+
+    #[test]
+    fn rtl_capture_is_not_indented() {
+        // Right-aligned lines: the shorter ones start further right, and an
+        // English-only line in an Arabic capture is not padded either.
+        let boxes = [
+            b(0.0, 0.0, 130.0, 20.0, "مرحبا بالعالم"),
+            b(90.0, 30.0, 40.0, 20.0, "اهلا"),
+            b(90.0, 60.0, 40.0, 20.0, "Ctrl"),
+        ];
+        assert_eq!(assemble(&boxes), "مرحبا بالعالم\nاهلا\nCtrl");
+    }
+
+    #[test]
+    fn indentation_is_capped() {
+        // 10 px per character: 2000 px would be 200 spaces.
+        let boxes = [
+            b(0.0, 0.0, 10.0, 20.0, "a"),
+            b(2000.0, 30.0, 10.0, 20.0, "b"),
+        ];
+        assert_eq!(assemble(&boxes), format!("a\n{}b", " ".repeat(MAX_INDENT)));
     }
 }
