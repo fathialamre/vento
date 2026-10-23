@@ -248,6 +248,8 @@ impl Fingerprint {
     pub fn of(path: &Path) -> io::Result<Fingerprint> {
         let meta = fs::symlink_metadata(path)?;
         let kind = meta.file_type();
+        // Unit where targets have no file id.
+        #[cfg_attr(not(unix), allow(clippy::let_unit_value))]
         let id = file_id(&meta);
         if kind.is_symlink() {
             Ok(Fingerprint::Link {
