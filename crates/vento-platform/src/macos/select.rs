@@ -20,7 +20,7 @@ use objc2::{
     msg_send, sel,
 };
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationOptions,
+    NSApplication, NSApplicationActivationOptions, NSApplicationDidBecomeActiveNotification,
     NSApplicationDidChangeScreenParametersNotification, NSApplicationDidResignActiveNotification,
     NSBackingStoreType, NSBezierPath, NSColor, NSCompositingOperation, NSCursor, NSEvent, NSPanel,
     NSRectFillUsingOperation, NSRunningApplication, NSScreen, NSScreenSaverWindowLevel,
@@ -171,6 +171,10 @@ pub(super) fn select_area(done: Done) {
     shown[key].makeKeyWindow();
     // An agent app gets no keys until it is active.
     activate_app(mtm);
+    log::debug!(
+        "overlay shown; vento active: {}",
+        NSApplication::sharedApplication(mtm).isActive()
+    );
     // Cursor rects apply only once the pointer moves; show it at once.
     NSCursor::crosshairCursor().set();
 }
@@ -213,6 +217,23 @@ fn finish(id: u64, sel: Option<Selection>) {
     }
     let _ = Retained::autorelease_ptr(session.observer);
     call(session.done, sel);
+}
+
+/// Shows the crosshair again while session `id` is on screen, and has every
+/// panel rebuild its cursor rects so moving the pointer keeps it.
+fn refresh_cursor(id: u64) {
+    SESSION.with(|slot| {
+        let Ok(slot) = slot.try_borrow() else {
+            return;
+        };
+        let Some(session) = slot.as_ref().filter(|s| s.id == id) else {
+            return;
+        };
+        for panel in &session.panels {
+            panel.resetCursorRects();
+        }
+        NSCursor::crosshairCursor().set();
+    });
 }
 
 /// Hands focus back to the app that had it before the overlay, unless
@@ -437,6 +458,8 @@ define_class!(
             let at = self.point_of(event);
             ivars.start.set(Some(at));
             ivars.end.set(Some(at));
+            // Whatever reset the pointer before, the drag shows the crosshair.
+            NSCursor::crosshairCursor().set();
         }
 
         #[unsafe(method(mouseDragged:))]
@@ -556,6 +579,14 @@ define_class!(
         fn cancel(&self, _note: &NSNotification) {
             finish(*self.ivars(), None);
         }
+
+        /// Activation lands after the overlay shows (macOS 14 activates
+        /// asynchronously) and puts the arrow back: show the crosshair again.
+        #[unsafe(method(becameActive:))]
+        fn became_active(&self, _note: &NSNotification) {
+            log::debug!("overlay: vento became active");
+            refresh_cursor(*self.ivars());
+        }
     }
 );
 
@@ -576,6 +607,14 @@ impl SelectObserver {
             ] {
                 center.addObserver_selector_name_object(&observer, sel!(cancel:), Some(name), None);
             }
+            // SAFETY: `becameActive:` is a method of `SelectObserver` that
+            // takes one NSNotification and returns nothing.
+            center.addObserver_selector_name_object(
+                &observer,
+                sel!(becameActive:),
+                Some(NSApplicationDidBecomeActiveNotification),
+                None,
+            );
         }
         observer
     }
