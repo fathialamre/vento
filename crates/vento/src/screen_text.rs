@@ -3,6 +3,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::panic::{self, AssertUnwindSafe};
 use std::rc::{Rc, Weak};
 use std::sync::Once;
 use std::thread;
@@ -152,7 +153,11 @@ pub fn read_on_worker(sel: Selection, done: ReadDone) {
         .name("vento-screen-text".into())
         .spawn(move || {
             let started = Instant::now();
-            let result = vento_platform::read_screen_text(&sel);
+            // A panic must still answer, or `done` would never run and Copy
+            // from screen would stay busy until vento restarts.
+            let result =
+                panic::catch_unwind(AssertUnwindSafe(|| vento_platform::read_screen_text(&sel)))
+                    .unwrap_or_else(|_| Err(PlatformError::Failed("internal error".into())));
             info!("screen read in {} ms", started.elapsed().as_millis());
             let delivered = slint::invoke_from_event_loop(move || {
                 if let Some(done) = PENDING.with(|pending| pending.borrow_mut().remove(&id)) {
