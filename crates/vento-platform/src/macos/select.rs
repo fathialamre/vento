@@ -176,7 +176,8 @@ pub(super) fn select_area(done: Done) {
 }
 
 /// Ends session `id`, if it is still the one on screen: orders every panel
-/// out, gives focus back, then calls `done` with `sel`. Any later call (a
+/// out, puts the arrow pointer back, gives focus back, then calls `done`
+/// with `sel`. Any later call (a
 /// second mouse-down, a late notification) finds no session and does
 /// nothing.
 fn finish(id: u64, sel: Option<Selection>) {
@@ -200,6 +201,8 @@ fn finish(id: u64, sel: Option<Selection>) {
     for panel in &session.panels {
         panel.orderOut(None);
     }
+    // The crosshair was set by hand, so it stays until something resets it.
+    NSCursor::arrowCursor().set();
     session.observer.remove();
     give_focus_back(mtm, session.previous_app);
     // AppKit may still be inside one of these panels' (or the observer's)
