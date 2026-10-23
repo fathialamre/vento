@@ -118,9 +118,11 @@ fn main() -> Result<(), slint::PlatformError> {
             platform.clone(),
             hub.clone(),
             recent.clone(),
+            true,
             Box::new(move |which, spec| match which {
                 panel::ShortcutFor::Pocket => pocket_slot.register(spec),
                 panel::ShortcutFor::Clipboard => clip_slot.register(spec),
+                panel::ShortcutFor::ScreenText => Err("not yet".into()),
             }),
             Box::new(move || {
                 if let Some(pocket) = clearer.upgrade() {
