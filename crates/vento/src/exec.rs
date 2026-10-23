@@ -360,6 +360,7 @@ impl Executor {
             paths,
             at,
             dest,
+            format: _,
         } = drop;
         if paths.is_empty() {
             debug!("{action:?} with no files");

@@ -17,9 +17,10 @@ use slint::{
 };
 use vento_core::actions::ActionId;
 use vento_core::archive::looks_like_archives;
+use vento_core::convert::{ImageFormat, ring_formats};
 use vento_core::destinations::{
-    Destination, LABEL_CHARS, PETAL_LABEL_CHARS, RecentDestinations, cell_labels, display_path,
-    fit_path, folder_exists, ring_destinations,
+    CellLabel, Destination, LABEL_CHARS, PETAL_LABEL_CHARS, RecentDestinations, cell_labels,
+    display_path, fit_path, folder_exists, ring_destinations,
 };
 use vento_core::geometry::{
     self, HEX_CORNER_RADIUS, HEX_RADIUS, Layout, PETAL_DEAD_ZONE, Point, Rect, RingGeometry, Vec2,
@@ -88,8 +89,30 @@ struct OpenRing {
     /// Index of the action the ring opened from.
     source: usize,
     geometry: RingGeometry,
-    /// The folder on each ring cell, in cell order.
-    dests: Vec<Destination>,
+    /// What each ring cell stands for, in cell order.
+    items: RingItems,
+}
+
+/// What a ring holds: folders for Move and Copy to, image formats for Convert.
+enum RingItems {
+    Folders(Vec<Destination>),
+    Formats(Vec<ImageFormat>),
+}
+
+impl RingItems {
+    fn len(&self) -> usize {
+        match self {
+            RingItems::Folders(dests) => dests.len(),
+            RingItems::Formats(formats) => formats.len(),
+        }
+    }
+
+    fn truncate(&mut self, len: usize) {
+        match self {
+            RingItems::Folders(dests) => dests.truncate(len),
+            RingItems::Formats(formats) => formats.truncate(len),
+        }
+    }
 }
 
 impl State {
@@ -206,6 +229,26 @@ pub struct WheelDrop {
     pub at: Point,
     /// The ring folder dropped on; `None` for a drop on the action itself.
     pub dest: Option<PathBuf>,
+    /// The ring format dropped on; `Some` only for a drop on a Convert ring cell.
+    pub format: Option<ImageFormat>,
+}
+
+/// The verb in front of the ring cell under the cursor.
+fn ring_verb(action: ActionId) -> &'static str {
+    match action {
+        ActionId::CopyTo => "Copy to",
+        ActionId::Convert => "Convert to",
+        _ => "Move to",
+    }
+}
+
+/// The text on the ring cell of `format`: its name and extension.
+fn format_label(format: ImageFormat) -> CellLabel {
+    CellLabel {
+        line1: format.name().to_string(),
+        line2: Some(format!(".{}", format.extension())),
+        line2_dim: true,
+    }
 }
 
 /// Receives every input sample and whether a drag (of any type) is under way.
@@ -562,16 +605,23 @@ impl WheelController {
         let Some((ring, d)) = state.ring.as_ref().zip(dest) else {
             return;
         };
-        let path = &ring.dests[d].path;
-        let verb = match state.settings.actions[ring.source] {
-            ActionId::CopyTo => "Copy to",
-            _ => "Move to",
-        };
-        self.window.set_dest_verb(verb.into());
-        self.window.set_dest_name(folder_name(path).into());
-        let shown = fit_path(&display_path(path, self.home.as_deref()), DEST_PATH_CHARS);
-        self.window.set_dest_path(shown.into());
-        self.window.set_dest_icon(self.folder_icon(path));
+        self.window
+            .set_dest_verb(ring_verb(state.settings.actions[ring.source]).into());
+        match &ring.items {
+            RingItems::Folders(dests) => {
+                let path = &dests[d].path;
+                self.window.set_dest_name(folder_name(path).into());
+                let shown = fit_path(&display_path(path, self.home.as_deref()), DEST_PATH_CHARS);
+                self.window.set_dest_path(shown.into());
+                self.window.set_dest_icon(self.folder_icon(path));
+            }
+            RingItems::Formats(formats) => {
+                self.window.set_dest_name(formats[d].name().into());
+                self.window.set_dest_path("".into());
+                self.window
+                    .set_dest_icon(self.window.global::<Icons>().get_photo());
+            }
+        }
     }
 
     /// Feeds the hover to the ring tracker, and opens or closes the ring.
@@ -599,13 +649,22 @@ impl WheelController {
         )
     }
 
-    /// Opens the destination ring around the action at `source`. With no
-    /// folder to show, or no room for one, the wheel stays as it is (a drop
-    /// on the action still opens the folder picker).
+    /// Opens the ring around the action at `source`: formats for Convert,
+    /// folders otherwise. With nothing to show, or no room for it, the wheel
+    /// stays as it is (a drop on a folder action still opens the folder
+    /// picker).
     fn open_ring(&self, source: usize) {
-        let mut dests = self.destinations();
-        if dests.is_empty() {
-            debug!("no destinations for the ring");
+        let is_convert = self.state.borrow().settings.actions[source] == ActionId::Convert;
+        let mut items = if is_convert {
+            RingItems::Formats(ring_formats(
+                &self.platform.drag_paths(),
+                ImageFormat::TARGETS,
+            ))
+        } else {
+            RingItems::Folders(self.destinations())
+        };
+        if items.len() == 0 {
+            debug!("nothing for the ring");
             return;
         }
         let (ring, label, half) = {
@@ -625,7 +684,7 @@ impl WheelController {
                     h: s.h,
                 },
             );
-            let ring = state.geometry.ring(source, dests.len(), bounds);
+            let ring = state.geometry.ring(source, items.len(), bounds);
             let actions = state
                 .geometry
                 .cells()
@@ -644,26 +703,39 @@ impl WheelController {
             debug!("no room for the ring");
             return;
         }
-        dests.truncate(ring.cells().len());
+        items.truncate(ring.cells().len());
         let label_chars = match self.state.borrow().settings.layout {
             Layout::Honeycomb => LABEL_CHARS,
             Layout::Petals => PETAL_LABEL_CHARS,
         };
-        let labels = cell_labels(&dests, label_chars);
+        // Each cell's icon, label and pin mark.
+        let contents: Vec<(Image, CellLabel, bool)> = match &items {
+            RingItems::Folders(dests) => dests
+                .iter()
+                .zip(cell_labels(dests, label_chars))
+                .map(|(dest, label)| (self.folder_icon(&dest.path), label, dest.pinned))
+                .collect(),
+            RingItems::Formats(formats) => {
+                let photo = self.window.global::<Icons>().get_photo();
+                formats
+                    .iter()
+                    .map(|&f| (photo.clone(), format_label(f), false))
+                    .collect()
+            }
+        };
         let cells: Vec<RingCell> = ring
             .cells()
             .iter()
-            .zip(&dests)
-            .zip(labels)
-            .map(|((cell, dest), label)| RingCell {
+            .zip(contents)
+            .map(|(cell, (icon, label, pinned))| RingCell {
                 x: cell.center.x,
                 y: cell.center.y,
                 r: cell.radius,
-                icon: self.folder_icon(&dest.path),
+                icon,
                 line1: label.line1.into(),
                 line2: label.line2.unwrap_or_default().into(),
                 line2_dim: label.line2_dim,
-                pinned: dest.pinned,
+                pinned,
             })
             .collect();
         self.set_covered(Some(&ring));
@@ -674,11 +746,11 @@ impl WheelController {
         self.window.set_dest_y(label.y);
         self.set_window_side(2.0 * half);
         self.centre_window(half);
-        debug!("ring open with {} folder(s)", dests.len());
+        debug!("ring open with {} item(s)", items.len());
         self.state.borrow_mut().ring = Some(OpenRing {
             source,
             geometry: ring,
-            dests,
+            items,
         });
     }
 
@@ -800,13 +872,18 @@ impl WheelController {
                 .zip(state.ring_hot)
                 .and_then(|(ring, d)| {
                     let action = state.settings.actions.get(ring.source).copied()?;
-                    Some((action, Some(ring.dests.get(d)?.path.clone())))
+                    Some(match &ring.items {
+                        RingItems::Folders(dests) => {
+                            (action, Some(dests.get(d)?.path.clone()), None)
+                        }
+                        RingItems::Formats(formats) => (action, None, Some(*formats.get(d)?)),
+                    })
                 });
             let target = on_ring.or_else(|| {
                 state
                     .highlighted
                     .and_then(|i| state.settings.actions.get(i).copied())
-                    .map(|action| (action, None))
+                    .map(|action| (action, None, None))
             });
             let centre_r = centre_radius(state.settings.layout);
             let on_centre = state.last_offset.x.hypot(state.last_offset.y) < centre_r;
@@ -819,11 +896,12 @@ impl WheelController {
         };
         self.dismiss();
         match target {
-            Some((action, dest)) => (self.on_drop)(WheelDrop {
+            Some((action, dest, format)) => (self.on_drop)(WheelDrop {
                 action,
                 paths,
                 at: center,
                 dest,
+                format,
             }),
             None if on_centre => debug!("dropped on centre"),
             None => debug!("dropped outside cells"),
@@ -912,6 +990,21 @@ fn window_half(ring_extent: f32, label: Vec2) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_cell_label() {
+        let label = format_label(ImageFormat::Jpeg);
+        assert_eq!(label.line1, "JPEG");
+        assert_eq!(label.line2.as_deref(), Some(".jpg"));
+        assert!(label.line2_dim);
+    }
+
+    #[test]
+    fn ring_verb_per_action() {
+        assert_eq!(ring_verb(ActionId::Move), "Move to");
+        assert_eq!(ring_verb(ActionId::CopyTo), "Copy to");
+        assert_eq!(ring_verb(ActionId::Convert), "Convert to");
+    }
 
     #[test]
     fn archive_cell_says_compress_or_extract() {
