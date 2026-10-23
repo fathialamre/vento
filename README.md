@@ -4,8 +4,8 @@ A radial actions wheel for files. Start dragging a file, then press the
 trigger modifier (it must be pressed after the drag has started), or shake the
 pointer quickly back and forth in any direction, and a wheel of actions appears
 under the cursor; release the mouse over an action to run it. Releasing
-anywhere outside the wheel leaves the drop to whatever is underneath. Esc cancels (if your macOS allows reading key state without extra
-permission).
+anywhere outside the wheel leaves the drop to whatever is underneath. Esc
+cancels (if your macOS allows reading key state without extra permission).
 
 vento is **macOS only for now**. The core and platform crates are checked
 for Windows and Linux targets (the platform crate is a stub there, so the wheel
@@ -13,6 +13,24 @@ does nothing); full CI runs on all three systems once the repo has a remote.
 
 Actions: Pocket, Copy, Move (with undo), Copy to (with undo), Archive (with
 undo, off by default), Copy path, Terminal, Info (off by default).
+
+## Shake to open
+
+No hand on the keyboard? While dragging files, shake the pointer quickly back
+and forth and the wheel opens under it, just as the trigger modifier opens it.
+
+- **Any direction**: left-right, up-down or diagonal. What counts is coming
+  back along the way you just moved, four times within about half a second.
+- **Not by accident**: each swing must cover at least 40 points, small wiggles
+  and jitter are ignored, and a drag that turns corners (right, then down,
+  then left) is not a shake.
+- **Files only**, like the wheel: shaking while dragging text, a link or an
+  image from a web page does nothing.
+- One shake opens the wheel once per drag; let go of the mouse to start over.
+
+The trigger modifier keeps working either way. Switch shaking off with **Shake
+to open** in the settings panel's General tab (`shake_to_open` in the settings
+file).
 
 ## Move and Copy to
 
