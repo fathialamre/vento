@@ -23,10 +23,12 @@ slint-build = "1.18.1"
 [dev-dependencies]
 tempfile = "3"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-tray-icon = "0.26"
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 raw-window-handle = "0.6"
-global-hotkey = "0.9"
-drag = "2.1.1"
 png = "0.18"
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tray-icon = "0.26"
+global-hotkey = "0.9"
+drag = "2.1.1"

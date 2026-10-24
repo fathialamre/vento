@@ -6162,6 +6162,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "vento-core",
+ "x11rb",
  "xattr",
 ]
 

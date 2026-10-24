@@ -576,6 +576,8 @@ impl Executor {
 
     /// Registers `f`, called with `has_undo()` after a move or copy records
     /// an undo and after an undo starts or finishes. Replaces any earlier callback.
+    // Only the macOS tray listens until Linux has one.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn on_undo_changed(&self, f: UndoListener) {
         *self.on_undo_changed.borrow_mut() = Some(f);
     }

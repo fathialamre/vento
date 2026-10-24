@@ -24,7 +24,11 @@ mod icons;
 mod portal;
 mod shell;
 mod terminal;
+mod thumbs;
 mod trash;
+mod x11;
+
+pub(crate) use thumbs::picture_thumbnail;
 
 /// [`Platform`] for GNOME, through gio and Vento's GNOME Shell extension.
 #[derive(Debug)]
@@ -128,25 +132,29 @@ impl Platform for LinuxPlatform {
         })
     }
 
+    /// Override-redirect, which on X11 does all three: above everything,
+    /// never focused, kept where vento puts it.
     fn make_overlay(
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
-        self.stub.make_overlay(window)
+        x11::make_override_redirect(window)
     }
 
+    /// See [`Platform::make_overlay`].
     fn make_non_key(
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
-        self.stub.make_non_key(window)
+        x11::make_override_redirect(window)
     }
 
+    /// See [`Platform::make_overlay`].
     fn keep_window_frame(
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
-        self.stub.keep_window_frame(window)
+        x11::make_override_redirect(window)
     }
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {

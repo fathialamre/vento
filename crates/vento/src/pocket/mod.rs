@@ -48,6 +48,8 @@ use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
+#[cfg(target_os = "linux")]
+use crate::drag;
 use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::ClipView;
