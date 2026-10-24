@@ -1,8 +1,12 @@
 //! Screen geometry and app activation.
 
-use objc2::{MainThreadMarker, sel};
-use objc2_app_kit::{NSApplication, NSScreen};
-use objc2_foundation::NSObjectProtocol;
+use std::cell::{Cell, OnceCell};
+
+use objc2::rc::Retained;
+use objc2::runtime::NSObject;
+use objc2::{AllocAnyThread, MainThreadMarker, define_class, msg_send, sel};
+use objc2_app_kit::{NSApplication, NSApplicationDidChangeScreenParametersNotification, NSScreen};
+use objc2_foundation::{NSNotification, NSNotificationCenter, NSObjectProtocol};
 use vento_core::geometry::{Point, Rect};
 
 use crate::IslandHome;
@@ -18,12 +22,80 @@ pub(super) fn flip_rect(primary_h: f64, x: f64, y: f64, w: f64, h: f64) -> Rect 
     }
 }
 
-/// Height of the primary screen (the first in `NSScreen.screens`).
+thread_local! {
+    /// The primary screen's height as last read; `None` until it is read,
+    /// and again after the screens change. The notification arrives on the
+    /// main thread, where the height is read. Kept apart from the flag in
+    /// `notify`, which the Pocket consumes.
+    static PRIMARY_HEIGHT: Cell<Option<f64>> = const { Cell::new(None) };
+    /// Forgets that height when the screens change; kept for good.
+    static SCREEN_WATCH: OnceCell<Retained<ScreenWatch>> = const { OnceCell::new() };
+}
+
+define_class!(
+    // SAFETY:
+    // - NSObject has no subclassing requirements.
+    // - `ScreenWatch` does not implement `Drop`.
+    #[unsafe(super(NSObject))]
+    #[name = "VentoScreenWatch"]
+    struct ScreenWatch;
+
+    // SAFETY: `NSObjectProtocol` has no safety requirements.
+    unsafe impl NSObjectProtocol for ScreenWatch {}
+
+    impl ScreenWatch {
+        #[unsafe(method(screensChanged:))]
+        fn screens_did_change(&self, _note: &NSNotification) {
+            // `try_with`: a panic must not unwind into AppKit.
+            let _ = PRIMARY_HEIGHT.try_with(|cell| cell.set(None));
+        }
+    }
+);
+
+impl ScreenWatch {
+    /// Creates the watch and registers it for screen changes. The
+    /// notification center holds it weakly: keep it alive.
+    fn install() -> Retained<Self> {
+        let this = Self::alloc().set_ivars(());
+        // SAFETY: `init` is NSObject's designated initializer.
+        let watch: Retained<Self> = unsafe { msg_send![super(this), init] };
+        // SAFETY: `screensChanged:` is a method of `ScreenWatch` that takes
+        // one NSNotification and returns nothing.
+        unsafe {
+            NSNotificationCenter::defaultCenter().addObserver_selector_name_object(
+                &watch,
+                sel!(screensChanged:),
+                Some(NSApplicationDidChangeScreenParametersNotification),
+                None,
+            );
+        }
+        watch
+    }
+}
+
+/// Height of the primary screen (the first in `NSScreen.screens`), read
+/// again only after the screens change: the input poll asks on every tick.
 pub(super) fn primary_height(mtm: MainThreadMarker) -> f64 {
-    NSScreen::screens(mtm)
-        .firstObject()
-        .map(|s| s.frame().size.height)
-        .unwrap_or(0.0)
+    cached_primary_height(|| {
+        NSScreen::screens(mtm)
+            .firstObject()
+            .map(|s| s.frame().size.height)
+            .unwrap_or(0.0)
+    })
+}
+
+/// The cached primary height, from `read` when none is cached or the
+/// screens changed since.
+fn cached_primary_height(read: impl FnOnce() -> f64) -> f64 {
+    SCREEN_WATCH.with(|watch| {
+        watch.get_or_init(ScreenWatch::install);
+    });
+    if let Some(height) = PRIMARY_HEIGHT.with(Cell::get) {
+        return height;
+    }
+    let height = read();
+    PRIMARY_HEIGHT.with(|cell| cell.set(Some(height)));
+    height
 }
 
 /// Each screen's work area (`visibleFrame`: without the menu bar and Dock),
@@ -224,6 +296,24 @@ mod tests {
         assert!(frame_contains(r, Point { x: -1.0, y: 10.0 }));
         assert!(!frame_contains(r, Point { x: 0.0, y: 10.0 }));
         assert!(!frame_contains(r, Point { x: -50.0, y: 50.0 }));
+    }
+
+    #[test]
+    fn primary_height_is_read_again_after_a_screen_change() {
+        let read = |h: f64| move || h;
+        // The cache is per thread, and a post is delivered on the thread
+        // that posts: other tests posting screen changes leave this one be.
+        assert_eq!(cached_primary_height(read(900.0)), 900.0);
+        assert_eq!(cached_primary_height(read(1.0)), 900.0, "cached");
+        // SAFETY: a plain notification post, delivered on this thread.
+        unsafe {
+            NSNotificationCenter::defaultCenter().postNotificationName_object(
+                NSApplicationDidChangeScreenParametersNotification,
+                None,
+            );
+        }
+        assert_eq!(cached_primary_height(read(1080.0)), 1080.0);
+        assert_eq!(cached_primary_height(read(1.0)), 1080.0);
     }
 
     #[test]

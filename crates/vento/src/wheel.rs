@@ -1,9 +1,10 @@
 //! The wheel window and the controller that drives it from polled input.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::pocket::to_image;
@@ -29,7 +30,7 @@ use vento_core::geometry::{
 use vento_core::ring::{Hover, RingEvent, RingTracker};
 use vento_core::settings::Settings;
 use vento_core::trigger::{InputSample, TriggerEvent, TriggerMachine};
-use vento_platform::Platform;
+use vento_platform::{Platform, RgbaImage};
 
 /// Where the wheel window waits, out of sight, while it is pre-warmed.
 const PARKED: LogicalPosition = LogicalPosition {
@@ -40,8 +41,6 @@ const PARKED: LogicalPosition = LogicalPosition {
 const RELEASE_GRACE: Duration = Duration::from_millis(250);
 /// winit delivers one `DroppedFile` per file; collect them for this long.
 const DROP_BATCH: Duration = Duration::from_millis(30);
-/// Polling rate while paused (slower than idle polling; input is not sampled).
-const PAUSED_INTERVAL: Duration = Duration::from_millis(500);
 /// Tick on which the parked window is shown, so the native window and renderer exist.
 const WARM_SHOW_TICK: u32 = 1;
 /// Tick on which the parked window is hidden again and the drop handler registered.
@@ -251,6 +250,99 @@ fn format_label(format: ImageFormat) -> CellLabel {
     }
 }
 
+/// The ring's folders as last checked, and their icons.
+struct RingFolders {
+    /// The recent then pinned folders that existed at the last check;
+    /// `None` until a check has reported.
+    dests: Option<Vec<Destination>>,
+    /// Finder icons of those folders, by path, drawn at `scale`.
+    icons: HashMap<PathBuf, Image>,
+    scale: f64,
+}
+
+/// What the folder worker is asked to check.
+struct FolderCheck {
+    recent: Vec<PathBuf>,
+    pinned: Vec<PathBuf>,
+    /// Pixels per point to draw icons at.
+    scale: f64,
+    /// Folders whose icons the main thread already has at `scale`.
+    have_icons: HashSet<PathBuf>,
+}
+
+/// What the folder worker found.
+struct FolderReport {
+    dests: Vec<Destination>,
+    scale: f64,
+    /// Icons of the folders in `dests` that were not in `have_icons`; `None`
+    /// where the system has none.
+    icons: Vec<(PathBuf, Option<RgbaImage>)>,
+}
+
+/// Checks which ring folders exist and draws their icons on a thread of its
+/// own, so a drag never waits on the file system (a sleeping disk, a gone
+/// network volume) or on icon rendering. Reports are collected on the poll
+/// tick. The thread ends when this is dropped.
+struct FolderWorker {
+    checks: Sender<FolderCheck>,
+    reports: Receiver<FolderReport>,
+}
+
+impl FolderWorker {
+    /// `None` if the thread cannot be started.
+    fn spawn() -> Option<Self> {
+        let (checks, inbox) = mpsc::channel::<FolderCheck>();
+        let (outbox, reports) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("vento-ring-folders".into())
+            .spawn(move || {
+                while let Ok(mut check) = inbox.recv() {
+                    // Only the newest check matters.
+                    while let Ok(newer) = inbox.try_recv() {
+                        check = newer;
+                    }
+                    if outbox.send(check_folders(check)).is_err() {
+                        break;
+                    }
+                }
+            });
+        match spawned {
+            Ok(_) => Some(Self { checks, reports }),
+            Err(e) => {
+                warn!("cannot start the ring folder worker: {e}");
+                None
+            }
+        }
+    }
+}
+
+/// Runs `check`: which folders exist, and the icons not yet drawn. Blocks on
+/// the file system; any thread.
+fn check_folders(check: FolderCheck) -> FolderReport {
+    let dests = ring_destinations(&check.recent, &check.pinned, folder_exists);
+    let icons = dests
+        .iter()
+        .filter(|d| !check.have_icons.contains(&d.path))
+        .map(|d| {
+            let icon = vento_platform::file_icon_at(&d.path, FOLDER_ICON_PX, check.scale);
+            (d.path.clone(), icon)
+        })
+        .collect();
+    FolderReport {
+        dests,
+        scale: check.scale,
+        icons,
+    }
+}
+
+/// Whether `settings` has an action whose ring shows folders.
+fn has_folder_ring(settings: &Settings) -> bool {
+    settings
+        .actions
+        .iter()
+        .any(|a| matches!(a, ActionId::Move | ActionId::CopyTo))
+}
+
 /// Receives every input sample and whether a drag (of any type) is under way.
 type SampleListener = Box<dyn Fn(&InputSample, bool)>;
 
@@ -264,16 +356,17 @@ pub struct WheelController {
     recent: Rc<RefCell<RecentDestinations>>,
     /// The home folder, shown as `~` in destination paths.
     home: Option<PathBuf>,
-    /// Finder icons of ring folders, by path.
-    folder_icons: RefCell<HashMap<PathBuf, Image>>,
+    /// The ring's folders and their icons, as the worker last reported.
+    folders: RefCell<RingFolders>,
+    /// Checks the ring's folders off the main thread; `None` if it could not
+    /// start, and the checks then run on the main thread.
+    folder_worker: Option<FolderWorker>,
     machine: RefCell<TriggerMachine>,
     state: RefCell<State>,
     paused: Cell<bool>,
     poll: Timer,
     grace: Timer,
     batch: Timer,
-    /// Fetches the ring's folder icons just after the wheel shows.
-    icon_fetch: Timer,
     sample_listener: RefCell<Option<SampleListener>>,
     this: Weak<Self>,
 }
@@ -300,7 +393,12 @@ impl WheelController {
             on_drop,
             recent,
             home: std::env::var_os("HOME").map(PathBuf::from),
-            folder_icons: RefCell::new(HashMap::new()),
+            folders: RefCell::new(RingFolders {
+                dests: None,
+                icons: HashMap::new(),
+                scale: 1.0,
+            }),
+            folder_worker: FolderWorker::spawn(),
             machine: RefCell::new(machine),
             state: RefCell::new(State {
                 ticks: 0,
@@ -320,7 +418,6 @@ impl WheelController {
             poll: Timer::default(),
             grace: Timer::default(),
             batch: Timer::default(),
-            icon_fetch: Timer::default(),
             sample_listener: RefCell::new(None),
             this: this.clone(),
         });
@@ -330,21 +427,43 @@ impl WheelController {
 
     /// Pre-warms the window on the first ticks, then polls for the trigger.
     pub fn start(self: &Rc<Self>) {
-        self.schedule();
+        let this = self.this.clone();
+        let interval = self.machine.borrow().poll_interval();
+        self.poll.start(TimerMode::Repeated, interval, move || {
+            if let Some(controller) = this.upgrade() {
+                controller.tick();
+                controller.rearm();
+            }
+        });
     }
 
-    /// While paused, input is not sampled and polling slows to 500 ms. An open
-    /// wheel is dismissed. Unpausing starts from a fresh trigger state, so
-    /// nothing seen before the pause can open the wheel.
+    /// While paused, input is not sampled and the poll stops (once the
+    /// window is pre-warmed). An open wheel is dismissed. Unpausing starts
+    /// from a fresh trigger state, so nothing seen before the pause can open
+    /// the wheel.
     pub fn set_paused(&self, paused: bool) {
         self.paused.set(paused);
         if paused {
             if self.machine.borrow().is_open() {
                 self.dismiss();
             }
+            if self.warmed_up() {
+                self.poll.stop();
+            }
         } else {
             self.reset_trigger();
+            if !self.poll.running() {
+                // Not running: this only sets the interval `restart` uses.
+                self.poll
+                    .set_interval(self.machine.borrow().poll_interval());
+                self.poll.restart();
+            }
         }
+    }
+
+    /// Whether the window has been pre-warmed (and the drop handler set).
+    fn warmed_up(&self) -> bool {
+        self.state.borrow().ticks >= WARM_HIDE_TICK
     }
 
     /// Hands every input sample to `f`, with whether a drag of any type is
@@ -375,6 +494,10 @@ impl WheelController {
         }
         self.reset_trigger();
         self.render_geometry();
+        // Pinned folders may have changed; the warm-up runs the first check.
+        if self.warmed_up() {
+            self.check_folders(None);
+        }
     }
 
     /// Pushes the current geometry and labels into the Slint window.
@@ -451,20 +574,17 @@ impl WheelController {
         ));
     }
 
-    /// Arms the single-shot poll timer for the next tick.
-    fn schedule(&self) {
-        let interval = if self.paused.get() {
-            PAUSED_INTERVAL
-        } else {
-            self.machine.borrow().poll_interval()
-        };
-        let this = self.this.clone();
-        self.poll.start(TimerMode::SingleShot, interval, move || {
-            if let Some(controller) = this.upgrade() {
-                controller.tick();
-                controller.schedule();
-            }
-        });
+    /// After a tick: moves the poll timer to the interval the trigger asks
+    /// for now, if that changed, or stops it while paused.
+    fn rearm(&self) {
+        if self.paused.get() && self.warmed_up() {
+            self.poll.stop();
+            return;
+        }
+        let interval = self.machine.borrow().poll_interval();
+        if self.poll.interval() != interval {
+            self.poll.set_interval(interval);
+        }
     }
 
     fn tick(&self) {
@@ -486,10 +606,12 @@ impl WheelController {
                 self.hide_window();
                 self.register_drop_handler();
                 debug!("wheel pre-warmed");
+                self.check_folders(None);
             }
             t if t < WARM_HIDE_TICK => {}
             _ if self.paused.get() => {}
             _ => {
+                self.collect_folder_reports();
                 let sample = self.platform.sample_input();
                 let (event, dragging) = {
                     let mut machine = self.machine.borrow_mut();
@@ -531,8 +653,10 @@ impl WheelController {
     }
 
     fn open(&self, cursor: Point, started: Instant) {
+        // The ring opens a hold later at the earliest: check its folders now.
+        self.check_folders(Some(cursor));
         let screens = self.platform.screens();
-        let (extent, rings) = {
+        let extent = {
             let mut state = self.state.borrow_mut();
             let extent = state.geometry.extent();
             state.center = place_center(cursor, extent, &screens);
@@ -540,12 +664,7 @@ impl WheelController {
             state.highlighted = None;
             state.last_offset = Vec2 { x: 0.0, y: 0.0 };
             state.dropped.clear();
-            let rings = state
-                .settings
-                .actions
-                .iter()
-                .any(|a| matches!(a, ActionId::Move | ActionId::CopyTo));
-            (extent, rings)
+            extent
         };
         self.label_archive_cell();
         // `dismiss` already cleared the highlight with animation off.
@@ -555,16 +674,6 @@ impl WheelController {
             warn!("cannot show the wheel: {e}");
         }
         debug!("wheel open in {:?}", started.elapsed());
-        if rings {
-            // Folder icons are slow to make: fetch them once the wheel is up.
-            let this = self.this.clone();
-            self.icon_fetch
-                .start(TimerMode::SingleShot, Duration::ZERO, move || {
-                    if let Some(controller) = this.upgrade() {
-                        controller.fetch_folder_icons();
-                    }
-                });
-        }
     }
 
     /// Highlights the cell under the cursor, if any.
@@ -640,15 +749,139 @@ impl WheelController {
         }
     }
 
-    /// The ring's folders as they are now: recent ones, then pinned ones,
-    /// leaving out those that do not exist.
+    /// The ring's folders as last checked: recent ones, then pinned ones,
+    /// leaving out those that did not exist. Empty before the first check.
     fn destinations(&self) -> Vec<Destination> {
+        self.folders.borrow().dests.clone().unwrap_or_default()
+    }
+
+    /// Asks for a fresh check of the ring's folders, their icons drawn for
+    /// the screen at `at` (the primary screen when `None`). Nothing to do
+    /// when no action shows folders.
+    fn check_folders(&self, at: Option<Point>) {
+        let (recent, pinned) = {
+            let state = self.state.borrow();
+            if !has_folder_ring(&state.settings) {
+                return;
+            }
+            let recent = self.recent.borrow().items().to_vec();
+            (recent, state.settings.pinned_folders.clone())
+        };
+        let scale = self
+            .platform
+            .scale_factor_at(at.unwrap_or(Point { x: 0.0, y: 0.0 }));
+        let have_icons = {
+            let folders = self.folders.borrow();
+            if folders.scale == scale {
+                folders.icons.keys().cloned().collect()
+            } else {
+                HashSet::new()
+            }
+        };
+        let check = FolderCheck {
+            recent,
+            pinned,
+            scale,
+            have_icons,
+        };
+        let check = match &self.folder_worker {
+            Some(worker) => match worker.checks.send(check) {
+                Ok(()) => return,
+                Err(mpsc::SendError(check)) => {
+                    warn!("the ring folder worker is gone; checking here");
+                    check
+                }
+            },
+            None => check,
+        };
+        self.take_folder_report(check_folders(check));
+    }
+
+    /// Takes in what the folder worker has reported since the last tick.
+    fn collect_folder_reports(&self) {
+        let Some(worker) = &self.folder_worker else {
+            return;
+        };
+        while let Ok(report) = worker.reports.try_recv() {
+            self.take_folder_report(report);
+        }
+    }
+
+    /// Keeps the folders and icons a check found, and brings the ring up to
+    /// date with them.
+    fn take_folder_report(&self, report: FolderReport) {
+        let changed = {
+            let mut folders = self.folders.borrow_mut();
+            if folders.scale != report.scale {
+                // Asked for with no icons in hand: the report has them all.
+                folders.icons.clear();
+                folders.scale = report.scale;
+            }
+            for (path, icon) in report.icons {
+                let icon = icon.as_ref().and_then(to_image).unwrap_or_default();
+                folders.icons.insert(path, icon);
+            }
+            folders
+                .icons
+                .retain(|path, _| report.dests.iter().any(|d| d.path == *path));
+            let changed = folders.dests.as_ref() != Some(&report.dests);
+            folders.dests = Some(report.dests);
+            changed
+        };
+        self.refresh_folder_ring(changed);
+    }
+
+    /// After a folder check: during a drag, the folder ring the cursor holds
+    /// open is rebuilt when the folders `changed` (the check was slower than
+    /// the hold) or opened when it had nothing to show; otherwise an open
+    /// folder ring only gets its icons.
+    fn refresh_folder_ring(&self, changed: bool) {
+        let dragging = {
+            let machine = self.machine.borrow();
+            machine.is_open() && machine.drag_in_progress()
+        };
+        let reopen = {
+            let state = self.state.borrow();
+            let shown = matches!(
+                state.ring,
+                Some(OpenRing {
+                    items: RingItems::Folders(_),
+                    ..
+                })
+            );
+            state.tracker.open_for().filter(|&source| {
+                dragging
+                    && (changed || !shown)
+                    && state
+                        .settings
+                        .actions
+                        .get(source)
+                        .is_some_and(|a| matches!(a, ActionId::Move | ActionId::CopyTo))
+            })
+        };
+        if let Some(source) = reopen {
+            self.close_ring();
+            self.open_ring(source);
+            return;
+        }
         let state = self.state.borrow();
-        ring_destinations(
-            self.recent.borrow().items(),
-            &state.settings.pinned_folders,
-            folder_exists,
-        )
+        let Some(OpenRing {
+            items: RingItems::Folders(dests),
+            ..
+        }) = &state.ring
+        else {
+            return;
+        };
+        let cells = self.window.get_ring_cells();
+        for (i, dest) in dests.iter().enumerate() {
+            if let Some(mut cell) = cells.row_data(i) {
+                cell.icon = self.folder_icon(&dest.path);
+                cells.set_row_data(i, cell);
+            }
+        }
+        if let Some(dest) = state.ring_hot.and_then(|d| dests.get(d)) {
+            self.window.set_dest_icon(self.folder_icon(&dest.path));
+        }
     }
 
     /// Opens the ring around the action at `source`: formats for Convert,
@@ -796,37 +1029,15 @@ impl WheelController {
         }
     }
 
-    /// The Finder icon of `folder`, fetched once and then kept; empty if the
-    /// system has none.
+    /// The Finder icon of `folder` as the folder worker drew it; empty while
+    /// it has not yet, or if the system has none.
     fn folder_icon(&self, folder: &Path) -> Image {
-        if let Some(icon) = self.folder_icons.borrow().get(folder) {
-            return icon.clone();
-        }
-        let icon = self
-            .platform
-            .file_icon(folder, FOLDER_ICON_PX)
-            .as_ref()
-            .and_then(to_image)
-            .unwrap_or_default();
-        self.folder_icons
-            .borrow_mut()
-            .insert(folder.to_path_buf(), icon.clone());
-        icon
-    }
-
-    /// Fetches the icons of the folders the ring would show now, and forgets
-    /// those of folders it no longer shows.
-    fn fetch_folder_icons(&self) {
-        if !self.machine.borrow().is_open() {
-            return;
-        }
-        let dests = self.destinations();
-        self.folder_icons
-            .borrow_mut()
-            .retain(|path, _| dests.iter().any(|d| d.path == *path));
-        for dest in &dests {
-            self.folder_icon(&dest.path);
-        }
+        self.folders
+            .borrow()
+            .icons
+            .get(folder)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// The button was released over nothing the wheel received: pass through.
@@ -916,7 +1127,6 @@ impl WheelController {
     fn dismiss(&self) {
         self.grace.stop();
         self.batch.stop();
-        self.icon_fetch.stop();
         {
             let mut state = self.state.borrow_mut();
             state.dropped.clear();
@@ -1000,6 +1210,45 @@ mod tests {
         assert_eq!(label.line1, "JPEG");
         assert_eq!(label.line2.as_deref(), Some(".jpg"));
         assert!(label.line2_dim);
+    }
+
+    #[test]
+    fn folder_check_skips_missing_folders_and_icons_in_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, gone) = (
+            dir.path().join("a"),
+            dir.path().join("b"),
+            dir.path().join("gone"),
+        );
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        // Run where the worker does: off the main thread.
+        let report = std::thread::spawn({
+            let (a, b, gone) = (a.clone(), b.clone(), gone.clone());
+            move || {
+                check_folders(FolderCheck {
+                    recent: vec![a.clone(), gone],
+                    pinned: vec![b],
+                    scale: 2.0,
+                    have_icons: HashSet::from([a]),
+                })
+            }
+        })
+        .join()
+        .unwrap();
+        let paths: Vec<_> = report.dests.iter().map(|d| (&d.path, d.pinned)).collect();
+        assert_eq!(paths, [(&a, false), (&b, true)]);
+        assert_eq!(report.scale, 2.0);
+        let drawn: Vec<_> = report.icons.iter().map(|(p, _)| p).collect();
+        assert_eq!(drawn, [&b], "only the icon not in hand is drawn");
+        #[cfg(target_os = "macos")]
+        {
+            let icon = report.icons[0].1.as_ref().expect("a folder icon");
+            assert_eq!(
+                (icon.width, icon.height),
+                (2 * FOLDER_ICON_PX, 2 * FOLDER_ICON_PX)
+            );
+        }
     }
 
     #[test]

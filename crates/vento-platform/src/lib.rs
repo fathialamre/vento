@@ -380,6 +380,21 @@ pub fn is_package(path: &Path) -> bool {
     }
 }
 
+/// The Finder icon of `path`, as [`Platform::file_icon`] renders it but at
+/// `scale` physical pixels per point. A free function so a worker thread
+/// can call it. Always `None` where unsupported.
+pub fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::file_icon_at(path, px, scale)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, px, scale);
+        None
+    }
+}
+
 /// A thumbnail of the picture file at `path`: its shorter side `short_px`
 /// pixels, its longer one in proportion but at most `max_ratio` times as
 /// long. `None` if it is missing or not a readable picture. A free function

@@ -20,13 +20,20 @@ pub(super) fn file_icon(path: &Path, px: u32) -> Option<RgbaImage> {
         log::warn!("file_icon called off the main thread; ignored");
         return None;
     };
+    let scale = NSScreen::mainScreen(mtm)
+        .map(|s| s.backingScaleFactor())
+        .unwrap_or(1.0);
+    file_icon_at(path, px, scale)
+}
+
+/// [`file_icon`] drawn at `scale` pixels per point instead of the main
+/// screen's. Any thread: `iconForFile` is thread-safe, and it draws into
+/// its own bitmap.
+pub(crate) fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
     if px == 0 || !path.exists() {
         return None;
     }
     let path = path.to_str()?;
-    let scale = NSScreen::mainScreen(mtm)
-        .map(|s| s.backingScaleFactor())
-        .unwrap_or(1.0);
     let side = (f64::from(px) * scale).round() as usize;
     if side == 0 {
         return None;
