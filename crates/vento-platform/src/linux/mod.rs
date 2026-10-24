@@ -18,6 +18,7 @@ use crate::{
 };
 
 mod apps;
+mod icons;
 mod portal;
 mod terminal;
 mod trash;
@@ -119,7 +120,8 @@ impl Platform for LinuxPlatform {
     }
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
-        self.stub.file_icon(path, px)
+        let scale = self.scale_factor_at(Point { x: 0.0, y: 0.0 });
+        icons::file_icon(path, (f64::from(px) * scale).round() as u32)
     }
 
     fn kind_description(&self, path: &Path) -> Option<String> {

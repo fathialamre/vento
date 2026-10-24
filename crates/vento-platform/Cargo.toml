@@ -111,6 +111,9 @@ xattr = "1"
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = "0.22"
 gio-unix = "0.22"
+# Both already in the app through Slint, so file icons add no code size.
+image = { version = "0.25", default-features = false, features = ["png"] }
+resvg = { version = "0.48", default-features = false }
 
 [dev-dependencies]
 # Writes the PNG files the picture thumbnail tests read.
