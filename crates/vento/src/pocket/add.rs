@@ -2,7 +2,9 @@
 //! copies for them.
 
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -62,15 +64,82 @@ pub(super) fn saved_content(plan: &AddPlan) -> Option<Cow<'_, [u8]>> {
     }
 }
 
-/// Whether one of the `saved` files holds exactly `bytes`, so the same
-/// text, link or image is not saved into the Pocket twice. Only files of
-/// the same size are read; one that can't be read counts as different.
-pub(super) fn holds_content<'a>(saved: impl IntoIterator<Item = &'a Path>, bytes: &[u8]) -> bool {
-    let len = bytes.len() as u64;
-    saved.into_iter().any(|path| {
-        fs::metadata(path).is_ok_and(|m| m.len() == len)
-            && fs::read(path).is_ok_and(|held| held == bytes)
-    })
+/// The size and a hash of some content, to tell it from other content
+/// without holding or reading it again. Two contents with the same print
+/// are taken to be the same: a 64-bit hash of contents of the same size
+/// does not collide by chance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Print {
+    len: u64,
+    hash: u64,
+}
+
+impl Print {
+    pub(super) fn of(bytes: &[u8]) -> Self {
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        Self {
+            len: bytes.len() as u64,
+            hash: hasher.finish(),
+        }
+    }
+}
+
+/// The prints of the saved files, so a drop is compared with them without
+/// reading every file of its size on each drop: a file is read only the
+/// first time, or once it changed (its size or modification time). Kept in
+/// memory only.
+#[derive(Debug, Default)]
+pub(super) struct SavedPrints {
+    known: HashMap<PathBuf, (Option<SystemTime>, Print)>,
+}
+
+impl SavedPrints {
+    /// Whether one of the `saved` files holds the content printed `print`,
+    /// so the same text, link or image is not saved into the Pocket twice.
+    /// Only files of the same size are compared; one that can't be read
+    /// counts as different. Prints of files no longer among `saved` are
+    /// forgotten.
+    pub(super) fn holds<'a>(
+        &mut self,
+        saved: impl IntoIterator<Item = &'a Path>,
+        print: Print,
+    ) -> bool {
+        let saved: Vec<&Path> = saved.into_iter().collect();
+        let listed: HashSet<&Path> = saved.iter().copied().collect();
+        self.known.retain(|path, _| listed.contains(path.as_path()));
+        saved.into_iter().any(|path| {
+            let Ok(meta) = fs::metadata(path) else {
+                return false;
+            };
+            if meta.len() != print.len {
+                return false;
+            }
+            let modified = meta.modified().ok();
+            match self.known.get(path) {
+                Some(&(at, known)) if at == modified && known.len == print.len => known == print,
+                _ => match fs::read(path) {
+                    Ok(held) => {
+                        let known = Print::of(&held);
+                        self.known.insert(path.to_path_buf(), (modified, known));
+                        known == print
+                    }
+                    Err(_) => false,
+                },
+            }
+        })
+    }
+
+    /// Notes that vento just saved the content printed `print` at `path`,
+    /// so a later drop needn't read it.
+    pub(super) fn remember(&mut self, path: &Path, print: Print) {
+        if let Ok(meta) = fs::metadata(path)
+            && meta.len() == print.len
+        {
+            self.known
+                .insert(path.to_path_buf(), (meta.modified().ok(), print));
+        }
+    }
 }
 
 /// A file to add, who owns it, and (for a kept copy) where it came from.
@@ -201,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn holds_content_compares_whole_files() {
+    fn saved_prints_compare_whole_contents() {
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("a.txt");
         let b = dir.path().join("b.txt");
@@ -209,11 +278,35 @@ mod tests {
         std::fs::write(&b, "world").unwrap();
         let gone = dir.path().join("gone.txt");
         let saved = [gone.as_path(), b.as_path(), a.as_path()];
-        assert!(holds_content(saved, b"hello"));
+        let mut prints = SavedPrints::default();
+        assert!(prints.holds(saved, Print::of(b"hello")));
         // Same length, other bytes; a prefix; nothing at all.
-        assert!(!holds_content(saved, b"hellp"));
-        assert!(!holds_content(saved, b"hell"));
-        assert!(!holds_content([gone.as_path()], b"hello"));
+        assert!(!prints.holds(saved, Print::of(b"hellp")));
+        assert!(!prints.holds(saved, Print::of(b"hell")));
+        assert!(!prints.holds([gone.as_path()], Print::of(b"hello")));
+        // Forgotten once no longer saved.
+        assert!(prints.known.is_empty());
+    }
+
+    #[test]
+    fn saved_prints_follow_changed_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.txt");
+        std::fs::write(&a, "hello").unwrap();
+        let mut prints = SavedPrints::default();
+        prints.remember(&a, Print::of(b"hello"));
+        assert!(prints.holds([a.as_path()], Print::of(b"hello")));
+        // Rewritten with as many bytes, at another time: read again.
+        std::fs::write(&a, "world").unwrap();
+        let later = SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::File::options()
+            .write(true)
+            .open(&a)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        assert!(!prints.holds([a.as_path()], Print::of(b"hello")));
+        assert!(prints.holds([a.as_path()], Print::of(b"world")));
     }
 
     #[test]

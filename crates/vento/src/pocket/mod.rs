@@ -1,10 +1,12 @@
 //! The Pocket island: a black window that grows out of the notch (or sits as
 //! a pill under the menu bar) and shows what the Pocket holds.
 //!
-//! The window always has the expanded size and sits at the top centre of the
-//! island's screen; the collapsed shape is drawn inside it. Presence is
-//! decided by [`IslandState`] from the wheel's input samples, so the island
-//! adds no polling of its own.
+//! The window has the expanded width and sits at the top centre of the
+//! island's screen; it grows to the expanded height just before the island
+//! expands and shrinks back to the collapsed shape once it has collapsed, so
+//! a resting island covers no more of the screen than it draws on. Presence
+//! is decided by [`IslandState`] from the wheel's input samples, so the
+//! island adds no polling of its own.
 //!
 //! Items come in from the wheel's Pocket action ([`PocketController::add`]),
 //! by a drop on the expanded island (through the platform's drop catcher),
@@ -48,9 +50,9 @@ use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
-use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
+use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
-use clip_view::ClipView;
+use clip_view::{ClipView, view_index};
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
@@ -68,9 +70,12 @@ const PARKED: LogicalPosition = LogicalPosition {
 };
 /// How long the parked window stays up, so the native window exists.
 const WARM_DELAY: Duration = Duration::from_millis(200);
+/// How long the island takes to collapse (`pocket.slint` animates it for
+/// 160 ms), with room to spare: the window shrinks only after.
+const COLLAPSE_DONE: Duration = Duration::from_millis(250);
 /// How long the island offers Undo after a clear or an x.
 const UNDO_LIFETIME: Duration = Duration::from_secs(5);
-/// How often the Undo ring is redrawn while it counts down.
+/// How often the Undo ring is redrawn while it counts down in sight.
 const UNDO_TICK: Duration = Duration::from_millis(50);
 /// How long after a clear or an x vento's own files go to the Trash: once
 /// Undo is no longer offered.
@@ -205,6 +210,9 @@ pub struct PocketController {
     /// Files being copied into `kept/` by a running job, so a second drop
     /// of the same file is not copied again.
     copying: RefCell<Vec<PathBuf>>,
+    /// What the saved files hold, so a drop of the same content is spotted
+    /// without reading them all again.
+    saved_prints: RefCell<SavedPrints>,
     /// The window has been pre-warmed; samples before that are ignored.
     warm: Cell<bool>,
     overlay_ready: Cell<bool>,
@@ -212,6 +220,8 @@ pub struct PocketController {
     was_dragging: Cell<bool>,
     /// Whether the window takes the pointer (otherwise it ignores it).
     hittest: Cell<bool>,
+    /// Shrinks the window once the island has collapsed.
+    shrink_timer: Timer,
     /// Ids of the selected items, toggled by clicking their cells.
     selected: RefCell<Vec<u64>>,
     /// Presses on the cells and on "Drag all".
@@ -222,6 +232,9 @@ pub struct PocketController {
     undo: RefCell<Option<(Undo, Instant)>>,
     /// Counts the offered Undo down.
     undo_timer: Timer,
+    /// `undo_timer` repeats to redraw the ring in sight; otherwise it only
+    /// waits for the offer to end.
+    undo_ticking: Cell<bool>,
     /// The cells a clear took, shown faded while its Undo is offered.
     ghosts: Rc<VecModel<PocketCell>>,
     /// vento is paused: the island rests and takes nothing.
@@ -277,15 +290,18 @@ impl PocketController {
             catcher: RefCell::new(None),
             catcher_rect: Cell::new(None),
             copying: RefCell::new(Vec::new()),
+            saved_prints: RefCell::new(SavedPrints::default()),
             warm: Cell::new(false),
             overlay_ready: Cell::new(false),
             was_dragging: Cell::new(false),
             hittest: Cell::new(true),
+            shrink_timer: Timer::default(),
             selected: RefCell::new(Vec::new()),
             latch: PressLatch::default(),
             pending: PendingTrash::default(),
             undo: RefCell::new(None),
             undo_timer: Timer::default(),
+            undo_ticking: Cell::new(false),
             ghosts,
             paused: Cell::new(false),
             last_cursor: Cell::new(None),
@@ -744,20 +760,21 @@ impl PocketController {
         }
         self.ghosts.set_vec(ghosts);
         self.window.set_undo_active(true);
-        self.tick_undo();
-        let this = self.this.clone();
-        self.undo_timer
-            .start(TimerMode::Repeated, UNDO_TICK, move || {
-                if let Some(c) = this.upgrade() {
-                    c.tick_undo();
-                }
-            });
+        self.run_undo_timer();
         self.fit_panel();
     }
 
-    /// Redraws the Undo countdown, or withdraws the offer once it is up.
-    fn tick_undo(&self) {
-        let Some(until) = self.undo.borrow().as_ref().map(|(_, until)| *until) else {
+    /// Counts the offered Undo down, or withdraws the offer once it is up.
+    /// Its ring is redrawn every [`UNDO_TICK`] while in sight; otherwise
+    /// nothing runs until the offer ends (collapsed, the island shows no
+    /// time). Call again whenever the ring may come into or go out of sight.
+    fn run_undo_timer(&self) {
+        let Some((kind, until)) = self
+            .undo
+            .borrow()
+            .as_ref()
+            .map(|(undo, until)| (undo.kind(), *until))
+        else {
             return;
         };
         let left = until.saturating_duration_since(Instant::now());
@@ -768,10 +785,24 @@ impl PocketController {
             }
             return;
         }
-        self.window
-            .set_undo_left(left.as_secs_f32() / UNDO_LIFETIME.as_secs_f32());
-        self.window
-            .set_undo_secs(i32::try_from(left.as_millis().div_ceil(1000)).unwrap_or(0));
+        let this = self.this.clone();
+        let tick = move || {
+            if let Some(c) = this.upgrade() {
+                c.run_undo_timer();
+            }
+        };
+        if self.expanded() && view_index(self.shown_view()) == kind {
+            self.window
+                .set_undo_left(left.as_secs_f32() / UNDO_LIFETIME.as_secs_f32());
+            self.window
+                .set_undo_secs(i32::try_from(left.as_millis().div_ceil(1000)).unwrap_or(0));
+            if !self.undo_ticking.replace(true) {
+                self.undo_timer.start(TimerMode::Repeated, UNDO_TICK, tick);
+            }
+        } else {
+            self.undo_ticking.set(false);
+            self.undo_timer.start(TimerMode::SingleShot, left, tick);
+        }
     }
 
     /// The island's Undo: puts back what the offered Undo took.
@@ -791,6 +822,7 @@ impl PocketController {
     fn end_undo(&self) -> Option<Undo> {
         let (undo, _) = self.undo.take()?;
         self.undo_timer.stop();
+        self.undo_ticking.set(false);
         self.window.set_undo_active(false);
         self.ghosts.set_vec(Vec::new());
         self.fit_panel();
@@ -1085,7 +1117,9 @@ impl PocketController {
         if after == Presence::Expanded || before == Presence::Hidden {
             self.refresh();
         }
+        self.fit_window(before, after);
         self.window.set_expanded(after == Presence::Expanded);
+        self.run_undo_timer();
         if after == Presence::Hidden {
             self.hide_window();
         } else if before == Presence::Hidden {
@@ -1105,6 +1139,35 @@ impl PocketController {
                 w.scale_factor(),
                 w.with_winit_window(|w| w.has_focus())
             );
+        }
+    }
+
+    /// Makes the window as tall as the expanded island before it expands,
+    /// and as tall as the collapsed shape once it has collapsed (its top
+    /// stays where it is, so nothing drawn moves). A hidden window shrinks
+    /// at once.
+    fn fit_window(&self, before: Presence, after: Presence) {
+        match after {
+            Presence::Expanded => {
+                self.shrink_timer.stop();
+                self.window.set_full(true);
+            }
+            Presence::Hidden => {
+                self.shrink_timer.stop();
+                self.window.set_full(false);
+            }
+            Presence::Collapsed if before == Presence::Expanded => {
+                let this = self.this.clone();
+                self.shrink_timer
+                    .start(TimerMode::SingleShot, COLLAPSE_DONE, move || {
+                        if let Some(c) = this.upgrade()
+                            && !c.expanded()
+                        {
+                            c.window.set_full(false);
+                        }
+                    });
+            }
+            Presence::Collapsed => {}
         }
     }
 
@@ -1137,7 +1200,7 @@ impl PocketController {
     /// drops keep working meanwhile.
     fn add_dropped(&self, d: Dropped) {
         let keep_copies = self.settings.borrow().pocket_keep_copies;
-        let (plan, held) = {
+        let (plan, print, held) = {
             let pocket = self.pocket.borrow();
             let copying = self.copying.borrow();
             let plan = plan_new(&d, keep_copies, |p| {
@@ -1148,8 +1211,9 @@ impl PocketController {
                 .iter()
                 .filter(|i| i.source == ItemSource::Saved)
                 .map(|i| i.path.as_path());
-            let held = saved_content(&plan).is_some_and(|bytes| holds_content(saved, &bytes));
-            (plan, held)
+            let print = saved_content(&plan).map(|bytes| Print::of(&bytes));
+            let held = print.is_some_and(|p| self.saved_prints.borrow_mut().holds(saved, p));
+            (plan, print, held)
         };
         match plan {
             _ if held => debug!("pocket already holds this content"),
@@ -1157,6 +1221,12 @@ impl PocketController {
             AddPlan::Copies(paths) => self.spawn_copies(paths),
             plan => {
                 let (entries, errors) = store(plan, &pocket_dir());
+                if let Some(print) = print {
+                    let mut prints = self.saved_prints.borrow_mut();
+                    for (path, _, _) in &entries {
+                        prints.remember(path, print);
+                    }
+                }
                 self.finish_add(entries, &errors);
             }
         }
@@ -1281,6 +1351,8 @@ impl PocketController {
             self.set_view(View::Pocket);
         }
         self.refresh();
+        // The view shown, and so the ring in sight, may have changed.
+        self.run_undo_timer();
     }
 
     /// Empties the clipboard history at once, with no Undo (the settings'
@@ -1304,11 +1376,25 @@ impl PocketController {
         }
     }
 
-    /// Re-reads which files are missing, loads icons not yet cached, and
-    /// pushes the cells and the count into the window, and the clipboard
-    /// history with them. Only rows that changed are touched, so a copy
-    /// made while the island is open keeps its hover and presses.
+    /// Pushes the count into the window, and the clipboard history with it.
+    /// The cells are rebuilt only while the island is expanded (a hidden or
+    /// collapsed island shows none), so a copy made meanwhile costs no look
+    /// at every file; [`present`](Self::present) refreshes as it expands.
     pub fn refresh(&self) {
+        if self.expanded() {
+            self.refresh_cells();
+        }
+        let count = self.pocket.borrow().items().len();
+        self.window
+            .set_count(i32::try_from(count).unwrap_or(i32::MAX));
+        self.refresh_clip();
+        self.fit_panel();
+    }
+
+    /// Re-reads which files are missing, loads icons not yet cached, and
+    /// pushes the cells into the window. Only rows that changed are touched,
+    /// so a copy made while the island is open keeps its hover and presses.
+    fn refresh_cells(&self) {
         let pocket = self.pocket.borrow();
         let missing = pocket.missing();
         let mut icons = self.icons.borrow_mut();
@@ -1337,12 +1423,11 @@ impl PocketController {
             }
         });
         set_rows(&self.cells, cells);
-        let count = pocket.items().len();
-        self.window
-            .set_count(i32::try_from(count).unwrap_or(i32::MAX));
-        drop((icons, selected, pocket));
-        self.refresh_clip();
-        self.fit_panel();
+    }
+
+    /// The island is expanded.
+    fn expanded(&self) -> bool {
+        self.island.borrow().presence() == Presence::Expanded
     }
 
     /// Widens or narrows the panel to what it shows (ruling P18), and sizes
