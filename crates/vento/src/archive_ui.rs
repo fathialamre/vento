@@ -1,6 +1,7 @@
 //! The Archive action's two windows: a progress pill for long jobs, which
 //! never takes the keyboard, and the password prompt for protected
-//! archives, which does.
+//! archives, which does. Each window exists from its first use until it
+//! has been hidden for [`crate::lazy_window::IDLE`].
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -14,6 +15,7 @@ use vento_core::archive::{Progress, Zeroizing};
 use vento_core::geometry::Point;
 use vento_platform::Platform;
 
+use crate::lazy_window::LazyWindow;
 use crate::toast::position_below;
 use crate::ui::{ArchiveProgress, PasswordPrompt};
 
@@ -74,7 +76,7 @@ fn keep_non_key(platform: &dyn Platform, window: &slint::Window, what: &str) -> 
 pub struct ProgressView {
     this: Weak<ProgressView>,
     platform: Rc<dyn Platform>,
-    window: ArchiveProgress,
+    window: LazyWindow<ArchiveProgress>,
     /// Waits out [`PROGRESS_DELAY`]; runs only between `track` and the
     /// window appearing.
     delay: Timer,
@@ -85,21 +87,18 @@ pub struct ProgressView {
     at: Cell<Point>,
     shown: Cell<bool>,
     /// The window has been made non-key (it needs the native window, which
-    /// exists once it has been shown).
+    /// Slint makes at the end of the turn the window was created in).
     non_key: Cell<bool>,
 }
 
 impl ProgressView {
-    /// Creates the (hidden) progress window.
-    ///
-    /// # Panics
-    /// If the Slint window cannot be created.
+    /// Creates the view; its window comes when a job first outlasts the
+    /// delay.
     pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
-        let window = ArchiveProgress::new().expect("cannot create the progress window");
-        let view = Rc::new_cyclic(|this| Self {
+        Rc::new_cyclic(|this| Self {
             this: this.clone(),
             platform,
-            window,
+            window: LazyWindow::new(),
             delay: Timer::default(),
             tick: Timer::default(),
             progress: RefCell::new(None),
@@ -107,16 +106,28 @@ impl ProgressView {
             at: Cell::new(Point { x: 0.0, y: 0.0 }),
             shown: Cell::new(false),
             non_key: Cell::new(false),
-        });
-        let this = view.this.clone();
-        view.window.on_cancel_clicked(move || {
-            if let Some(view) = this.upgrade()
-                && let Some(progress) = view.progress.borrow().as_ref()
-            {
-                progress.cancel();
-            }
-        });
-        view
+        })
+    }
+
+    /// The progress window, created and connected if there is none.
+    ///
+    /// # Panics
+    /// If the Slint window cannot be created.
+    fn window(&self) -> ArchiveProgress {
+        self.window.get_or_create(|| {
+            let window = ArchiveProgress::new().expect("cannot create the progress window");
+            // A new native window: it has yet to be made non-key.
+            self.non_key.set(false);
+            let this = self.this.clone();
+            window.on_cancel_clicked(move || {
+                if let Some(view) = this.upgrade()
+                    && let Some(progress) = view.progress.borrow().as_ref()
+                {
+                    progress.cancel();
+                }
+            });
+            window
+        })
     }
 
     /// Starts following `progress`; `verb` is `Extracting` or
@@ -144,32 +155,57 @@ impl ProgressView {
         self.delay.stop();
         self.tick.stop();
         self.progress.borrow_mut().take();
-        if self.shown.replace(false)
-            && let Err(e) = self.window.hide()
-        {
-            warn!("cannot hide the progress window: {e}");
+        if self.shown.replace(false) {
+            if let Some(window) = self.window.get()
+                && let Err(e) = window.hide()
+            {
+                warn!("cannot hide the progress window: {e}");
+            }
+            self.window.release_later();
         }
     }
 
     /// The job outlasted the delay: show the window and start refreshing it.
+    /// A new window shows once it has its native window, so that it can be
+    /// made non-key as it shows.
     fn appear(&self) {
         if self.progress.borrow().is_none() {
             return;
         }
+        self.window();
+        let this = self.this.clone();
+        self.window.when_native(move || {
+            if let Some(view) = this.upgrade() {
+                view.show_window();
+            }
+        });
+    }
+
+    fn show_window(&self) {
+        // Closed in the meantime, or tracking a newer job that has yet to
+        // outlast the delay.
+        if self.progress.borrow().is_none() || self.delay.running() {
+            self.window.release_later();
+            return;
+        }
+        let Some(window) = self.window.get() else {
+            return;
+        };
         self.refresh();
         let (x, y) = position_below(self.at.get(), PROGRESS_SIZE, &self.platform.screens());
-        self.window
+        window
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
-        if let Err(e) = self.window.show() {
+        if let Err(e) = window.show() {
             warn!("cannot show the progress window: {e}");
+            self.window.release_later();
             return;
         }
         self.shown.set(true);
         if !self.non_key.get() {
             self.non_key.set(keep_non_key(
                 self.platform.as_ref(),
-                self.window.window(),
+                window.window(),
                 "progress window",
             ));
         }
@@ -187,10 +223,12 @@ impl ProgressView {
         let Some(snapshot) = self.progress.borrow().as_ref().map(|p| p.snapshot()) else {
             return;
         };
-        self.window
-            .set_fraction(fraction(snapshot.done, snapshot.total));
+        let Some(window) = self.window.get() else {
+            return;
+        };
+        window.set_fraction(fraction(snapshot.done, snapshot.total));
         let title = progress_title(&self.verb.borrow(), &snapshot.current);
-        self.window.set_heading(title.into());
+        window.set_heading(title.into());
     }
 }
 
@@ -203,46 +241,52 @@ type Answer = Box<dyn FnOnce(Option<Zeroizing<Vec<u8>>>)>;
 pub struct PasswordView {
     this: Weak<PasswordView>,
     platform: Rc<dyn Platform>,
-    window: PasswordPrompt,
+    window: LazyWindow<PasswordPrompt>,
     answer: RefCell<Option<Answer>>,
     open: Cell<bool>,
 }
 
 impl PasswordView {
-    /// Creates the (hidden) password window.
+    /// Creates the view; its window comes with the first question.
+    pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
+        Rc::new_cyclic(|this| Self {
+            this: this.clone(),
+            platform,
+            window: LazyWindow::new(),
+            answer: RefCell::new(None),
+            open: Cell::new(false),
+        })
+    }
+
+    /// The password window, created and connected if there is none.
     ///
     /// # Panics
     /// If the Slint window cannot be created.
-    pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
-        let window = PasswordPrompt::new().expect("cannot create the password window");
-        let view = Rc::new_cyclic(|this| Self {
-            this: this.clone(),
-            platform,
-            window,
-            answer: RefCell::new(None),
-            open: Cell::new(false),
-        });
-        let this = view.this.clone();
-        view.window.on_submit(move || {
-            if let Some(view) = this.upgrade() {
-                view.submit();
-            }
-        });
-        let this = view.this.clone();
-        view.window.on_cancel(move || {
-            if let Some(view) = this.upgrade() {
-                view.finish(None);
-            }
-        });
-        // Closing the window any other way (⌘W) is a cancel too.
-        let this = view.this.clone();
-        view.window.window().on_close_requested(move || {
-            if let Some(view) = this.upgrade() {
-                view.finish(None);
-            }
-            CloseRequestResponse::KeepWindowShown
-        });
-        view
+    fn window(&self) -> PasswordPrompt {
+        self.window.get_or_create(|| {
+            let window = PasswordPrompt::new().expect("cannot create the password window");
+            let this = self.this.clone();
+            window.on_submit(move || {
+                if let Some(view) = this.upgrade() {
+                    view.submit();
+                }
+            });
+            let this = self.this.clone();
+            window.on_cancel(move || {
+                if let Some(view) = this.upgrade() {
+                    view.finish(None);
+                }
+            });
+            // Closing the window any other way (⌘W) is a cancel too.
+            let this = self.this.clone();
+            window.window().on_close_requested(move || {
+                if let Some(view) = this.upgrade() {
+                    view.finish(None);
+                }
+                CloseRequestResponse::KeepWindowShown
+            });
+            window
+        })
     }
 
     /// Asks for the password of `archive_name`, 24 px under `at`, and takes
@@ -256,23 +300,24 @@ impl PasswordView {
             earlier(None);
         }
         *self.answer.borrow_mut() = Some(answer);
-        self.window.set_heading(prompt_title(archive_name).into());
-        self.window.set_wrong(wrong);
-        self.window.set_password("".into());
+        let window = self.window();
+        window.set_heading(prompt_title(archive_name).into());
+        window.set_wrong(wrong);
+        window.set_password("".into());
         let (x, y) = position_below(at, PASSWORD_SIZE, &self.platform.screens());
-        self.window
+        window
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
         self.open.set(true);
         // vento runs as an accessory app: bring it forward so the window
         // becomes key and takes the typing.
         self.platform.activate_app();
-        if let Err(e) = self.window.show() {
+        if let Err(e) = window.show() {
             warn!("cannot show the password window: {e}");
             self.finish(None);
             return;
         }
-        self.window.invoke_focus_field();
+        window.invoke_focus_field();
     }
 
     /// Closes the window, answering the open question (if any) with `None`.
@@ -286,7 +331,10 @@ impl PasswordView {
     /// not offer that, and an empty answer would only make the archive ask
     /// again).
     fn submit(&self) {
-        let text = self.window.get_password();
+        let Some(window) = self.window.get() else {
+            return;
+        };
+        let text = window.get_password();
         if text.is_empty() {
             return;
         }
@@ -309,11 +357,14 @@ impl PasswordView {
     /// app that had it. That happens on the next turn of the event loop, so
     /// an answer that asks again straight away keeps the focus.
     fn hide(&self) {
-        self.window.set_password("".into());
         self.open.set(false);
-        if let Err(e) = self.window.hide() {
-            warn!("cannot hide the password window: {e}");
+        if let Some(window) = self.window.get() {
+            window.set_password("".into());
+            if let Err(e) = window.hide() {
+                warn!("cannot hide the password window: {e}");
+            }
         }
+        self.window.release_later();
         let this = self.this.clone();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(view) = this.upgrade()

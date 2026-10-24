@@ -3,9 +3,11 @@
 //! the icon or a click in another app. Losing focus alone (⌘-Tab, another
 //! app coming forward, the folder picker) leaves it open.
 //!
-//! The window is created on the first open and only hidden afterwards; a
-//! closed panel runs no timers and watches no clicks (closing arms one
-//! single-shot timer for the next turn of the event loop).
+//! The window is created on the first open and dropped once the panel has
+//! been closed for [`crate::lazy_window::IDLE`], taking its native window
+//! and renderer with it; a closed panel watches no clicks and runs only
+//! that timer (and, on closing, one single-shot timer for the next turn of
+//! the event loop).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -35,6 +37,7 @@ use vento_core::settings::{
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
 
+use crate::lazy_window::LazyWindow;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, SettingsPanel};
@@ -140,7 +143,16 @@ pub type TryShortcut = Box<dyn Fn(ShortcutFor, &str) -> Result<(), String>>;
 pub struct PanelController {
     platform: Rc<dyn Platform>,
     hub: Rc<SettingsHub>,
-    window: SettingsPanel,
+    /// The panel's window while it is open, and for a while after it
+    /// closes. Use [`PanelController::window`] or
+    /// [`PanelController::existing`].
+    window: LazyWindow<SettingsPanel>,
+    /// Whether vento is paused, for the Pause item of the next window.
+    paused: Cell<bool>,
+    /// The tab the panel was on when it last closed, which it opens on.
+    tab: Cell<i32>,
+    /// Whether the General tab offers Copy from screen.
+    screen_text_supported: bool,
     /// Pauses or resumes vento; the panel shows the result through
     /// [`PanelController::set_paused`].
     on_pause: Box<dyn Fn(bool)>,
@@ -177,15 +189,13 @@ pub struct PanelController {
 }
 
 impl PanelController {
-    /// Creates the (hidden) panel. `recent` is the recent-folders list the
-    /// wheel and the executor share; `screen_text_supported` says whether
-    /// the General tab offers Copy from screen; `try_shortcut` registers a
-    /// recorded Pocket, Clipboard or Copy from screen shortcut;
-    /// `on_clear_history` empties the clipboard history; `on_pause` is
-    /// called with the state the Pause item asks for.
-    ///
-    /// # Panics
-    /// If the Slint window cannot be created.
+    /// Creates the (closed) panel; its window comes with the first open.
+    /// `recent` is the recent-folders list the wheel and the executor
+    /// share; `screen_text_supported` says whether the General tab offers
+    /// Copy from screen; `try_shortcut` registers a recorded Pocket,
+    /// Clipboard or Copy from screen shortcut; `on_clear_history` empties
+    /// the clipboard history; `on_pause` is called with the state the Pause
+    /// item asks for.
     pub fn new(
         platform: Rc<dyn Platform>,
         hub: Rc<SettingsHub>,
@@ -195,27 +205,22 @@ impl PanelController {
         on_clear_history: Box<dyn Fn()>,
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
-        let window = SettingsPanel::new().expect("cannot create the settings panel");
-        let actions = Rc::new(VecModel::default());
-        window.set_actions(ModelRc::from(actions.clone()));
-        let pinned = Rc::new(VecModel::default());
-        window.set_pinned(ModelRc::from(pinned.clone()));
-        let recent_rows = Rc::new(VecModel::default());
-        window.set_recent(ModelRc::from(recent_rows.clone()));
-        window.set_screen_text_supported(screen_text_supported);
         let panel = Rc::new_cyclic(|this| Self {
             platform,
             hub,
-            window,
+            window: LazyWindow::new(),
+            paused: Cell::new(false),
+            tab: Cell::new(0),
+            screen_text_supported,
             on_pause,
             recent,
             try_shortcut,
             on_clear_history,
             recording: Cell::new(ShortcutFor::Pocket),
             home: std::env::var_os("HOME").map(PathBuf::from),
-            actions,
-            pinned,
-            recent_rows,
+            actions: Rc::new(VecModel::default()),
+            pinned: Rc::new(VecModel::default()),
+            recent_rows: Rc::new(VecModel::default()),
             recent_paths: RefCell::new(Vec::new()),
             folder_icons: RefCell::new(HashMap::new()),
             terminals: RefCell::new(Vec::new()),
@@ -224,37 +229,71 @@ impl PanelController {
             modifiers: Cell::new(ModifiersState::empty()),
             this: this.clone(),
         });
-        panel.connect();
+        // A saved change clears the load error: drop the notice with it.
+        // A hand edit picked up on opening changes what the controls show.
+        // With no window there are no controls to update.
+        let this = Rc::downgrade(&panel);
+        panel.hub.on_change(Box::new(move |_, _| {
+            if let Some(panel) = this.upgrade() {
+                panel.show_notice();
+                panel.show_settings();
+            }
+        }));
         panel
     }
 
-    fn connect(&self) {
+    /// The panel's window, created and connected if there is none.
+    ///
+    /// # Panics
+    /// If the Slint window cannot be created.
+    fn window(&self) -> SettingsPanel {
+        self.window.get_or_create(|| {
+            let window = SettingsPanel::new().expect("cannot create the settings panel");
+            window.set_actions(ModelRc::from(self.actions.clone()));
+            window.set_pinned(ModelRc::from(self.pinned.clone()));
+            window.set_recent(ModelRc::from(self.recent_rows.clone()));
+            window.set_screen_text_supported(self.screen_text_supported);
+            window.set_paused(self.paused.get());
+            window.set_tab(self.tab.get());
+            // A new native window: AppKit has yet to be told to keep it.
+            self.frame_kept.set(false);
+            self.connect(&window);
+            window
+        })
+    }
+
+    /// The panel's window, if it has one now.
+    fn existing(&self) -> Option<SettingsPanel> {
+        self.window.get()
+    }
+
+    fn connect(&self, window: &SettingsPanel) {
         let this = self.this.clone();
-        self.window.on_close_requested(move || {
+        window.on_close_requested(move || {
             if let Some(panel) = this.upgrade() {
                 panel.close();
             }
         });
         let this = self.this.clone();
-        self.window.on_pause_clicked(move || {
+        window.on_pause_clicked(move || {
             if let Some(panel) = this.upgrade() {
-                (panel.on_pause)(!panel.window.get_paused());
+                (panel.on_pause)(!panel.paused.get());
             }
         });
-        self.window.on_quit_clicked(|| {
+        window.on_quit_clicked(|| {
             if let Err(e) = slint::quit_event_loop() {
                 warn!("cannot quit: {e}");
             }
         });
         let this = self.this.clone();
-        self.window.window().on_close_requested(move || {
+        window.window().on_close_requested(move || {
             if let Some(panel) = this.upgrade() {
                 panel.close();
             }
             CloseRequestResponse::KeepWindowShown
         });
         let this = self.this.clone();
-        self.window.window().on_winit_window_event(move |_, event| {
+        window.window().on_winit_window_event(move |_, event| {
             let Some(panel) = this.upgrade() else {
                 return EventResult::Propagate;
             };
@@ -275,34 +314,25 @@ impl PanelController {
             }
             EventResult::Propagate
         });
-        // A saved change clears the load error: drop the notice with it.
-        // A hand edit picked up on opening changes what the controls show.
-        let this = self.this.clone();
-        self.hub.on_change(Box::new(move |_, _| {
-            if let Some(panel) = this.upgrade() {
-                panel.show_notice();
-                panel.show_settings();
-            }
-        }));
-        self.connect_controls();
+        self.connect_controls(window);
     }
 
     /// Every control applies its change at once.
-    fn connect_controls(&self) {
+    fn connect_controls(&self, window: &SettingsPanel) {
         let this = self.this.clone();
-        self.window.on_layout_chosen(move |i| {
+        window.on_layout_chosen(move |i| {
             if let (Some(panel), Some(layout)) = (this.upgrade(), choice(&LAYOUTS, i)) {
                 panel.apply(|s| s.layout = layout);
             }
         });
         let this = self.this.clone();
-        self.window.on_action_toggled(move |i, on| {
+        window.on_action_toggled(move |i, on| {
             if let (Some(panel), Ok(i)) = (this.upgrade(), usize::try_from(i)) {
                 panel.apply(|s| show_action(s, i, on));
             }
         });
         let this = self.this.clone();
-        self.window.on_action_moved(move |from, to| {
+        window.on_action_moved(move |from, to| {
             if let (Some(panel), Ok(from), Ok(to)) =
                 (this.upgrade(), usize::try_from(from), usize::try_from(to))
             {
@@ -310,13 +340,13 @@ impl PanelController {
             }
         });
         let this = self.this.clone();
-        self.window.on_trigger_chosen(move |i| {
+        window.on_trigger_chosen(move |i| {
             if let (Some(panel), Some(trigger)) = (this.upgrade(), choice(&TRIGGERS, i)) {
                 panel.apply(|s| s.trigger = trigger);
             }
         });
         let this = self.this.clone();
-        self.window.on_terminal_chosen(move |i| {
+        window.on_terminal_chosen(move |i| {
             let Some(panel) = this.upgrade() else { return };
             let id = usize::try_from(i)
                 .ok()
@@ -326,89 +356,92 @@ impl PanelController {
             }
         });
         let this = self.this.clone();
-        self.window.on_path_format_chosen(move |i| {
+        window.on_path_format_chosen(move |i| {
             if let (Some(panel), Some(format)) = (this.upgrade(), choice(&PATH_FORMATS, i)) {
                 panel.apply(|s| s.copy_path_format = format);
             }
         });
-        self.connect_move_tab();
+        self.connect_move_tab(window);
         let this = self.this.clone();
-        self.window.on_remove_after_drop_toggled(move |on| {
+        window.on_remove_after_drop_toggled(move |on| {
             if let Some(panel) = this.upgrade() {
                 panel.apply(|s| s.pocket_remove_after_drop = on);
             }
         });
         let this = self.this.clone();
-        self.window.on_keep_copies_toggled(move |on| {
+        window.on_keep_copies_toggled(move |on| {
             if let Some(panel) = this.upgrade() {
                 panel.apply(|s| s.pocket_keep_copies = on);
             }
         });
         let this = self.this.clone();
-        self.window.on_shake_to_open_toggled(move |on| {
+        window.on_shake_to_open_toggled(move |on| {
             if let Some(panel) = this.upgrade() {
                 panel.apply(|s| s.shake_to_open = on);
             }
         });
-        self.connect_clipboard_tab();
+        self.connect_clipboard_tab(window);
         // While recording, the menu bar is away, so ⌘Q and ⌘H reach the
         // recorder instead of quitting or hiding vento.
         let this = self.this.clone();
-        self.window.on_shortcut_recording_started(move || {
+        window.on_shortcut_recording_started(move || {
             if let Some(panel) = this.upgrade() {
                 panel.recording.set(ShortcutFor::Pocket);
                 panel.platform.suspend_app_menu();
             }
         });
         let this = self.this.clone();
-        self.window.on_clip_shortcut_recording_started(move || {
+        window.on_clip_shortcut_recording_started(move || {
             if let Some(panel) = this.upgrade() {
                 panel.recording.set(ShortcutFor::Clipboard);
                 panel.platform.suspend_app_menu();
             }
         });
         let this = self.this.clone();
-        self.window.on_screen_shortcut_recording_started(move || {
+        window.on_screen_shortcut_recording_started(move || {
             if let Some(panel) = this.upgrade() {
                 panel.recording.set(ShortcutFor::ScreenText);
                 panel.platform.suspend_app_menu();
             }
         });
         let this = self.this.clone();
-        self.window.on_shortcut_recording_stopped(move || {
+        window.on_shortcut_recording_stopped(move || {
             if let Some(panel) = this.upgrade() {
                 panel.platform.restore_app_menu();
             }
         });
     }
 
-    fn connect_clipboard_tab(&self) {
+    fn connect_clipboard_tab(&self, window: &SettingsPanel) {
         let this = self.this.clone();
-        self.window.on_clip_history_toggled(move |on| {
+        window.on_clip_history_toggled(move |on| {
             let Some(panel) = this.upgrade() else { return };
             // Turning the history off disables its shortcut field.
-            if !on && panel.window.get_clip_shortcut_recording() {
-                panel.window.invoke_stop_recording();
+            if !on
+                && let Some(window) = panel.existing()
+                && window.get_clip_shortcut_recording()
+            {
+                window.invoke_stop_recording();
             }
             panel.apply(|s| s.clipboard_history = on);
         });
         let this = self.this.clone();
-        self.window.on_clip_history_cleared(move || {
+        window.on_clip_history_cleared(move || {
             if let Some(panel) = this.upgrade() {
                 (panel.on_clear_history)();
             }
         });
     }
 
-    fn connect_move_tab(&self) {
+    fn connect_move_tab(&self, window: &SettingsPanel) {
         let this = self.this.clone();
-        self.window.on_add_folder(move || {
+        window.on_add_folder(move || {
             if let Some(panel) = this.upgrade() {
                 panel.add_folder();
             }
         });
         let this = self.this.clone();
-        self.window.on_pinned_moved(move |from, to| {
+        window.on_pinned_moved(move |from, to| {
             if let (Some(panel), Ok(from), Ok(to)) =
                 (this.upgrade(), usize::try_from(from), usize::try_from(to))
             {
@@ -416,13 +449,13 @@ impl PanelController {
             }
         });
         let this = self.this.clone();
-        self.window.on_unpinned(move |i| {
+        window.on_unpinned(move |i| {
             if let (Some(panel), Ok(i)) = (this.upgrade(), usize::try_from(i)) {
                 panel.apply(|s| unpin_folder(s, i));
             }
         });
         let this = self.this.clone();
-        self.window.on_recent_pinned(move |i| {
+        window.on_recent_pinned(move |i| {
             let Some(panel) = this.upgrade() else { return };
             let folder = usize::try_from(i)
                 .ok()
@@ -432,13 +465,13 @@ impl PanelController {
             }
         });
         let this = self.this.clone();
-        self.window.on_recent_cleared(move || {
+        window.on_recent_cleared(move || {
             if let Some(panel) = this.upgrade() {
                 panel.clear_recent();
             }
         });
         let this = self.this.clone();
-        self.window.on_hold_stepped(move |steps| {
+        window.on_hold_stepped(move |steps| {
             if let Some(panel) = this.upgrade() {
                 panel.apply(|s| step_hold(s, steps));
             }
@@ -468,18 +501,17 @@ impl PanelController {
 
     /// Makes the open panel the key window again.
     fn regain_focus(&self) {
-        if !self.is_open() {
+        let Some(window) = self.existing().filter(|_| self.is_open()) else {
             return;
-        }
+        };
         self.platform.activate_app();
-        self.window.window().with_winit_window(|w| w.focus_window());
+        window.window().with_winit_window(|w| w.focus_window());
     }
 
     /// Whether the panel is the key window (it takes the keyboard).
     fn has_focus(&self) -> bool {
-        self.window
-            .window()
-            .with_winit_window(|w| w.has_focus())
+        self.existing()
+            .and_then(|window| window.window().with_winit_window(|w| w.has_focus()))
             .unwrap_or(true)
     }
 
@@ -493,7 +525,9 @@ impl PanelController {
                 warn!("cannot save the recent folders: {e}");
             }
         }
-        self.show_folders(&self.hub.current());
+        if let Some(window) = self.existing() {
+            self.show_folders(&window, &self.hub.current());
+        }
     }
 
     /// A key press while the shortcut field records: a combination ends the
@@ -517,17 +551,22 @@ impl PanelController {
 
     /// Whether a shortcut field is waiting for a key combination.
     fn is_recording(&self) -> bool {
-        self.window.get_shortcut_recording()
-            || self.window.get_clip_shortcut_recording()
-            || self.window.get_screen_shortcut_recording()
+        self.existing().is_some_and(|window| {
+            window.get_shortcut_recording()
+                || window.get_clip_shortcut_recording()
+                || window.get_screen_shortcut_recording()
+        })
     }
 
     /// Ends the recording with `spec` and applies it to the shortcut being
     /// recorded the way [`apply_shortcut`] says: the reason a refused one
     /// was refused shows under its field, a failed save in the notice.
     fn record_shortcut(&self, spec: &str) {
+        let Some(window) = self.existing() else {
+            return;
+        };
         let target = self.recording.get();
-        self.window.invoke_stop_recording();
+        window.invoke_stop_recording();
         self.hub.refresh_from_disk();
         let outcome = apply_shortcut(
             target,
@@ -540,14 +579,14 @@ impl PanelController {
             ShortcutOutcome::Applied => SharedString::new(),
             ShortcutOutcome::Refused(reason) => reason.into(),
             ShortcutOutcome::NotSaved(e) => {
-                self.window.set_notice(save_error_text(&e).into());
+                window.set_notice(save_error_text(&e).into());
                 SharedString::new()
             }
         };
         match target {
-            ShortcutFor::Pocket => self.window.set_shortcut_error(error),
-            ShortcutFor::Clipboard => self.window.set_clip_shortcut_error(error),
-            ShortcutFor::ScreenText => self.window.set_screen_shortcut_error(error),
+            ShortcutFor::Pocket => window.set_shortcut_error(error),
+            ShortcutFor::Clipboard => window.set_clip_shortcut_error(error),
+            ShortcutFor::ScreenText => window.set_screen_shortcut_error(error),
         }
         self.show_settings();
     }
@@ -564,15 +603,20 @@ impl PanelController {
             && let Err(e) = self.hub.update(&change)
         {
             warn!("cannot save settings: {e}");
-            self.window.set_notice(save_error_text(&e).into());
+            if let Some(window) = self.existing() {
+                window.set_notice(save_error_text(&e).into());
+            }
         }
         self.show_settings();
     }
 
     /// Sets every control from the settings in effect.
     fn show_settings(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
         let settings = self.hub.current();
-        let icons = self.window.global::<Icons>();
+        let icons = window.global::<Icons>();
         let rows: Vec<ActionRow> = settings
             .action_rows()
             .into_iter()
@@ -584,39 +628,30 @@ impl PanelController {
             .collect();
         let shown = rows.iter().filter(|r| r.shown).count();
         set_rows(&self.actions, rows);
-        self.window
-            .set_shown_actions(i32::try_from(shown).unwrap_or(0));
-        self.window
-            .set_wheel_layout(choice_index(&LAYOUTS, settings.layout));
-        self.window
-            .set_trigger(choice_index(&TRIGGERS, settings.trigger));
-        self.window.set_shake_to_open(settings.shake_to_open);
-        self.window
-            .set_path_format(choice_index(&PATH_FORMATS, settings.copy_path_format));
+        window.set_shown_actions(i32::try_from(shown).unwrap_or(0));
+        window.set_wheel_layout(choice_index(&LAYOUTS, settings.layout));
+        window.set_trigger(choice_index(&TRIGGERS, settings.trigger));
+        window.set_shake_to_open(settings.shake_to_open);
+        window.set_path_format(choice_index(&PATH_FORMATS, settings.copy_path_format));
         let terminal = terminal_index(&self.terminals.borrow(), settings.terminal.as_deref());
-        self.window
-            .set_terminal(i32::try_from(terminal).unwrap_or(0));
-        self.show_folders(&settings);
+        window.set_terminal(i32::try_from(terminal).unwrap_or(0));
+        self.show_folders(&window, &settings);
         let hold = settings.move_hold_ms;
-        self.window.set_hold(format!("{hold} ms").into());
-        self.window.set_hold_can_decrease(hold > MIN_MOVE_HOLD_MS);
-        self.window.set_hold_can_increase(hold < MAX_MOVE_HOLD_MS);
+        window.set_hold(format!("{hold} ms").into());
+        window.set_hold_can_decrease(hold > MIN_MOVE_HOLD_MS);
+        window.set_hold_can_increase(hold < MAX_MOVE_HOLD_MS);
         let symbols = |spec: &str| shortcut_symbols(spec).unwrap_or_else(|| spec.to_owned());
-        self.window
-            .set_shortcut(symbols(&settings.pocket_shortcut).into());
-        self.window
-            .set_remove_after_drop(settings.pocket_remove_after_drop);
-        self.window.set_keep_copies(settings.pocket_keep_copies);
-        self.window.set_clip_history(settings.clipboard_history);
-        self.window
-            .set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
-        self.window
-            .set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+        window.set_shortcut(symbols(&settings.pocket_shortcut).into());
+        window.set_remove_after_drop(settings.pocket_remove_after_drop);
+        window.set_keep_copies(settings.pocket_keep_copies);
+        window.set_clip_history(settings.clipboard_history);
+        window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
+        window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
     }
 
     /// Lists the pinned folders (a missing one too, dimmed, so it can be
     /// unpinned) and the recent ones the ring would show now.
-    fn show_folders(&self, settings: &Settings) {
+    fn show_folders(&self, window: &SettingsPanel, settings: &Settings) {
         let pinned = &settings.pinned_folders;
         let recent: Vec<PathBuf> =
             ring_destinations(self.recent.borrow().items(), pinned, folder_exists)
@@ -635,9 +670,8 @@ impl PanelController {
         set_rows(&self.pinned, pinned_rows);
         set_rows(&self.recent_rows, recent_rows);
         *self.recent_paths.borrow_mut() = recent;
-        self.window
-            .set_recent_history(!self.recent.borrow().items().is_empty());
-        self.window.set_pinned_full(pinned.len() >= MAX_PINNED);
+        window.set_recent_history(!self.recent.borrow().items().is_empty());
+        window.set_pinned_full(pinned.len() >= MAX_PINNED);
     }
 
     fn folder_row(&self, folder: &Path, exists: bool) -> FolderRow {
@@ -676,11 +710,10 @@ impl PanelController {
     }
 
     /// Lists the terminals installed now in the Terminal menu.
-    fn load_terminals(&self) {
+    fn load_terminals(&self, window: &SettingsPanel) {
         let terminals = self.platform.terminals();
         let names: Vec<SharedString> = terminals.iter().map(|t| t.name.as_str().into()).collect();
-        self.window
-            .set_terminals(ModelRc::new(VecModel::from(names)));
+        window.set_terminals(ModelRc::new(VecModel::from(names)));
         *self.terminals.borrow_mut() = terminals;
     }
 
@@ -717,14 +750,18 @@ impl PanelController {
             return;
         }
         self.platform.stop_watching_outside_clicks();
-        if self.is_recording() {
-            self.window.invoke_stop_recording();
+        if let Some(window) = self.existing() {
+            if self.is_recording() {
+                window.invoke_stop_recording();
+            }
+            self.tab.set(window.get_tab());
+            if let Err(e) = window.hide() {
+                warn!("cannot hide the settings panel: {e}");
+            }
         }
         // Whatever happened to the recording, the menu bar comes back.
         self.platform.restore_app_menu();
-        if let Err(e) = self.window.hide() {
-            warn!("cannot hide the settings panel: {e}");
-        }
+        self.window.release_later();
         if hand_back {
             let this = self.this.clone();
             Timer::single_shot(Duration::ZERO, move || {
@@ -745,51 +782,73 @@ impl PanelController {
 
     /// Shows whether vento is paused.
     pub fn set_paused(&self, paused: bool) {
-        self.window.set_paused(paused);
+        self.paused.set(paused);
+        if let Some(window) = self.existing() {
+            window.set_paused(paused);
+        }
     }
 
+    /// Opens the panel under `icon`. A new window opens once it has its
+    /// native window, so that AppKit can be told to keep its frame as it
+    /// shows.
     fn open_at(&self, icon: Rect) {
+        self.window();
+        let this = self.this.clone();
+        self.window.when_native(move || {
+            if let Some(panel) = this.upgrade()
+                && !panel.is_open()
+            {
+                panel.show_at(icon);
+            }
+        });
+    }
+
+    fn show_at(&self, icon: Rect) {
         let started = Instant::now();
+        let window = self.window();
         // Pick up hand edits of the settings file.
         self.hub.refresh_from_disk();
         self.show_notice();
-        self.window.set_shortcut_error(SharedString::new());
-        self.window.set_clip_shortcut_error(SharedString::new());
-        self.window.set_screen_shortcut_error(SharedString::new());
-        self.load_terminals();
+        window.set_shortcut_error(SharedString::new());
+        window.set_clip_shortcut_error(SharedString::new());
+        window.set_screen_shortcut_error(SharedString::new());
+        self.load_terminals(&window);
         // Also lists the recent folders as they are now.
         self.show_settings();
-        let height = f64::from(self.window.get_window_height());
+        let height = f64::from(window.get_window_height());
         let Placement { x, y, arrow_x } = panel_position(icon, height, &self.platform.screens());
-        self.window.set_arrow_x(arrow_x as f32);
-        self.window
+        window.set_arrow_x(arrow_x as f32);
+        window
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
         self.open.set(true);
         // Shown faded out, then revealed on the next turn (see `revealed`).
-        self.window.set_revealed(false);
+        window.set_revealed(false);
         // vento runs as an accessory app: bring it forward so the panel
         // becomes key and takes Esc.
         self.platform.activate_app();
-        if let Err(e) = self.window.show() {
+        if let Err(e) = window.show() {
             warn!("cannot show the settings panel: {e}");
             self.open.set(false);
             self.platform.deactivate_app();
+            self.window.release_later();
             return;
         }
         if !self.frame_kept.get() {
-            self.keep_frame();
+            self.keep_frame(&window);
             // AppKit may already have pushed the window down while showing it.
-            self.window
+            window
                 .window()
                 .set_position(LogicalPosition::new(x as f32, y as f32));
         }
         self.watch_outside_clicks();
         let this = self.this.clone();
         Timer::single_shot(Duration::ZERO, move || {
-            if let Some(panel) = this.upgrade() {
-                panel.window.set_revealed(true);
-                let w = panel.window.window();
+            if let Some(panel) = this.upgrade()
+                && let Some(window) = panel.existing()
+            {
+                window.set_revealed(true);
+                let w = window.window();
                 let scale = w.scale_factor();
                 debug!(
                     "panel shown at {:?}, size {:?}, scale {scale}",
@@ -831,8 +890,8 @@ impl PanelController {
 
     /// Tells AppKit to leave the panel where it is placed: on its own it
     /// pushes a window whose top meets the menu bar a menu bar further down.
-    fn keep_frame(&self) {
-        let result = match self.window.window().window_handle().window_handle() {
+    fn keep_frame(&self, window: &SettingsPanel) {
+        let result = match window.window().window_handle().window_handle() {
             Ok(handle) => self
                 .platform
                 .keep_window_frame(handle.as_raw())
@@ -848,7 +907,10 @@ impl PanelController {
     /// Whether the mouse is over the panel window now, in global logical
     /// points (the window's frame, arrow band included).
     fn cursor_on_panel(&self) -> bool {
-        let window = self.window.window();
+        let Some(panel) = self.existing() else {
+            return false;
+        };
+        let window = panel.window();
         let scale = window.scale_factor();
         let at = window.position().to_logical(scale);
         let size = window.size().to_logical(scale);
@@ -862,8 +924,11 @@ impl PanelController {
     }
 
     fn show_notice(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
         let notice = self.hub.load_error().map(|e| notice_text(&e));
-        self.window.set_notice(notice.unwrap_or_default().into());
+        window.set_notice(notice.unwrap_or_default().into());
     }
 }
 

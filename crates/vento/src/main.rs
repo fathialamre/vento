@@ -10,6 +10,8 @@ mod hotkey;
 #[cfg(target_os = "macos")]
 mod info;
 #[cfg(target_os = "macos")]
+mod lazy_window;
+#[cfg(target_os = "macos")]
 mod panel;
 #[cfg(target_os = "macos")]
 mod pause;

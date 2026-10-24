@@ -15,6 +15,7 @@ use vento_core::geometry::{Point, Rect, screen_for};
 use vento_core::screen_text::{Selection, TextBox, assemble};
 use vento_platform::{Platform, PlatformError, ScreenText};
 
+use crate::lazy_window::LazyWindow;
 use crate::ui::ScreenAccess;
 
 /// What a read hands back: the text boxes found, or why there are none.
@@ -193,60 +194,68 @@ const ACCESS_HEIGHT: f64 = 200.0;
 const ACCESS_WIDTH: f64 = 380.0;
 
 /// The permission window: says why Copy from screen needs Screen Recording
-/// and opens System Settings for it.
+/// and opens System Settings for it. The window exists from the first time
+/// it is shown until it has been hidden for [`crate::lazy_window::IDLE`].
 pub struct ScreenAccessView {
     this: Weak<ScreenAccessView>,
     platform: Rc<dyn Platform>,
     os: Rc<dyn ScreenText>,
-    window: ScreenAccess,
+    window: LazyWindow<ScreenAccess>,
 }
 
 impl ScreenAccessView {
-    /// Creates the (hidden) window.
-    ///
-    /// # Panics
-    /// If the Slint window cannot be created.
+    /// Creates the view; its window comes when it is first shown.
     pub fn new(platform: Rc<dyn Platform>, os: Rc<dyn ScreenText>) -> Rc<Self> {
-        let window = ScreenAccess::new().expect("cannot create the Screen Recording window");
-        let view = Rc::new_cyclic(|this| Self {
+        Rc::new_cyclic(|this| Self {
             this: this.clone(),
             platform,
             os,
-            window,
-        });
-        let this = view.this.clone();
-        view.window.on_open_settings(move || {
-            if let Some(view) = this.upgrade() {
-                // Hide and hand focus back first: that also forgets the app
-                // vento took focus from, which a later `deactivate_app`
-                // could otherwise give focus to out of turn. System
-                // Settings then comes forward and keeps it.
-                view.cancel();
-                view.os.request_access();
-                view.os.open_access_settings();
-            }
-        });
-        let this = view.this.clone();
-        view.window.on_cancel(move || {
-            if let Some(view) = this.upgrade() {
-                view.cancel();
-            }
-        });
-        // Closing the window any other way (⌘W) is a cancel too.
-        let this = view.this.clone();
-        view.window.window().on_close_requested(move || {
-            if let Some(view) = this.upgrade() {
-                view.cancel();
-            }
-            CloseRequestResponse::KeepWindowShown
-        });
-        view
+            window: LazyWindow::new(),
+        })
+    }
+
+    /// The window, created and connected if there is none.
+    ///
+    /// # Panics
+    /// If the Slint window cannot be created.
+    fn window(&self) -> ScreenAccess {
+        self.window.get_or_create(|| {
+            let window = ScreenAccess::new().expect("cannot create the Screen Recording window");
+            let this = self.this.clone();
+            window.on_open_settings(move || {
+                if let Some(view) = this.upgrade() {
+                    // Hide and hand focus back first: that also forgets the
+                    // app vento took focus from, which a later
+                    // `deactivate_app` could otherwise give focus to out of
+                    // turn. System Settings then comes forward and keeps it.
+                    view.cancel();
+                    view.os.request_access();
+                    view.os.open_access_settings();
+                }
+            });
+            let this = self.this.clone();
+            window.on_cancel(move || {
+                if let Some(view) = this.upgrade() {
+                    view.cancel();
+                }
+            });
+            // Closing the window any other way (⌘W) is a cancel too.
+            let this = self.this.clone();
+            window.window().on_close_requested(move || {
+                if let Some(view) = this.upgrade() {
+                    view.cancel();
+                }
+                CloseRequestResponse::KeepWindowShown
+            });
+            window
+        })
     }
 
     /// Shows the window in the middle of the screen under the pointer and
     /// brings vento forward, so the window takes the keys.
     pub fn show(&self) {
-        let height = match f64::from(self.window.get_content_height()) {
+        let window = self.window();
+        let height = match f64::from(window.get_content_height()) {
             h if h > 0.0 => h,
             _ => ACCESS_HEIGHT,
         };
@@ -255,18 +264,18 @@ impl ScreenAccessView {
         let (x, y) = screen_for(cursor, &screens).map_or((cursor.x, cursor.y), |s| {
             (s.x + (s.w - ACCESS_WIDTH) / 2.0, s.y + (s.h - height) / 2.0)
         });
-        self.window
+        window
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
         // vento runs as an accessory app: bring it forward so the window
         // becomes key and Return and Escape reach it.
         self.platform.activate_app();
-        if let Err(e) = self.window.show() {
+        if let Err(e) = window.show() {
             warn!("cannot show the Screen Recording window: {e}");
             self.cancel();
             return;
         }
-        self.window.invoke_focus_keys();
+        window.invoke_focus_keys();
     }
 
     /// Hides the window and hands focus back to the app that had it.
@@ -278,15 +287,22 @@ impl ScreenAccessView {
     /// Hides the window if it is showing; focus is left where it is, since
     /// the overlay that follows takes it.
     pub fn hide_if_shown(&self) {
-        if self.window.window().is_visible() {
+        if self
+            .window
+            .get()
+            .is_some_and(|window| window.window().is_visible())
+        {
             self.hide();
         }
     }
 
     fn hide(&self) {
-        if let Err(e) = self.window.hide() {
+        if let Some(window) = self.window.get()
+            && let Err(e) = window.hide()
+        {
             warn!("cannot hide the Screen Recording window: {e}");
         }
+        self.window.release_later();
     }
 }
 
