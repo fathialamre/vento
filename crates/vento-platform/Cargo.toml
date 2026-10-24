@@ -108,6 +108,10 @@ rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = "0.22"
+gio-unix = "0.22"
+
 [dev-dependencies]
 # Writes the PNG files the picture thumbnail tests read.
 png = "0.18"
