@@ -1,8 +1,7 @@
 // The Pocket island: a black, frameless window at the top centre of the
-// screen. The window has the expanded width; it is as tall as the expanded
-// island while that is shown (`full`), otherwise only as tall as the
-// collapsed wings (or the pill on screens without a notch). The shapes are
-// drawn inside it, and everything outside them is transparent.
+// screen. The window always has the expanded size; the collapsed wings (or
+// the pill on screens without a notch) are drawn inside it, and everything
+// outside the drawn shape is transparent.
 
 import { Icons } from "wheel.slint";
 
@@ -566,9 +565,6 @@ export component PocketIsland inherits Window {
     in property <[int]> clip-filter-counts: [0, 0, 0, 0, 0, 0];
     // Height of what is drawn below the menu bar (set by the app).
     in property <length> panel-h: 112px;
-    // The window is as tall as the expanded island: set by the app before
-    // it expands, and cleared once it has collapsed.
-    in property <bool> full;
     // Collapsed with an empty Pocket but some history: the wings show the
     // clipboard icon and no count.
     in property <bool> clip-wing;
@@ -600,7 +596,7 @@ export component PocketIsland inherits Window {
     callback clip-filter-chosen(int);
 
     width: root.panel-w;
-    height: root.full ? root.top-h + root.panel-h : root.collapsed-y + root.collapsed-h;
+    height: root.top-h + root.panel-h;
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
