@@ -11,7 +11,18 @@ name = "vento"
 path = "src/main.rs"
 
 [dependencies]
-slint = { version = "1.18.1", features = ["unstable-winit-030", "raw-window-handle-06"] }
+# Skia draws through Metal: about half the memory of the default FemtoVG on
+# OpenGL, and less work at startup. The default features are left out so
+# FemtoVG and the software renderer are not built in.
+slint = { version = "1.18.1", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "renderer-skia",
+    "accessibility",
+    "compat-1-2",
+    "unstable-winit-030",
+    "raw-window-handle-06",
+] }
 vento-core = { path = "../vento-core" }
 vento-platform = { path = "../vento-platform" }
 log = "0.4"
