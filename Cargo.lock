@@ -5847,7 +5847,7 @@ dependencies = [
 
 [[package]]
 name = "vento"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "drag",
  "env_logger",
@@ -5866,7 +5866,7 @@ dependencies = [
 
 [[package]]
 name = "vento-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "directories",
@@ -5889,7 +5889,7 @@ dependencies = [
 
 [[package]]
 name = "vento-platform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "block2 0.6.2",
  "libwebp-sys",
