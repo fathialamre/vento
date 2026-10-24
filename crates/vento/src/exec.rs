@@ -324,9 +324,6 @@ pub struct Executor {
     progress: Rc<ProgressView>,
     /// Asks for the passwords an Archive job needs.
     password: Rc<PasswordView>,
-    /// Closes the password window if its job is cancelled; runs only while
-    /// the window is open.
-    prompt_watch: Timer,
     /// Told which undo is available whenever that changes.
     on_undo_changed: RefCell<Option<UndoListener>>,
     this: Weak<Self>,
@@ -355,7 +352,6 @@ impl Executor {
             running: RefCell::new(None),
             progress,
             password,
-            prompt_watch: Timer::default(),
             on_undo_changed: RefCell::new(None),
             this: this.clone(),
         });
@@ -422,7 +418,18 @@ impl Executor {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);
                 let result = match &dir {
-                    Some(dir) => self.platform.open_terminal(terminal.as_deref(), dir),
+                    Some(dir) => self.platform.open_terminal(
+                        terminal.as_deref(),
+                        dir,
+                        Box::new(move |reason| {
+                            let shown = on_main(move |executor| {
+                                executor.toast_error(ActionId::Terminal, &reason, at);
+                            });
+                            if let Err(e) = shown {
+                                warn!("cannot report a failed terminal launch: {e}");
+                            }
+                        }),
+                    ),
                     None => Err(vento_platform::PlatformError::Failed(
                         "no folder to open".into(),
                     )),

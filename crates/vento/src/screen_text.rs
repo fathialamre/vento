@@ -171,11 +171,14 @@ pub fn read_on_worker(sel: Selection, done: ReadDone) {
             if let Err(e) = delivered {
                 warn!("cannot hand the screen text back: {e}");
             }
-            // After the answer is on its way, so it costs the user no time.
-            LANGUAGES.call_once(|| {
-                let languages = vento_platform::screen_text_languages();
-                info!("Vision languages: {}", languages.join(", "));
-            });
+            // After the answer is on its way, so it costs the user no time;
+            // and only when it would be logged, as it takes a Vision request.
+            if log::log_enabled!(log::Level::Info) {
+                LANGUAGES.call_once(|| {
+                    let languages = vento_platform::screen_text_languages();
+                    info!("Vision languages: {}", languages.join(", "));
+                });
+            }
         });
     if let Err(e) = spawned
         && let Some(done) = PENDING.with(|pending| pending.borrow_mut().remove(&id))

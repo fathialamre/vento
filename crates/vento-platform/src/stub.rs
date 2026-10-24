@@ -162,7 +162,12 @@ impl Platform for StubPlatform {
         Vec::new()
     }
 
-    fn open_terminal(&self, _terminal: Option<&str>, _dir: &Path) -> Result<(), PlatformError> {
+    fn open_terminal(
+        &self,
+        _terminal: Option<&str>,
+        _dir: &Path,
+        _on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError> {
         Err(PlatformError::Unsupported)
     }
 
@@ -310,7 +315,11 @@ mod tests {
             Err(PlatformError::Unsupported)
         ));
         assert!(matches!(
-            p.open_terminal(None, Path::new("/")),
+            p.open_terminal(
+                None,
+                Path::new("/"),
+                Box::new(|_| panic!("the stub opens nothing"))
+            ),
             Err(PlatformError::Unsupported)
         ));
         assert!(p.terminals().is_empty());

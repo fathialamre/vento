@@ -675,12 +675,15 @@ impl PanelController {
         icon
     }
 
-    /// Lists the terminals installed now in the Terminal menu.
+    /// Lists the terminals installed now in the Terminal menu. The menu
+    /// gets a new model only when the list changed, which it rarely does.
     fn load_terminals(&self) {
         let terminals = self.platform.terminals();
         let names: Vec<SharedString> = terminals.iter().map(|t| t.name.as_str().into()).collect();
-        self.window
-            .set_terminals(ModelRc::new(VecModel::from(names)));
+        if !self.window.get_terminals().iter().eq(names.iter().cloned()) {
+            self.window
+                .set_terminals(ModelRc::new(VecModel::from(names)));
+        }
         *self.terminals.borrow_mut() = terminals;
     }
 

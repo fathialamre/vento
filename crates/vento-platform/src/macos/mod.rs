@@ -150,8 +150,13 @@ impl Platform for MacPlatform {
         terminal::installed()
     }
 
-    fn open_terminal(&self, terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError> {
-        terminal::open(terminal, dir)
+    fn open_terminal(
+        &self,
+        terminal: Option<&str>,
+        dir: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError> {
+        terminal::open(terminal, dir, on_error)
     }
 
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {

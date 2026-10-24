@@ -432,8 +432,8 @@ define_class!(
         }
 
         #[unsafe(method(drawRect:))]
-        fn draw_rect(&self, _dirty: NSRect) {
-            self.draw();
+        fn draw_rect(&self, dirty: NSRect) {
+            self.draw(dirty);
         }
 
         #[unsafe(method(resetCursorRects))]
@@ -468,8 +468,14 @@ define_class!(
             if ivars.start.get().is_none() || !ivars.is_current() {
                 return;
             }
+            let before = ivars.selection().map(|r| ivars.in_view(r));
             ivars.end.set(Some(self.point_of(event)));
-            self.setNeedsDisplay(true);
+            let after = ivars.selection().map(|r| ivars.in_view(r));
+            // Only around the selection: redrawing a whole 5K screen at the
+            // pointer's rate costs far more.
+            if let Some(damage) = drag_damage(before, after) {
+                self.setNeedsDisplayInRect(damage);
+            }
         }
 
         #[unsafe(method(mouseUp:))]
@@ -532,13 +538,14 @@ impl SelectView {
         self.convertPoint_fromView(event.locationInWindow(), None)
     }
 
-    /// The dim over the whole view, and the clear, bordered selection.
-    fn draw(&self) {
+    /// The dim over `dirty`, and the clear, bordered selection. Whatever
+    /// part of the selection lies outside `dirty` is clipped away.
+    fn draw(&self, dirty: NSRect) {
         // `Copy` replaces what was drawn before instead of piling up on it.
         NSColor::blackColor()
             .colorWithAlphaComponent(DIM_ALPHA)
             .setFill();
-        NSRectFillUsingOperation(self.bounds(), NSCompositingOperation::Copy);
+        NSRectFillUsingOperation(dirty, NSCompositingOperation::Copy);
         let Some(sel) = self.ivars().selection() else {
             return;
         };
@@ -557,6 +564,30 @@ impl SelectView {
             .setStroke();
         border.stroke();
     }
+}
+
+/// What must be redrawn when the selection goes from `before` to `after`
+/// (view coordinates): both, grown by the border's width to be safe, or
+/// nothing when it did not change.
+fn drag_damage(before: Option<NSRect>, after: Option<NSRect>) -> Option<NSRect> {
+    if before == after {
+        return None;
+    }
+    let mut rects = before.into_iter().chain(after);
+    let first = rects.next()?;
+    let (mut x0, mut y0) = (first.origin.x, first.origin.y);
+    let (mut x1, mut y1) = (x0 + first.size.width, y0 + first.size.height);
+    for r in rects {
+        x0 = x0.min(r.origin.x);
+        y0 = y0.min(r.origin.y);
+        x1 = x1.max(r.origin.x + r.size.width);
+        y1 = y1.max(r.origin.y + r.size.height);
+    }
+    let m = BORDER_WIDTH;
+    Some(NSRect::new(
+        NSPoint::new(x0 - m, y0 - m),
+        NSSize::new(x1 - x0 + 2.0 * m, y1 - y0 + 2.0 * m),
+    ))
 }
 
 define_class!(
@@ -645,5 +676,38 @@ mod tests {
                 y: -100.0
             }
         );
+    }
+
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
+        NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
+    }
+
+    #[test]
+    fn a_drag_redraws_both_selections_and_their_borders() {
+        let m = BORDER_WIDTH;
+        assert_eq!(
+            drag_damage(
+                Some(rect(10.0, 20.0, 30.0, 40.0)),
+                Some(rect(10.0, 5.0, 50.0, 20.0))
+            ),
+            Some(rect(10.0 - m, 5.0 - m, 50.0 + 2.0 * m, 55.0 + 2.0 * m))
+        );
+        // The first big enough selection, and the last one when it shrinks
+        // to nothing.
+        assert_eq!(
+            drag_damage(None, Some(rect(10.0, 20.0, 30.0, 40.0))),
+            Some(rect(10.0 - m, 20.0 - m, 30.0 + 2.0 * m, 40.0 + 2.0 * m))
+        );
+        assert_eq!(
+            drag_damage(Some(rect(10.0, 20.0, 30.0, 40.0)), None),
+            Some(rect(10.0 - m, 20.0 - m, 30.0 + 2.0 * m, 40.0 + 2.0 * m))
+        );
+    }
+
+    #[test]
+    fn an_unchanged_selection_redraws_nothing() {
+        assert_eq!(drag_damage(None, None), None);
+        let r = Some(rect(10.0, 20.0, 30.0, 40.0));
+        assert_eq!(drag_damage(r, r), None);
     }
 }
