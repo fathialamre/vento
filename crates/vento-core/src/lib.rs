@@ -7,6 +7,7 @@ pub mod clip_history;
 pub mod clip_store;
 pub mod convert;
 pub mod destinations;
+pub mod durable;
 pub mod fileops;
 pub mod geometry;
 pub mod info;

@@ -8,6 +8,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::clip::Summary;
+use crate::durable;
 
 /// Newest on-disk format this build understands.
 const FORMAT_VERSION: u32 = 1;
@@ -279,7 +280,7 @@ impl ClipHistory {
         let written = (|| {
             let mut file = std::fs::File::create(&tmp)?;
             file.write_all(text.as_bytes())?;
-            file.sync_all()?;
+            durable::sync(&file)?;
             std::fs::rename(&tmp, path)
         })();
         if written.is_err() {

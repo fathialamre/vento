@@ -5986,6 +5986,7 @@ dependencies = [
  "fs4",
  "imagesize",
  "jiff",
+ "libc",
  "log",
  "percent-encoding",
  "rars",

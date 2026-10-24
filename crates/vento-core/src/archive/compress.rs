@@ -14,6 +14,7 @@ use zip::{CompressionMethod, DateTime, ZipWriter};
 
 use super::job::{ArchiveError, Counting, Made, Progress};
 use super::staging::{Partial, claim_partial_file};
+use crate::durable;
 use crate::fileops::{Fingerprint, numbered_name, place_partial};
 
 /// Macs scatter these through folders; they carry nothing worth archiving.
@@ -199,7 +200,7 @@ fn write_zip(file: File, items: &[Item], progress: &Progress) -> Result<(), Arch
         write_item(&mut zip, item, progress)?;
     }
     let file = zip.finish().map_err(zip_error)?;
-    file.sync_all()?;
+    durable::sync(&file)?;
     Ok(())
 }
 
