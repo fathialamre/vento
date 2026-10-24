@@ -10,11 +10,6 @@ yourself if you want to add features or fix something, or if you have an Intel M
 - macOS 13 or later
 - Rust via [rustup](https://rustup.rs): `rust-toolchain.toml` pins the toolchain
   (1.99.1) and rustup installs it on first build; the crates need at least 1.93.
-- A network connection for the first build: the windows draw with Skia, and the
-  build downloads prebuilt Skia libraries from the
-  [rust-skia releases](https://github.com/rust-skia/skia-binaries/releases).
-  Without them it builds Skia from source, which takes much longer and needs
-  the tools listed in [rust-skia's README](https://github.com/rust-skia/rust-skia#building).
 
 ## Run from source
 

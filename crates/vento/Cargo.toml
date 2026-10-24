@@ -11,13 +11,16 @@ name = "vento"
 path = "src/main.rs"
 
 [dependencies]
-# Skia draws through Metal: about half the memory of the default FemtoVG on
-# OpenGL, and less work at startup. The default features are left out so
-# FemtoVG and the software renderer are not built in.
+# The software renderer draws on the CPU. Any GPU renderer (FemtoVG on
+# OpenGL, Skia on Metal) makes macOS hold 150-250 MB of graphics memory for
+# a second or two each time a window starts drawing again, such as on every
+# hover of the Pocket island; vento's windows are small enough to draw on
+# the CPU instead. The default features are left out so no GPU renderer is
+# built in. Transparency needs the softbuffer patch in the root Cargo.toml.
 slint = { version = "1.18.1", default-features = false, features = [
     "std",
     "backend-winit",
-    "renderer-skia",
+    "renderer-software",
     "accessibility",
     "compat-1-2",
     "unstable-winit-030",

@@ -18,3 +18,10 @@ codegen-units = 1
 debug = "line-tables-only"
 split-debuginfo = "packed"
 strip = true
+
+# softbuffer 0.4 draws macOS windows as opaque (NoneSkipFirst), which loses
+# the transparency of every vento window under Slint's software renderer.
+# The vendored copy marks the pixels premultiplied instead; drop it once a
+# softbuffer release with `AlphaMode` reaches Slint.
+[patch.crates-io]
+softbuffer = { path = "vendor/softbuffer" }
