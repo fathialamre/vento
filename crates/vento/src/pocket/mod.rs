@@ -1,10 +1,12 @@
 //! The Pocket island: a black window that grows out of the notch (or sits as
 //! a pill under the menu bar) and shows what the Pocket holds.
 //!
-//! The window always has the expanded size and sits at the top centre of the
-//! island's screen; the collapsed shape is drawn inside it. Presence is
-//! decided by [`IslandState`] from the wheel's input samples, so the island
-//! adds no polling of its own.
+//! The window has the expanded width and sits at the top centre of the
+//! island's screen; it grows to the expanded height just before the island
+//! expands and shrinks back to the collapsed shape once it has collapsed, so
+//! a resting island covers no more of the screen than it draws on. Presence
+//! is decided by [`IslandState`] from the wheel's input samples, so the
+//! island adds no polling of its own.
 //!
 //! Items come in from the wheel's Pocket action ([`PocketController::add`]),
 //! by a drop on the expanded island (through the platform's drop catcher),
@@ -68,6 +70,9 @@ const PARKED: LogicalPosition = LogicalPosition {
 };
 /// How long the parked window stays up, so the native window exists.
 const WARM_DELAY: Duration = Duration::from_millis(200);
+/// How long the island takes to collapse (`pocket.slint` animates it for
+/// 160 ms), with room to spare: the window shrinks only after.
+const COLLAPSE_DONE: Duration = Duration::from_millis(250);
 /// How long the island offers Undo after a clear or an x.
 const UNDO_LIFETIME: Duration = Duration::from_secs(5);
 /// How often the Undo ring is redrawn while it counts down in sight.
@@ -212,6 +217,8 @@ pub struct PocketController {
     was_dragging: Cell<bool>,
     /// Whether the window takes the pointer (otherwise it ignores it).
     hittest: Cell<bool>,
+    /// Shrinks the window once the island has collapsed.
+    shrink_timer: Timer,
     /// Ids of the selected items, toggled by clicking their cells.
     selected: RefCell<Vec<u64>>,
     /// Presses on the cells and on "Drag all".
@@ -284,6 +291,7 @@ impl PocketController {
             overlay_ready: Cell::new(false),
             was_dragging: Cell::new(false),
             hittest: Cell::new(true),
+            shrink_timer: Timer::default(),
             selected: RefCell::new(Vec::new()),
             latch: PressLatch::default(),
             pending: PendingTrash::default(),
@@ -1105,6 +1113,7 @@ impl PocketController {
         if after == Presence::Expanded || before == Presence::Hidden {
             self.refresh();
         }
+        self.fit_window(before, after);
         self.window.set_expanded(after == Presence::Expanded);
         self.run_undo_timer();
         if after == Presence::Hidden {
@@ -1126,6 +1135,35 @@ impl PocketController {
                 w.scale_factor(),
                 w.with_winit_window(|w| w.has_focus())
             );
+        }
+    }
+
+    /// Makes the window as tall as the expanded island before it expands,
+    /// and as tall as the collapsed shape once it has collapsed (its top
+    /// stays where it is, so nothing drawn moves). A hidden window shrinks
+    /// at once.
+    fn fit_window(&self, before: Presence, after: Presence) {
+        match after {
+            Presence::Expanded => {
+                self.shrink_timer.stop();
+                self.window.set_full(true);
+            }
+            Presence::Hidden => {
+                self.shrink_timer.stop();
+                self.window.set_full(false);
+            }
+            Presence::Collapsed if before == Presence::Expanded => {
+                let this = self.this.clone();
+                self.shrink_timer
+                    .start(TimerMode::SingleShot, COLLAPSE_DONE, move || {
+                        if let Some(c) = this.upgrade()
+                            && !c.expanded()
+                        {
+                            c.window.set_full(false);
+                        }
+                    });
+            }
+            Presence::Collapsed => {}
         }
     }
 
