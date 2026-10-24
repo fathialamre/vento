@@ -1,3 +1,20 @@
 [workspace]
 members = ["crates/*"]
 resolver = "3"
+
+# The shipped app: one optimisation unit across all crates, for the fastest
+# code and a smaller binary (28 MB down to 18 MB), at the cost of slower
+# release builds (about 5 min clean, 2.5 min after an edit). Use "thin" if
+# that gets in the way: 20 MB, 2.3 min clean, 1.1 min after an edit.
+#
+# The binary carries no symbols; they go to target/release/vento.dSYM
+# instead, which symbolicates a crash report of that very build (`atos`, or
+# next to the .ips in Console) and should be kept with each release.
+# Panics stay unwinding: the platform code catches them at the AppKit
+# boundary.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+debug = "line-tables-only"
+split-debuginfo = "packed"
+strip = true
