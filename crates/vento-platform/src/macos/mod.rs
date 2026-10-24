@@ -39,7 +39,7 @@ mod terminal;
 mod trash;
 mod webp;
 
-pub(crate) use icons::picture_thumbnail;
+pub(crate) use icons::{file_icon_at, picture_thumbnail};
 pub(crate) use image_io::{probe_image, write_image};
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
