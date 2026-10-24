@@ -1,10 +1,12 @@
 //! Linux [`Platform`] for GNOME.
 //!
 //! The desktop's own services (Trash, apps, terminals, the folder picker)
-//! go through gio. Global input, screens, the clipboard and vento's windows
-//! need vento running under XWayland with its GNOME Shell extension; until
-//! those land they behave like [`StubPlatform`].
+//! go through gio. The pointer, drags, screens and focus come from Vento's
+//! GNOME Shell extension (see `shell`); without it Vento sees no input.
+//! The clipboard and vento's windows behave like [`StubPlatform`] until
+//! they land.
 
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -20,19 +22,33 @@ use crate::{
 mod apps;
 mod icons;
 mod portal;
+mod shell;
 mod terminal;
 mod trash;
 
-/// gio-backed [`Platform`] for GNOME.
-#[derive(Debug, Default)]
+/// [`Platform`] for GNOME, through gio and Vento's GNOME Shell extension.
+#[derive(Debug)]
 pub struct LinuxPlatform {
     /// Answers what is not done on Linux yet.
     stub: StubPlatform,
+    shell: shell::Shell,
+    /// The monitors serial [`Platform::screens_changed`] last saw.
+    screens_seen: Cell<Option<u32>>,
+}
+
+impl Default for LinuxPlatform {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LinuxPlatform {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            stub: StubPlatform,
+            shell: shell::Shell::connect(),
+            screens_seen: Cell::new(None),
+        }
     }
 }
 
@@ -40,15 +56,22 @@ impl Platform for LinuxPlatform {
     fn prepare_app(&self) {}
 
     fn sample_input(&self) -> InputSample {
-        self.stub.sample_input()
+        match self.shell.state() {
+            Some(state) => shell::to_sample(&state),
+            None => self.stub.sample_input(),
+        }
     }
 
     fn drag_paths(&self) -> Vec<PathBuf> {
-        self.stub.drag_paths()
+        shell::local_paths(&self.shell.drag_uris())
     }
 
     fn screens(&self) -> Vec<Rect> {
-        self.stub.screens()
+        let monitors = self.shell.monitors();
+        if monitors.is_empty() {
+            return self.stub.screens();
+        }
+        monitors.iter().map(|m| m.work).collect()
     }
 
     fn copy_files(&self, paths: &[PathBuf]) -> Result<(), PlatformError> {
@@ -94,8 +117,15 @@ impl Platform for LinuxPlatform {
         portal::pick_folder(start)
     }
 
+    /// The primary screen: GNOME screens have no notch, and the top bar
+    /// stands in for the menu bar.
     fn pocket_home(&self) -> Option<IslandHome> {
-        self.stub.pocket_home()
+        let primary = *self.shell.monitors().first()?;
+        Some(IslandHome {
+            screen: primary.frame,
+            notch: None,
+            menu_bar_h: (primary.work.y - primary.frame.y).max(0.0),
+        })
     }
 
     fn make_overlay(
@@ -137,7 +167,9 @@ impl Platform for LinuxPlatform {
     }
 
     fn screens_changed(&self) -> bool {
-        self.stub.screens_changed()
+        let now = self.shell.monitors_serial();
+        let before = self.screens_seen.replace(now);
+        before.is_some() && before != now
     }
 
     fn on_terminate(&self, f: Box<dyn Fn()>) {
@@ -145,11 +177,13 @@ impl Platform for LinuxPlatform {
     }
 
     fn activate_app(&self) {
-        self.stub.activate_app()
+        if !self.shell.focus("Activate") {
+            log::debug!("activate_app: no window of vento's to focus");
+        }
     }
 
     fn deactivate_app(&self) {
-        self.stub.deactivate_app()
+        self.shell.focus("Deactivate");
     }
 
     /// There is no app menu bar on GNOME.
@@ -167,7 +201,10 @@ impl Platform for LinuxPlatform {
     }
 
     fn scale_factor_at(&self, p: Point) -> f64 {
-        self.stub.scale_factor_at(p)
+        let monitors = self.shell.monitors();
+        shell::monitor_at(&monitors, p)
+            .or(monitors.first())
+            .map_or(1.0, |m| m.scale)
     }
 
     fn apps_for(&self, path: &Path) -> Vec<AppInfo> {

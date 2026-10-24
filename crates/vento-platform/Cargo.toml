@@ -116,6 +116,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 resvg = { version = "0.48", default-features = false }
 
 [dev-dependencies]
+# The probe example prints the platform's logs (`RUST_LOG=debug`).
+env_logger = "0.11"
 # Writes the PNG files the picture thumbnail tests read.
 png = "0.18"
 tempfile = "3"

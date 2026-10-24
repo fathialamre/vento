@@ -6141,6 +6141,7 @@ name = "vento-platform"
 version = "0.1.0"
 dependencies = [
  "block2 0.6.2",
+ "env_logger",
  "gio 0.22.10",
  "gio-unix",
  "image",

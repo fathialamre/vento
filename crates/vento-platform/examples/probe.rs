@@ -1,6 +1,7 @@
 //! Prints the screens, the Pocket island home and the probe binary's Finder
-//! icon size, then platform input changes for 15 s so the sampler can be
-//! checked by hand: drag a Finder file, press Ctrl, press Esc, release.
+//! icon size, then platform input changes for 15 s (or the seconds given)
+//! so the sampler can be checked by hand: drag a Finder file, press Ctrl,
+//! press Esc, release. A new drag also prints its files.
 
 use std::time::{Duration, Instant};
 
@@ -15,6 +16,7 @@ fn changed(a: &InputSample, b: &InputSample) -> bool {
 }
 
 fn main() {
+    env_logger::init();
     let platform = vento_platform::current();
     platform.prepare_app();
     println!("screens: {:?}", platform.screens());
@@ -38,12 +40,19 @@ fn main() {
 
     let mut last = platform.sample_input();
     println!("{last:?}");
-    let end = Instant::now() + Duration::from_secs(15);
+    let secs = std::env::args()
+        .nth(1)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(15);
+    let end = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < end {
         std::thread::sleep(Duration::from_millis(8));
         let now = platform.sample_input();
         if changed(&last, &now) {
             println!("{now:?}");
+            if now.left_down && now.drag_change_count != last.drag_change_count {
+                println!("drag_paths: {:?}", platform.drag_paths());
+            }
         }
         last = now;
     }
