@@ -15,6 +15,11 @@ use log::warn;
 
 use crate::clip::{ClipRep, ClipSnapshot};
 use crate::clip_history::ClipEntry;
+use crate::durable;
+
+/// Most blob files [`write_entry`] keeps open while waiting to flush them,
+/// well under the 256 a macOS process may open by default.
+const OPEN_BLOBS: usize = 64;
 
 /// Writes `s` to `<dir>/<id>/`, creating `dir` if needed.
 ///
@@ -42,16 +47,31 @@ pub fn write_entry(dir: &Path, id: u64, s: &ClipSnapshot) -> io::Result<()> {
 }
 
 /// Writes every representation of `s` into the fresh folder `folder`.
+///
+/// The blobs are flushed together once written, with one barrier for the
+/// entry (one per [`OPEN_BLOBS`] blobs) rather than a full flush per blob: a
+/// copy usually carries 10–20 of them. The rename that publishes the folder
+/// comes after that barrier, so a power cut leaves either the whole entry or
+/// only an `.tmp` folder that [`sweep`] removes, never a torn blob under an
+/// id; what it can lose is the newest entry, which the history then fails to
+/// read. At most [`OPEN_BLOBS`] files are held open (thousands of files
+/// copied in Finder are one rep each), and all are closed before returning,
+/// as Windows won't rename a folder with open files inside.
 fn write_blobs(folder: &Path, s: &ClipSnapshot) -> io::Result<()> {
     fs::create_dir(folder)?;
+    let mut files = Vec::new();
     for (i, item) in s.items.iter().enumerate() {
         for (j, rep) in item.iter().enumerate() {
             let mut f = File::create(folder.join(format!("{i}-{j}")))?;
             f.write_all(&rep.data)?;
-            f.sync_all()?;
+            files.push(f);
+            if files.len() == OPEN_BLOBS {
+                durable::sync_files(&files)?;
+                files.clear();
+            }
         }
     }
-    Ok(())
+    durable::sync_files(&files)
 }
 
 /// Rebuilds the snapshot of entry `e` from its folder under `dir`.
@@ -199,6 +219,18 @@ mod tests {
         assert!(dir.join("3").join("0-1").is_file());
         assert!(!dir.join("3.tmp").exists());
         assert_eq!(read_entry(&dir, &entry_for(3, &s)).unwrap(), s);
+    }
+
+    #[test]
+    fn more_blobs_than_held_open_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = ClipSnapshot {
+            items: (0..OPEN_BLOBS * 2 + 3)
+                .map(|i| vec![rep("public.file-url", i.to_string().as_bytes())])
+                .collect(),
+        };
+        write_entry(tmp.path(), 5, &s).unwrap();
+        assert_eq!(read_entry(tmp.path(), &entry_for(5, &s)).unwrap(), s);
     }
 
     #[test]

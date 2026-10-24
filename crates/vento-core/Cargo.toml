@@ -22,6 +22,10 @@ percent-encoding = "2"
 imagesize = "0.15"
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 
+# Flushing saves without emptying the drive cache (see `durable`).
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3"
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["aes256", "bzip2", "ppmd", "compress"] }

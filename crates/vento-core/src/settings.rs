@@ -8,6 +8,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::actions::ActionId;
+use crate::durable;
 use crate::geometry::{Layout, MAX_ACTIONS};
 use crate::paths::PathFormat;
 use crate::trigger::{Modifier, Modifiers};
@@ -313,7 +314,7 @@ impl Settings {
         let written = (|| {
             let mut file = std::fs::File::create(&tmp)?;
             file.write_all(text.as_bytes())?;
-            file.sync_all()?;
+            durable::sync(&file)?;
             std::fs::rename(&tmp, &target)
         })();
         if written.is_err() {

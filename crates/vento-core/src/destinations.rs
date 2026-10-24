@@ -8,6 +8,8 @@ use directories::ProjectDirs;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
+use crate::durable;
+
 /// How many recent destinations the ring shows.
 pub const RING_RECENT: usize = 5;
 /// How many recent destinations are remembered.
@@ -108,7 +110,7 @@ impl RecentDestinations {
         let written = (|| {
             let mut file = std::fs::File::create(&tmp)?;
             file.write_all(text.as_bytes())?;
-            file.sync_all()?;
+            durable::sync(&file)?;
             std::fs::rename(&tmp, path)
         })();
         if written.is_err() {
