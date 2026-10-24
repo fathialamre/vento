@@ -139,14 +139,14 @@ impl Toaster {
         });
     }
 
-    /// Hides the toast; its window goes once it has stayed hidden a while.
+    /// Hides the toast. Its window stays: toasts follow most actions, and
+    /// making the window again would cost a new GPU surface each time.
     fn hide(&self) {
         if let Some(window) = self.window.get()
             && let Err(e) = window.hide()
         {
             warn!("cannot hide the toast: {e}");
         }
-        self.window.release_later();
     }
 
     /// Keeps the toast from ever becoming the key window, and a click on
