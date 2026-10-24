@@ -3,14 +3,15 @@
 //! The desktop's own services (Trash, apps, terminals, the folder picker)
 //! go through gio. The pointer, drags, screens and focus come from Vento's
 //! GNOME Shell extension (see `shell`); without it Vento sees no input.
-//! The clipboard and vento's windows behave like [`StubPlatform`] until
-//! they land.
+//! The clipboard is read through the extension and written as the owner
+//! of the X11 `CLIPBOARD`; vento's windows are X11 ones under XWayland.
 
-use std::cell::Cell;
+use std::cell::{Cell, OnceCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use vento_core::clip::ClipSnapshot;
+use gio::prelude::*;
+use vento_core::clip::{ClipRep, ClipSnapshot, TYPE_FILE_URL, TYPE_TEXT};
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
@@ -20,6 +21,8 @@ use crate::{
 };
 
 mod apps;
+mod clip_owner;
+mod clipboard;
 mod icons;
 mod portal;
 mod shell;
@@ -38,6 +41,8 @@ pub struct LinuxPlatform {
     shell: shell::Shell,
     /// The monitors serial [`Platform::screens_changed`] last saw.
     screens_seen: Cell<Option<u32>>,
+    /// Owns the clipboard for vento's copies; made on the first one.
+    clip_owner: OnceCell<Option<clip_owner::ClipOwner>>,
 }
 
 impl Default for LinuxPlatform {
@@ -52,9 +57,24 @@ impl LinuxPlatform {
             stub: StubPlatform,
             shell: shell::Shell::connect(),
             screens_seen: Cell::new(None),
+            clip_owner: OnceCell::new(),
         }
     }
+
+    fn clip_owner(&self) -> Result<&clip_owner::ClipOwner, PlatformError> {
+        self.clip_owner
+            .get_or_init(|| {
+                clip_owner::ClipOwner::start()
+                    .inspect_err(|e| log::warn!("cannot own the clipboard: {e}"))
+                    .ok()
+            })
+            .as_ref()
+            .ok_or(PlatformError::Unsupported)
+    }
 }
+
+/// How long [`Platform::write_clipboard`] waits for GNOME to see the copy.
+const CLIP_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl Platform for LinuxPlatform {
     fn prepare_app(&self) {}
@@ -79,27 +99,55 @@ impl Platform for LinuxPlatform {
     }
 
     fn copy_files(&self, paths: &[PathBuf]) -> Result<(), PlatformError> {
-        self.stub.copy_files(paths)
+        let items = paths
+            .iter()
+            .map(|p| {
+                vec![ClipRep {
+                    ty: TYPE_FILE_URL.to_owned(),
+                    data: gio::File::for_path(p).uri().as_bytes().to_vec(),
+                }]
+            })
+            .collect();
+        self.clip_owner()?
+            .own(clipboard::offers(&ClipSnapshot { items }))
     }
 
     fn copy_text(&self, text: &str) -> Result<(), PlatformError> {
-        self.stub.copy_text(text)
+        let item = vec![ClipRep {
+            ty: TYPE_TEXT.to_owned(),
+            data: text.as_bytes().to_vec(),
+        }];
+        self.clip_owner()?
+            .own(clipboard::offers(&ClipSnapshot { items: vec![item] }))
     }
 
     fn clipboard_types(&self) -> Vec<String> {
-        self.stub.clipboard_types()
+        clipboard::core_types(&self.shell.clipboard_types())
     }
 
     fn clipboard_change_count(&self) -> i64 {
-        self.stub.clipboard_change_count()
+        self.shell.state().map_or(0, |s| i64::from(s.clip_serial))
     }
 
     fn read_clipboard(&self) -> ClipSnapshot {
-        self.stub.read_clipboard()
+        let types = self.shell.clipboard_types();
+        clipboard::snapshot(&types, |mime| self.shell.read_clipboard(mime))
     }
 
+    /// Returns the serial GNOME gives the copy, waiting up to
+    /// [`CLIP_SETTLE`] for it; if it has not moved by then, the one it will
+    /// move to.
     fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError> {
-        self.stub.write_clipboard(snapshot)
+        let before = self.shell.clip_serial_now().unwrap_or(0);
+        self.clip_owner()?.own(clipboard::offers(snapshot))?;
+        let deadline = std::time::Instant::now() + CLIP_SETTLE;
+        while std::time::Instant::now() < deadline {
+            match self.shell.clip_serial_now() {
+                Some(now) if now != before => return Ok(i64::from(now)),
+                _ => std::thread::sleep(std::time::Duration::from_millis(10)),
+            }
+        }
+        Ok(i64::from(before) + 1)
     }
 
     /// Linux has no file reference paths: a path is its own file.

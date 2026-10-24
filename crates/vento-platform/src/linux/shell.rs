@@ -27,6 +27,9 @@ const API_VERSION: u32 = 1;
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
 
+/// How long reading one clipboard type may take: a picture can be large.
+const READ_TIMEOUT_MS: i32 = 2000;
+
 /// How long calls may keep failing before the last state is dropped. A
 /// busy GNOME Shell misses a call now and then; reporting no state then
 /// would read as the button let go and close the wheel mid-drag.
@@ -192,6 +195,15 @@ fn call(
     method: &str,
     args: Option<&glib::Variant>,
 ) -> Result<glib::Variant, glib::Error> {
+    call_within(bus, method, args, CALL_TIMEOUT_MS)
+}
+
+fn call_within(
+    bus: &gio::DBusConnection,
+    method: &str,
+    args: Option<&glib::Variant>,
+    timeout_ms: i32,
+) -> Result<glib::Variant, glib::Error> {
     bus.call_sync(
         Some(BUS_NAME),
         OBJECT_PATH,
@@ -200,7 +212,7 @@ fn call(
         args,
         None,
         gio::DBusCallFlags::NO_AUTO_START,
-        CALL_TIMEOUT_MS,
+        timeout_ms,
         gio::Cancellable::NONE,
     )
 }
@@ -327,6 +339,41 @@ impl Shell {
     /// The serial the current monitors were read at.
     pub fn monitors_serial(&self) -> Option<u32> {
         self.latest.lock().unwrap().monitors_serial
+    }
+
+    /// The clipboard's serial now, asked for directly (not the worker's
+    /// latest). Blocks for one call.
+    pub fn clip_serial_now(&self) -> Option<u32> {
+        let bus = self.bus.as_ref()?;
+        call(bus, "State", None)
+            .ok()
+            .and_then(|r| parse_state(&r))
+            .map(|s| s.clip_serial)
+    }
+
+    /// The clipboard's MIME types (and X11 targets). Blocks for one call.
+    pub fn clipboard_types(&self) -> Vec<String> {
+        let Some(bus) = &self.bus else {
+            return Vec::new();
+        };
+        call(bus, "ClipboardTypes", None)
+            .ok()
+            .and_then(|r| r.try_child_value(0)?.get::<Vec<String>>())
+            .unwrap_or_default()
+    }
+
+    /// The clipboard's data in `mime`; `None` if it can't be read. Blocks
+    /// for one call.
+    pub fn read_clipboard(&self, mime: &str) -> Option<Vec<u8>> {
+        let bus = self.bus.as_ref()?;
+        let args = (mime,).to_variant();
+        let data = call_within(bus, "ReadClipboard", Some(&args), READ_TIMEOUT_MS)
+            .inspect_err(|e| log::debug!("reading {mime} failed: {e}"))
+            .ok()?
+            .try_child_value(0)?
+            .get::<Vec<u8>>()?;
+        // The extension answers an unreadable type with no bytes.
+        (!data.is_empty()).then_some(data)
     }
 
     /// The files of the drag in progress. Blocks for one call.
