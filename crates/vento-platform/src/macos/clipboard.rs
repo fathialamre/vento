@@ -6,7 +6,7 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSPasteboardTypeString, NSPasteboardWriting};
 use objc2_foundation::{NSArray, NSData, NSString, NSURL};
-use vento_core::clip::{ClipRep, ClipSnapshot};
+use vento_core::clip::{ClipSnapshot, MAX_SNAPSHOT_BYTES, RepData, capture};
 
 use crate::PlatformError;
 
@@ -59,28 +59,45 @@ pub(super) fn types_of(pb: &NSPasteboard) -> Vec<String> {
         .collect()
 }
 
-/// All items on `pb` with every representation that has data. A type whose
-/// data cannot be had is left out, and an item left with none is dropped.
+/// All items on `pb` with every representation that has data, cut to
+/// [`MAX_SNAPSHOT_BYTES`] as [`capture`] cuts it. A type whose data cannot
+/// be had is left out, and an item left with none is dropped.
 pub(super) fn read_from(pb: &NSPasteboard) -> ClipSnapshot {
+    read_capped(pb, MAX_SNAPSHOT_BYTES)
+}
+
+/// [`read_from`] within `limit` bytes. Asking for a type's data makes the
+/// app that copied render it if it only promised it, so types are asked for
+/// one by one, and no more once the copy is known to be too big.
+fn read_capped(pb: &NSPasteboard, limit: usize) -> ClipSnapshot {
     let Some(items) = pb.pasteboardItems() else {
         return ClipSnapshot::default();
     };
-    let items = items
+    let items: Vec<Retained<NSPasteboardItem>> = items.iter().collect();
+    let types: Vec<Vec<Retained<NSString>>> = items
         .iter()
-        .map(|item| {
-            item.types()
-                .iter()
-                .filter_map(|ty| {
-                    item.dataForType(&ty).map(|data| ClipRep {
-                        ty: ty.to_string(),
-                        data: data.to_vec(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .filter(|reps| !reps.is_empty())
+        .map(|item| item.types().iter().collect())
         .collect();
-    ClipSnapshot { items }
+    let names: Vec<Vec<String>> = types
+        .iter()
+        .map(|item| item.iter().map(|t| t.to_string()).collect())
+        .collect();
+    capture(&names, limit, |i, j| {
+        items[i].dataForType(&types[i][j]).map(PasteboardData)
+    })
+}
+
+/// A type's data as the pasteboard handed it over.
+struct PasteboardData(Retained<NSData>);
+
+impl RepData for PasteboardData {
+    fn byte_len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn copy_bytes(&self) -> Vec<u8> {
+        self.0.to_vec()
+    }
 }
 
 /// Replace the contents of `pb` with `s`, one pasteboard item per snapshot
@@ -128,6 +145,7 @@ pub(super) fn resolve_file_reference(path: &Path) -> Option<PathBuf> {
 mod tests {
     use super::super::test_support::TempPasteboard;
     use super::*;
+    use vento_core::clip::ClipRep;
 
     fn rep(ty: &str, data: &[u8]) -> ClipRep {
         ClipRep {
@@ -184,6 +202,26 @@ mod tests {
                 let found = got.iter().find(|g| g.ty == r.ty);
                 assert_eq!(found, Some(r), "missing or changed {}", r.ty);
             }
+        }
+    }
+
+    #[test]
+    fn too_big_a_copy_is_cut_to_what_it_shows() {
+        let pb = TempPasteboard::new();
+        let written = ClipSnapshot {
+            items: vec![vec![
+                rep("com.adobe.pdf", &[7; 4096]),
+                rep("public.utf8-plain-text", b"A1"),
+                rep("public.rtf", &[8; 4096]),
+            ]],
+        };
+        write_to(&pb.0, &written).unwrap();
+        let read = read_capped(&pb.0, 1024);
+        assert_eq!(read.items, [vec![rep("public.utf8-plain-text", b"A1")]]);
+        // Within the limit it is read whole.
+        let read = read_capped(&pb.0, 1 << 20);
+        for r in &written.items[0] {
+            assert!(read.items[0].contains(r), "missing {}", r.ty);
         }
     }
 

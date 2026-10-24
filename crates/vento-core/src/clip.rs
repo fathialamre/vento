@@ -4,8 +4,8 @@
 //! items, each a list of typed byte representations. Nothing here touches
 //! AppKit; the app reads the pasteboard and hands the bytes to these
 //! functions, which pick the one thing to show ([`summarize`]), cut a snapshot
-//! down to that when it is too big ([`fit`]) and fingerprint it
-//! ([`snapshot_hash`]).
+//! down to that when it is too big ([`fit`], or [`capture`] while reading it)
+//! and fingerprint it ([`snapshot_hash`]).
 
 use percent_encoding::percent_decode;
 use serde::{Deserialize, Serialize};
@@ -130,6 +130,310 @@ pub fn fit(s: ClipSnapshot, limit: usize) -> Option<ClipSnapshot> {
     (size(&cut) <= limit).then_some(cut)
 }
 
+/// The data of one representation as the pasteboard hands it over. Its
+/// bytes are copied out only when they are kept.
+pub trait RepData {
+    /// Length of the data, in bytes.
+    fn byte_len(&self) -> usize;
+    /// A copy of the bytes.
+    fn copy_bytes(&self) -> Vec<u8>;
+}
+
+impl RepData for &[u8] {
+    fn byte_len(&self) -> usize {
+        self.len()
+    }
+
+    fn copy_bytes(&self) -> Vec<u8> {
+        self.to_vec()
+    }
+}
+
+/// Reads a snapshot off the pasteboard already cut to `limit` bytes as
+/// [`fit`] cuts it, without fetching or copying more than that takes.
+///
+/// `types` names each item's types, in order, and `fetch(i, j)` gets the
+/// data of item `i`'s type `j` (making its app render it when it was only
+/// promised), `None` when it cannot be had. Each type is fetched at most
+/// once and its data copied only when kept; once the snapshot is known to
+/// be too big, nothing more is fetched.
+///
+/// The result is what `fit` gives for the whole snapshot, empty where it
+/// gives `None`, except that:
+/// - a copy carrying one of the [`SECRET_MARKERS`] yields its markers only,
+///   as it is never recorded (only their names matter);
+/// - a text, link or file URL bigger than `limit` is taken to be what the
+///   copy is shown as without being looked into;
+/// - a TIFF beside a PNG already read is taken to be the same picture, and
+///   when that picture would not fit uncompressed (4 bytes a pixel) the
+///   snapshot is too big without the TIFF being fetched.
+pub fn capture<D: RepData>(
+    types: &[Vec<String>],
+    limit: usize,
+    fetch: impl FnMut(usize, usize) -> Option<D>,
+) -> ClipSnapshot {
+    let mut c = Capture {
+        types,
+        limit,
+        fetch,
+        slots: types
+            .iter()
+            .map(|item| item.iter().map(|_| Slot::Unread).collect())
+            .collect(),
+        total: 0,
+        over: false,
+    };
+    let is_marker = |t: &str| SECRET_MARKERS.contains(&t);
+    let mut marked = false;
+    for (i, j) in c.positions(is_marker) {
+        marked |= !matches!(c.read(i, j, limit), Slot::Missing);
+    }
+    if marked {
+        // Only markers were read, so whatever was too big is one.
+        for slot in c.slots.iter_mut().flatten() {
+            if matches!(slot, Slot::Over) {
+                *slot = Slot::Kept(Vec::new());
+            }
+        }
+        return c.kept(is_marker);
+    }
+    let origin = c.origin();
+    c.read_rest();
+    c.finish(origin)
+}
+
+/// What became of one representation during [`capture`].
+enum Slot {
+    /// Not fetched (yet).
+    Unread,
+    /// The pasteboard had no data for it.
+    Missing,
+    /// Fetched and copied.
+    Kept(Vec<u8>),
+    /// Fetched, but bigger than there was room for: not copied.
+    Over,
+}
+
+/// What a [`capture`]d snapshot is shown as was drawn from.
+#[derive(Clone, Copy)]
+enum Origin {
+    /// Every file-URL representation.
+    Files,
+    /// Item `.0`'s type `.1`.
+    Rep(usize, usize),
+}
+
+/// The state of one [`capture`].
+struct Capture<'a, F> {
+    types: &'a [Vec<String>],
+    limit: usize,
+    fetch: F,
+    /// Per item, per type, what became of it.
+    slots: Vec<Vec<Slot>>,
+    /// Bytes kept so far.
+    total: usize,
+    /// Something did not fit: the whole snapshot is bigger than `limit`.
+    over: bool,
+}
+
+impl<D: RepData, F: FnMut(usize, usize) -> Option<D>> Capture<'_, F> {
+    /// Fetches item `i`'s type `j` unless it was, and copies it when it is
+    /// at most `room` bytes; when it is more, the snapshot is too big.
+    fn read(&mut self, i: usize, j: usize, room: usize) -> &Slot {
+        if matches!(self.slots[i][j], Slot::Unread) {
+            self.slots[i][j] = match (self.fetch)(i, j) {
+                None => Slot::Missing,
+                Some(d) if d.byte_len() > room => {
+                    self.over = true;
+                    Slot::Over
+                }
+                Some(d) => {
+                    self.total += d.byte_len();
+                    Slot::Kept(d.copy_bytes())
+                }
+            };
+        }
+        &self.slots[i][j]
+    }
+
+    /// Room left under the limit.
+    fn room(&self) -> usize {
+        self.limit.saturating_sub(self.total)
+    }
+
+    fn is_over(&self) -> bool {
+        self.over || self.total > self.limit
+    }
+
+    /// Where the types `want` takes are, in order.
+    fn positions(&self, want: impl Fn(&str) -> bool) -> Vec<(usize, usize)> {
+        let mut at = Vec::new();
+        for (i, item) in self.types.iter().enumerate() {
+            for (j, ty) in item.iter().enumerate() {
+                if want(ty) {
+                    at.push((i, j));
+                }
+            }
+        }
+        at
+    }
+
+    /// What the snapshot is shown as, decided as [`pick`] decides it, with
+    /// only what that takes fetched.
+    fn origin(&mut self) -> Option<Origin> {
+        let limit = self.limit;
+        let mut files = false;
+        for (i, j) in self.positions(|t| t == TYPE_FILE_URL) {
+            files |= match self.read(i, j, limit) {
+                Slot::Kept(d) => file_url_to_path(d).is_some(),
+                Slot::Over => true,
+                _ => false,
+            };
+        }
+        if files {
+            return Some(Origin::Files);
+        }
+        for i in 0..self.types.len() {
+            for ty in [TYPE_TEXT, TYPE_URL, TYPE_PNG, TYPE_TIFF] {
+                let Some(j) = self.types[i].iter().position(|t| t == ty) else {
+                    continue;
+                };
+                let shown = match self.read(i, j, limit) {
+                    Slot::Kept(d) => match ty {
+                        TYPE_TEXT => preview(d).is_some(),
+                        TYPE_URL => link(d).is_some(),
+                        _ => true,
+                    },
+                    Slot::Over => true,
+                    _ => false,
+                };
+                if shown {
+                    return Some(Origin::Rep(i, j));
+                }
+            }
+            // `pick` looks at the first item with any data, and no further.
+            if self.has_data(i) {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Whether item `i` has data under any type, fetching its types until
+    /// one has.
+    fn has_data(&mut self, i: usize) -> bool {
+        (0..self.types[i].len()).any(|j| {
+            let room = self.room();
+            !matches!(self.read(i, j, room), Slot::Missing)
+        })
+    }
+
+    /// Fetches the types not fetched yet, each item's PNG first (so a TIFF
+    /// of the same picture can be judged by it), until one does not fit.
+    fn read_rest(&mut self) {
+        let types = self.types;
+        for (i, item) in types.iter().enumerate() {
+            let png = item.iter().position(|t| t == TYPE_PNG);
+            let rest = (0..item.len()).filter(|&j| Some(j) != png);
+            for j in png.into_iter().chain(rest) {
+                if self.is_over() {
+                    return;
+                }
+                if self.tiff_too_big(i, j) {
+                    self.over = true;
+                    return;
+                }
+                let room = self.room();
+                self.read(i, j, room);
+            }
+        }
+    }
+
+    /// Whether item `i`'s type `j` is an unread TIFF beside a PNG already
+    /// read whose picture would not fit uncompressed in the room left.
+    fn tiff_too_big(&self, i: usize, j: usize) -> bool {
+        let item = &self.types[i];
+        if item[j] != TYPE_TIFF || !matches!(self.slots[i][j], Slot::Unread) {
+            return false;
+        }
+        let Some(p) = item.iter().position(|t| t == TYPE_PNG) else {
+            return false;
+        };
+        let Slot::Kept(png) = &self.slots[i][p] else {
+            return false;
+        };
+        let Ok(dim) = imagesize::blob_size(png) else {
+            return false;
+        };
+        let bytes = (dim.width as u64)
+            .saturating_mul(dim.height as u64)
+            .saturating_mul(4);
+        bytes > self.room() as u64
+    }
+
+    /// Everything kept when it all fit, otherwise what `origin` came from
+    /// if that fits, otherwise nothing.
+    fn finish(self, origin: Option<Origin>) -> ClipSnapshot {
+        if !self.is_over() {
+            return self.kept(|_| true);
+        }
+        let limit = self.limit;
+        let cut = match origin {
+            None => return ClipSnapshot::default(),
+            Some(Origin::Files) => {
+                let too_big = self
+                    .positions(|t| t == TYPE_FILE_URL)
+                    .into_iter()
+                    .any(|(i, j)| matches!(self.slots[i][j], Slot::Over));
+                if too_big {
+                    return ClipSnapshot::default();
+                }
+                self.kept(|t| t == TYPE_FILE_URL)
+            }
+            Some(Origin::Rep(i, j)) => {
+                let mut slots = self.slots;
+                let Slot::Kept(data) = std::mem::replace(&mut slots[i][j], Slot::Missing) else {
+                    return ClipSnapshot::default();
+                };
+                let ty = self.types[i][j].clone();
+                ClipSnapshot {
+                    items: vec![vec![ClipRep { ty, data }]],
+                }
+            }
+        };
+        if size(&cut) <= limit {
+            cut
+        } else {
+            ClipSnapshot::default()
+        }
+    }
+
+    /// The kept representations whose types `want` takes, in order, with
+    /// items left with none dropped.
+    fn kept(self, want: impl Fn(&str) -> bool) -> ClipSnapshot {
+        let items = self
+            .slots
+            .into_iter()
+            .zip(self.types)
+            .map(|(slots, types)| {
+                slots
+                    .into_iter()
+                    .zip(types)
+                    .filter_map(|(slot, ty)| match slot {
+                        Slot::Kept(data) if want(ty) => Some(ClipRep {
+                            ty: ty.clone(),
+                            data,
+                        }),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .filter(|item| !item.is_empty())
+            .collect();
+        ClipSnapshot { items }
+    }
+}
+
 /// A 64-bit FNV-1a fingerprint of the whole snapshot (item order, type names
 /// and bytes), used to tell a new copy from the one already recorded.
 pub fn snapshot_hash(s: &ClipSnapshot) -> u64 {
@@ -160,10 +464,15 @@ pub fn plain_text(s: &ClipSnapshot) -> Option<String> {
 
 /// The first item's image bytes and file extension, PNG before TIFF.
 pub fn image(s: &ClipSnapshot) -> Option<(Vec<u8>, &'static str)> {
+    image_ref(s).map(|(bytes, ext)| (bytes.to_vec(), ext))
+}
+
+/// [`image`] without copying the bytes.
+pub fn image_ref(s: &ClipSnapshot) -> Option<(&[u8], &'static str)> {
     let item = s.items.first()?;
     [(TYPE_PNG, "png"), (TYPE_TIFF, "tiff")]
         .into_iter()
-        .find_map(|(ty, ext)| Some((find(item, ty)?.data.clone(), ext)))
+        .find_map(|(ty, ext)| Some((find(item, ty)?.data.as_slice(), ext)))
 }
 
 /// Turns a `file://` or `file://localhost` URL into a path, percent-decoding
@@ -245,11 +554,10 @@ fn pick(s: &ClipSnapshot) -> Option<(Summary, Source)> {
     {
         return Some((Summary::Text { preview }, Source::Rep(i)));
     }
-    if let Some(i) = at(TYPE_URL) {
-        let url = String::from_utf8_lossy(&item[i].data).trim().to_string();
-        if !url.is_empty() && !url.to_ascii_lowercase().starts_with("file:") {
-            return Some((Summary::Link { url }, Source::Rep(i)));
-        }
+    if let Some(i) = at(TYPE_URL)
+        && let Some(url) = link(&item[i].data)
+    {
+        return Some((Summary::Link { url }, Source::Rep(i)));
     }
     for (ty, ext) in [(TYPE_PNG, "png"), (TYPE_TIFF, "tiff")] {
         if let Some(i) = at(ty) {
@@ -274,6 +582,12 @@ fn preview(data: &[u8]) -> Option<String> {
         .map(str::trim)
         .find(|l| !l.is_empty())?;
     Some(line.chars().take(MAX_PREVIEW_CHARS).collect())
+}
+
+/// The URL in `data`, trimmed; `None` when blank or a `file:` URL.
+fn link(data: &[u8]) -> Option<String> {
+    let url = String::from_utf8_lossy(data).trim().to_string();
+    (!url.is_empty() && !url.to_ascii_lowercase().starts_with("file:")).then_some(url)
 }
 
 /// The first representation of type `ty` in `item`.
@@ -535,6 +849,201 @@ mod tests {
         assert_eq!(image(&tiff_only), Some((b"tiff".to_vec(), "tiff")));
         assert_eq!(plain_text(&tiff_only), None);
         assert_eq!(image(&ClipSnapshot::default()), None);
+    }
+
+    /// A pasteboard for [`capture`]: per item, each type with its data, or
+    /// `None` when the data cannot be had.
+    type Board = Vec<Vec<(&'static str, Option<Vec<u8>>)>>;
+
+    /// What a full read of `board` gives: every type that has data.
+    fn full_read(board: &Board) -> ClipSnapshot {
+        snap(
+            board
+                .iter()
+                .map(|item| {
+                    item.iter()
+                        .filter_map(|(ty, d)| Some(rep(ty, d.as_deref()?)))
+                        .collect::<Vec<_>>()
+                })
+                .filter(|item| !item.is_empty())
+                .collect(),
+        )
+    }
+
+    /// Data that counts how often it is copied.
+    struct Counted<'a>(&'a [u8], &'a std::cell::Cell<usize>);
+
+    impl RepData for Counted<'_> {
+        fn byte_len(&self) -> usize {
+            self.0.len()
+        }
+
+        fn copy_bytes(&self) -> Vec<u8> {
+            self.1.set(self.1.get() + 1);
+            self.0.to_vec()
+        }
+    }
+
+    /// Captures `board` within `limit`; returns the snapshot, the types
+    /// fetched in order and how many were copied.
+    fn run_capture(board: &Board, limit: usize) -> (ClipSnapshot, Vec<&'static str>, usize) {
+        let types: Vec<Vec<String>> = board
+            .iter()
+            .map(|item| item.iter().map(|(ty, _)| ty.to_string()).collect())
+            .collect();
+        let fetched = std::cell::RefCell::new(Vec::new());
+        let copies = std::cell::Cell::new(0);
+        let s = capture(&types, limit, |i, j| {
+            let (ty, data) = &board[i][j];
+            fetched.borrow_mut().push(*ty);
+            Some(Counted(data.as_deref()?, &copies))
+        });
+        (s, fetched.into_inner(), copies.get())
+    }
+
+    #[test]
+    fn capture_gives_what_fit_gives_for_the_whole_read() {
+        let boards: Vec<Board> = vec![
+            // A small copy, read whole, a type without data left out.
+            vec![vec![
+                (TYPE_TEXT, Some(b"A1".to_vec())),
+                ("public.html", None),
+                ("com.microsoft.excel.xml", Some(b"<x/>".to_vec())),
+            ]],
+            // Big extras beside the text.
+            vec![vec![
+                ("public.rtf", Some(vec![1; 60])),
+                (TYPE_TEXT, Some(b"hello".to_vec())),
+                ("com.adobe.pdf", Some(vec![2; 80])),
+            ]],
+            // A file copy with a big icon on each item.
+            vec![
+                vec![
+                    (TYPE_FILE_URL, Some(b"file:///a".to_vec())),
+                    ("com.apple.icns", Some(vec![3; 70])),
+                ],
+                vec![
+                    (TYPE_FILE_URL, Some(b"file:///b".to_vec())),
+                    ("com.apple.icns", Some(vec![3; 70])),
+                ],
+            ],
+            // Blank text and a link: the link is what it is shown as.
+            vec![vec![
+                (TYPE_TEXT, Some(b"  \n".to_vec())),
+                (TYPE_URL, Some(b"https://x.y/".to_vec())),
+                ("public.html", Some(vec![4; 90])),
+            ]],
+            // A picture whose PNG alone is too big.
+            vec![vec![
+                (
+                    TYPE_PNG,
+                    Some(png(1, 1).into_iter().chain([0; 90]).collect()),
+                ),
+                ("com.adobe.pdf", Some(vec![5; 10])),
+            ]],
+            // Nothing to show, too big.
+            vec![vec![("com.x.blob", Some(vec![6; 200]))]],
+            // A first item without data: the next one is the first.
+            vec![
+                vec![(TYPE_TEXT, None), ("com.x.a", None)],
+                vec![
+                    (TYPE_TEXT, Some(b"second".to_vec())),
+                    ("com.x.b", Some(vec![7; 90])),
+                ],
+            ],
+            // A first item with data but nothing to show stops the search.
+            vec![
+                vec![("com.x.a", Some(vec![8; 90]))],
+                vec![(TYPE_TEXT, Some(b"second".to_vec()))],
+            ],
+        ];
+        for (k, board) in boards.iter().enumerate() {
+            let full = full_read(board);
+            for limit in [0, 10, 50, 100, 1000] {
+                let want = fit(full.clone(), limit).unwrap_or_default();
+                let (got, _, _) = run_capture(board, limit);
+                assert_eq!(got, want, "board {k}, limit {limit}");
+            }
+        }
+    }
+
+    #[test]
+    fn capture_stops_once_the_copy_is_too_big() {
+        let board: Board = vec![vec![
+            ("com.x.a", Some(vec![0; 600])),
+            (TYPE_TEXT, Some(b"hi".to_vec())),
+            ("com.x.b", Some(vec![0; 600])),
+            ("com.x.c", Some(vec![0; 10])),
+        ]];
+        let (s, fetched, copies) = run_capture(&board, 500);
+        assert_eq!(s, snap(vec![vec![rep(TYPE_TEXT, b"hi")]]));
+        // The text first, then the rest until the first that does not fit,
+        // which is never copied.
+        assert_eq!(fetched, [TYPE_TEXT, "com.x.a"]);
+        assert_eq!(copies, 1);
+    }
+
+    #[test]
+    fn capture_reads_a_small_copy_whole_in_order() {
+        let board: Board = vec![vec![
+            ("com.x.a", Some(b"a".to_vec())),
+            (TYPE_TIFF, Some(b"tiff".to_vec())),
+            (TYPE_PNG, Some(png(2, 2))),
+            (TYPE_TEXT, Some(b"t".to_vec())),
+        ]];
+        let (s, fetched, copies) = run_capture(&board, 1000);
+        assert_eq!(s, full_read(&board));
+        assert_eq!(fetched.len(), 4);
+        assert_eq!(copies, 4);
+    }
+
+    #[test]
+    fn capture_skips_a_tiff_of_a_picture_too_big_for_it() {
+        let board: Board = vec![vec![
+            (TYPE_TIFF, Some(vec![0; 40_000])),
+            (TYPE_PNG, Some(png(100, 100))),
+        ]];
+        // 100×100 at 4 bytes a pixel cannot fit beside the PNG.
+        let (s, fetched, _) = run_capture(&board, 10_000);
+        assert_eq!(s, snap(vec![vec![rep(TYPE_PNG, &png(100, 100))]]));
+        assert_eq!(fetched, [TYPE_PNG]);
+        // With room for it, it is read like any other type.
+        let (s, _, _) = run_capture(&board, 100_000);
+        assert_eq!(s, full_read(&board));
+    }
+
+    #[test]
+    fn capture_of_a_secret_reads_only_its_markers() {
+        let board: Board = vec![vec![
+            (TYPE_TEXT, Some(b"hunter2".to_vec())),
+            ("org.nspasteboard.ConcealedType", Some(Vec::new())),
+        ]];
+        let (s, fetched, _) = run_capture(&board, 1000);
+        assert_eq!(
+            s,
+            snap(vec![vec![rep("org.nspasteboard.ConcealedType", b"")]])
+        );
+        assert_eq!(fetched, ["org.nspasteboard.ConcealedType"]);
+        assert!(is_secret(&["org.nspasteboard.ConcealedType".into()]));
+    }
+
+    #[test]
+    fn capture_takes_a_huge_text_as_is_without_copying_it() {
+        let board: Board = vec![vec![
+            (TYPE_TEXT, Some(vec![b' '; 600])),
+            (TYPE_PNG, Some(png(1, 1))),
+        ]];
+        let (s, fetched, copies) = run_capture(&board, 500);
+        assert_eq!(s, ClipSnapshot::default());
+        assert_eq!(fetched, [TYPE_TEXT]);
+        assert_eq!(copies, 0);
+    }
+
+    #[test]
+    fn image_ref_borrows_what_image_copies() {
+        let s = snap(vec![vec![rep(TYPE_TIFF, b"tiff"), rep(TYPE_PNG, b"png")]]);
+        assert_eq!(image_ref(&s), Some((&b"png"[..], "png")));
+        assert_eq!(image_ref(&ClipSnapshot::default()), None);
     }
 
     #[test]
