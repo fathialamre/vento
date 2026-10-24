@@ -1304,11 +1304,25 @@ impl PocketController {
         }
     }
 
-    /// Re-reads which files are missing, loads icons not yet cached, and
-    /// pushes the cells and the count into the window, and the clipboard
-    /// history with them. Only rows that changed are touched, so a copy
-    /// made while the island is open keeps its hover and presses.
+    /// Pushes the count into the window, and the clipboard history with it.
+    /// The cells are rebuilt only while the island is expanded (a hidden or
+    /// collapsed island shows none), so a copy made meanwhile costs no look
+    /// at every file; [`present`](Self::present) refreshes as it expands.
     pub fn refresh(&self) {
+        if self.expanded() {
+            self.refresh_cells();
+        }
+        let count = self.pocket.borrow().items().len();
+        self.window
+            .set_count(i32::try_from(count).unwrap_or(i32::MAX));
+        self.refresh_clip();
+        self.fit_panel();
+    }
+
+    /// Re-reads which files are missing, loads icons not yet cached, and
+    /// pushes the cells into the window. Only rows that changed are touched,
+    /// so a copy made while the island is open keeps its hover and presses.
+    fn refresh_cells(&self) {
         let pocket = self.pocket.borrow();
         let missing = pocket.missing();
         let mut icons = self.icons.borrow_mut();
@@ -1337,12 +1351,11 @@ impl PocketController {
             }
         });
         set_rows(&self.cells, cells);
-        let count = pocket.items().len();
-        self.window
-            .set_count(i32::try_from(count).unwrap_or(i32::MAX));
-        drop((icons, selected, pocket));
-        self.refresh_clip();
-        self.fit_panel();
+    }
+
+    /// The island is expanded.
+    fn expanded(&self) -> bool {
+        self.island.borrow().presence() == Presence::Expanded
     }
 
     /// Widens or narrows the panel to what it shows (ruling P18), and sizes
