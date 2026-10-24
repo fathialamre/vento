@@ -310,6 +310,7 @@ impl PocketController {
         }
         self.window.set_view(view_index(self.shown_view()));
         self.fit_panel();
+        self.run_undo_timer();
     }
 
     /// The view the island shows: the Pocket while the history is off.
@@ -352,7 +353,7 @@ impl PocketController {
 }
 
 /// The window's number for `v`.
-fn view_index(v: View) -> i32 {
+pub(super) fn view_index(v: View) -> i32 {
     match v {
         View::Pocket => 0,
         View::Clipboard => 1,

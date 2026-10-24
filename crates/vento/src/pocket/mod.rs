@@ -50,7 +50,7 @@ use crate::ui::{Icons, PocketCell, PocketIsland};
 
 use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
 use clip::ClipController;
-use clip_view::ClipView;
+use clip_view::{ClipView, view_index};
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
@@ -70,7 +70,7 @@ const PARKED: LogicalPosition = LogicalPosition {
 const WARM_DELAY: Duration = Duration::from_millis(200);
 /// How long the island offers Undo after a clear or an x.
 const UNDO_LIFETIME: Duration = Duration::from_secs(5);
-/// How often the Undo ring is redrawn while it counts down.
+/// How often the Undo ring is redrawn while it counts down in sight.
 const UNDO_TICK: Duration = Duration::from_millis(50);
 /// How long after a clear or an x vento's own files go to the Trash: once
 /// Undo is no longer offered.
@@ -222,6 +222,9 @@ pub struct PocketController {
     undo: RefCell<Option<(Undo, Instant)>>,
     /// Counts the offered Undo down.
     undo_timer: Timer,
+    /// `undo_timer` repeats to redraw the ring in sight; otherwise it only
+    /// waits for the offer to end.
+    undo_ticking: Cell<bool>,
     /// The cells a clear took, shown faded while its Undo is offered.
     ghosts: Rc<VecModel<PocketCell>>,
     /// vento is paused: the island rests and takes nothing.
@@ -286,6 +289,7 @@ impl PocketController {
             pending: PendingTrash::default(),
             undo: RefCell::new(None),
             undo_timer: Timer::default(),
+            undo_ticking: Cell::new(false),
             ghosts,
             paused: Cell::new(false),
             last_cursor: Cell::new(None),
@@ -744,20 +748,21 @@ impl PocketController {
         }
         self.ghosts.set_vec(ghosts);
         self.window.set_undo_active(true);
-        self.tick_undo();
-        let this = self.this.clone();
-        self.undo_timer
-            .start(TimerMode::Repeated, UNDO_TICK, move || {
-                if let Some(c) = this.upgrade() {
-                    c.tick_undo();
-                }
-            });
+        self.run_undo_timer();
         self.fit_panel();
     }
 
-    /// Redraws the Undo countdown, or withdraws the offer once it is up.
-    fn tick_undo(&self) {
-        let Some(until) = self.undo.borrow().as_ref().map(|(_, until)| *until) else {
+    /// Counts the offered Undo down, or withdraws the offer once it is up.
+    /// Its ring is redrawn every [`UNDO_TICK`] while in sight; otherwise
+    /// nothing runs until the offer ends (collapsed, the island shows no
+    /// time). Call again whenever the ring may come into or go out of sight.
+    fn run_undo_timer(&self) {
+        let Some((kind, until)) = self
+            .undo
+            .borrow()
+            .as_ref()
+            .map(|(undo, until)| (undo.kind(), *until))
+        else {
             return;
         };
         let left = until.saturating_duration_since(Instant::now());
@@ -768,10 +773,24 @@ impl PocketController {
             }
             return;
         }
-        self.window
-            .set_undo_left(left.as_secs_f32() / UNDO_LIFETIME.as_secs_f32());
-        self.window
-            .set_undo_secs(i32::try_from(left.as_millis().div_ceil(1000)).unwrap_or(0));
+        let this = self.this.clone();
+        let tick = move || {
+            if let Some(c) = this.upgrade() {
+                c.run_undo_timer();
+            }
+        };
+        if self.expanded() && view_index(self.shown_view()) == kind {
+            self.window
+                .set_undo_left(left.as_secs_f32() / UNDO_LIFETIME.as_secs_f32());
+            self.window
+                .set_undo_secs(i32::try_from(left.as_millis().div_ceil(1000)).unwrap_or(0));
+            if !self.undo_ticking.replace(true) {
+                self.undo_timer.start(TimerMode::Repeated, UNDO_TICK, tick);
+            }
+        } else {
+            self.undo_ticking.set(false);
+            self.undo_timer.start(TimerMode::SingleShot, left, tick);
+        }
     }
 
     /// The island's Undo: puts back what the offered Undo took.
@@ -791,6 +810,7 @@ impl PocketController {
     fn end_undo(&self) -> Option<Undo> {
         let (undo, _) = self.undo.take()?;
         self.undo_timer.stop();
+        self.undo_ticking.set(false);
         self.window.set_undo_active(false);
         self.ghosts.set_vec(Vec::new());
         self.fit_panel();
@@ -1086,6 +1106,7 @@ impl PocketController {
             self.refresh();
         }
         self.window.set_expanded(after == Presence::Expanded);
+        self.run_undo_timer();
         if after == Presence::Hidden {
             self.hide_window();
         } else if before == Presence::Hidden {
@@ -1281,6 +1302,8 @@ impl PocketController {
             self.set_view(View::Pocket);
         }
         self.refresh();
+        // The view shown, and so the ring in sight, may have changed.
+        self.run_undo_timer();
     }
 
     /// Empties the clipboard history at once, with no Undo (the settings'
