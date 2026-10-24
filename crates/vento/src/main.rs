@@ -333,7 +333,8 @@ impl ShortcutSlot {
 
 /// Uses winit with an Accessory app that never activates itself at launch,
 /// so vento has no Dock icon and never takes focus from the frontmost app,
-/// even before the first window is shown.
+/// even before the first window is shown. Windows draw with Skia on Metal
+/// (Skia falls back to drawing in software where Metal is missing).
 #[cfg(target_os = "macos")]
 fn select_backend() -> Result<(), slint::PlatformError> {
     use slint::winit_030::winit::event_loop::EventLoop;
@@ -345,6 +346,7 @@ fn select_backend() -> Result<(), slint::PlatformError> {
         .with_activate_ignoring_other_apps(false);
     slint::BackendSelector::new()
         .backend_name("winit".into())
+        .renderer_name("skia".into())
         .with_winit_event_loop_builder(event_loop)
         .select()
 }
