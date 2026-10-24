@@ -12,7 +12,7 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
-use crate::exec::{Executor, UndoKind};
+use crate::exec::{Executor, undo_menu_text};
 use crate::pause::PauseSwitch;
 
 /// The flame mark as a black template image, 36 px: an 18 pt glyph at 2x.
@@ -136,17 +136,6 @@ fn tray_icon_rgba() -> Vec<u8> {
         rgba[start..start + row.len()].copy_from_slice(row);
     }
     rgba
-}
-
-/// The Undo item's text: names what would be undone, and reads "move" when
-/// there is nothing to undo.
-fn undo_menu_text(kind: Option<UndoKind>) -> &'static str {
-    match kind {
-        Some(UndoKind::Copy) => "Undo last copy",
-        Some(UndoKind::Archive) => "Undo last archive",
-        Some(UndoKind::Convert) => "Undo last convert",
-        Some(UndoKind::Move) | None => "Undo last move",
-    }
 }
 
 /// What the tray needs to act on clicks.
@@ -439,14 +428,5 @@ mod tests {
                 .iter()
                 .all(|p| p[3] == 0 || p[..3] == [0, 0, 0])
         );
-    }
-
-    #[test]
-    fn undo_item_names_what_it_would_undo() {
-        assert_eq!(undo_menu_text(Some(UndoKind::Move)), "Undo last move");
-        assert_eq!(undo_menu_text(Some(UndoKind::Copy)), "Undo last copy");
-        assert_eq!(undo_menu_text(Some(UndoKind::Archive)), "Undo last archive");
-        assert_eq!(undo_menu_text(Some(UndoKind::Convert)), "Undo last convert");
-        assert_eq!(undo_menu_text(None), "Undo last move");
     }
 }

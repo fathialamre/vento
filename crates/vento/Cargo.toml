@@ -28,6 +28,11 @@ raw-window-handle = "0.6"
 png = "0.18"
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# The tray as a StatusNotifierItem, on the zbus and async-io the app already
+# has through Slint.
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 tray-icon = "0.26"
 global-hotkey = "0.9"

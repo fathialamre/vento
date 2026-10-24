@@ -196,6 +196,17 @@ pub enum UndoKind {
     Convert,
 }
 
+/// The tray's Undo item text: names what would be undone, and reads
+/// "move" when there is nothing to undo.
+pub fn undo_menu_text(kind: Option<UndoKind>) -> &'static str {
+    match kind {
+        Some(UndoKind::Copy) => "Undo last copy",
+        Some(UndoKind::Archive) => "Undo last archive",
+        Some(UndoKind::Convert) => "Undo last convert",
+        Some(UndoKind::Move) | None => "Undo last move",
+    }
+}
+
 /// Callback told which undo, if any, is available.
 type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 
@@ -576,8 +587,6 @@ impl Executor {
 
     /// Registers `f`, called with `has_undo()` after a move or copy records
     /// an undo and after an undo starts or finishes. Replaces any earlier callback.
-    // Only the macOS tray listens until Linux has one.
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn on_undo_changed(&self, f: UndoListener) {
         *self.on_undo_changed.borrow_mut() = Some(f);
     }
@@ -806,6 +815,15 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn undo_item_names_what_it_would_undo() {
+        assert_eq!(undo_menu_text(Some(UndoKind::Move)), "Undo last move");
+        assert_eq!(undo_menu_text(Some(UndoKind::Copy)), "Undo last copy");
+        assert_eq!(undo_menu_text(Some(UndoKind::Archive)), "Undo last archive");
+        assert_eq!(undo_menu_text(Some(UndoKind::Convert)), "Undo last convert");
+        assert_eq!(undo_menu_text(None), "Undo last move");
+    }
     use std::io;
     use vento_core::fileops::{Fingerprint, MoveRecord};
 
