@@ -161,7 +161,8 @@ pub trait Platform {
     /// `clip_change_count`). Cheap: reads no content. Main thread only.
     fn clipboard_change_count(&self) -> i64;
     /// The whole clipboard: per item, every representation that has data.
-    /// Items left with none are dropped.
+    /// Items left with none are dropped. A copy too big to keep is cut as
+    /// `vento_core::clip::capture` cuts it, and not read any further.
     fn read_clipboard(&self) -> ClipSnapshot;
     /// Replace the clipboard with this snapshot, one pasteboard item per
     /// snapshot item. Returns the clipboard's change counter after writing,
