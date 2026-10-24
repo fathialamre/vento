@@ -40,8 +40,6 @@ const PARKED: LogicalPosition = LogicalPosition {
 const RELEASE_GRACE: Duration = Duration::from_millis(250);
 /// winit delivers one `DroppedFile` per file; collect them for this long.
 const DROP_BATCH: Duration = Duration::from_millis(30);
-/// Polling rate while paused (slower than idle polling; input is not sampled).
-const PAUSED_INTERVAL: Duration = Duration::from_millis(500);
 /// Tick on which the parked window is shown, so the native window and renderer exist.
 const WARM_SHOW_TICK: u32 = 1;
 /// Tick on which the parked window is hidden again and the drop handler registered.
@@ -330,21 +328,43 @@ impl WheelController {
 
     /// Pre-warms the window on the first ticks, then polls for the trigger.
     pub fn start(self: &Rc<Self>) {
-        self.schedule();
+        let this = self.this.clone();
+        let interval = self.machine.borrow().poll_interval();
+        self.poll.start(TimerMode::Repeated, interval, move || {
+            if let Some(controller) = this.upgrade() {
+                controller.tick();
+                controller.rearm();
+            }
+        });
     }
 
-    /// While paused, input is not sampled and polling slows to 500 ms. An open
-    /// wheel is dismissed. Unpausing starts from a fresh trigger state, so
-    /// nothing seen before the pause can open the wheel.
+    /// While paused, input is not sampled and the poll stops (once the
+    /// window is pre-warmed). An open wheel is dismissed. Unpausing starts
+    /// from a fresh trigger state, so nothing seen before the pause can open
+    /// the wheel.
     pub fn set_paused(&self, paused: bool) {
         self.paused.set(paused);
         if paused {
             if self.machine.borrow().is_open() {
                 self.dismiss();
             }
+            if self.warmed_up() {
+                self.poll.stop();
+            }
         } else {
             self.reset_trigger();
+            if !self.poll.running() {
+                // Not running: this only sets the interval `restart` uses.
+                self.poll
+                    .set_interval(self.machine.borrow().poll_interval());
+                self.poll.restart();
+            }
         }
+    }
+
+    /// Whether the window has been pre-warmed (and the drop handler set).
+    fn warmed_up(&self) -> bool {
+        self.state.borrow().ticks >= WARM_HIDE_TICK
     }
 
     /// Hands every input sample to `f`, with whether a drag of any type is
@@ -451,20 +471,17 @@ impl WheelController {
         ));
     }
 
-    /// Arms the single-shot poll timer for the next tick.
-    fn schedule(&self) {
-        let interval = if self.paused.get() {
-            PAUSED_INTERVAL
-        } else {
-            self.machine.borrow().poll_interval()
-        };
-        let this = self.this.clone();
-        self.poll.start(TimerMode::SingleShot, interval, move || {
-            if let Some(controller) = this.upgrade() {
-                controller.tick();
-                controller.schedule();
-            }
-        });
+    /// After a tick: moves the poll timer to the interval the trigger asks
+    /// for now, if that changed, or stops it while paused.
+    fn rearm(&self) {
+        if self.paused.get() && self.warmed_up() {
+            self.poll.stop();
+            return;
+        }
+        let interval = self.machine.borrow().poll_interval();
+        if self.poll.interval() != interval {
+            self.poll.set_interval(interval);
+        }
     }
 
     fn tick(&self) {
