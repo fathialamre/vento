@@ -1,6 +1,7 @@
 //! Picture thumbnails, decoded with `image` (PNG and JPEG, the formats it
 //! is built with in the app).
 
+use std::io::{BufRead, Cursor, Seek};
 use std::path::Path;
 
 use image::{DynamicImage, ImageDecoder, ImageReader};
@@ -27,15 +28,31 @@ fn thumb_size(w: u32, h: u32, short_px: u32, max_ratio: u32) -> (u32, u32) {
 /// as long. `None` if it is missing or not a picture `image` reads. Any
 /// thread.
 pub(crate) fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<RgbaImage> {
+    let reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+    thumbnail(reader, short_px, max_ratio)
+}
+
+/// [`picture_thumbnail`] of encoded picture `bytes`.
+pub(crate) fn picture_data_thumbnail(
+    bytes: &[u8],
+    short_px: u32,
+    max_ratio: u32,
+) -> Option<RgbaImage> {
+    let reader = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    thumbnail(reader, short_px, max_ratio)
+}
+
+fn thumbnail<R: BufRead + Seek>(
+    reader: ImageReader<R>,
+    short_px: u32,
+    max_ratio: u32,
+) -> Option<RgbaImage> {
     if short_px == 0 || max_ratio == 0 {
         return None;
     }
-    let mut decoder = ImageReader::open(path)
-        .ok()?
-        .with_guessed_format()
-        .ok()?
-        .into_decoder()
-        .ok()?;
+    let mut decoder = reader.into_decoder().ok()?;
     let orientation = decoder.orientation().ok();
     let mut picture = DynamicImage::from_decoder(decoder).ok()?;
     if let Some(orientation) = orientation {
@@ -112,6 +129,16 @@ mod tests {
         let px = |x: u32| &t.pixels[(x * 4) as usize..(x * 4 + 4) as usize];
         assert_eq!(px(10)[0], 255);
         assert_eq!(px(90)[2], 255);
+    }
+
+    #[test]
+    fn encoded_bytes_become_the_same_thumbnail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = picture(dir.path(), "wide.png", 400, 200);
+        let from_file = picture_thumbnail(&path, 56, 2).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(picture_data_thumbnail(&bytes, 56, 2), Some(from_file));
+        assert!(picture_data_thumbnail(b"not a picture", 56, 2).is_none());
     }
 
     #[test]

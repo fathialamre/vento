@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gio::prelude::*;
-use vento_core::clip::{ClipRep, ClipSnapshot, TYPE_FILE_URL, TYPE_TEXT};
+use vento_core::clip::{ClipRep, ClipSnapshot, MAX_SNAPSHOT_BYTES, TYPE_FILE_URL, TYPE_TEXT};
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
@@ -31,7 +31,12 @@ mod thumbs;
 mod trash;
 mod x11;
 
-pub(crate) use thumbs::picture_thumbnail;
+pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
+
+/// [`Platform::file_icon`] at `scale`, for a worker thread.
+pub(crate) fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
+    icons::file_icon(path, (f64::from(px) * scale).round() as u32)
+}
 
 /// [`Platform`] for GNOME, through gio and Vento's GNOME Shell extension.
 #[derive(Debug)]
@@ -131,7 +136,9 @@ impl Platform for LinuxPlatform {
 
     fn read_clipboard(&self) -> ClipSnapshot {
         let types = self.shell.clipboard_types();
-        clipboard::snapshot(&types, |mime| self.shell.read_clipboard(mime))
+        clipboard::snapshot(&types, MAX_SNAPSHOT_BYTES, |mime| {
+            self.shell.read_clipboard(mime)
+        })
     }
 
     /// Returns the serial GNOME gives the copy, waiting up to
@@ -161,8 +168,13 @@ impl Platform for LinuxPlatform {
         terminal::installed()
     }
 
-    fn open_terminal(&self, terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError> {
-        terminal::open(terminal, dir)
+    fn open_terminal(
+        &self,
+        terminal: Option<&str>,
+        dir: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError> {
+        terminal::open(terminal, dir, on_error)
     }
 
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {

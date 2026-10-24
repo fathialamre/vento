@@ -93,6 +93,25 @@ pub(super) fn open_with(
         )));
     }
     let app_url = file_url(app)?;
+    launch(
+        &urls,
+        &app_url,
+        Box::new(move |reason| {
+            log::warn!("cannot open with the chosen app: {reason}");
+            on_error(reason);
+        }),
+    );
+    Ok(())
+}
+
+/// Opens `urls` with the app at `app_url` without waiting for it: AppKit
+/// launches the app on a queue of its own and, if that fails, calls
+/// `on_error` with the reason there.
+pub(super) fn launch(
+    urls: &[Retained<NSURL>],
+    app_url: &NSURL,
+    on_error: Box<dyn Fn(String) + Send>,
+) {
     let configuration = NSWorkspaceOpenConfiguration::configuration();
     // Called on another thread: the mutex makes the handler shareable.
     let on_error = Mutex::new(on_error);
@@ -106,22 +125,20 @@ pub(super) fn open_with(
                     return;
                 };
                 let reason = error.localizedDescription().to_string();
-                log::warn!("cannot open with the chosen app: {reason}");
                 let f = on_error.lock().unwrap_or_else(PoisonError::into_inner);
                 f(reason);
             }));
             if reported.is_err() {
-                log::error!("open-with completion handler panicked");
+                log::error!("open completion handler panicked");
             }
         },
     );
     NSWorkspace::sharedWorkspace().openURLs_withApplicationAtURL_configuration_completionHandler(
-        &NSArray::from_retained_slice(&urls),
-        &app_url,
+        &NSArray::from_retained_slice(urls),
+        app_url,
         &configuration,
         Some(&done),
     );
-    Ok(())
 }
 
 fn file_urls(paths: &[PathBuf]) -> Result<Vec<Retained<NSURL>>, PlatformError> {

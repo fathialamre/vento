@@ -1,6 +1,6 @@
 [package]
 name = "vento"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-only"
 rust-version = "1.93"
@@ -11,7 +11,21 @@ name = "vento"
 path = "src/main.rs"
 
 [dependencies]
-slint = { version = "1.18.1", features = ["unstable-winit-030", "raw-window-handle-06"] }
+# The software renderer draws on the CPU. Any GPU renderer (FemtoVG on
+# OpenGL, Skia on Metal) makes macOS hold 150-250 MB of graphics memory for
+# a second or two each time a window starts drawing again, such as on every
+# hover of the Pocket island; vento's windows are small enough to draw on
+# the CPU instead. The default features are left out so no GPU renderer is
+# built in. Transparency needs the softbuffer patch in the root Cargo.toml.
+slint = { version = "1.18.1", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "renderer-software",
+    "accessibility",
+    "compat-1-2",
+    "unstable-winit-030",
+    "raw-window-handle-06",
+] }
 vento-core = { path = "../vento-core" }
 vento-platform = { path = "../vento-platform" }
 log = "0.4"

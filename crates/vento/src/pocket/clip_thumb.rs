@@ -1,12 +1,13 @@
 //! Thumbnails of the clipboard history's image entries. They are made on the
 //! store worker, beside the entry's blobs, so the main thread only ever
-//! loads a small file.
+//! loads a small file. macOS decodes only about as many pixels as the
+//! thumbnail needs, so even a huge picture costs a few megabytes here.
 
 use std::fs;
-use std::io::{self, Cursor};
+use std::io;
 use std::path::Path;
 
-use vento_core::clip::{ClipSnapshot, image};
+use vento_core::clip::{ClipSnapshot, TYPE_PNG, TYPE_TIFF};
 use vento_platform::RgbaImage;
 
 /// The thumbnail's file in an entry's folder. `read_entry` only reads the
@@ -16,24 +17,21 @@ pub(super) const THUMB_FILE: &str = "thumb.png";
 const THUMB_PX: u32 = 56;
 /// A thumbnail's longer side is at most this many times its shorter one.
 const THUMB_MAX_RATIO: u32 = 8;
-/// Pictures with more pixels than this get no thumbnail (256 MB decoded).
-const MAX_PIXELS: u64 = 64 * 1024 * 1024;
 
 /// Writes the thumbnail of `s`'s picture into `folder` (the entry's stored
 /// folder), through a temporary file so it is never seen half written.
-/// Only a PNG is read; a TIFF-only picture gets none, and its row shows the
-/// photo icon.
+/// The PNG is read if there is one, else the TIFF; the bytes are read in
+/// place, not copied.
 pub(super) fn write_thumb(folder: &Path, s: &ClipSnapshot) -> io::Result<()> {
     let bad = |what: &str| io::Error::new(io::ErrorKind::InvalidData, what.to_owned());
-    let (bytes, ext) = image(s).ok_or_else(|| bad("no picture"))?;
-    if ext != "png" {
-        return Err(bad("not a PNG"));
-    }
-    let full = decode_png(&bytes).ok_or_else(|| bad("cannot decode the PNG"))?;
-    save_thumb(
-        folder,
-        &shrink(&full.pixels, full.width, full.height, THUMB_PX),
-    )
+    let item = s.items.first().ok_or_else(|| bad("no picture"))?;
+    let rep = [TYPE_PNG, TYPE_TIFF]
+        .into_iter()
+        .find_map(|ty| item.iter().find(|r| r.ty == ty))
+        .ok_or_else(|| bad("no picture"))?;
+    let small = vento_platform::picture_data_thumbnail(&rep.data, THUMB_PX, THUMB_MAX_RATIO)
+        .ok_or_else(|| bad("cannot read the picture"))?;
+    save_thumb(folder, &small)
 }
 
 /// Writes the thumbnail of the picture file `picture` (copied in Finder)
@@ -55,42 +53,6 @@ fn save_thumb(folder: &Path, small: &RgbaImage) -> io::Result<()> {
     })
 }
 
-/// The RGBA8 pixels of a PNG, whatever its colour type and depth.
-fn decode_png(bytes: &[u8]) -> Option<RgbaImage> {
-    let mut decoder = png::Decoder::new(Cursor::new(bytes));
-    decoder.set_transformations(png::Transformations::normalize_to_color8());
-    let mut reader = decoder.read_info().ok()?;
-    let (width, height) = reader.info().size();
-    if u64::from(width) * u64::from(height) > MAX_PIXELS {
-        return None;
-    }
-    let mut buf = vec![0; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut buf).ok()?;
-    buf.truncate(info.buffer_size());
-    let pixels = match info.color_type {
-        png::ColorType::Rgba => buf,
-        png::ColorType::Rgb => buf
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .flat_map(|&[r, g, b]| [r, g, b, 255])
-            .collect(),
-        png::ColorType::GrayscaleAlpha => buf
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .flat_map(|&[v, a]| [v, v, v, a])
-            .collect(),
-        png::ColorType::Grayscale => buf.iter().flat_map(|&v| [v, v, v, 255]).collect(),
-        png::ColorType::Indexed => return None,
-    };
-    (pixels.len() == width as usize * height as usize * 4).then_some(RgbaImage {
-        width,
-        height,
-        pixels,
-    })
-}
-
 /// `image` as PNG bytes.
 fn encode_png(image: &RgbaImage) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
@@ -103,67 +65,11 @@ fn encode_png(image: &RgbaImage) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// The RGBA `pixels` of a `w` x `h` image scaled down so its shorter side is
-/// `px` and its longer side at most [`THUMB_MAX_RATIO`] times that, each
-/// pixel the average of those it covers. Never scaled up.
-fn shrink(pixels: &[u8], w: u32, h: u32, px: u32) -> RgbaImage {
-    let short = w.min(h);
-    let long = w.max(h);
-    let unchanged = || RgbaImage {
-        width: w,
-        height: h,
-        pixels: pixels.to_vec(),
-    };
-    if short == 0 {
-        return unchanged();
-    }
-    let scale = (f64::from(px) / f64::from(short))
-        .min(f64::from(px * THUMB_MAX_RATIO) / f64::from(long))
-        .min(1.0);
-    if scale >= 1.0 {
-        return unchanged();
-    }
-    let out_w = ((f64::from(w) * scale).round() as u32).max(1);
-    let out_h = ((f64::from(h) * scale).round() as u32).max(1);
-    let mut out = Vec::with_capacity(out_w as usize * out_h as usize * 4);
-    for oy in 0..out_h {
-        let (y0, y1) = span(oy, out_h, h);
-        for ox in 0..out_w {
-            let (x0, x1) = span(ox, out_w, w);
-            let mut sum = [0u64; 4];
-            for y in y0..y1 {
-                let row = y as usize * w as usize;
-                for x in x0..x1 {
-                    let at = (row + x as usize) * 4;
-                    for (s, &v) in sum.iter_mut().zip(&pixels[at..at + 4]) {
-                        *s += u64::from(v);
-                    }
-                }
-            }
-            let n = u64::from((x1 - x0) * (y1 - y0));
-            out.extend(sum.iter().map(|s| (s / n) as u8));
-        }
-    }
-    RgbaImage {
-        width: out_w,
-        height: out_h,
-        pixels: out,
-    }
-}
-
-/// The source pixels `[start, end)` that output pixel `i` of `out` covers
-/// along a side `len` long; never empty.
-fn span(i: u32, out: u32, len: u32) -> (u32, u32) {
-    let at = |k: u32| (u64::from(k) * u64::from(len) / u64::from(out)) as u32;
-    let start = at(i);
-    (start, at(i + 1).max(start + 1).min(len))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use vento_core::clip::{ClipRep, TYPE_PNG, TYPE_TIFF};
+    use vento_core::clip::ClipRep;
 
     fn flat(width: u32, height: u32) -> RgbaImage {
         RgbaImage {
@@ -173,21 +79,73 @@ mod tests {
         }
     }
 
-    fn picture(ty: &str, data: Vec<u8>) -> ClipSnapshot {
+    fn picture(reps: &[(&str, Vec<u8>)]) -> ClipSnapshot {
         ClipSnapshot {
-            items: vec![vec![ClipRep {
-                ty: ty.to_owned(),
-                data,
-            }]],
+            items: vec![
+                reps.iter()
+                    .map(|(ty, data)| ClipRep {
+                        ty: (*ty).to_owned(),
+                        data: data.clone(),
+                    })
+                    .collect(),
+            ],
         }
+    }
+
+    /// The size and pixels of the thumbnail written into `folder`.
+    fn read_thumb(folder: &Path) -> RgbaImage {
+        let bytes = fs::read(folder.join(THUMB_FILE)).unwrap();
+        let mut reader = png::Decoder::new(io::Cursor::new(bytes))
+            .read_info()
+            .unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).unwrap();
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        RgbaImage {
+            width: info.width,
+            height: info.height,
+            pixels,
+        }
+    }
+
+    /// A baseline, uncompressed little-endian RGB TIFF of one grey level.
+    fn grey_tiff(width: u16, height: u16, v: u8) -> Vec<u8> {
+        let pixels = usize::from(width) * usize::from(height) * 3;
+        // Header, then the pixels, then the bits per sample, then the IFD.
+        let bits_at = 8 + pixels as u32;
+        let ifd_at = bits_at + 6;
+        let mut t = b"II*\0".to_vec();
+        t.extend(ifd_at.to_le_bytes());
+        t.extend(std::iter::repeat_n(v, pixels));
+        t.extend([8, 0, 8, 0, 8, 0]);
+        let entries: [(u16, u16, u32, u32); 9] = [
+            (256, 3, 1, u32::from(width)),
+            (257, 3, 1, u32::from(height)),
+            (258, 3, 3, bits_at),
+            (259, 3, 1, 1),
+            (262, 3, 1, 2),
+            (273, 4, 1, 8),
+            (277, 3, 1, 3),
+            (278, 3, 1, u32::from(height)),
+            (279, 4, 1, pixels as u32),
+        ];
+        t.extend((entries.len() as u16).to_le_bytes());
+        for (tag, ty, count, value) in entries {
+            t.extend(tag.to_le_bytes());
+            t.extend(ty.to_le_bytes());
+            t.extend(count.to_le_bytes());
+            t.extend(value.to_le_bytes());
+        }
+        t.extend(0u32.to_le_bytes());
+        t
     }
 
     #[test]
     fn thumb_is_a_small_png_beside_the_blobs() {
         let tmp = tempfile::tempdir().unwrap();
         let png = encode_png(&flat(400, 200)).unwrap();
-        write_thumb(tmp.path(), &picture(TYPE_PNG, png)).unwrap();
-        let thumb = decode_png(&fs::read(tmp.path().join(THUMB_FILE)).unwrap()).unwrap();
+        write_thumb(tmp.path(), &picture(&[(TYPE_PNG, png)])).unwrap();
+        let thumb = read_thumb(tmp.path());
         assert_eq!((thumb.width, thumb.height), (112, 56));
         assert!(thumb.pixels.iter().all(|&p| p == 200));
         // No temporary file left behind.
@@ -199,6 +157,29 @@ mod tests {
     }
 
     #[test]
+    fn tiff_only_picture_gets_a_thumb() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_thumb(
+            tmp.path(),
+            &picture(&[(TYPE_TIFF, grey_tiff(300, 100, 90))]),
+        )
+        .unwrap();
+        let thumb = read_thumb(tmp.path());
+        assert_eq!((thumb.width, thumb.height), (168, 56));
+        let at = (28 * 168 + 84) * 4;
+        assert_eq!(thumb.pixels[at + 3], 255);
+    }
+
+    #[test]
+    fn png_is_preferred_over_tiff() {
+        let tmp = tempfile::tempdir().unwrap();
+        let png = encode_png(&flat(400, 200)).unwrap();
+        let reps = [(TYPE_TIFF, grey_tiff(300, 100, 90)), (TYPE_PNG, png)];
+        write_thumb(tmp.path(), &picture(&reps)).unwrap();
+        assert_eq!(read_thumb(tmp.path()).width, 112);
+    }
+
+    #[test]
     fn copied_picture_file_gets_a_thumb() {
         let tmp = tempfile::tempdir().unwrap();
         let photo = tmp.path().join("photo.png");
@@ -206,60 +187,18 @@ mod tests {
         let folder = tmp.path().join("7");
         fs::create_dir(&folder).unwrap();
         write_file_thumb(&folder, &photo).unwrap();
-        let thumb = decode_png(&fs::read(folder.join(THUMB_FILE)).unwrap()).unwrap();
+        let thumb = read_thumb(&folder);
         assert_eq!((thumb.width, thumb.height), (112, 56));
         assert!(write_file_thumb(&folder, &tmp.path().join("gone.png")).is_err());
     }
 
     #[test]
-    fn no_thumb_without_a_readable_png() {
+    fn no_thumb_without_a_readable_picture() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(write_thumb(tmp.path(), &picture(TYPE_TIFF, vec![1, 2, 3])).is_err());
-        assert!(write_thumb(tmp.path(), &picture(TYPE_PNG, vec![1, 2, 3])).is_err());
+        assert!(write_thumb(tmp.path(), &picture(&[(TYPE_TIFF, vec![1, 2, 3])])).is_err());
+        assert!(write_thumb(tmp.path(), &picture(&[(TYPE_PNG, vec![1, 2, 3])])).is_err());
+        assert!(write_thumb(tmp.path(), &picture(&[("public.utf8-plain-text", vec![1])])).is_err());
+        assert!(write_thumb(tmp.path(), &ClipSnapshot { items: vec![] }).is_err());
         assert!(fs::read_dir(tmp.path()).unwrap().next().is_none());
-    }
-
-    #[test]
-    fn rgb_pngs_decode_to_opaque_rgba() {
-        let mut bytes = Vec::new();
-        let mut encoder = png::Encoder::new(&mut bytes, 2, 1);
-        encoder.set_color(png::ColorType::Rgb);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().unwrap();
-        writer.write_image_data(&[1, 2, 3, 4, 5, 6]).unwrap();
-        writer.finish().unwrap();
-        let image = decode_png(&bytes).unwrap();
-        assert_eq!(image.pixels, [1, 2, 3, 255, 4, 5, 6, 255]);
-    }
-
-    #[test]
-    fn shrink_keeps_the_short_side_at_the_thumbnail_size() {
-        let shrink_flat = |w, h| shrink(&flat(w, h).pixels, w, h, 56);
-        let small = shrink_flat(1120, 560);
-        assert_eq!((small.width, small.height), (112, 56));
-        assert_eq!(small.pixels.len(), 112 * 56 * 4);
-        // A flat colour stays that colour.
-        assert!(small.pixels.iter().all(|&p| p == 200));
-        // Very long pictures are cut down on their long side too.
-        let long = shrink_flat(4000, 100);
-        assert_eq!((long.width, long.height), (448, 11));
-        // Already small: unchanged.
-        let tiny = shrink_flat(40, 30);
-        assert_eq!((tiny.width, tiny.height), (40, 30));
-    }
-
-    #[test]
-    fn shrink_averages_the_pixels_it_covers() {
-        // 4 x 2, left half black, right half white, down to 2 x 1.
-        let mut pixels = Vec::new();
-        for _ in 0..2 {
-            for x in 0..4 {
-                let v = if x < 2 { 0 } else { 255 };
-                pixels.extend([v, v, v, 255]);
-            }
-        }
-        let small = shrink(&pixels, 4, 2, 1);
-        assert_eq!((small.width, small.height), (2, 1));
-        assert_eq!(small.pixels, [0, 0, 0, 255, 255, 255, 255, 255]);
     }
 }

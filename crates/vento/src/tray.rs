@@ -297,8 +297,19 @@ fn open_settings_file() {
         warn!("cannot create {}: {e}", path.display());
         return;
     }
-    if let Err(e) = Command::new("open").arg("-t").arg(&path).spawn() {
-        warn!("cannot open {}: {e}", path.display());
+    // Waited for on a thread of its own: unwaited, `open` would stay a
+    // zombie, and waiting here would stall the menu.
+    let opener = std::thread::Builder::new()
+        .name("open-settings".into())
+        .spawn(
+            move || match Command::new("open").arg("-t").arg(&path).status() {
+                Ok(status) if status.success() => {}
+                Ok(status) => warn!("open -t {} failed: {status}", path.display()),
+                Err(e) => warn!("cannot open {}: {e}", path.display()),
+            },
+        );
+    if let Err(e) = opener {
+        warn!("cannot start opening the settings file: {e}");
     }
 }
 

@@ -175,7 +175,13 @@ fn detached<'a>(cmd: &'a mut Command, dir: &Path) -> &'a mut Command {
         .stderr(Stdio::null())
 }
 
-pub(super) fn open(terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError> {
+/// Starts the terminal; one that fails to start is an error here, one that
+/// exits with a failure calls `on_error` with why, from another thread.
+pub(super) fn open(
+    terminal: Option<&str>,
+    dir: &Path,
+    on_error: Box<dyn Fn(String) + Send>,
+) -> Result<(), PlatformError> {
     let apps = installed();
     let id = resolve(&apps, terminal)
         .ok_or_else(|| PlatformError::Failed("no terminal is installed".into()))?;
@@ -187,7 +193,12 @@ pub(super) fn open(terminal: Option<&str>, dir: &Path) -> Result<(), PlatformErr
         .map_err(|e| PlatformError::Failed(format!("could not run {}: {e}", program.display())))?;
     // Reap it, so a launcher that hands off to a running instance and quits
     // leaves no zombie behind.
-    std::thread::spawn(move || child.wait());
+    let name = program.display().to_string();
+    std::thread::spawn(move || match child.wait() {
+        Ok(status) if !status.success() => on_error(format!("{name} {status}")),
+        Ok(_) => {}
+        Err(e) => on_error(format!("{name}: {e}")),
+    });
     Ok(())
 }
 

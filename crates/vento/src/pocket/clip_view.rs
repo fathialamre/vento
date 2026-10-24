@@ -2,7 +2,7 @@
 //! what a row and its buttons do, and the bottom switch between the views.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -88,6 +88,8 @@ fn filter_counts(rows: &[ClipRowData]) -> Vec<i32> {
 /// image thumbnails already made for them.
 pub(super) struct ClipView {
     rows: Rc<VecModel<ClipRow>>,
+    /// Each filter's count, in the window's order.
+    counts: Rc<VecModel<i32>>,
     filter: Cell<ClipFilter>,
     /// Thumbnails by entry id, made once; an empty image when the picture
     /// could not be read.
@@ -99,8 +101,11 @@ impl ClipView {
     pub(super) fn new(window: &PocketIsland) -> Self {
         let rows = Rc::new(VecModel::default());
         window.set_clip_rows(ModelRc::from(rows.clone()));
+        let counts = Rc::new(VecModel::from(vec![0; FILTERS.len()]));
+        window.set_clip_filter_counts(ModelRc::from(counts.clone()));
         Self {
             rows,
+            counts,
             filter: Cell::new(ClipFilter::All),
             thumbs: RefCell::new(HashMap::new()),
         }
@@ -113,9 +118,10 @@ impl ClipView {
     pub(super) fn show(&self, window: &PocketIsland, data: &[ClipRowData]) {
         let filter = self.filter.get();
         window.set_clip_filter(filter.index());
-        window.set_clip_filter_counts(ModelRc::new(VecModel::from(filter_counts(data))));
+        set_rows_in_place(&self.counts, filter_counts(data));
         let mut thumbs = self.thumbs.borrow_mut();
-        thumbs.retain(|id, _| data.iter().any(|d| d.id == *id));
+        let ids: HashSet<u64> = data.iter().map(|d| d.id).collect();
+        thumbs.retain(|id, _| ids.contains(id));
         let rows = data
             .iter()
             .filter(|d| filter.admits(d))
@@ -297,9 +303,14 @@ impl PocketController {
     pub(super) fn set_view(&self, v: View) {
         if self.view.replace(v) != v {
             debug!("pocket view {v:?}");
+            // Its rows are made only while it is in sight.
+            if v == View::Clipboard {
+                self.refresh_clip();
+            }
         }
         self.window.set_view(view_index(self.shown_view()));
         self.fit_panel();
+        self.run_undo_timer();
     }
 
     /// The view the island shows: the Pocket while the history is off.
@@ -321,16 +332,18 @@ impl PocketController {
         }
     }
 
-    /// Pushes the history's rows and counts, the switch and the view into
-    /// the window.
+    /// Pushes the history's size, the switch and the view into the window,
+    /// and the rows and counts while the Clipboard view is in sight. Rows
+    /// cost a look at each listed file, so none are made for a hidden list:
+    /// the island refreshes as it expands or switches to the view.
     pub(super) fn refresh_clip(&self) {
         let on = self.clip.enabled();
-        let rows = if on {
-            self.clip.rows(now_unix())
-        } else {
-            Vec::new()
-        };
-        self.clip_view.show(&self.window, &rows);
+        if !on {
+            self.clip_view.show(&self.window, &[]);
+        } else if self.expanded() && self.shown_view() == View::Clipboard {
+            self.clip_view
+                .show(&self.window, &self.clip.rows(now_unix()));
+        }
         let w = &self.window;
         w.set_clip_count(i32::try_from(self.clip.len()).unwrap_or(i32::MAX));
         w.set_show_switch(on);
@@ -340,7 +353,7 @@ impl PocketController {
 }
 
 /// The window's number for `v`.
-fn view_index(v: View) -> i32 {
+pub(super) fn view_index(v: View) -> i32 {
     match v {
         View::Pocket => 0,
         View::Clipboard => 1,

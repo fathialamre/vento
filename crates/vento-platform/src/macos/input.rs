@@ -1,9 +1,10 @@
 //! Global input sampling via polling; none of it needs a permission prompt.
 
-use std::cell::Cell;
+use std::cell::{Cell, OnceCell};
 use std::path::PathBuf;
 
 use objc2::MainThreadMarker;
+use objc2::rc::Retained;
 use objc2_app_kit::{
     NSEvent, NSEventModifierFlags, NSPasteboard, NSPasteboardNameDrag, NSPasteboardTypeFileURL,
 };
@@ -18,15 +19,29 @@ use super::screens::primary_height;
 const KEY_ESCAPE: u16 = 53;
 
 /// Remembers whether the drag pasteboard carried file URLs, so its types are
-/// only re-read when its change count moves.
+/// only re-read when its change count moves, and holds on to the drag and
+/// general pasteboards, so they are not looked up on every sample.
 #[derive(Default)]
 pub(super) struct DragPasteboardCache {
     change_count: Cell<i64>,
     has_files: Cell<bool>,
     primed: Cell<bool>,
+    drag: OnceCell<Retained<NSPasteboard>>,
+    general: OnceCell<Retained<NSPasteboard>>,
 }
 
 impl DragPasteboardCache {
+    /// The system drag pasteboard, looked up once.
+    fn drag(&self) -> &NSPasteboard {
+        self.drag
+            .get_or_init(|| NSPasteboard::pasteboardWithName(unsafe { NSPasteboardNameDrag }))
+    }
+
+    /// The general (copy and paste) pasteboard, looked up once.
+    fn general(&self) -> &NSPasteboard {
+        self.general.get_or_init(NSPasteboard::generalPasteboard)
+    }
+
     /// Returns `has_files`, calling `read` only when `count` differs from the
     /// last one seen.
     fn has_files(&self, count: i64, read: impl FnOnce() -> bool) -> bool {
@@ -48,9 +63,9 @@ pub(super) fn sample(cache: &DragPasteboardCache) -> InputSample {
         meta: flags.contains(NSEventModifierFlags::Command),
     };
 
-    let pasteboard = NSPasteboard::pasteboardWithName(unsafe { NSPasteboardNameDrag });
+    let pasteboard = cache.drag();
     let count = pasteboard.changeCount() as i64;
-    let drag_has_files = cache.has_files(count, || pasteboard_has_file_url(&pasteboard));
+    let drag_has_files = cache.has_files(count, || pasteboard_has_file_url(pasteboard));
 
     let location = NSEvent::mouseLocation();
     let cursor = match MainThreadMarker::new() {
@@ -73,7 +88,7 @@ pub(super) fn sample(cache: &DragPasteboardCache) -> InputSample {
         ),
         drag_change_count: count,
         drag_has_files,
-        clip_change_count: NSPasteboard::generalPasteboard().changeCount() as i64,
+        clip_change_count: cache.general().changeCount() as i64,
         cursor,
     }
 }

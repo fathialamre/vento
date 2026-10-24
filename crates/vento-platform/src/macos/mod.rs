@@ -36,15 +36,17 @@ mod screen_text;
 mod screens;
 mod select;
 mod terminal;
+mod thumbnail;
 mod trash;
 mod webp;
 
-pub(crate) use icons::picture_thumbnail;
+pub(crate) use icons::file_icon_at;
 pub(crate) use image_io::{probe_image, write_image};
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 pub use screen_text::MacScreenText;
 pub(crate) use screen_text::{read_screen_text, screen_text_languages};
+pub(crate) use thumbnail::{picture_data_thumbnail, picture_thumbnail};
 
 /// AppKit-backed [`Platform`].
 pub struct MacPlatform {
@@ -148,8 +150,13 @@ impl Platform for MacPlatform {
         terminal::installed()
     }
 
-    fn open_terminal(&self, terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError> {
-        terminal::open(terminal, dir)
+    fn open_terminal(
+        &self,
+        terminal: Option<&str>,
+        dir: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError> {
+        terminal::open(terminal, dir, on_error)
     }
 
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {

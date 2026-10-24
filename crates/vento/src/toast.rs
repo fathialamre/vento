@@ -1,5 +1,6 @@
 //! The result toast: one small always-on-top window that shows a message and
-//! an optional Undo button, then hides itself.
+//! an optional Undo button, then hides itself. The window exists from the
+//! first toast until it has been hidden for [`crate::lazy_window::IDLE`].
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -11,6 +12,7 @@ use slint::{ComponentHandle, LogicalPosition, Timer, TimerMode};
 use vento_core::geometry::{Point, Rect, screen_for};
 use vento_platform::Platform;
 
+use crate::lazy_window::LazyWindow;
 use crate::ui::Toast;
 
 /// Toast window width in logical pixels (matches `toast.slint`).
@@ -52,71 +54,106 @@ fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
 
 /// Shows short-lived messages in a single reused window.
 pub struct Toaster {
+    this: Weak<Toaster>,
     platform: Rc<dyn Platform>,
-    window: Toast,
+    window: LazyWindow<Toast>,
     timer: Timer,
     undo: RefCell<Option<Box<dyn Fn()>>>,
     /// The window has been made non-key (it needs the native window, which
-    /// exists once it has been shown).
+    /// Slint makes at the end of the turn the window was created in).
     non_key: Cell<bool>,
 }
 
 impl Toaster {
-    /// Creates the (hidden) toast window.
-    ///
-    /// # Panics
-    /// If the Slint window cannot be created.
+    /// Creates the toaster; its window comes with the first toast.
     pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
-        let window = Toast::new().expect("cannot create the toast window");
-        let toaster = Rc::new(Self {
+        Rc::new_cyclic(|this| Self {
+            this: this.clone(),
             platform,
-            window,
+            window: LazyWindow::new(),
             timer: Timer::default(),
             undo: RefCell::new(None),
             non_key: Cell::new(false),
-        });
-        let this = Rc::downgrade(&toaster);
-        toaster.window.on_undo_clicked(move || {
-            if let Some(toaster) = Weak::upgrade(&this) {
-                toaster.undo_clicked();
-            }
-        });
-        toaster
+        })
+    }
+
+    /// The toast window, created and connected if there is none.
+    ///
+    /// # Panics
+    /// If the Slint window cannot be created.
+    fn window(&self) -> Toast {
+        self.window.get_or_create(|| {
+            let window = Toast::new().expect("cannot create the toast window");
+            // A new native window: it has yet to be made non-key.
+            self.non_key.set(false);
+            let this = self.this.clone();
+            window.on_undo_clicked(move || {
+                if let Some(toaster) = this.upgrade() {
+                    toaster.undo_clicked();
+                }
+            });
+            window
+        })
     }
 
     /// Shows `text` 24 px under `at`, replacing any toast already up and
     /// restarting the 5 s timer. With `undo`, the toast has an Undo button
     /// that runs it once and closes the toast.
     pub fn show(&self, text: &str, undo: Option<Box<dyn Fn()>>, at: Point) {
-        self.window.set_message(text.into());
-        self.window.set_can_undo(undo.is_some());
+        let window = self.window();
+        window.set_message(text.into());
+        window.set_can_undo(undo.is_some());
         *self.undo.borrow_mut() = undo;
+        // A new window shows once it has its native window, so that it can
+        // be made non-key as it shows.
+        let this = self.this.clone();
+        self.window.when_native(move || {
+            if let Some(toaster) = this.upgrade() {
+                toaster.show_at(at);
+            }
+        });
+    }
+
+    /// Shows the toast as set up by [`Toaster::show`] and starts its timer.
+    fn show_at(&self, at: Point) {
+        let Some(window) = self.window.get() else {
+            return;
+        };
         let (x, y) = toast_position(at, &self.platform.screens());
-        self.window
+        window
             .window()
             .set_position(LogicalPosition::new(x as f32, y as f32));
-        if let Err(e) = self.window.show() {
+        if let Err(e) = window.show() {
             warn!("cannot show the toast: {e}");
+            self.window.release_later();
             return;
         }
         if !self.non_key.get() {
-            self.make_non_key();
+            self.make_non_key(&window);
         }
-        let window = self.window.as_weak();
+        let this = self.this.clone();
         self.timer.start(TimerMode::SingleShot, LIFETIME, move || {
-            if let Some(window) = window.upgrade()
-                && let Err(e) = window.hide()
-            {
-                warn!("cannot hide the toast: {e}");
+            if let Some(toaster) = this.upgrade() {
+                toaster.hide();
             }
         });
+    }
+
+    /// Hides the toast. Its window stays: toasts follow most actions, and
+    /// making the window again would cost a new GPU surface each time.
+    fn hide(&self) {
+        if let Some(window) = self.window.get()
+            && let Err(e) = window.hide()
+        {
+            warn!("cannot hide the toast: {e}");
+        }
     }
 
     /// Keeps the toast from ever becoming the key window, and a click on
     /// its Undo from activating vento, so the frontmost app keeps its
     /// keystrokes.
-    fn make_non_key(&self) {
-        let result = match self.window.window().window_handle().window_handle() {
+    fn make_non_key(&self, window: &Toast) {
+        let result = match window.window().window_handle().window_handle() {
             Ok(handle) => self
                 .platform
                 .make_non_key(handle.as_raw())
@@ -136,9 +173,7 @@ impl Toaster {
     /// immediately hidden again, then runs the undo callback.
     fn undo_clicked(&self) {
         self.timer.stop();
-        if let Err(e) = self.window.hide() {
-            warn!("cannot hide the toast: {e}");
-        }
+        self.hide();
         let undo = self.undo.borrow_mut().take();
         if let Some(undo) = undo {
             undo();

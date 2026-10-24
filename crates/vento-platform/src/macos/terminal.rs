@@ -1,11 +1,12 @@
 //! Terminal discovery and launching.
 
 use std::path::Path;
-use std::process::Command;
 
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::NSString;
 
+use super::apps;
+use super::clipboard::file_url;
 use crate::{PlatformError, TerminalApp};
 
 const DEFAULT_ID: &str = "com.apple.Terminal";
@@ -43,22 +44,21 @@ fn resolve<'a>(installed: &'a [TerminalApp], requested: Option<&str>) -> &'a str
         .map_or(DEFAULT_ID, |t| t.id.as_str())
 }
 
-pub(super) fn open(terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError> {
-    let apps = installed();
-    let id = resolve(&apps, terminal);
-    let status = Command::new("open")
-        .arg("-b")
-        .arg(id)
-        .arg(dir)
-        .status()
-        .map_err(|e| PlatformError::Failed(format!("could not run open: {e}")))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(PlatformError::Failed(format!(
-            "open -b {id} failed: {status}"
-        )))
-    }
+/// Opens `dir` in the chosen terminal without waiting for it to launch: a
+/// launch that fails later calls `on_error` with the reason, on another
+/// thread.
+pub(super) fn open(
+    terminal: Option<&str>,
+    dir: &Path,
+    on_error: Box<dyn Fn(String) + Send>,
+) -> Result<(), PlatformError> {
+    let terminals = installed();
+    let id = resolve(&terminals, terminal);
+    let app = NSWorkspace::sharedWorkspace()
+        .URLForApplicationWithBundleIdentifier(&NSString::from_str(id))
+        .ok_or_else(|| PlatformError::Failed(format!("{id} is not installed")))?;
+    apps::launch(&[file_url(dir)?], &app, on_error);
+    Ok(())
 }
 
 #[cfg(test)]

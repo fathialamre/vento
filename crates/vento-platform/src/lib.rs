@@ -166,7 +166,8 @@ pub trait Platform {
     /// `clip_change_count`). Cheap: reads no content. Main thread only.
     fn clipboard_change_count(&self) -> i64;
     /// The whole clipboard: per item, every representation that has data.
-    /// Items left with none are dropped.
+    /// Items left with none are dropped. A copy too big to keep is cut as
+    /// `vento_core::clip::capture` cuts it, and not read any further.
     fn read_clipboard(&self) -> ClipSnapshot;
     /// Replace the clipboard with this snapshot, one pasteboard item per
     /// snapshot item. Returns the clipboard's change counter after writing,
@@ -178,8 +179,15 @@ pub trait Platform {
     /// Installed terminal apps; on macOS Terminal is always first.
     fn terminals(&self) -> Vec<TerminalApp>;
     /// Open a terminal in `dir`. `terminal` is a [`TerminalApp::id`]; an
-    /// unknown or uninstalled id falls back to the default terminal.
-    fn open_terminal(&self, terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError>;
+    /// unknown or uninstalled id falls back to the default terminal. Errors
+    /// found at once are returned; a launch that fails later calls
+    /// `on_error` with the reason, once, on any thread.
+    fn open_terminal(
+        &self,
+        terminal: Option<&str>,
+        dir: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError>;
     /// Show a modal folder picker, optionally starting in `start`.
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf>;
     /// Where the Pocket island sits: the first notched screen, otherwise the
@@ -384,6 +392,25 @@ pub fn is_package(path: &Path) -> bool {
     }
 }
 
+/// The Finder icon of `path`, as [`Platform::file_icon`] renders it but at
+/// `scale` physical pixels per point. A free function so a worker thread
+/// can call it. Always `None` where unsupported.
+pub fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::file_icon_at(path, px, scale)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::file_icon_at(path, px, scale)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (path, px, scale);
+        None
+    }
+}
+
 /// A thumbnail of the picture file at `path`: its shorter side `short_px`
 /// pixels, its longer one in proportion but at most `max_ratio` times as
 /// long. `None` if it is missing or not a readable picture. A free function
@@ -400,6 +427,25 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = (path, short_px, max_ratio);
+        None
+    }
+}
+
+/// [`picture_thumbnail`] of encoded picture `bytes` (PNG, TIFF, JPEG, HEIC:
+/// any format macOS reads). Only about as many pixels as the thumbnail
+/// needs are decoded. Always `None` where unsupported.
+pub fn picture_data_thumbnail(bytes: &[u8], short_px: u32, max_ratio: u32) -> Option<RgbaImage> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::picture_data_thumbnail(bytes, short_px, max_ratio)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::picture_data_thumbnail(bytes, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (bytes, short_px, max_ratio);
         None
     }
 }

@@ -8,8 +8,8 @@
 //! a copy taken back from the history is the copy it was.
 
 use vento_core::clip::{
-    ClipRep, ClipSnapshot, SECRET_MARKERS, TYPE_FILE_URL, TYPE_PNG, TYPE_TEXT, TYPE_TIFF, TYPE_URL,
-    file_url_to_path,
+    ClipSnapshot, RepData, SECRET_MARKERS, TYPE_FILE_URL, TYPE_PNG, TYPE_TEXT, TYPE_TIFF, TYPE_URL,
+    capture, file_url_to_path,
 };
 
 /// GNOME's file copy: `copy` (or `cut`), then one URI per line.
@@ -79,16 +79,22 @@ pub(super) fn core_types(types: &[String]) -> Vec<String> {
     out
 }
 
-/// The snapshot of a clipboard holding `types`, reading each type's data
-/// with `read`. Types that can't be read are left out.
-pub(super) fn snapshot(types: &[String], read: impl Fn(&str) -> Option<Vec<u8>>) -> ClipSnapshot {
+/// Where the data of a planned representation comes from.
+enum Source {
+    /// Already known: a file or link taken from the URI list, or a marker.
+    Known(Vec<u8>),
+    /// To be read from the clipboard in this type.
+    Read(String),
+}
+
+/// The items a clipboard holding `types` reads as: per item, its core (or
+/// MIME) type names and where each one's data comes from. Only the file
+/// list is read here, with `read`, as it says how many items there are.
+fn plan(types: &[String], read: &impl Fn(&str) -> Option<Vec<u8>>) -> Vec<Vec<(String, Source)>> {
     let has = |t: &str| types.iter().any(|have| have == t);
     let mut marker = Vec::new();
     if has(PASSWORD_HINT) {
-        marker.push(ClipRep {
-            ty: SECRET_MARKERS[0].to_owned(),
-            data: Vec::new(),
-        });
+        marker.push((SECRET_MARKERS[0].to_owned(), Source::Known(Vec::new())));
     }
     // GNOME's list says copy or cut on its first line; the URI list is the
     // same files without it.
@@ -107,54 +113,67 @@ pub(super) fn snapshot(types: &[String], read: impl Fn(&str) -> Option<Vec<u8>>)
         .into_iter()
         .partition(|u| file_url_to_path(u.as_bytes()).is_some());
     if !files.is_empty() {
-        let mut items: Vec<Vec<ClipRep>> = files
+        let mut items: Vec<Vec<(String, Source)>> = files
             .into_iter()
-            .map(|uri| {
-                vec![ClipRep {
-                    ty: TYPE_FILE_URL.to_owned(),
-                    data: uri.into_bytes(),
-                }]
-            })
+            .map(|uri| vec![(TYPE_FILE_URL.to_owned(), Source::Known(uri.into_bytes()))])
             .collect();
         items[0].extend(marker);
-        return ClipSnapshot { items };
+        return items;
     }
 
     let mut item = marker;
-    if let Some(text) = text_type(types).and_then(&read) {
-        item.push(ClipRep {
-            ty: TYPE_TEXT.to_owned(),
-            data: text,
-        });
+    if let Some(text) = text_type(types) {
+        item.push((TYPE_TEXT.to_owned(), Source::Read(text.to_owned())));
     }
     if let Some(link) = links.into_iter().next() {
-        item.push(ClipRep {
-            ty: TYPE_URL.to_owned(),
-            data: link.into_bytes(),
-        });
+        item.push((TYPE_URL.to_owned(), Source::Known(link.into_bytes())));
     }
     for (mime, ty) in [(PNG, TYPE_PNG), (TIFF, TYPE_TIFF)] {
-        if let Some(data) = has(mime).then(|| read(mime)).flatten() {
-            item.push(ClipRep {
-                ty: ty.to_owned(),
-                data,
-            });
+        if has(mime) {
+            item.push((ty.to_owned(), Source::Read(mime.to_owned())));
         }
     }
     for ty in types.iter().filter(|t| !translated_or_internal(t)) {
-        if let Some(data) = read(ty) {
-            item.push(ClipRep {
-                ty: ty.clone(),
-                data,
-            });
-        }
+        item.push((ty.clone(), Source::Read(ty.clone())));
     }
-    let items = if item.is_empty() {
+    if item.is_empty() {
         Vec::new()
     } else {
         vec![item]
-    };
-    ClipSnapshot { items }
+    }
+}
+
+/// A type's data, as [`capture`] takes it.
+struct Bytes(Vec<u8>);
+
+impl RepData for Bytes {
+    fn byte_len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn copy_bytes(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+}
+
+/// The snapshot of a clipboard holding `types`, cut to `limit` bytes as
+/// [`capture`] cuts it: each type's data is read with `read` only when
+/// needed, and no more once the copy is known to be too big. Types that
+/// can't be read are left out.
+pub(super) fn snapshot(
+    types: &[String],
+    limit: usize,
+    read: impl Fn(&str) -> Option<Vec<u8>>,
+) -> ClipSnapshot {
+    let plan = plan(types, &read);
+    let names: Vec<Vec<String>> = plan
+        .iter()
+        .map(|item| item.iter().map(|(name, _)| name.clone()).collect())
+        .collect();
+    capture(&names, limit, |i, j| match &plan[i][j].1 {
+        Source::Known(data) => Some(Bytes(data.clone())),
+        Source::Read(mime) => read(mime).map(Bytes),
+    })
 }
 
 /// What to offer for `snapshot`, as (MIME type or X11 target, data): the
@@ -221,7 +240,13 @@ pub(super) fn offers(snapshot: &ClipSnapshot) -> Vec<(String, Vec<u8>)> {
 
 #[cfg(test)]
 mod tests {
+    use vento_core::clip::{ClipRep, MAX_SNAPSHOT_BYTES};
+
     use super::*;
+
+    fn snapshot_all(types: &[String], read: impl Fn(&str) -> Option<Vec<u8>>) -> ClipSnapshot {
+        snapshot(types, MAX_SNAPSHOT_BYTES, read)
+    }
 
     fn types(t: &[&str]) -> Vec<String> {
         t.iter().map(|s| (*s).to_owned()).collect()
@@ -249,7 +274,7 @@ mod tests {
     #[test]
     fn a_files_copy_becomes_one_item_per_file() {
         let t = types(&["TARGETS", GNOME_FILES, URI_LIST, UTF8_TEXT]);
-        let s = snapshot(
+        let s = snapshot_all(
             &t,
             reader(&[(
                 GNOME_FILES,
@@ -268,7 +293,7 @@ mod tests {
     #[test]
     fn a_uri_list_alone_also_gives_files() {
         let t = types(&[URI_LIST]);
-        let s = snapshot(
+        let s = snapshot_all(
             &t,
             reader(&[(URI_LIST, "# from somewhere\r\nfile:///tmp/x\r\n")]),
         );
@@ -278,7 +303,7 @@ mod tests {
     #[test]
     fn text_copies_keep_text_and_their_other_types() {
         let t = types(&["TARGETS", "UTF8_STRING", UTF8_TEXT, "text/html", "STRING"]);
-        let s = snapshot(
+        let s = snapshot_all(
             &t,
             reader(&[
                 (UTF8_TEXT, "مرحبا"),
@@ -298,7 +323,7 @@ mod tests {
     #[test]
     fn a_link_copy_gives_text_and_a_url() {
         let t = types(&[URI_LIST, UTF8_TEXT]);
-        let s = snapshot(
+        let s = snapshot_all(
             &t,
             reader(&[
                 (URI_LIST, "https://example.com/\r\n"),
@@ -315,20 +340,39 @@ mod tests {
     }
 
     #[test]
-    fn pictures_and_secrets_are_recognised() {
-        let t = types(&[PNG, PASSWORD_HINT]);
-        let s = snapshot(&t, reader(&[(PNG, "PNGDATA"), (PASSWORD_HINT, "secret")]));
+    fn pictures_are_recognised() {
+        let s = snapshot_all(&types(&[PNG]), reader(&[(PNG, "PNGDATA")]));
+        assert_eq!(s.items, [vec![rep(TYPE_PNG, "PNGDATA")]]);
+    }
+
+    #[test]
+    fn a_secret_copy_yields_its_marker_and_nothing_is_read() {
+        let t = types(&[PNG, PASSWORD_HINT, UTF8_TEXT]);
         assert_eq!(
-            s.items,
-            [vec![rep(SECRET_MARKERS[0], ""), rep(TYPE_PNG, "PNGDATA")]]
+            reads(&[PNG, PASSWORD_HINT, UTF8_TEXT]),
+            Vec::<String>::new()
         );
-        assert_eq!(core_types(&t), [SECRET_MARKERS[0], TYPE_PNG]);
+        let s = snapshot_all(&t, reader(&[(PNG, "PNGDATA"), (UTF8_TEXT, "hunter2")]));
+        assert_eq!(s.items, [vec![rep(SECRET_MARKERS[0], "")]]);
+        assert_eq!(core_types(&t), [SECRET_MARKERS[0], TYPE_TEXT, TYPE_PNG]);
+    }
+
+    #[test]
+    fn a_copy_past_the_limit_is_cut_to_what_it_shows() {
+        let t = types(&[UTF8_TEXT, "text/html"]);
+        let html = "<p>".repeat(100);
+        let s = snapshot(
+            &t,
+            50,
+            reader(&[(UTF8_TEXT, "hello"), ("text/html", &html)]),
+        );
+        assert_eq!(s.items, [vec![rep(TYPE_TEXT, "hello")]]);
     }
 
     /// The types `snapshot` reads for a clipboard holding `t`, in order.
     fn reads(t: &[&str]) -> Vec<String> {
         let asked = std::cell::RefCell::new(Vec::new());
-        snapshot(&types(t), |ty| {
+        snapshot_all(&types(t), |ty| {
             asked.borrow_mut().push(ty.to_owned());
             Some(b"x".to_vec())
         });
@@ -336,9 +380,9 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_clipboard_is_an_empty_snapshot() {
+    fn an_empty_clipboard_is_an_empty_snapshot_all() {
         assert!(
-            snapshot(&types(&["TARGETS", "TIMESTAMP"]), reader(&[]))
+            snapshot_all(&types(&["TARGETS", "TIMESTAMP"]), reader(&[]))
                 .items
                 .is_empty()
         );
@@ -404,7 +448,7 @@ mod tests {
     fn a_snapshot_read_back_offers_what_it_was() {
         let t = types(&[UTF8_TEXT, "text/html"]);
         let read = reader(&[(UTF8_TEXT, "hi"), ("text/html", "<i>hi</i>")]);
-        let o = offers(&snapshot(&t, read));
+        let o = offers(&snapshot_all(&t, read));
         let names: Vec<&str> = o.iter().map(|(t, _)| t.as_str()).collect();
         assert_eq!(names, [UTF8_TEXT, "UTF8_STRING", "text/plain", "text/html"]);
     }

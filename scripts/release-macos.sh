@@ -43,6 +43,11 @@ fi
 	cat "$webp/vendor/COPYING"
 } >>"$stage/THIRD-PARTY-NOTICES.txt"
 
+# Crash reports from this build are symbolicated with its dSYM; keep it next
+# to the zip (it is not published).
+rm -rf "$out/$name.dSYM"
+ditto target/release/vento.dSYM "$out/$name.dSYM"
+
 (cd "$out" && ditto -c -k --norsrc --noextattr --noacl --keepParent "$name" "$zip")
 
 echo "$out/$zip"

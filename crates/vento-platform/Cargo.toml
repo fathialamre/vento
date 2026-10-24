@@ -1,6 +1,6 @@
 [package]
 name = "vento-platform"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-only"
 rust-version = "1.93"
@@ -111,9 +111,9 @@ xattr = "1"
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = "0.22"
 gio-unix = "0.22"
-# Both already in the app through Slint (image with PNG and JPEG), so file
-# icons and picture thumbnails add no code size.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Both already in the app through Slint (image with PNG and JPEG); TIFF is
+# added for pictures copied only as TIFF, which the clipboard history shows.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
 resvg = { version = "0.48", default-features = false }
 # Already in the app through winit; our own connection for vento's windows.
 x11rb = "0.13"

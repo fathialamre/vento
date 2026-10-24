@@ -4,17 +4,20 @@
 //! A copy is noticed by the clipboard's change count, which rides on the
 //! wheel's input samples ([`ClipController::observe`]); the clipboard is only
 //! read when that count moved. The snapshot is read on the main thread and
-//! shown at once as a new entry; a worker hashes it and writes its blobs.
-//! Until that is reported back, the snapshot is held in memory so the entry
-//! can already be put back, and only then is a copy of content already in
-//! the history folded into one entry.
+//! shown at once as a new entry; the store worker hashes it and writes its
+//! blobs. Until that is reported back, the snapshot is held in memory so the
+//! entry can already be put back, and only then is a copy of content already
+//! in the history folded into one entry.
+//!
+//! All disk writes after launch (blobs, the history file, deleting entries'
+//! folders) go to that one worker thread, which runs them in the order sent.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::tz::TimeZone;
 use log::{debug, warn};
@@ -33,9 +36,31 @@ use super::clip_thumb::{THUMB_FILE, write_file_thumb, write_thumb};
 use super::display_name;
 
 thread_local! {
-    /// The controller on the main thread, for blob writes finishing on a
-    /// worker thread.
+    /// The controller on the main thread, for blob writes finishing on the
+    /// store worker.
     static MAIN_CLIP: RefCell<Weak<ClipController>> = const { RefCell::new(Weak::new()) };
+}
+
+/// Longest wait at quit for the store worker to finish what it was sent.
+const SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Work for the store worker.
+enum Job {
+    /// Hash entry `id`'s snapshot and write its blobs, with a thumbnail of
+    /// its `picture` beside them, then delete the folders of `evicted`; the
+    /// hash, or the failure, is reported back on the main thread.
+    Store {
+        id: u64,
+        snapshot: Arc<ClipSnapshot>,
+        evicted: Vec<u64>,
+        picture: Option<Picture>,
+    },
+    /// Write the history file as it was when sent.
+    Save(ClipHistory),
+    /// Delete these entries' blobs.
+    Delete(Vec<u64>),
+    /// Answer once every job sent before has run.
+    Settle(mpsc::Sender<()>),
 }
 
 /// What a history row shows as its icon.
@@ -100,6 +125,9 @@ pub(super) struct ClipController {
     enabled: Cell<bool>,
     /// Called after every change to the history.
     on_change: Box<dyn Fn()>,
+    /// The store worker's queue; `None` without a store, or when the worker
+    /// could not start, and then its jobs run here.
+    worker: Option<mpsc::Sender<Job>>,
 }
 
 /// Where the clipboard history lives on disk.
@@ -194,9 +222,11 @@ impl ClipController {
         settings: &RefCell<Settings>,
         on_change: Box<dyn Fn()>,
     ) -> Rc<Self> {
+        let worker = store.as_ref().and_then(start_worker);
         let controller = Rc::new(Self {
             platform,
             store,
+            worker,
             history: RefCell::new(history),
             pending: RefCell::new(HashMap::new()),
             held: RefCell::new(Vec::new()),
@@ -248,6 +278,11 @@ impl ClipController {
             debug!("clipboard: secret copy not recorded");
             return;
         }
+        // The read already leaves out a copy too big to keep.
+        if read.items.is_empty() {
+            debug!("clipboard: copy too big or unreadable, not recorded");
+            return;
+        }
         let Some(snapshot) = fit(read, MAX_SNAPSHOT_BYTES) else {
             debug!("clipboard: copy too big, not recorded");
             return;
@@ -282,15 +317,15 @@ impl ClipController {
         debug!("clipboard: recorded entry {id}");
         let snapshot = Arc::new(snapshot);
         self.pending.borrow_mut().insert(id, snapshot.clone());
-        self.spawn_write(id, snapshot, evicted, picture);
+        self.store_blobs(id, snapshot, evicted, picture);
         (self.on_change)();
     }
 
-    /// Hashes entry `id`'s snapshot and writes its blobs on a worker
-    /// thread, with a thumbnail of its `picture` beside them, then deletes
-    /// the folders of `evicted`; the hash, or the failure, is reported back
-    /// on the main thread.
-    fn spawn_write(
+    /// Has the store worker hash entry `id`'s snapshot and write its blobs,
+    /// with a thumbnail of its `picture` beside them, then delete the
+    /// folders of `evicted`; the hash, or the failure, is reported back to
+    /// [`stored`](Self::stored) on the main thread.
+    fn store_blobs(
         &self,
         id: u64,
         snapshot: Arc<ClipSnapshot>,
@@ -304,53 +339,40 @@ impl ClipController {
                 pending.remove(old);
             }
         }
-        // Always there: nothing is recorded without a store.
-        let Some(dir) = self.dir().map(Path::to_path_buf) else {
+        self.send(Job::Store {
+            id,
+            snapshot,
+            evicted,
+            picture,
+        });
+    }
+
+    /// Hands `job` to the store worker, or runs it here when there is none
+    /// (or it is gone). Without a store there is nothing to do.
+    fn send(&self, job: Job) {
+        let Some(store) = &self.store else {
             return;
         };
-        let gone = evicted.clone();
-        let spawned = std::thread::Builder::new()
-            .name("vento-clip-store".into())
-            .spawn(move || {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let hash = snapshot_hash(&snapshot);
-                    let written = write_entry(&dir, id, &snapshot)
-                        .map(|()| hash)
-                        .map_err(|e| e.to_string());
-                    // Here, not on the main thread: decoding scales with
-                    // the picture. Without a thumbnail the row shows an icon.
-                    if written.is_ok()
-                        && let Some(picture) = &picture
-                    {
-                        let folder = dir.join(id.to_string());
-                        let thumb = match picture {
-                            Picture::Pasted => write_thumb(&folder, &snapshot),
-                            Picture::File(path) => write_file_thumb(&folder, path),
-                        };
-                        if let Err(e) = thumb {
-                            debug!("clipboard: no thumbnail for entry {id}: {e}");
-                        }
-                    }
-                    for old in gone {
-                        delete_entry(&dir, old);
-                    }
-                    written
-                }))
-                .unwrap_or_else(|_| Err("internal error".into()));
-                let delivered = slint::invoke_from_event_loop(move || {
-                    if let Some(c) = MAIN_CLIP.with(|slot| slot.borrow().upgrade()) {
-                        c.stored(id, result);
-                    }
-                });
-                if let Err(e) = delivered {
-                    debug!("cannot report stored clipboard entry {id}: {e}");
-                }
-            });
-        if let Err(e) = spawned {
-            for old in evicted {
-                self.delete(old);
-            }
-            self.stored(id, Err(format!("cannot start writing: {e}")));
+        let job = match &self.worker {
+            Some(worker) => match worker.send(job) {
+                Ok(()) => return,
+                Err(mpsc::SendError(job)) => job,
+            },
+            None => job,
+        };
+        run_job(store, job);
+    }
+
+    /// Waits, at most [`SETTLE_TIMEOUT`], for the store worker to run every
+    /// job sent so far.
+    fn settle(&self) {
+        if self.store.is_none() {
+            return;
+        }
+        let (done, settled) = mpsc::channel();
+        self.send(Job::Settle(done));
+        if settled.recv_timeout(SETTLE_TIMEOUT).is_err() {
+            warn!("clipboard: the store worker did not finish in time");
         }
     }
 
@@ -380,14 +402,14 @@ impl ClipController {
                 self.late_hashes.borrow_mut().insert(id, hash);
             } else {
                 // Gone for good while it was being written.
-                self.delete(id);
+                self.delete([id]);
             }
             return;
         }
         let twin = self.history.borrow_mut().set_hash(id, hash);
         if let Some(twin) = &twin {
             debug!("clipboard: entry {} was copied again", twin.id);
-            self.delete(twin.id);
+            self.delete([twin.id]);
         }
         self.save();
         let image = self.history.borrow().get(id).is_some_and(|e| {
@@ -585,18 +607,19 @@ impl ClipController {
         }
     }
 
-    /// Discards whatever an Undo still holds. Call when vento quits.
+    /// Discards whatever an Undo still holds, then waits for the store
+    /// worker to write what it was sent. Call when vento quits.
     pub(super) fn flush(&self) {
         self.late_hashes.borrow_mut().clear();
         let held = self.held.take();
-        if held.is_empty() {
-            return;
+        if !held.is_empty() {
+            debug!("clipboard: {} held entries deleted at quit", held.len());
+            self.delete_unless_back(held);
+            if self.is_empty() {
+                self.forget_backup();
+            }
         }
-        debug!("clipboard: {} held entries deleted at quit", held.len());
-        self.delete_unless_back(held);
-        if self.is_empty() {
-            self.forget_backup();
-        }
+        self.settle();
     }
 
     /// `entries` are no longer held for an Undo.
@@ -613,13 +636,17 @@ impl ClipController {
     /// Deletes the blobs (on disk and in memory) of each of `ids` that is
     /// not in the history.
     fn delete_unless_back(&self, ids: impl IntoIterator<Item = u64>) {
-        for id in ids {
-            if self.history.borrow().get(id).is_some() {
-                continue;
+        let gone: Vec<u64> = ids
+            .into_iter()
+            .filter(|&id| self.history.borrow().get(id).is_none())
+            .collect();
+        {
+            let mut pending = self.pending.borrow_mut();
+            for id in &gone {
+                pending.remove(id);
             }
-            self.pending.borrow_mut().remove(&id);
-            self.delete(id);
         }
+        self.delete(gone);
     }
 
     /// The rows of the Clipboard view, newest first, aged against
@@ -660,22 +687,122 @@ impl ClipController {
         self.store.as_ref().map(|s| s.dir.as_path())
     }
 
-    /// Deletes entry `id`'s blobs.
-    fn delete(&self, id: u64) {
-        if let Some(dir) = self.dir() {
-            delete_entry(dir, id);
+    /// Has the store worker delete these entries' blobs.
+    fn delete(&self, ids: impl IntoIterator<Item = u64>) {
+        let ids: Vec<u64> = ids.into_iter().collect();
+        if !ids.is_empty() {
+            self.send(Job::Delete(ids));
         }
     }
 
+    /// Has the store worker write the history file as it is now. (A copy
+    /// of the history is small next to writing it out.)
     fn save(&self) {
-        let Some(store) = &self.store else {
-            return;
-        };
-        if let Err(e) = self.history.borrow().save(&store.json) {
-            warn!(
-                "cannot save the clipboard history to {}: {e}",
-                store.json.display()
-            );
+        if self.store.is_some() {
+            self.send(Job::Save(self.history.borrow().clone()));
+        }
+    }
+}
+
+/// Starts the store worker for `store`; `None` when it cannot start, and
+/// then jobs run on the main thread.
+fn start_worker(store: &Store) -> Option<mpsc::Sender<Job>> {
+    let (jobs, queue) = mpsc::channel();
+    let store = Store {
+        json: store.json.clone(),
+        dir: store.dir.clone(),
+    };
+    let started = std::thread::Builder::new()
+        .name("vento-clip-store".into())
+        .spawn(move || work(&store, &queue));
+    match started {
+        Ok(_) => Some(jobs),
+        Err(e) => {
+            warn!("cannot start the clipboard store worker: {e}");
+            None
+        }
+    }
+}
+
+/// The store worker: runs jobs in the order sent until the controller is
+/// gone. A save with a later one queued behind it (and no settle between)
+/// is skipped: the later one holds all it would write.
+fn work(store: &Store, queue: &mpsc::Receiver<Job>) {
+    while let Ok(job) = queue.recv() {
+        let mut batch: VecDeque<Job> = std::iter::once(job).chain(queue.try_iter()).collect();
+        while let Some(job) = batch.pop_front() {
+            let superseded = matches!(job, Job::Save(_))
+                && batch
+                    .iter()
+                    .take_while(|j| !matches!(j, Job::Settle(_)))
+                    .any(|j| matches!(j, Job::Save(_)));
+            if !superseded {
+                run_job(store, job);
+            }
+        }
+    }
+}
+
+/// Runs one job of the store worker's.
+fn run_job(store: &Store, job: Job) {
+    let dir = store.dir.as_path();
+    match job {
+        Job::Store {
+            id,
+            snapshot,
+            evicted,
+            picture,
+        } => {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let hash = snapshot_hash(&snapshot);
+                let written = write_entry(dir, id, &snapshot)
+                    .map(|()| hash)
+                    .map_err(|e| e.to_string());
+                // Here, not on the main thread: decoding scales with the
+                // picture. Without a thumbnail the row shows an icon.
+                if written.is_ok()
+                    && let Some(picture) = &picture
+                {
+                    let folder = dir.join(id.to_string());
+                    let thumb = match picture {
+                        Picture::Pasted => write_thumb(&folder, &snapshot),
+                        Picture::File(path) => write_file_thumb(&folder, path),
+                    };
+                    if let Err(e) = thumb {
+                        debug!("clipboard: no thumbnail for entry {id}: {e}");
+                    }
+                }
+                for old in evicted {
+                    delete_entry(dir, old);
+                }
+                written
+            }))
+            .unwrap_or_else(|_| Err("internal error".into()));
+            let delivered = slint::invoke_from_event_loop(move || {
+                if let Some(c) = MAIN_CLIP.with(|slot| slot.borrow().upgrade()) {
+                    c.stored(id, result);
+                }
+            });
+            if let Err(e) = delivered {
+                debug!("cannot report stored clipboard entry {id}: {e}");
+            }
+        }
+        Job::Save(history) => {
+            if let Err(e) = history.save(&store.json) {
+                warn!(
+                    "cannot save the clipboard history to {}: {e}",
+                    store.json.display()
+                );
+            }
+        }
+        Job::Delete(ids) => {
+            for id in ids {
+                delete_entry(dir, id);
+            }
+        }
+        Job::Settle(done) => {
+            // The waiter may have given up.
+            let _ = done.send(());
         }
     }
 }
@@ -875,7 +1002,12 @@ mod tests {
         fn terminals(&self) -> Vec<TerminalApp> {
             unreachable!()
         }
-        fn open_terminal(&self, _: Option<&str>, _: &Path) -> Result<(), PlatformError> {
+        fn open_terminal(
+            &self,
+            _: Option<&str>,
+            _: &Path,
+            _: Box<dyn Fn(String) + Send>,
+        ) -> Result<(), PlatformError> {
             unreachable!()
         }
         fn pick_folder(&self, _: Option<&Path>) -> Option<PathBuf> {
@@ -1025,14 +1157,16 @@ mod tests {
         }
     }
 
-    /// Plays the event loop for entry `id`'s store worker: waits for its
-    /// folder, then reports the result as the worker would. (Tests have no
-    /// event loop, so the worker's own report never arrives.)
+    /// Plays the event loop for entry `id`'s store job: waits for it to
+    /// run, then reports the result as the worker would and waits for what
+    /// that sends the worker. (Tests have no event loop, so the worker's
+    /// own report never arrives.)
     fn report(c: &ClipController, id: u64) {
-        let folder = c.dir().unwrap().join(id.to_string());
-        wait_until(|| folder.is_dir());
+        c.settle();
+        assert!(c.dir().unwrap().join(id.to_string()).is_dir());
         let snapshot = c.pending.borrow()[&id].clone();
         c.stored(id, Ok(snapshot_hash(&snapshot)));
+        c.settle();
     }
 
     fn entry(id: u64, copied_unix: u64, summary: Summary, types: Vec<Vec<String>>) -> ClipEntry {
@@ -1588,6 +1722,28 @@ mod tests {
     }
 
     #[test]
+    fn queued_saves_land_in_order_by_quit() {
+        let (tmp, fake, c) = setup(true);
+        tick(&fake, &c, 0);
+        for n in 1..=5 {
+            fake.set(text(&format!("n{n}")), &[]);
+            tick(&fake, &c, n);
+            let id = top_id(&c);
+            c.stored(id, Ok(n as u64));
+        }
+        let first = *ids(&c).last().unwrap();
+        c.set_pinned(first, true);
+        let removed = c.remove(&[top_id(&c)]);
+        c.restore(removed);
+        c.remove(&[top_id(&c)]);
+        // Nothing waited for until the quit.
+        c.flush();
+        let (saved, _) = ClipHistory::load(&tmp.path().join("clipboard.json"));
+        assert_eq!(saved.entries(), c.history.borrow().entries());
+        assert!(saved.get(first).unwrap().pinned);
+    }
+
+    #[test]
     fn restore_drops_content_copied_again() {
         let (tmp, fake, c) = setup(true);
         fake.set(text("a"), &[]);
@@ -1610,6 +1766,7 @@ mod tests {
             )
         };
         c.restore(vec![old]);
+        c.settle();
         assert_eq!(c.len(), 1);
         assert_eq!(top_id(&c), kept);
         assert!(!folder.exists());

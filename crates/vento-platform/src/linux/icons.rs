@@ -337,7 +337,7 @@ fn render(file: &Path, side: u32) -> Option<RgbaImage> {
 
 /// The icon Files shows for `path`, `side`×`side` pixels. `None` if `path`
 /// doesn't exist or no icon is found.
-pub(super) fn file_icon(path: &Path, side: u32) -> Option<RgbaImage> {
+pub(crate) fn file_icon(path: &Path, side: u32) -> Option<RgbaImage> {
     if side == 0 {
         return None;
     }
