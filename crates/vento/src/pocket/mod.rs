@@ -50,7 +50,7 @@ use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
-use add::{AddPlan, Entry, holds_content, plan_new, saved_content, store};
+use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
@@ -210,6 +210,9 @@ pub struct PocketController {
     /// Files being copied into `kept/` by a running job, so a second drop
     /// of the same file is not copied again.
     copying: RefCell<Vec<PathBuf>>,
+    /// What the saved files hold, so a drop of the same content is spotted
+    /// without reading them all again.
+    saved_prints: RefCell<SavedPrints>,
     /// The window has been pre-warmed; samples before that are ignored.
     warm: Cell<bool>,
     overlay_ready: Cell<bool>,
@@ -287,6 +290,7 @@ impl PocketController {
             catcher: RefCell::new(None),
             catcher_rect: Cell::new(None),
             copying: RefCell::new(Vec::new()),
+            saved_prints: RefCell::new(SavedPrints::default()),
             warm: Cell::new(false),
             overlay_ready: Cell::new(false),
             was_dragging: Cell::new(false),
@@ -1196,7 +1200,7 @@ impl PocketController {
     /// drops keep working meanwhile.
     fn add_dropped(&self, d: Dropped) {
         let keep_copies = self.settings.borrow().pocket_keep_copies;
-        let (plan, held) = {
+        let (plan, print, held) = {
             let pocket = self.pocket.borrow();
             let copying = self.copying.borrow();
             let plan = plan_new(&d, keep_copies, |p| {
@@ -1207,8 +1211,9 @@ impl PocketController {
                 .iter()
                 .filter(|i| i.source == ItemSource::Saved)
                 .map(|i| i.path.as_path());
-            let held = saved_content(&plan).is_some_and(|bytes| holds_content(saved, &bytes));
-            (plan, held)
+            let print = saved_content(&plan).map(|bytes| Print::of(&bytes));
+            let held = print.is_some_and(|p| self.saved_prints.borrow_mut().holds(saved, p));
+            (plan, print, held)
         };
         match plan {
             _ if held => debug!("pocket already holds this content"),
@@ -1216,6 +1221,12 @@ impl PocketController {
             AddPlan::Copies(paths) => self.spawn_copies(paths),
             plan => {
                 let (entries, errors) = store(plan, &pocket_dir());
+                if let Some(print) = print {
+                    let mut prints = self.saved_prints.borrow_mut();
+                    for (path, _, _) in &entries {
+                        prints.remember(path, print);
+                    }
+                }
                 self.finish_add(entries, &errors);
             }
         }
