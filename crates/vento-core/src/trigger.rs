@@ -8,6 +8,14 @@ use serde::{Deserialize, Serialize};
 use crate::geometry::Point;
 use crate::shake::ShakeDetector;
 
+/// Sampling interval while a drag is under way or the wheel is open.
+const DRAG_POLL: Duration = Duration::from_millis(8);
+/// Sampling interval while the button is held without a drag: quick enough
+/// to catch a drag starting, which then samples at [`DRAG_POLL`].
+const HELD_POLL: Duration = Duration::from_millis(50);
+/// Sampling interval with the button up.
+const IDLE_POLL: Duration = Duration::from_millis(100);
+
 /// A keyboard modifier that can be configured as the wheel trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -178,12 +186,16 @@ impl TriggerMachine {
         self.finished = false;
     }
 
-    /// How long the caller should wait before sampling again.
+    /// How long the caller should wait before sampling again: fast while a
+    /// drag is under way or the wheel is open, slower while the button is
+    /// only held (selecting text, moving a window), slowest with it up.
     pub fn poll_interval(&self) -> Duration {
-        if self.prev_left || self.open {
-            Duration::from_millis(8)
+        if self.open || self.drag_in_progress() {
+            DRAG_POLL
+        } else if self.prev_left {
+            HELD_POLL
         } else {
-            Duration::from_millis(100)
+            IDLE_POLL
         }
     }
 }
@@ -356,13 +368,52 @@ mod tests {
     #[test]
     fn poll_intervals() {
         let mut m = TriggerMachine::new(Modifier::Ctrl);
-        assert_eq!(m.poll_interval(), Duration::from_millis(100));
-        m.feed(&s(true, false, 5, false));
-        assert_eq!(m.poll_interval(), Duration::from_millis(8));
+        assert_eq!(m.poll_interval(), IDLE_POLL);
+        m.feed(&s(false, false, 5, false));
+        assert_eq!(m.poll_interval(), IDLE_POLL);
         let mut m = opened();
-        assert_eq!(m.poll_interval(), Duration::from_millis(8));
+        assert_eq!(m.poll_interval(), DRAG_POLL);
         m.feed(&s(false, false, 6, true));
-        assert_eq!(m.poll_interval(), Duration::from_millis(8));
+        // Released, but the wheel stays up until it is closed.
+        assert_eq!(m.poll_interval(), DRAG_POLL);
+        m.close();
+        assert_eq!(m.poll_interval(), IDLE_POLL);
+    }
+
+    #[test]
+    fn a_plain_button_hold_polls_slower_than_a_drag() {
+        let mut m = TriggerMachine::new(Modifier::Ctrl);
+        m.feed(&s(false, false, 5, false));
+        // Selecting text or moving a window: the drag pasteboard stays put.
+        m.feed(&s(true, false, 5, false));
+        assert_eq!(m.poll_interval(), HELD_POLL);
+        m.feed(&s(true, false, 5, false));
+        assert_eq!(m.poll_interval(), HELD_POLL);
+        // A drag starts during the hold.
+        m.feed(&s(true, false, 6, true));
+        assert_eq!(m.poll_interval(), DRAG_POLL);
+        m.feed(&s(false, false, 6, true));
+        assert_eq!(m.poll_interval(), IDLE_POLL);
+    }
+
+    #[test]
+    fn a_drag_begun_between_samples_polls_fast_at_once() {
+        let mut m = TriggerMachine::new(Modifier::Ctrl);
+        m.feed(&s(false, false, 5, false));
+        // The first down sample already shows the drag's bumped count.
+        m.feed(&s(true, false, 6, false));
+        assert_eq!(m.poll_interval(), DRAG_POLL);
+    }
+
+    #[test]
+    fn an_old_drag_count_does_not_poll_fast_on_the_next_hold() {
+        let mut m = TriggerMachine::new(Modifier::Ctrl);
+        m.feed(&s(false, false, 5, false));
+        m.feed(&s(true, false, 6, true));
+        m.feed(&s(false, false, 6, true));
+        // The next press starts from the count the last drag left behind.
+        m.feed(&s(true, false, 6, true));
+        assert_eq!(m.poll_interval(), HELD_POLL);
     }
 
     #[test]
