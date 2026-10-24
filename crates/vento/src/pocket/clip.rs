@@ -875,7 +875,12 @@ mod tests {
         fn terminals(&self) -> Vec<TerminalApp> {
             unreachable!()
         }
-        fn open_terminal(&self, _: Option<&str>, _: &Path) -> Result<(), PlatformError> {
+        fn open_terminal(
+            &self,
+            _: Option<&str>,
+            _: &Path,
+            _: Box<dyn Fn(String) + Send>,
+        ) -> Result<(), PlatformError> {
             unreachable!()
         }
         fn pick_folder(&self, _: Option<&Path>) -> Option<PathBuf> {

@@ -173,8 +173,15 @@ pub trait Platform {
     /// Installed terminal apps; on macOS Terminal is always first.
     fn terminals(&self) -> Vec<TerminalApp>;
     /// Open a terminal in `dir`. `terminal` is a [`TerminalApp::id`]; an
-    /// unknown or uninstalled id falls back to the default terminal.
-    fn open_terminal(&self, terminal: Option<&str>, dir: &Path) -> Result<(), PlatformError>;
+    /// unknown or uninstalled id falls back to the default terminal. Errors
+    /// found at once are returned; a launch that fails later calls
+    /// `on_error` with the reason, once, on any thread.
+    fn open_terminal(
+        &self,
+        terminal: Option<&str>,
+        dir: &Path,
+        on_error: Box<dyn Fn(String) + Send>,
+    ) -> Result<(), PlatformError>;
     /// Show a modal folder picker, optionally starting in `start`.
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf>;
     /// Where the Pocket island sits: the first notched screen, otherwise the

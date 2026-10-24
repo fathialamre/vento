@@ -422,7 +422,18 @@ impl Executor {
                 let terminal = self.settings.borrow().terminal.clone();
                 let dir = terminal_dir(&paths);
                 let result = match &dir {
-                    Some(dir) => self.platform.open_terminal(terminal.as_deref(), dir),
+                    Some(dir) => self.platform.open_terminal(
+                        terminal.as_deref(),
+                        dir,
+                        Box::new(move |reason| {
+                            let shown = on_main(move |executor| {
+                                executor.toast_error(ActionId::Terminal, &reason, at);
+                            });
+                            if let Err(e) = shown {
+                                warn!("cannot report a failed terminal launch: {e}");
+                            }
+                        }),
+                    ),
                     None => Err(vento_platform::PlatformError::Failed(
                         "no folder to open".into(),
                     )),
