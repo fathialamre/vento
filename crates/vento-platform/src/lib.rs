@@ -395,6 +395,21 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     }
 }
 
+/// [`picture_thumbnail`] of encoded picture `bytes` (PNG, TIFF, JPEG, HEIC:
+/// any format macOS reads). Only about as many pixels as the thumbnail
+/// needs are decoded. Always `None` where unsupported.
+pub fn picture_data_thumbnail(bytes: &[u8], short_px: u32, max_ratio: u32) -> Option<RgbaImage> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::picture_data_thumbnail(bytes, short_px, max_ratio)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (bytes, short_px, max_ratio);
+        None
+    }
+}
+
 /// The format the image file at `path` decodes as, judged by its content:
 /// `None` for a readable image of another format, `Err(NotAnImage)` when it
 /// cannot be decoded. A free function so a worker thread can call it.
