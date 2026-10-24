@@ -43,6 +43,20 @@ fi
 	cat "$webp/vendor/COPYING"
 } >>"$stage/THIRD-PARTY-NOTICES.txt"
 
+# skia-bindings links Google's prebuilt Skia library into the app; the crate
+# does not carry Skia's licence, so a copy is kept next to the app crate.
+{
+	printf '\n--------------------------------------------------------------------------------\n'
+	printf 'Skia licence (BSD-3-Clause)\n\nUsed by:\n'
+	printf '  - Skia, the C++ library linked in through skia-bindings\n\n'
+	cat crates/vento/LICENSE-skia
+} >>"$stage/THIRD-PARTY-NOTICES.txt"
+
+# Crash reports from this build are symbolicated with its dSYM; keep it next
+# to the zip (it is not published).
+rm -rf "$out/$name.dSYM"
+ditto target/release/vento.dSYM "$out/$name.dSYM"
+
 (cd "$out" && ditto -c -k --norsrc --noextattr --noacl --keepParent "$name" "$zip")
 
 echo "$out/$zip"
