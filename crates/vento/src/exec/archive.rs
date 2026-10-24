@@ -5,12 +5,9 @@
 use std::cell::RefCell;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
 
 use log::{debug, info, warn};
-use slint::TimerMode;
 use vento_core::actions::ActionId;
 use vento_core::archive::{
     ArchiveError, BatchOutcome, Made, PasswordAsk, Plan, Progress, Zeroizing, compress,
@@ -127,9 +124,6 @@ pub(super) fn archive_undo_toast_text(outcome: &CopyUndoOutcome, trashed: &[Path
     sentence(&parts)
 }
 
-/// How often an open password window checks whether its job was cancelled.
-const CANCEL_POLL: Duration = Duration::from_millis(100);
-
 /// The progress window's verbs.
 const COMPRESSING: &str = "Compressing";
 const EXTRACTING: &str = "Extracting";
@@ -240,8 +234,9 @@ impl Executor {
     /// Opens the password window for the archive called `name` in place of
     /// the progress window, which comes back once the window is answered.
     /// `answer` gets the password, or `None`; it is dropped unanswered (also
-    /// `None` to the worker) when the job is already cancelled. A cancel
-    /// while the window is open closes it with `None`.
+    /// `None` to the worker) when the job is already cancelled. Nothing
+    /// can cancel the job while the window is open except
+    /// [`Executor::shutdown`], which closes the window itself, with `None`.
     fn prompt_password(
         &self,
         name: &str,
@@ -253,28 +248,18 @@ impl Executor {
         if progress.is_cancelled() {
             return;
         }
+        // Takes the progress window's Cancel away with it.
         self.progress.close();
-        let password = Rc::downgrade(&self.password);
-        let watched = Arc::clone(&progress);
-        self.prompt_watch
-            .start(TimerMode::Repeated, CANCEL_POLL, move || {
-                if watched.is_cancelled()
-                    && let Some(password) = password.upgrade()
-                {
-                    password.dismiss();
-                }
-            });
         let this = self.this.clone();
         self.password.ask(
             name,
             wrong,
             at,
             Box::new(move |password| {
-                if let Some(executor) = this.upgrade() {
-                    executor.prompt_watch.stop();
-                    if !progress.is_cancelled() {
-                        executor.progress.track(progress, EXTRACTING, at);
-                    }
+                if let Some(executor) = this.upgrade()
+                    && !progress.is_cancelled()
+                {
+                    executor.progress.track(progress, EXTRACTING, at);
                 }
                 // Only fails if the worker is gone, and then no one is waiting.
                 if answer.send(password).is_err() {

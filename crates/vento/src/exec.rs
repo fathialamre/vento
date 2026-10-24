@@ -324,9 +324,6 @@ pub struct Executor {
     progress: Rc<ProgressView>,
     /// Asks for the passwords an Archive job needs.
     password: Rc<PasswordView>,
-    /// Closes the password window if its job is cancelled; runs only while
-    /// the window is open.
-    prompt_watch: Timer,
     /// Told which undo is available whenever that changes.
     on_undo_changed: RefCell<Option<UndoListener>>,
     this: Weak<Self>,
@@ -355,7 +352,6 @@ impl Executor {
             running: RefCell::new(None),
             progress,
             password,
-            prompt_watch: Timer::default(),
             on_undo_changed: RefCell::new(None),
             this: this.clone(),
         });
