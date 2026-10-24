@@ -603,6 +603,11 @@ impl WheelController {
                 }
             }
             WARM_HIDE_TICK => {
+                // On Linux the window exists by now: make it override-
+                // redirect, or GNOME places it itself and gives it focus.
+                // macOS places the wheel where it is put as it is.
+                #[cfg(target_os = "linux")]
+                self.make_overlay();
                 self.hide_window();
                 self.register_drop_handler();
                 debug!("wheel pre-warmed");
@@ -1146,6 +1151,25 @@ impl WheelController {
     fn hide_window(&self) {
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the wheel: {e}");
+        }
+    }
+
+    /// Keeps the wheel above every window, out of focus, exactly where it
+    /// is placed. Needs the native window, which exists once it was shown.
+    #[cfg(target_os = "linux")]
+    fn make_overlay(&self) {
+        use raw_window_handle::HasWindowHandle;
+
+        let result = match self.window.window().window_handle().window_handle() {
+            Ok(handle) => self
+                .platform
+                .make_overlay(handle.as_raw())
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match result {
+            Ok(()) => debug!("wheel overlay ready"),
+            Err(e) => warn!("cannot make the wheel an overlay: {e}"),
         }
     }
 }

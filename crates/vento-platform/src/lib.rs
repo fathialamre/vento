@@ -1,8 +1,8 @@
 //! Operating-system access for vento: global input sampling, screens,
 //! clipboard, terminals and the folder picker, behind one [`Platform`] trait.
 //!
-//! macOS has a real implementation; every other OS gets a [`StubPlatform`] so
-//! the workspace still compiles there.
+//! macOS has a real implementation and Linux (GNOME) a partial one; every
+//! other OS gets a [`StubPlatform`] so the workspace still compiles there.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -20,6 +20,11 @@ pub use stub::{StubPlatform, StubScreenText};
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::{MacPlatform, MacScreenText};
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::LinuxPlatform;
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -395,7 +400,11 @@ pub fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
     {
         macos::file_icon_at(path, px, scale)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::file_icon_at(path, px, scale)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = (path, px, scale);
         None
@@ -411,7 +420,11 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     {
         macos::picture_thumbnail(path, short_px, max_ratio)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::picture_thumbnail(path, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = (path, short_px, max_ratio);
         None
@@ -426,7 +439,11 @@ pub fn picture_data_thumbnail(bytes: &[u8], short_px: u32, max_ratio: u32) -> Op
     {
         macos::picture_data_thumbnail(bytes, short_px, max_ratio)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::picture_data_thumbnail(bytes, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = (bytes, short_px, max_ratio);
         None
@@ -497,7 +514,11 @@ pub fn current() -> Rc<dyn Platform> {
     {
         Rc::new(MacPlatform::new())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        Rc::new(LinuxPlatform::new())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         Rc::new(StubPlatform)
     }

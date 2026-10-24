@@ -529,6 +529,8 @@ mod tests {
         );
     }
 
+    // Quarantine is a macOS attribute; elsewhere nothing is marked.
+    #[cfg(target_os = "macos")]
     #[test]
     fn extracted_items_get_their_archive_quarantine() {
         let tmp = tempfile::tempdir().unwrap();

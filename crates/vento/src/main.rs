@@ -1,40 +1,47 @@
 //! vento: a radial file-actions wheel that opens under the cursor while files
 //! are dragged from Finder and Ctrl is pressed.
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod archive_ui;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod exec;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg_attr(target_os = "linux", path = "hotkey_linux.rs")]
 mod hotkey;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod info;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod lazy_window;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod panel;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pause;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pocket;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod screen_text;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod settings_hub;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod toast;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
 mod tray;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod wheel;
 
+/// The `drag` crate needs GTK on Linux; the Pocket uses this stand-in.
+#[cfg(target_os = "linux")]
+#[path = "drag_linux.rs"]
+mod drag;
+
 /// Slint components generated from `ui/app.slint`.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod ui {
     slint::include_modules!();
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn main() -> Result<(), slint::PlatformError> {
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -289,13 +296,13 @@ fn main() -> Result<(), slint::PlatformError> {
 
 /// One global shortcut and what it does: holds the key registered for it,
 /// if any.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 struct ShortcutSlot {
     action: std::rc::Rc<dyn Fn()>,
     held: std::cell::RefCell<Option<(String, hotkey::HotkeyHandle)>>,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 impl ShortcutSlot {
     /// A slot with no key registered yet, calling `action` on each press.
     fn new(action: std::rc::Rc<dyn Fn()>) -> Self {
@@ -353,7 +360,26 @@ fn select_backend() -> Result<(), slint::PlatformError> {
         .select()
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Runs vento's windows as X11 clients under XWayland: GNOME's Wayland
+/// lets no app place a window or keep it above the others. The windows that
+/// must sit exactly where vento puts them (the wheel, the Pocket island,
+/// toasts) are made override-redirect once they exist, through
+/// `Platform::make_overlay` and `make_non_key`.
+#[cfg(target_os = "linux")]
+fn select_backend() -> Result<(), slint::PlatformError> {
+    use slint::winit_030::winit::event_loop::EventLoop;
+    use slint::winit_030::winit::platform::x11::EventLoopBuilderExtX11;
+
+    let mut event_loop = EventLoop::with_user_event();
+    event_loop.with_x11();
+    slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .renderer_name("software".into())
+        .with_winit_event_loop_builder(event_loop)
+        .select()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn main() {
     println!("Vento: this platform is not supported yet");
 }

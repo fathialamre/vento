@@ -270,7 +270,9 @@ mod tests {
         File(&'a str, &'a [u8]),
         Dir(&'a str),
         /// A file with unix mode bits and a modified time, stored the way
-        /// p7zip does (mode in the high half of the attributes).
+        /// p7zip does (mode in the high half of the attributes). Only the
+        /// unix-only test that checks those bits makes one.
+        #[cfg_attr(not(unix), allow(dead_code))]
         Stamped(&'a str, &'a [u8], u32, SystemTime),
         /// A file whose stored modified time is this raw file time.
         RawTime(&'a str, &'a [u8], u64),

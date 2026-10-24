@@ -9,6 +9,8 @@ use vento_core::geometry::{Point, Rect};
 use vento_platform::RgbaImage;
 
 use super::geometry::{contains, window_pos};
+#[cfg(target_os = "linux")]
+use crate::drag;
 
 /// The items a drag takes, in Pocket order (`all`): every item for "Drag
 /// all" (`pressed` is `None`); the whole selection when the pressed item is

@@ -1,0 +1,8 @@
+{
+  "uuid": "vento@fathialamre.github.io",
+  "name": "Vento",
+  "description": "Lets Vento see the pointer, drags, screens and the clipboard on GNOME Wayland, where apps cannot see them themselves. Vento does nothing without it.",
+  "url": "https://github.com/fathialamre/vento",
+  "shell-version": ["50"],
+  "version-name": "1"
+}

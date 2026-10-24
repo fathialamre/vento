@@ -108,7 +108,19 @@ rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = "0.22"
+gio-unix = "0.22"
+# Both already in the app through Slint (image with PNG and JPEG); TIFF is
+# added for pictures copied only as TIFF, which the clipboard history shows.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
+resvg = { version = "0.48", default-features = false }
+# Already in the app through winit; our own connection for vento's windows.
+x11rb = "0.13"
+
 [dev-dependencies]
+# The probe example prints the platform's logs (`RUST_LOG=debug`).
+env_logger = "0.11"
 # Writes the PNG files the picture thumbnail tests read.
 png = "0.18"
 tempfile = "3"
