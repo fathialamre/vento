@@ -38,6 +38,9 @@ const FINISH_TIMEOUT: Duration = Duration::from_secs(3);
 const ESCAPE_KEYSYM: u32 = 0xff1b;
 /// How often the pointer is read from the extension.
 const POINTER_SAMPLE: Duration = Duration::from_millis(16);
+/// How long a target found only at the release has to say whether it takes
+/// the drop.
+const STATUS_WAIT: Duration = Duration::from_millis(150);
 /// How long the extension may stay silent before the drag gives up.
 const POINTER_SILENCE: Duration = Duration::from_secs(2);
 /// Where the drag's picture sits from the pointer, so it is never the window
@@ -94,6 +97,7 @@ struct Atoms {
     copy: u32,
     uri_list: u32,
     targets: u32,
+    pid: u32,
 }
 
 impl Atoms {
@@ -119,6 +123,7 @@ impl Atoms {
             copy: atom("XdndActionCopy")?,
             uri_list: atom("text/uri-list")?,
             targets: atom("TARGETS")?,
+            pid: atom("_NET_WM_PID")?,
         })
     }
 }
@@ -292,6 +297,10 @@ impl Drag {
                 .reply()
                 .ok()?;
             if aware.value_len > 0 {
+                if self.is_ours(window) {
+                    // The Pocket itself: dropping back on it is no drop.
+                    return None;
+                }
                 let proxy = self
                     .conn
                     .get_property(false, window, self.atoms.proxy, AtomEnum::WINDOW, 0, 1)
@@ -305,6 +314,35 @@ impl Drag {
         None
     }
 
+    /// Whether vento drew `window`.
+    fn is_ours(&self, window: u32) -> bool {
+        self.conn
+            .get_property(false, window, self.atoms.pid, AtomEnum::CARDINAL, 0, 1)
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .and_then(|p| p.value32().and_then(|mut v| v.next()))
+            == Some(std::process::id())
+    }
+
+    /// Waits a little for a target new at the release to say whether it
+    /// takes the drop.
+    fn await_status(&mut self) {
+        let deadline = Instant::now() + STATUS_WAIT;
+        while self.target.is_some() && !self.accepted && Instant::now() < deadline {
+            match self.conn.poll_for_event() {
+                Ok(Some(Event::ClientMessage(e))) if e.type_ == self.atoms.status => {
+                    self.accepted = e.data.as_data32()[1] & 1 == 1;
+                }
+                Ok(Some(Event::SelectionRequest(r))) if r.selection == self.atoms.selection => {
+                    self.answer(&r);
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => std::thread::sleep(Duration::from_millis(2)),
+                Err(_) => return,
+            }
+        }
+    }
+
     /// Follows the pointer to (`x`, `y`) at `time`.
     fn moved(&mut self, x: i16, y: i16, time: u32) {
         if let Some(picture) = &self.picture {
@@ -312,6 +350,7 @@ impl Drag {
         }
         let now = self.target_at(x, y);
         if now.map(|t| t.0) != self.target.map(|t| t.0) {
+            log::debug!("drag out: over {:x?} at {x},{y}", now.map(|t| t.0));
             if let Some((_, to)) = self.target {
                 self.send(to, self.atoms.leave, [self.source, 0, 0, 0, 0]);
             }
@@ -467,7 +506,13 @@ impl Drag {
                         }
                     }
                     Some((false, p)) => {
-                        (x, y) = self.x11(p);
+                        if self.x11(p) != (x, y) {
+                            // Let go before the last move was seen: the
+                            // window there decides, not the one before.
+                            (x, y) = self.x11(p);
+                            self.moved(x, y, CURRENT_TIME);
+                            self.await_status();
+                        }
                         match self.released(x, y, CURRENT_TIME) {
                             Some(end) => return end,
                             None => dropped_since = Some(Instant::now()),
