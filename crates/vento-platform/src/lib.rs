@@ -24,7 +24,9 @@ pub use macos::{MacPlatform, MacScreenText};
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{APP_ID, GlobalShortcut, LinuxPlatform, bind_global_shortcut};
+pub use linux::{
+    APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, start_file_drag,
+};
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,6 +211,19 @@ pub trait Platform {
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError>;
+    /// Let this window take the pointer only inside `rect`, in physical
+    /// pixels from its top-left corner, or nowhere when `None`; clicks
+    /// elsewhere fall through to what is below. `Unsupported` where vento
+    /// turns hit-testing on and off as the pointer moves instead. Main
+    /// thread only.
+    fn set_input_rect(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rect: Option<Rect>,
+    ) -> Result<(), PlatformError> {
+        let _ = (window, rect);
+        Err(PlatformError::Unsupported)
+    }
     /// The Finder icon of `path`, rendered at `px`×`px` points times the
     /// main screen's backing scale. `None` if `path` doesn't exist or the
     /// icon can't be rendered. Main thread only.

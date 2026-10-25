@@ -154,6 +154,16 @@ pub(super) fn local_paths(uris: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Whether the left button is down, and where the pointer is, asked of
+/// the extension directly; `None` when it is not answering. Blocks for one
+/// call; any thread.
+pub(super) fn pointer_now() -> Option<(bool, Point)> {
+    let bus = super::session_bus().ok()?;
+    let state = parse_state(&call(&bus, "State", None).ok()?)?;
+    let sample = to_sample(&state);
+    Some((sample.left_down, sample.cursor))
+}
+
 /// The monitor whose frame holds `p`.
 pub(super) fn monitor_at(monitors: &[Monitor], p: Point) -> Option<&Monitor> {
     monitors.iter().find(|m| {

@@ -42,7 +42,9 @@ use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path
 use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::Settings;
 use vento_core::trigger::InputSample;
-use vento_platform::{CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, RgbaImage};
+use vento_platform::{
+    CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
+};
 
 use crate::panel::set_rows;
 use crate::toast::Toaster;
@@ -53,7 +55,7 @@ use crate::drag;
 use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
-use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, island_inputs};
+use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, interactive_rect, island_inputs};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
     ALL, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
@@ -217,6 +219,12 @@ pub struct PocketController {
     was_dragging: Cell<bool>,
     /// Whether the window takes the pointer (otherwise it ignores it).
     hittest: Cell<bool>,
+    /// Whether the platform sets where the window takes the pointer from
+    /// its shape; until it says it can't.
+    input_by_shape: Cell<bool>,
+    /// The input shape last set, in physical window pixels; `None` before
+    /// the first.
+    input_shape: Cell<Option<Option<Rect>>>,
     /// Ids of the selected items, toggled by clicking their cells.
     selected: RefCell<Vec<u64>>,
     /// Presses on the cells and on "Drag all".
@@ -290,6 +298,8 @@ impl PocketController {
             overlay_ready: Cell::new(false),
             was_dragging: Cell::new(false),
             hittest: Cell::new(true),
+            input_by_shape: Cell::new(true),
+            input_shape: Cell::new(None),
             selected: RefCell::new(Vec::new()),
             latch: PressLatch::default(),
             pending: PendingTrash::default(),
@@ -875,7 +885,9 @@ impl PocketController {
         if after != before {
             self.present(before, after);
         }
-        self.set_hittest(false);
+        if !self.shape_input(after) {
+            self.set_hittest(false);
+        }
         self.place_catcher(None);
         if self.pointer_in.replace(false) {
             self.dispatch(WindowEvent::PointerExited);
@@ -906,7 +918,9 @@ impl PocketController {
     fn finish_warm(&self) {
         self.make_overlay();
         self.install_catcher();
-        self.set_hittest(false);
+        if !self.shape_input(Presence::Hidden) {
+            self.set_hittest(false);
+        }
         self.hide_window();
         self.warm.set(true);
         debug!("pocket pre-warmed");
@@ -1040,9 +1054,11 @@ impl PocketController {
             self.set_view(View::Pocket);
         }
         let f = self.island_frames().unwrap_or(f);
-        let inside = hits(&f, after, sample.cursor);
-        if changed || inside != self.hittest.get() {
-            self.set_hittest(inside);
+        if !self.shape_input(after) {
+            let inside = hits(&f, after, sample.cursor);
+            if changed || inside != self.hittest.get() {
+                self.set_hittest(inside);
+            }
         }
         // Only an expanded island takes drops, only during a drag, and never
         // the Pocket's own drag out.
@@ -1092,6 +1108,55 @@ impl PocketController {
         }
     }
 
+    /// Lets the window take the pointer only over its shape for
+    /// `presence`, wherever the pointer is. GNOME applies a new input shape
+    /// only when the window next draws, so one switched on under a resting
+    /// pointer would let presses fall through to the desktop. False where
+    /// the platform can't; the window then follows the pointer through
+    /// `set_hittest`.
+    fn shape_input(&self, presence: Presence) -> bool {
+        if !self.input_by_shape.get() {
+            return false;
+        }
+        let rect = self.input_rect(presence);
+        if self.input_shape.get() == Some(rect) {
+            return true;
+        }
+        let result = match self.window.window().window_handle().window_handle() {
+            Ok(handle) => self.platform.set_input_rect(handle.as_raw(), rect),
+            Err(e) => Err(PlatformError::Failed(e.to_string())),
+        };
+        match result {
+            Ok(()) => {
+                debug!("pocket input shape {rect:?}");
+                self.input_shape.set(Some(rect));
+                true
+            }
+            Err(PlatformError::Unsupported) => {
+                self.input_by_shape.set(false);
+                false
+            }
+            Err(e) => {
+                warn!("cannot set the pocket's input shape: {e}");
+                false
+            }
+        }
+    }
+
+    /// The window's shape for `presence`, in physical pixels from its
+    /// top-left corner; `None` when hidden or not placed yet.
+    fn input_rect(&self, presence: Presence) -> Option<Rect> {
+        let f = self.island_frames()?;
+        let r = interactive_rect(&f, presence)?;
+        let scale = self.window.window().scale_factor() as f64;
+        Some(Rect {
+            x: (r.x - f.expanded.x) * scale,
+            y: (r.y - f.expanded.y) * scale,
+            w: r.w * scale,
+            h: r.h * scale,
+        })
+    }
+
     fn pinned_open(&self, now: Instant) -> bool {
         if self.pin_until.get().is_some_and(|until| now >= until) {
             self.pin_until.set(None);
@@ -1120,7 +1185,9 @@ impl PocketController {
                 self.make_overlay();
             }
             // Clicks fall through until the pointer is over the shape.
-            self.set_hittest(false);
+            if !self.shape_input(after) {
+                self.set_hittest(false);
+            }
             if let Err(e) = self.window.show() {
                 warn!("cannot show the pocket: {e}");
             }

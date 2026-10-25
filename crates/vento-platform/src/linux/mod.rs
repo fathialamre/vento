@@ -23,6 +23,7 @@ use crate::{
 mod apps;
 mod clip_owner;
 mod clipboard;
+mod drag_out;
 mod icons;
 mod portal;
 mod shell;
@@ -32,6 +33,7 @@ mod thumbs;
 mod trash;
 mod x11;
 
+pub use drag_out::{DragEnd, start_file_drag};
 pub use shortcuts::{APP_ID, GlobalShortcut, bind_global_shortcut};
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
 
@@ -232,6 +234,14 @@ impl Platform for LinuxPlatform {
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
         x11::make_override_redirect(window)
+    }
+
+    fn set_input_rect(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rect: Option<Rect>,
+    ) -> Result<(), PlatformError> {
+        x11::set_input_rect(window, rect)
     }
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {

@@ -116,7 +116,7 @@ gio-unix = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
 resvg = { version = "0.48", default-features = false }
 # Already in the app through winit; our own connection for vento's windows.
-x11rb = "0.13"
+x11rb = { version = "0.13", features = ["shape"] }
 
 [dev-dependencies]
 # The probe example prints the platform's logs (`RUST_LOG=debug`).
