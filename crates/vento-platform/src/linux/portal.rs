@@ -8,18 +8,18 @@ use std::rc::Rc;
 use gio::glib;
 use gio::prelude::*;
 
-const PORTAL: &str = "org.freedesktop.portal.Desktop";
-const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+pub(super) const PORTAL: &str = "org.freedesktop.portal.Desktop";
+pub(super) const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 
 /// The object path the portal will answer a request on, made from the
 /// caller's unique bus name (`:1.42` → `1_42`) and the request's token.
-fn request_path(unique_name: &str, token: &str) -> String {
+pub(super) fn request_path(unique_name: &str, token: &str) -> String {
     let sender = unique_name.trim_start_matches(':').replace('.', "_");
     format!("{PORTAL_PATH}/request/{sender}/{token}")
 }
 
 /// A token not used before by this process.
-fn next_token() -> String {
+pub(super) fn next_token() -> String {
     thread_local!(static COUNT: Cell<u32> = const { Cell::new(0) });
     let n = COUNT.with(|c| {
         c.set(c.get() + 1);
@@ -43,7 +43,7 @@ fn picked(response: &glib::Variant) -> Option<PathBuf> {
 /// Show the portal's folder picker, starting in `start`, and wait for it.
 /// `None` when cancelled or when there is no portal.
 pub(super) fn pick_folder(start: Option<&Path>) -> Option<PathBuf> {
-    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)
+    let bus = super::session_bus()
         .inspect_err(|e| log::warn!("no session bus for the folder picker: {e}"))
         .ok()?;
     let token = next_token();

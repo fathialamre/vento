@@ -121,8 +121,14 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         })
     };
-    let pocket_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Pocket)));
-    let clip_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Clipboard)));
+    let pocket_slot = Rc::new(ShortcutSlot::new(
+        "Open the Pocket",
+        open_on(pocket::View::Pocket),
+    ));
+    let clip_slot = Rc::new(ShortcutSlot::new(
+        "Open the clipboard history",
+        open_on(pocket::View::Clipboard),
+    ));
     // Copy from screen needs macOS 14: on macOS 13 it has no shortcut, no
     // menu item and no settings field.
     let os = vento_platform::screen_text();
@@ -141,9 +147,12 @@ fn main() -> Result<(), slint::PlatformError> {
             hide_access: Box::new(move || hider.hide_if_shown()),
         })
     });
-    let screen_slot = screen_text
-        .clone()
-        .map(|controller| Rc::new(ShortcutSlot::new(Rc::new(move || controller.start()))));
+    let screen_slot = screen_text.clone().map(|controller| {
+        Rc::new(ShortcutSlot::new(
+            "Copy from screen",
+            Rc::new(move || controller.start()),
+        ))
+    });
     let panel = {
         let pause = pause.clone();
         let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
@@ -298,6 +307,9 @@ fn main() -> Result<(), slint::PlatformError> {
 /// if any.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 struct ShortcutSlot {
+    /// What the shortcut does, where the system names it (GNOME asks the
+    /// user to allow it under this name).
+    description: &'static str,
     action: std::rc::Rc<dyn Fn()>,
     held: std::cell::RefCell<Option<(String, hotkey::HotkeyHandle)>>,
 }
@@ -305,8 +317,9 @@ struct ShortcutSlot {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 impl ShortcutSlot {
     /// A slot with no key registered yet, calling `action` on each press.
-    fn new(action: std::rc::Rc<dyn Fn()>) -> Self {
+    fn new(description: &'static str, action: std::rc::Rc<dyn Fn()>) -> Self {
         Self {
+            description,
             action,
             held: std::cell::RefCell::new(None),
         }
@@ -327,7 +340,7 @@ impl ShortcutSlot {
         // Free the old key first, so the same key can be registered again.
         self.unregister();
         let action = self.action.clone();
-        let handle = hotkey::install_hotkey(spec, Box::new(move || action()))?;
+        let handle = hotkey::install_hotkey(spec, self.description, Box::new(move || action()))?;
         *self.held.borrow_mut() = Some((spec.to_owned(), handle));
         Ok(())
     }

@@ -24,7 +24,7 @@ pub use macos::{MacPlatform, MacScreenText};
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::LinuxPlatform;
+pub use linux::{APP_ID, GlobalShortcut, LinuxPlatform, bind_global_shortcut};
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -26,11 +26,13 @@ mod clipboard;
 mod icons;
 mod portal;
 mod shell;
+mod shortcuts;
 mod terminal;
 mod thumbs;
 mod trash;
 mod x11;
 
+pub use shortcuts::{APP_ID, GlobalShortcut, bind_global_shortcut};
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
 
 /// [`Platform::file_icon`] at `scale`, for a worker thread.
@@ -58,6 +60,8 @@ impl Default for LinuxPlatform {
 
 impl LinuxPlatform {
     pub fn new() -> Self {
+        // First, before any other portal call on the session bus.
+        shortcuts::register_app();
         Self {
             stub: StubPlatform,
             shell: shell::Shell::connect(),
@@ -76,6 +80,19 @@ impl LinuxPlatform {
             .as_ref()
             .ok_or(PlatformError::Unsupported)
     }
+}
+
+/// The session bus, one connection for the whole run. GLib keeps its
+/// shared connection only while something holds it, and a new one is a new
+/// client to the portal: the app id registered on the first would not
+/// cover calls made on a later one.
+fn session_bus() -> Result<gio::DBusConnection, gio::glib::Error> {
+    static BUS: std::sync::OnceLock<gio::DBusConnection> = std::sync::OnceLock::new();
+    if let Some(bus) = BUS.get() {
+        return Ok(bus.clone());
+    }
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
+    Ok(BUS.get_or_init(|| bus).clone())
 }
 
 /// How long [`Platform::write_clipboard`] waits for GNOME to see the copy.

@@ -292,7 +292,7 @@ pub(super) struct Shell {
 impl Shell {
     pub fn connect() -> Self {
         let latest = Arc::new(Mutex::new(Latest::default()));
-        let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)
+        let bus = super::session_bus()
             .inspect_err(|e| log::warn!("no session bus: {e}"))
             .ok();
         let wake = bus.clone().map(|bus| {
