@@ -12,12 +12,13 @@ import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 2;
+const API_VERSION = 3;
 
 // The room kept in the top bar for the Pocket island: its two wings and the
 // gap between them.
@@ -25,6 +26,10 @@ const SLOT_WIDTH = 96;
 
 // Clutter.ModifierType.BUTTON1_MASK.
 const BUTTON1 = 1 << 8;
+// BUTTON1_MASK to BUTTON5_MASK.
+const BUTTONS = 0x1f << 8;
+// How long a menu waits for the button that asked for it to go up.
+const MENU_PRESS_WAIT_MS = 3000;
 
 const FILE_TYPES = ['text/uri-list', 'x-special/gnome-copied-files'];
 
@@ -73,6 +78,13 @@ const IFACE = `
     <method name="IslandSlot">
       <arg type="(biiii)" direction="out" name="slot"/>
     </method>
+    <!-- Show a menu at the pointer and answer once it closes with the id
+         chosen, or -1. Each entry: kind ("item", "submenu", "separator"),
+         id, enabled, title, icon (a .desktop file, or ""), children -->
+    <method name="ShowMenu">
+      <arg type="a(subssav)" direction="in" name="entries"/>
+      <arg type="i" direction="out" name="chosen"/>
+    </method>
   </interface>
 </node>`;
 
@@ -90,6 +102,73 @@ function readSelection(selectionType, type, done) {
             done(null);
         }
     });
+}
+
+/** The icon of the app in the .desktop file at `path`, or null. */
+function appIcon(path) {
+    if (!path)
+        return null;
+    try {
+        return Gio.DesktopAppInfo.new_from_filename(path)?.get_icon() ?? null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Adds `entries` to `menu`; a choice calls `choose`. Each is a `(subssav)`,
+ * unpacked or still a GLib.Variant (children arrive boxed in `av`).
+ */
+function addEntries(menu, entries, choose) {
+    for (const raw of entries) {
+        const entry = raw instanceof GLib.Variant ? raw.recursiveUnpack() : raw;
+        const [kind, id, enabled, title, icon, children] = entry;
+        let item;
+        if (kind === 'separator') {
+            item = new PopupMenu.PopupSeparatorMenuItem();
+        } else if (kind === 'submenu') {
+            item = new PopupMenu.PopupSubMenuMenuItem(title);
+            addEntries(item.menu, children, choose);
+        } else {
+            const gicon = appIcon(icon);
+            item = gicon
+                ? new PopupMenu.PopupImageMenuItem(title, gicon)
+                : new PopupMenu.PopupMenuItem(title);
+            item.connect('activate', () => choose(id));
+        }
+        if (kind !== 'separator')
+            item.setSensitive(enabled);
+        menu.addMenuItem(item);
+    }
+}
+
+/** Opens a menu of `entries` at the pointer; `done` hears the id chosen, or -1. */
+function showMenu(entries, done) {
+    const [x, y] = global.get_pointer();
+    const anchor = new St.Widget({x, y, width: 1, height: 1, opacity: 0});
+    Main.layoutManager.uiGroup.add_child(anchor);
+    const menu = new PopupMenu.PopupMenu(anchor, 0, St.Side.TOP);
+    menu.actor.hide();
+    Main.layoutManager.uiGroup.add_child(menu.actor);
+    const manager = new PopupMenu.PopupMenuManager(anchor);
+    manager.addMenu(menu);
+    let chosen = -1;
+    addEntries(menu, entries, id => {
+        chosen = id;
+    });
+    menu.connect('open-state-changed', (_menu, open) => {
+        if (open)
+            return;
+        // After the item's own activate, which closes the menu.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            manager.removeMenu(menu);
+            menu.destroy();
+            anchor.destroy();
+            done(chosen);
+            return GLib.SOURCE_REMOVE;
+        });
+    });
+    menu.open(true);
 }
 
 class Service {
@@ -198,6 +277,27 @@ class Service {
         return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
     }
 
+    ShowMenuAsync([entries], invocation) {
+        // Opened on the press, the menu would take its release as a choice.
+        const started = GLib.get_monotonic_time();
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, () => {
+            const [, , mods] = global.get_pointer();
+            const waited = (GLib.get_monotonic_time() - started) / 1000;
+            if ((mods & BUTTONS) !== 0 && waited < MENU_PRESS_WAIT_MS)
+                return GLib.SOURCE_CONTINUE;
+            const answer = chosen =>
+                invocation.return_value(new GLib.Variant('(i)', [chosen]));
+            try {
+                showMenu(entries, answer);
+            } catch (e) {
+                // Vento waits for the answer: never leave it waiting.
+                console.warn(`Vento: cannot show the menu: ${e.message}`);
+                answer(-1);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     /** Puts the room after the clock, for as long as `owner` is on the bus. */
     _reserve(owner) {
         if (this._slot)
@@ -210,7 +310,13 @@ class Service {
         else
             box.add_child(slot);
         // The clock's width changes with the time: Vento moves the island.
-        slot.connectObject('notify::allocation', () => this.monitorsChanged(), this);
+        // The top bar goes with its children when the session ends.
+        slot.connectObject(
+            'notify::allocation', () => this.monitorsChanged(),
+            'destroy', () => {
+                this._slot = null;
+            },
+            this);
         this._slot = slot;
         this._slotWatch = Gio.bus_watch_name(Gio.BusType.SESSION, owner,
             Gio.BusNameWatcherFlags.NONE, null, () => this.release());

@@ -17,15 +17,19 @@ use gio::prelude::*;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 
+use crate::MenuEntry;
+
 const BUS_NAME: &str = "org.vento.Shell1";
 const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 2;
+const API_VERSION: u32 = 3;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
+/// How long a menu may stay open; past it Vento stops waiting.
+const MENU_TIMEOUT_MS: i32 = 10 * 60 * 1000;
 
 /// How long reading one clipboard type may take: a picture can be large.
 const READ_TIMEOUT_MS: i32 = 2000;
@@ -177,6 +181,69 @@ pub(super) fn pointer_now() -> Option<(bool, Point)> {
 }
 
 /// The monitor whose frame holds `p`.
+/// `entry` as one `(subssav)` of `ShowMenu()`: kind, id, enabled, title,
+/// icon (a `.desktop` file, or empty), children.
+fn menu_entry(entry: &MenuEntry) -> glib::Variant {
+    let (kind, id, enabled, title, icon, children): (
+        &str,
+        u32,
+        bool,
+        &str,
+        String,
+        Vec<glib::Variant>,
+    ) = match entry {
+        MenuEntry::Item {
+            id,
+            title,
+            enabled,
+            icon,
+        } => (
+            "item",
+            *id,
+            *enabled,
+            title,
+            icon.as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            Vec::new(),
+        ),
+        MenuEntry::Submenu {
+            title,
+            enabled,
+            children,
+        } => (
+            "submenu",
+            0,
+            *enabled,
+            title,
+            String::new(),
+            children
+                .iter()
+                .map(|c| menu_entry(c).to_variant())
+                .collect(),
+        ),
+        MenuEntry::Separator => ("separator", 0, false, "", String::new(), Vec::new()),
+    };
+    (kind, id, enabled, title, icon, children).to_variant()
+}
+
+/// Shows `entries` as a GNOME menu at the pointer and waits until it
+/// closes; the id of the item chosen, if any.
+pub(super) fn show_menu(entries: &[MenuEntry]) -> Option<u32> {
+    let bus = super::session_bus().ok()?;
+    let list: Vec<glib::Variant> = entries.iter().map(menu_entry).collect();
+    let args = glib::Variant::tuple_from_iter([glib::Variant::array_from_iter_with_type(
+        glib::VariantTy::new("(subssav)").ok()?,
+        list,
+    )]);
+    // As long as the menu stays open.
+    let reply = call_within(&bus, "ShowMenu", Some(&args), MENU_TIMEOUT_MS)
+        .inspect_err(|e| log::warn!("cannot show the menu: {e}"))
+        .ok()?;
+    let chosen: i32 = reply.try_child_value(0)?.get()?;
+    u32::try_from(chosen).ok()
+}
+
 /// X11 pixels per logical pixel, given both widths of the screens. GNOME
 /// that scales X11 apps natively has XWayland draw at one whole scale for
 /// all screens (2 at 133 %); otherwise X11 and logical pixels are the same.
@@ -615,6 +682,47 @@ mod tests {
         assert!(!click.drag_cancelled, "a later click is no Escape");
         let next = settle_cancel(at(mask::BUTTON1, 6, true), &mut released);
         assert!(next.drag_cancelled, "the next drag's cancel counts again");
+    }
+
+    #[test]
+    fn menus_go_as_nested_entries() {
+        let entry = menu_entry(&MenuEntry::Submenu {
+            title: "Open With".into(),
+            enabled: true,
+            children: vec![
+                MenuEntry::Item {
+                    id: 7,
+                    title: "Files".into(),
+                    enabled: true,
+                    icon: Some(PathBuf::from(
+                        "/usr/share/applications/org.gnome.Nautilus.desktop",
+                    )),
+                },
+                MenuEntry::Separator,
+            ],
+        });
+        assert_eq!(entry.type_().as_str(), "(subssav)");
+        let (kind, _, enabled, title, _, children): (
+            String,
+            u32,
+            bool,
+            String,
+            String,
+            Vec<glib::Variant>,
+        ) = entry.get().unwrap();
+        assert_eq!(
+            (kind.as_str(), enabled, title.as_str()),
+            ("submenu", true, "Open With")
+        );
+        assert_eq!(children.len(), 2);
+        // Each child is boxed once in the `av`, the entry inside.
+        assert_eq!(children[0].type_().as_str(), "v");
+        let child = children[0].as_variant().unwrap();
+        assert_eq!(child.type_().as_str(), "(subssav)");
+        let (kind, id, _, title, icon, _): (String, u32, bool, String, String, Vec<glib::Variant>) =
+            child.get().unwrap();
+        assert_eq!((kind.as_str(), id, title.as_str()), ("item", 7, "Files"));
+        assert!(icon.ends_with("org.gnome.Nautilus.desktop"));
     }
 
     #[test]

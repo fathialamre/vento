@@ -350,7 +350,9 @@ impl Platform for LinuxPlatform {
         at: Point,
         entries: &[MenuEntry],
     ) -> Option<u32> {
-        self.stub.context_menu(window, at, entries)
+        // GNOME opens it at the pointer, where the click was.
+        let _ = (window, at);
+        shell::show_menu(entries)
     }
 }
 
