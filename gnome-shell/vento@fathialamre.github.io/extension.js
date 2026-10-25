@@ -5,6 +5,7 @@
 // the session bus as org.vento.Shell1. Vento polls it; nothing here sends
 // signals, so every change is a counter Vento compares.
 
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
@@ -19,7 +20,10 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 4;
+const API_VERSION = 5;
+
+// Vento's StatusNotifierItem Id, by which its tray icon is found.
+const TRAY_ID = 'vento';
 
 // The room kept in the top bar for the Pocket island: its two wings and the
 // gap between them.
@@ -89,6 +93,12 @@ const IFACE = `
     <!-- Ends the startup sequence of an activation token Vento was given
          and cannot use (its windows are X11): GNOME shows a busy pointer
          until a sequence ends -->
+    <!-- Where the top bar shows the tray icon of the app whose
+         StatusNotifierItem Id is id; false when it shows none -->
+    <method name="TrayIconFrame">
+      <arg type="s" direction="in" name="id"/>
+      <arg type="(biiii)" direction="out" name="frame"/>
+    </method>
     <method name="EndStartup">
       <arg type="s" direction="in" name="token"/>
     </method>
@@ -176,6 +186,35 @@ function showMenu(entries, done) {
         });
     });
     menu.open(true);
+}
+
+/**
+ * The top bar's tray icon of the app whose StatusNotifierItem Id is `id`,
+ * as the AppIndicator extension adds it, or undefined when none is shown.
+ */
+function trayIcon(id) {
+    return Object.values(Main.panel.statusArea)
+        .find(a => a?._indicator?.id === id && a.is_mapped());
+}
+
+/**
+ * Opens Settings on a left click on Vento's tray icon: the AppIndicator
+ * extension would open the menu, and activate Vento only on a double
+ * click. A right click still opens the menu.
+ */
+function trayIconPressed(event) {
+    if (event.type() !== Clutter.EventType.BUTTON_PRESS ||
+        event.get_button() !== Clutter.BUTTON_PRIMARY)
+        return Clutter.EVENT_PROPAGATE;
+    const icon = trayIcon(TRAY_ID);
+    if (!icon || !icon.contains(global.stage.get_event_actor(event)))
+        return Clutter.EVENT_PROPAGATE;
+    Main.panel.menuManager.activeMenu?.close();
+    // Through the AppIndicator extension, which also hands Vento an
+    // activation token for the click.
+    icon._indicator.open(...event.get_coords(), event.get_time())
+        .catch(logError);
+    return Clutter.EVENT_STOP;
 }
 
 class Service {
@@ -281,6 +320,15 @@ class Service {
             return [false, 0, 0, 0, 0];
         const [x, y] = slot.get_transformed_position();
         const [w, h] = slot.get_transformed_size();
+        return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    }
+
+    TrayIconFrame(id) {
+        const icon = trayIcon(id);
+        if (!icon)
+            return [false, 0, 0, 0, 0];
+        const [x, y] = icon.get_transformed_position();
+        const [w, h] = icon.get_transformed_size();
         return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
     }
 
@@ -403,6 +451,9 @@ export default class VentoExtension extends Extension {
         global.display.connectObject(
             'workareas-changed', () => service.monitorsChanged(),
             this);
+        global.stage.connectObject(
+            'captured-event', (_stage, event) => trayIconPressed(event),
+            this);
     }
 
     disable() {
@@ -410,6 +461,7 @@ export default class VentoExtension extends Extension {
         global.display.get_selection().disconnectObject(this);
         Main.layoutManager.disconnectObject(this);
         global.display.disconnectObject(this);
+        global.stage.disconnectObject(this);
         this._service.release();
         Gio.bus_unown_name(this._nameId);
         this._dbus.unexport();

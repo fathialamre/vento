@@ -39,6 +39,13 @@ mod x11;
 pub use drag_out::{DragEnd, start_file_drag};
 pub use instance::claim_instance;
 
+/// Where the top bar shows the tray icon whose StatusNotifierItem id is
+/// `id`, in logical global coordinates; `None` when it shows none. Blocks
+/// for one short call.
+pub fn tray_icon_frame(id: &str) -> Option<Rect> {
+    shell::tray_icon_frame(id)
+}
+
 /// Ends the startup of activation `token`, given with a tray click: vento's
 /// X11 windows cannot use it, and GNOME shows a busy pointer until it ends.
 /// Blocks for one short call; any thread.

@@ -24,7 +24,7 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 4;
+const API_VERSION: u32 = 5;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -254,6 +254,15 @@ pub(super) fn end_startup(token: &str) {
     if let Err(e) = call(&bus, "EndStartup", Some(&(token,).to_variant())) {
         log::debug!("cannot end startup {token}: {e}");
     }
+}
+
+/// Where the top bar shows the tray icon whose StatusNotifierItem id is
+/// `id`, in logical global coordinates; `None` when it shows none.
+pub(super) fn tray_icon_frame(id: &str) -> Option<Rect> {
+    let bus = super::session_bus().ok()?;
+    call(&bus, "TrayIconFrame", Some(&(id,).to_variant()))
+        .ok()
+        .and_then(|r| parse_slot(&r))
 }
 
 /// X11 pixels per logical pixel, given both widths of the screens. GNOME

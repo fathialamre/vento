@@ -94,8 +94,13 @@ fn to_icon(png: &[u8]) -> Option<Icon> {
     })
 }
 
-/// Where the icon is when it was clicked at `cursor`: a slot of the top bar
-/// (the `bar_h` above the first screen's work area) around it.
+/// The tray's StatusNotifierItem id, by which the shell finds its icon.
+const TRAY_ID: &str = "vento";
+
+/// Where the icon is when it was clicked at `cursor`, when the shell cannot
+/// say: a slot of the top bar (the `bar_h` above the first screen's work
+/// area) around it. A click on the menu is below the icon and often to one
+/// side, so this is only a guess.
 fn icon_frame(cursor: Point, screen_top: f64, bar_h: f64) -> Rect {
     Rect {
         x: cursor.x - ICON_W / 2.0,
@@ -115,7 +120,7 @@ struct VentoTray {
 
 impl Tray for VentoTray {
     fn id(&self) -> String {
-        "vento".into()
+        TRAY_ID.into()
     }
 
     fn title(&self) -> String {
@@ -239,7 +244,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 let (top, bar_h) = platform
                     .pocket_home()
                     .map_or((0.0, 32.0), |home| (home.screen.y, home.menu_bar_h));
-                on_open_panel(icon_frame(cursor, top, bar_h));
+                let icon = vento_platform::tray_icon_frame(TRAY_ID)
+                    .unwrap_or_else(|| icon_frame(cursor, top, bar_h));
+                on_open_panel(icon);
             }
             Action::CopyFromScreen => {
                 if let Some(start) = &on_copy_from_screen {
