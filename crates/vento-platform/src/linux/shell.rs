@@ -24,7 +24,7 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 3;
+const API_VERSION: u32 = 4;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -242,6 +242,18 @@ pub(super) fn show_menu(entries: &[MenuEntry]) -> Option<u32> {
         .ok()?;
     let chosen: i32 = reply.try_child_value(0)?.get()?;
     u32::try_from(chosen).ok()
+}
+
+/// Ends the startup sequence of activation `token`, which vento was given
+/// (a tray click) and cannot use: its windows are X11. GNOME shows a busy
+/// pointer until the sequence ends.
+pub(super) fn end_startup(token: &str) {
+    let Ok(bus) = super::session_bus() else {
+        return;
+    };
+    if let Err(e) = call(&bus, "EndStartup", Some(&(token,).to_variant())) {
+        log::debug!("cannot end startup {token}: {e}");
+    }
 }
 
 /// X11 pixels per logical pixel, given both widths of the screens. GNOME

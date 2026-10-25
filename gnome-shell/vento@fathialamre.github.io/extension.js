@@ -8,6 +8,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -18,7 +19,7 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 3;
+const API_VERSION = 4;
 
 // The room kept in the top bar for the Pocket island: its two wings and the
 // gap between them.
@@ -84,6 +85,12 @@ const IFACE = `
     <method name="ShowMenu">
       <arg type="a(subssav)" direction="in" name="entries"/>
       <arg type="i" direction="out" name="chosen"/>
+    </method>
+    <!-- Ends the startup sequence of an activation token Vento was given
+         and cannot use (its windows are X11): GNOME shows a busy pointer
+         until a sequence ends -->
+    <method name="EndStartup">
+      <arg type="s" direction="in" name="token"/>
     </method>
   </interface>
 </node>`;
@@ -275,6 +282,16 @@ class Service {
         const [x, y] = slot.get_transformed_position();
         const [w, h] = slot.get_transformed_size();
         return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    }
+
+    EndStartup(token) {
+        const tracker = Shell.WindowTracker.get_default();
+        const sequence = tracker.get_startup_sequences()
+            .find(s => s.get_id() === token);
+        if (sequence)
+            sequence.complete();
+        else
+            console.warn(`Vento: no startup sequence for token ${token}`);
     }
 
     ShowMenuAsync([entries], invocation) {

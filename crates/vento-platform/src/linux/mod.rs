@@ -38,6 +38,13 @@ mod x11;
 
 pub use drag_out::{DragEnd, start_file_drag};
 pub use instance::claim_instance;
+
+/// Ends the startup of activation `token`, given with a tray click: vento's
+/// X11 windows cannot use it, and GNOME shows a busy pointer until it ends.
+/// Blocks for one short call; any thread.
+pub fn end_startup(token: &str) {
+    shell::end_startup(token);
+}
 pub use shortcuts::{APP_ID, GlobalShortcut, bind_global_shortcut};
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
 

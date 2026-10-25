@@ -47,8 +47,19 @@ thread_local! {
     static DISPATCH: RefCell<Option<Dispatch>> = const { RefCell::new(None) };
 }
 
-/// Hands `action` to the main thread.
+/// Hands `action` to the main thread. Called by ksni for a click, when the
+/// tray host may have given an activation token for it: vento's windows
+/// cannot use it, so it is ended at once, or GNOME's pointer stays busy
+/// until the token times out.
 fn send(action: Action) {
+    if let Some(token) = ksni::current_xdg_activation_token() {
+        let spawned = std::thread::Builder::new()
+            .name("vento-end-startup".into())
+            .spawn(move || vento_platform::end_startup(&token));
+        if let Err(e) = spawned {
+            warn!("cannot end the tray click's startup: {e}");
+        }
+    }
     if let Err(e) = slint::invoke_from_event_loop(move || {
         DISPATCH.with(|slot| {
             if let Some(dispatch) = slot.borrow().as_ref() {

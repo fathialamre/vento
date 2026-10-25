@@ -26,7 +26,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
     APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, claim_instance,
-    start_file_drag,
+    end_startup, start_file_drag,
 };
 
 /// A terminal application that can be launched in a directory.
