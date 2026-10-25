@@ -88,25 +88,28 @@ sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-
 and running needs `libxkbcommon-x11-0` (`sudo apt install libxkbcommon-x11-0`).
 
 To install Vento for your user (the app in `~/.local/bin`, its launcher and
-icon, and the extension, enabled):
+icon, the extension, enabled, and a start at every login):
 
 ```sh
 scripts/install-linux.sh
 ```
 
-The first time, log out and back in once so GNOME Shell loads the extension;
-after a change to the extension, log out again to load the new version. Then
-start Vento from the app grid. The first launch asks you to allow its global
-shortcuts. `scripts/install-linux.sh --uninstall` removes it all, and keeps
-your settings and data.
+The release build links with fat LTO and needs about 7 GB of memory; on a
+small machine without swap, add some first. The first time, log out and back
+in once so GNOME Shell loads the extension; after a change to the extension,
+log out again to load the new version. Vento then starts at login, or from the
+app grid. The first launch asks you to allow its global shortcuts.
+`scripts/install-linux.sh --no-autostart` installs it without the start at
+login (GNOME's startup apps can also turn it off), and
+`scripts/install-linux.sh --uninstall` removes it all, and keeps your settings
+and data.
 
 Global shortcuts go through the desktop portal, which only knows apps by their
 `.desktop` file, so they work once Vento is installed. Started from a terminal
 (`cargo run -p vento`), Vento belongs to that terminal's app, and GNOME may file
 its shortcuts under that app's name.
 
-Not there yet on Linux: dragging out of the Pocket, dropping text or links on
-the island, the item menu in the Pocket, Copy from screen and launch at login.
+Not there yet on Linux: Copy from screen.
 
 ## Windows
 

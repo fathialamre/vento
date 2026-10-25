@@ -2,7 +2,8 @@
 # Builds vento in release mode and installs it for the current user (GNOME on
 # Wayland): the binary in ~/.local/bin, its .desktop file and icon, and its
 # GNOME Shell extension, which it needs to see the pointer, drags and the
-# clipboard. `--uninstall` removes all of it.
+# clipboard; Vento then starts at every login. `--no-autostart` leaves the
+# login out, `--uninstall` removes all of it.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -15,6 +16,7 @@ data=${XDG_DATA_HOME:-$HOME/.local/share}
 desktop=$data/applications/$app_id.desktop
 icon=$data/icons/hicolor/scalable/apps/$app_id.svg
 extension=$data/gnome-shell/extensions/$uuid
+autostart=${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$app_id.desktop
 
 # Adds the extension to GNOME's enabled list, or removes it (`remove`).
 set_enabled() {
@@ -40,7 +42,7 @@ if [ "${1:-}" = --uninstall ]; then
     gnome-extensions disable "$uuid" 2>/dev/null || true
     set_enabled remove
     rm -rf "$extension"
-    rm -f "$bin_dir/vento" "$desktop" "$icon"
+    rm -f "$bin_dir/vento" "$desktop" "$icon" "$autostart"
     refresh_caches
     echo "Vento removed. Its settings stay in ~/.config/vento and its data in $data/vento."
     exit 0
@@ -58,6 +60,15 @@ mkdir -p "$data/applications"
 sed "s|^Exec=.*|Exec=$bin_dir/vento|" "crates/vento/assets/$app_id.desktop" > "$desktop"
 refresh_caches
 
+# Started at login like any other app: GNOME lists it among the startup
+# apps, where it can be turned off.
+if [ "${1:-}" = --no-autostart ]; then
+    rm -f "$autostart"
+else
+    mkdir -p "$(dirname "$autostart")"
+    { cat "$desktop"; echo "X-GNOME-Autostart-enabled=true"; } > "$autostart"
+fi
+
 was_active=no
 gnome-extensions info "$uuid" 2>/dev/null | grep -q 'State: ACTIVE' && was_active=yes
 changed=yes
@@ -72,6 +83,8 @@ cp -r "gnome-shell/$uuid" "$extension"
 gnome-extensions enable "$uuid" 2>/dev/null || set_enabled add
 
 echo "Vento installed in $bin_dir/vento; start it from the app grid."
+[ -f "$autostart" ] && echo "It starts at every login ($autostart)."
+
 if [ "$was_active" = no ]; then
     echo "Log out and back in once, so GNOME Shell loads Vento's extension."
 elif [ "$changed" = yes ]; then
