@@ -6,7 +6,7 @@
 //! The clipboard is read through the extension and written as the owner
 //! of the X11 `CLIPBOARD`; vento's windows are X11 ones under XWayland.
 
-use std::cell::{Cell, OnceCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -30,6 +30,7 @@ mod portal;
 mod shell;
 mod shortcuts;
 mod terminal;
+mod terminate;
 mod thumbs;
 mod trash;
 mod x11;
@@ -55,6 +56,8 @@ pub struct LinuxPlatform {
     clip_owner: OnceCell<Option<clip_owner::ClipOwner>>,
     /// The Pocket's drop target; made when first asked for.
     catcher: OnceCell<Option<Rc<catcher::LinuxCatcher>>>,
+    /// Runs before vento quits on a signal.
+    on_terminate: RefCell<Option<terminate::Handler>>,
 }
 
 impl Default for LinuxPlatform {
@@ -73,6 +76,7 @@ impl LinuxPlatform {
             screens_seen: Cell::new(None),
             clip_owner: OnceCell::new(),
             catcher: OnceCell::new(),
+            on_terminate: RefCell::new(None),
         }
     }
 
@@ -108,6 +112,13 @@ impl Platform for LinuxPlatform {
     fn prepare_app(&self) {}
 
     fn sample_input(&self) -> InputSample {
+        if terminate::asked() {
+            if let Some(handler) = self.on_terminate.borrow().as_ref() {
+                log::info!("tidying up before quitting");
+                (handler.0)();
+            }
+            std::process::exit(0);
+        }
         if let Some(Some(catcher)) = self.catcher.get() {
             catcher.pump();
         }
@@ -286,8 +297,11 @@ impl Platform for LinuxPlatform {
         before.is_some() && before != now
     }
 
+    /// On SIGTERM (GNOME ending the session), SIGINT or SIGHUP, run from
+    /// the next input sample, which comes at least every 100 ms.
     fn on_terminate(&self, f: Box<dyn Fn()>) {
-        self.stub.on_terminate(f)
+        *self.on_terminate.borrow_mut() = Some(terminate::Handler(f));
+        terminate::listen();
     }
 
     fn activate_app(&self) {

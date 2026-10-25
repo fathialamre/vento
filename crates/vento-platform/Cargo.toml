@@ -117,6 +117,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 resvg = { version = "0.48", default-features = false }
 # Already in the app through winit; our own connection for vento's windows.
 x11rb = { version = "0.13", features = ["shape"] }
+# Hears SIGTERM (GNOME ending the session), SIGINT and SIGHUP on a thread,
+# so vento can tidy up on its main thread before it goes.
+signal-hook = "0.3"
 
 [dev-dependencies]
 # The probe example prints the platform's logs (`RUST_LOG=debug`).
