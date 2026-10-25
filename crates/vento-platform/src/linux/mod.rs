@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod apps;
+mod catcher;
 mod clip_owner;
 mod clipboard;
 mod drag_out;
@@ -52,6 +53,8 @@ pub struct LinuxPlatform {
     screens_seen: Cell<Option<u32>>,
     /// Owns the clipboard for vento's copies; made on the first one.
     clip_owner: OnceCell<Option<clip_owner::ClipOwner>>,
+    /// The Pocket's drop target; made when first asked for.
+    catcher: OnceCell<Option<Rc<catcher::LinuxCatcher>>>,
 }
 
 impl Default for LinuxPlatform {
@@ -69,6 +72,7 @@ impl LinuxPlatform {
             shell: shell::Shell::connect(),
             screens_seen: Cell::new(None),
             clip_owner: OnceCell::new(),
+            catcher: OnceCell::new(),
         }
     }
 
@@ -104,6 +108,9 @@ impl Platform for LinuxPlatform {
     fn prepare_app(&self) {}
 
     fn sample_input(&self) -> InputSample {
+        if let Some(Some(catcher)) = self.catcher.get() {
+            catcher.pump();
+        }
         match self.shell.state() {
             Some(state) => shell::to_sample(&state),
             None => self.stub.sample_input(),
@@ -254,7 +261,13 @@ impl Platform for LinuxPlatform {
     }
 
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>> {
-        self.stub.drop_catcher()
+        let catcher = self.catcher.get_or_init(|| {
+            catcher::LinuxCatcher::start()
+                .map(Rc::new)
+                .inspect_err(|e| log::warn!("no drop catcher: {e}"))
+                .ok()
+        });
+        catcher.clone().map(|c| c as Rc<dyn DropCatcher>)
     }
 
     fn trash(&self, path: &Path) -> Result<(), PlatformError> {

@@ -62,7 +62,7 @@ pub struct RgbaImage {
 }
 
 /// Content dropped on the [`DropCatcher`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Dropped {
     /// One or more files or folders.
     Files(Vec<PathBuf>),
@@ -72,6 +72,22 @@ pub enum Dropped {
     Url(String),
     /// Image data as dragged; `ext` is `"png"` or `"tiff"`.
     Image { bytes: Vec<u8>, ext: &'static str },
+}
+
+/// Image data shows as its size: logs would otherwise print every byte.
+impl std::fmt::Debug for Dropped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Files(paths) => f.debug_tuple("Files").field(paths).finish(),
+            Self::Text(text) => f.debug_tuple("Text").field(text).finish(),
+            Self::Url(url) => f.debug_tuple("Url").field(url).finish(),
+            Self::Image { bytes, ext } => f
+                .debug_struct("Image")
+                .field("bytes", &bytes.len())
+                .field("ext", ext)
+                .finish(),
+        }
+    }
 }
 
 /// What the [`DropCatcher`] reports while a drag passes over it.
