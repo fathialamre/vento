@@ -25,7 +25,8 @@ pub use macos::{MacPlatform, MacScreenText};
 mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
-    APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, start_file_drag,
+    APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, claim_instance,
+    start_file_drag,
 };
 
 /// A terminal application that can be launched in a directory.
@@ -265,6 +266,11 @@ pub trait Platform {
     /// when the system ends it (log out, shut down). Replaces any earlier
     /// `f`.
     fn on_terminate(&self, f: Box<dyn Fn()>);
+    /// Run `f` when vento is launched again while it runs (the app grid,
+    /// a second start at login). Main thread only.
+    fn on_reopen(&self, f: Box<dyn Fn()>) {
+        let _ = f;
+    }
     /// Bring vento to the front so a window of its own can take keystrokes.
     /// Main thread only.
     fn activate_app(&self);

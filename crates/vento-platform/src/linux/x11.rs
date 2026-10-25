@@ -1,7 +1,7 @@
 //! Vento's own X11 windows (it runs under XWayland on GNOME).
 
 use std::cell::OnceCell;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use raw_window_handle::RawWindowHandle;
 use vento_core::geometry::Rect;
@@ -14,6 +14,9 @@ use x11rb::protocol::xproto::{
 use x11rb::rust_connection::RustConnection;
 
 use crate::PlatformError;
+
+/// How long GNOME may take to let go of a window turning override-redirect.
+const RELEASE_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// When to make a window draw again after its input shape changed; see
 /// [`recommit_later`].
@@ -60,8 +63,8 @@ fn failed(e: &dyn std::fmt::Display) -> PlatformError {
 /// Makes the window of `handle` override-redirect: GNOME then leaves it
 /// exactly where vento puts it, above every window (full-screen ones too),
 /// out of the Dock and the window switcher, and never gives it focus. X11
-/// applies this when a window is mapped, so a window on screen is mapped
-/// again.
+/// applies this when a window is mapped, so the window is mapped again, once
+/// GNOME has let go of it: callers have just shown it, or are about to.
 pub(super) fn make_override_redirect(handle: RawWindowHandle) -> Result<(), PlatformError> {
     let window = window_id(handle)?;
     with_conn(|conn| {
@@ -75,10 +78,35 @@ pub(super) fn make_override_redirect(handle: RawWindowHandle) -> Result<(), Plat
             .map_err(|e| failed(&e))?
             .map_state
             != MapState::UNMAPPED;
-        if mapped {
+        let tree = conn
+            .query_tree(window)
+            .map_err(|e| failed(&e))?
+            .reply()
+            .map_err(|e| failed(&e))?;
+        // In a frame of GNOME's: GNOME manages it.
+        let framed = tree.parent != tree.root;
+        if mapped || framed {
             conn.unmap_window(window).map_err(|e| failed(&e))?;
-            conn.map_window(window).map_err(|e| failed(&e))?;
+            conn.flush().map_err(|e| failed(&e))?;
+            // GNOME takes a window it manages out of its frame once it sees
+            // it unmapped; mapped again before that, it ends up unmapped.
+            let deadline = Instant::now() + RELEASE_TIMEOUT;
+            while framed && Instant::now() < deadline {
+                let parent = conn
+                    .query_tree(window)
+                    .map_err(|e| failed(&e))?
+                    .reply()
+                    .map_err(|e| failed(&e))?
+                    .parent;
+                if parent == tree.root {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
         }
+        // Also when it looked unmapped: shown just before, it may wait on a
+        // map request GNOME now ignores, as for any override-redirect window.
+        conn.map_window(window).map_err(|e| failed(&e))?;
         conn.flush().map_err(|e| failed(&e))?;
         Ok(())
     })

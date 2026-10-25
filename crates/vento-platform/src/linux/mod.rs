@@ -26,6 +26,7 @@ mod clip_owner;
 mod clipboard;
 mod drag_out;
 mod icons;
+mod instance;
 mod portal;
 mod shell;
 mod shortcuts;
@@ -36,6 +37,7 @@ mod trash;
 mod x11;
 
 pub use drag_out::{DragEnd, start_file_drag};
+pub use instance::claim_instance;
 pub use shortcuts::{APP_ID, GlobalShortcut, bind_global_shortcut};
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
 
@@ -58,6 +60,8 @@ pub struct LinuxPlatform {
     catcher: OnceCell<Option<Rc<catcher::LinuxCatcher>>>,
     /// Runs before vento quits on a signal.
     on_terminate: RefCell<Option<terminate::Handler>>,
+    /// Runs when another launch asks this Vento to open.
+    on_reopen: RefCell<Option<terminate::Handler>>,
 }
 
 impl Default for LinuxPlatform {
@@ -77,6 +81,7 @@ impl LinuxPlatform {
             clip_owner: OnceCell::new(),
             catcher: OnceCell::new(),
             on_terminate: RefCell::new(None),
+            on_reopen: RefCell::new(None),
         }
     }
 
@@ -121,6 +126,11 @@ impl Platform for LinuxPlatform {
         }
         if let Some(Some(catcher)) = self.catcher.get() {
             catcher.pump();
+        }
+        if instance::asked_to_open()
+            && let Some(handler) = self.on_reopen.borrow().as_ref()
+        {
+            (handler.0)();
         }
         match self.shell.state() {
             Some(state) => shell::to_sample(&state),
@@ -302,6 +312,12 @@ impl Platform for LinuxPlatform {
     fn on_terminate(&self, f: Box<dyn Fn()>) {
         *self.on_terminate.borrow_mut() = Some(terminate::Handler(f));
         terminate::listen();
+    }
+
+    /// When another launch asks this Vento to open (see `claim_instance`),
+    /// from the next input sample.
+    fn on_reopen(&self, f: Box<dyn Fn()>) {
+        *self.on_reopen.borrow_mut() = Some(terminate::Handler(f));
     }
 
     fn activate_app(&self) {

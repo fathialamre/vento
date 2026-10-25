@@ -794,7 +794,9 @@ impl PanelController {
     /// Opens the panel under `icon`. A new window opens once it has its
     /// native window, so that AppKit can be told to keep its frame as it
     /// shows.
-    fn open_at(&self, icon: Rect) {
+    /// Opens the panel under `icon` (global logical points), if it is
+    /// closed.
+    pub fn open_at(&self, icon: Rect) {
         self.window();
         let this = self.this.clone();
         self.window.when_native(move || {

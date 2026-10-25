@@ -55,6 +55,11 @@ fn main() -> Result<(), slint::PlatformError> {
     const POCKET_CONFIRM: Duration = Duration::from_millis(1500);
 
     env_logger::init();
+    // A second launch (the app grid) opens the running Vento's settings.
+    #[cfg(target_os = "linux")]
+    if !vento_platform::claim_instance() {
+        return Ok(());
+    }
     select_backend()?;
     let hub = settings_hub::SettingsHub::new(settings_path());
     if let Some(reason) = hub.load_error() {
@@ -211,6 +216,25 @@ fn main() -> Result<(), slint::PlatformError> {
         if let Some(pocket) = flusher.upgrade() {
             pocket.flush_pending();
         }
+    }));
+    // Launched again while running: the settings, under the island.
+    let reopened = Rc::downgrade(&panel);
+    let homes = Rc::downgrade(&platform);
+    platform.on_reopen(Box::new(move || {
+        let (Some(panel), Some(platform)) = (reopened.upgrade(), homes.upgrade()) else {
+            return;
+        };
+        let Some(home) = platform.pocket_home() else {
+            return;
+        };
+        log::info!("launched again: opening the settings");
+        let icon = home.slot.unwrap_or(vento_core::geometry::Rect {
+            x: home.screen.x + home.screen.w / 2.0 - 16.0,
+            y: home.screen.y,
+            w: 32.0,
+            h: home.menu_bar_h,
+        });
+        panel.open_at(icon);
     }));
     let observer = pocket.clone();
     controller.set_sample_listener(Box::new(move |sample, dragging| {

@@ -47,7 +47,8 @@ pub(super) fn asked() -> bool {
     ASKED.swap(false, Ordering::SeqCst)
 }
 
-/// What runs before vento quits on a signal.
+/// A callback the platform runs on the main thread: before vento quits on
+/// a signal, or when another launch asks it to open.
 pub(super) struct Handler(pub Box<dyn Fn()>);
 
 impl std::fmt::Debug for Handler {
