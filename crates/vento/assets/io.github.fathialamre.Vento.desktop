@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Vento
+GenericName=File Actions
+Comment=Move, copy and act on dragged files from a wheel under the cursor
+Exec=vento
+Icon=io.github.fathialamre.Vento
+Terminal=false
+Categories=Utility;FileTools;
+Keywords=files;drag;move;copy;clipboard;pocket;
+StartupWMClass=vento
+StartupNotify=false
