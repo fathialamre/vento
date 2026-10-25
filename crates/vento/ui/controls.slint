@@ -483,7 +483,7 @@ export component Stepper inherits HorizontalLayout {
 // cancels. vento reads the combination itself and ends the recording. A
 // disabled field shows its shortcut dimmed and cannot start recording.
 export component ShortcutField inherits Rectangle {
-    // The shortcut as symbols, e.g. "⌃⌥P".
+    // The shortcut as the platform writes it, e.g. "⌃⌥P" or "Ctrl+Alt+P".
     in property <string> text;
     in property <string> label;
     in property <bool> enabled: true;

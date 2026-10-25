@@ -32,7 +32,7 @@ use vento_core::geometry::{Layout, Point, Rect, screen_for};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
     MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, Settings,
-    is_reserved_shortcut, move_row, parse_shortcut, shortcut_symbols,
+    is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
@@ -76,6 +76,12 @@ const TRIGGERS: [Modifier; 4] = [
     Modifier::Shift,
     Modifier::Meta,
 ];
+/// What the Trigger choices are called: the Mac's names on a Mac, GNOME's
+/// elsewhere.
+#[cfg(target_os = "macos")]
+const TRIGGER_NAMES: [&str; 4] = ["Control", "Option", "Shift", "Command"];
+#[cfg(not(target_os = "macos"))]
+const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
 
 /// Size of the Finder icons in the Move tab, in points.
@@ -253,6 +259,8 @@ impl PanelController {
             window.set_pinned(ModelRc::from(self.pinned.clone()));
             window.set_recent(ModelRc::from(self.recent_rows.clone()));
             window.set_screen_text_supported(self.screen_text_supported);
+            let trigger_names: Vec<SharedString> = TRIGGER_NAMES.map(Into::into).into();
+            window.set_trigger_names(ModelRc::from(trigger_names.as_slice()));
             window.set_paused(self.paused.get());
             window.set_tab(self.tab.get());
             // A new native window: AppKit has yet to be told to keep it.
@@ -640,7 +648,7 @@ impl PanelController {
         window.set_hold(format!("{hold} ms").into());
         window.set_hold_can_decrease(hold > MIN_MOVE_HOLD_MS);
         window.set_hold_can_increase(hold < MAX_MOVE_HOLD_MS);
-        let symbols = |spec: &str| shortcut_symbols(spec).unwrap_or_else(|| spec.to_owned());
+        let symbols = |spec: &str| shortcut_text(spec).unwrap_or_else(|| spec.to_owned());
         window.set_shortcut(symbols(&settings.pocket_shortcut).into());
         window.set_remove_after_drop(settings.pocket_remove_after_drop);
         window.set_keep_copies(settings.pocket_keep_copies);
@@ -1115,9 +1123,20 @@ fn key_char(code: KeyCode) -> Option<char> {
     KEYS.iter().find(|(k, _)| *k == code).map(|(_, c)| *c)
 }
 
+/// How the platform writes the shortcut `spec`: symbols (`⌃⌥P`) on a Mac,
+/// GNOME's words (`Ctrl+Alt+P`) elsewhere. `None` when it does not parse.
+fn shortcut_text(spec: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    return vento_core::settings::shortcut_symbols(spec);
+    #[cfg(not(target_os = "macos"))]
+    return vento_core::settings::shortcut_label(spec);
+}
+
 /// Why the recorded shortcut `spec` is refused before trying to register
 /// it, or `None` when it may be tried. Shift alone only types a capital, so
-/// it is not a modifier for this. The same keys as either of the shortcuts
+/// it is not a modifier for this. The ones macOS keeps for itself are
+/// refused on a Mac; elsewhere one the desktop keeps fails to register,
+/// which says so. The same keys as either of the shortcuts
 /// `target` is not, as `saved` holds them, are refused too, even while one is
 /// not registered.
 fn shortcut_refusal(spec: &str, target: ShortcutFor, saved: &Settings) -> Option<&'static str> {
@@ -1129,7 +1148,9 @@ fn shortcut_refusal(spec: &str, target: ShortcutFor, saved: &Settings) -> Option
     match keys {
         None => Some(NOT_A_SHORTCUT),
         Some((m, _)) if m == shift_only => Some(NOT_A_SHORTCUT),
-        Some(_) if is_reserved_shortcut(spec) => Some(RESERVED_SHORTCUT),
+        Some(_) if cfg!(target_os = "macos") && is_reserved_shortcut(spec) => {
+            Some(RESERVED_SHORTCUT)
+        }
         Some(_) => target
             .others()
             .into_iter()
@@ -1545,9 +1566,11 @@ mod tests {
         assert_eq!(refusal("p"), Some(NOT_A_SHORTCUT));
         assert_eq!(refusal("ctrl+alt+?"), Some(NOT_A_SHORTCUT));
         assert_eq!(refusal("shift+k"), Some(NOT_A_SHORTCUT));
-        assert_eq!(refusal("cmd+q"), Some(RESERVED_SHORTCUT));
-        assert_eq!(refusal("cmd+h"), Some(RESERVED_SHORTCUT));
-        assert_eq!(refusal("cmd+shift+4"), Some(RESERVED_SHORTCUT));
+        // macOS's own shortcuts are only refused on a Mac.
+        let reserved = cfg!(target_os = "macos").then_some(RESERVED_SHORTCUT);
+        assert_eq!(refusal("cmd+q"), reserved);
+        assert_eq!(refusal("cmd+h"), reserved);
+        assert_eq!(refusal("cmd+shift+4"), reserved);
         assert_eq!(
             refusal("ctrl+alt+v"),
             Some("The Clipboard uses this shortcut")
@@ -1698,12 +1721,19 @@ mod tests {
     #[test]
     fn a_refused_shortcut_is_never_tried() {
         let defaults = saved("ctrl+alt+p", "ctrl+alt+v");
+        #[cfg(target_os = "macos")]
+        {
+            let (outcome, calls, _) =
+                apply_with_fakes(ShortcutFor::Pocket, "cmd+q", &defaults, &[], false);
+            assert!(matches!(
+                outcome,
+                ShortcutOutcome::Refused(RESERVED_SHORTCUT)
+            ));
+            assert!(calls.is_empty());
+        }
         let (outcome, calls, _) =
-            apply_with_fakes(ShortcutFor::Pocket, "cmd+q", &defaults, &[], false);
-        assert!(matches!(
-            outcome,
-            ShortcutOutcome::Refused(RESERVED_SHORTCUT)
-        ));
+            apply_with_fakes(ShortcutFor::Pocket, "shift+k", &defaults, &[], false);
+        assert!(matches!(outcome, ShortcutOutcome::Refused(NOT_A_SHORTCUT)));
         assert!(calls.is_empty());
         let (outcome, calls, _) =
             apply_with_fakes(ShortcutFor::Pocket, "ctrl+alt+?", &defaults, &[], false);

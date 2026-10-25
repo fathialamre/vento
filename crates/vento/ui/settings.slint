@@ -669,7 +669,9 @@ component ClipboardTab inherits VerticalLayout {
 }
 
 component GeneralTab inherits VerticalLayout {
-    // 0 Control, 1 Option, 2 Shift, 3 Command.
+    // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
+    // the Mac's names on a Mac, the platform's elsewhere.
+    in property <[string]> trigger-names;
     in property <int> trigger;
     // A shake during a file drag opens the wheel too.
     in property <bool> shake-to-open;
@@ -699,7 +701,7 @@ component GeneralTab inherits VerticalLayout {
     }
 
     Segmented {
-        items: ["Control", "Option", "Shift", "Command"];
+        items: root.trigger-names;
         current: root.trigger;
         chosen(i) => { root.trigger-chosen(i); }
     }
@@ -894,7 +896,9 @@ export component SettingsPanel inherits Window {
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
-    // 0 Control, 1 Option, 2 Shift, 3 Command.
+    // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
+    // the Mac's names on a Mac, the platform's elsewhere.
+    in property <[string]> trigger-names;
     in property <int> trigger;
     // A shake during a file drag opens the wheel too.
     in property <bool> shake-to-open;
@@ -1107,6 +1111,7 @@ export component SettingsPanel inherits Window {
                         history-cleared => { root.clip-history-cleared(); }
                     }
                     if root.tab == 4: GeneralTab {
+                        trigger-names: root.trigger-names;
                         trigger: root.trigger;
                         shake-to-open: root.shake-to-open;
                         terminals: root.terminals;

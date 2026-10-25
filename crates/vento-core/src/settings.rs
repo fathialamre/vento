@@ -449,6 +449,26 @@ pub fn shortcut_symbols(spec: &str) -> Option<String> {
     Some(text)
 }
 
+/// How GNOME writes the shortcut `spec`: its modifiers as words in GTK's
+/// order Shift, Ctrl, Alt, Super, then the key upper-cased, all joined by
+/// `+` (`"ctrl+alt+p"` → `"Ctrl+Alt+P"`). `None` when it does not parse.
+pub fn shortcut_label(spec: &str) -> Option<String> {
+    let (m, key) = parse_shortcut(spec)?;
+    let mut text = String::new();
+    for (held, word) in [
+        (m.shift, "Shift+"),
+        (m.ctrl, "Ctrl+"),
+        (m.alt, "Alt+"),
+        (m.meta, "Super+"),
+    ] {
+        if held {
+            text.push_str(word);
+        }
+    }
+    text.push(key.to_ascii_uppercase());
+    Some(text)
+}
+
 /// Location of the settings file.
 pub fn settings_path() -> PathBuf {
     match ProjectDirs::from("", "", "vento") {
@@ -674,6 +694,22 @@ mod tests {
         );
         assert_eq!(super::shortcut_symbols("ctrl+p+q"), None);
         assert_eq!(super::shortcut_symbols("p"), None);
+    }
+
+    #[test]
+    fn shortcut_label() {
+        assert_eq!(
+            super::shortcut_label("ctrl+alt+p").as_deref(),
+            Some("Ctrl+Alt+P")
+        );
+        // Always in GTK's order Shift, Ctrl, Alt, Super.
+        assert_eq!(
+            super::shortcut_label("meta+alt+ctrl+shift+k").as_deref(),
+            Some("Shift+Ctrl+Alt+Super+K")
+        );
+        assert_eq!(super::shortcut_label("cmd+7").as_deref(), Some("Super+7"));
+        assert_eq!(super::shortcut_label("ctrl+p+q"), None);
+        assert_eq!(super::shortcut_label("p"), None);
     }
 
     #[test]
