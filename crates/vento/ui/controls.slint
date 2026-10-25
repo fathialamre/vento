@@ -15,6 +15,8 @@ export global PanelIcons {
     out property <image> grip: @image-url("icons/grip-vertical.svg");
     out property <image> add: @image-url("icons/plus.svg");
     out property <image> folder: @image-url("icons/folder.svg");
+    // Drawn in Tabler's style (a coffee cup).
+    out property <image> awake: @image-url("icons/coffee.svg");
 }
 
 // A small heading over a group of controls.
@@ -365,6 +367,36 @@ export component TextButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A time choice of the Keep Awake tab, on `surface` like the other
+// fields, drawn chosen (the accent, faint, as the chosen tab) while its
+// time runs.
+export component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> chosen;
+    callback clicked();
+
+    height: 28px;
+    border-radius: 8px;
+    background: self.chosen ? Theme.accent-soft : touch.has-hover ? Theme.hover : Theme.surface;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    Text {
+        text: root.label;
+        font-size: 12px;
+        color: root.chosen ? Theme.accent : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
         clicked => { root.clicked(); }
     }
 }

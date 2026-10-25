@@ -2,12 +2,17 @@
 //! bus; a later launch (from the app grid, or a second start at login) asks
 //! it to open its settings and goes. The request arrives on a thread of its
 //! own and waits for the main thread, which hands it on from
-//! [`asked_to_open`] on every input sample.
+//! [`asked_to_open`] on every input sample. The Vento extension asks the
+//! same way to open the Keep Awake tab when its cup is clicked
+//! ([`awake_indicator_clicked`]).
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use gio::glib;
 use gio::prelude::*;
+
+use vento_core::geometry::Rect;
 
 use super::APP_ID;
 
@@ -16,6 +21,11 @@ const INTERFACE: &str = "io.github.fathialamre.Vento1";
 const INTROSPECTION: &str = r#"<node>
   <interface name="io.github.fathialamre.Vento1">
     <method name="Open"/>
+    <!-- The Keep Awake cup in the top bar was clicked; where it is, in
+         logical global coordinates -->
+    <method name="OpenKeepAwake">
+      <arg type="(iiii)" direction="in" name="frame"/>
+    </method>
   </interface>
 </node>"#;
 
@@ -27,6 +37,18 @@ const ALREADY_OWNER: u32 = 4;
 
 /// Set when another launch asked this Vento to open.
 static OPEN_ASKED: AtomicBool = AtomicBool::new(false);
+/// Where the Keep Awake cup was when last clicked, until the main thread
+/// takes it.
+static AWAKE_CLICKED: Mutex<Option<Rect>> = Mutex::new(None);
+
+/// Runs with the Keep Awake cup's frame when it is clicked.
+pub(super) struct FrameHandler(pub Box<dyn Fn(Rect)>);
+
+impl std::fmt::Debug for FrameHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FrameHandler")
+    }
+}
 
 /// Whether this is the only Vento: true after claiming the app's name (or
 /// without a session bus, where there is nothing to ask), false after
@@ -96,9 +118,15 @@ fn serve(bus: gio::DBusConnection) {
                     .ok()
                     .and_then(|node| node.lookup_interface(INTERFACE))?;
                 bus.register_object(OBJECT_PATH, &info)
-                    .method_call(|_, _, _, _, method, _, invocation| {
-                        if method == "Open" {
-                            OPEN_ASKED.store(true, Ordering::SeqCst);
+                    .method_call(|_, _, _, _, method, params, invocation| {
+                        match method {
+                            "Open" => OPEN_ASKED.store(true, Ordering::SeqCst),
+                            "OpenKeepAwake" => {
+                                if let Some(frame) = parse_frame(&params) {
+                                    *AWAKE_CLICKED.lock().unwrap() = Some(frame);
+                                }
+                            }
+                            _ => {}
                         }
                         invocation.return_value(None);
                     })
@@ -118,4 +146,20 @@ fn serve(bus: gio::DBusConnection) {
 /// Whether another launch asked this Vento to open since the last call.
 pub(super) fn asked_to_open() -> bool {
     OPEN_ASKED.swap(false, Ordering::SeqCst)
+}
+
+/// Where the Keep Awake cup was, if it was clicked since the last call.
+pub(super) fn awake_indicator_clicked() -> Option<Rect> {
+    AWAKE_CLICKED.lock().unwrap().take()
+}
+
+/// `OpenKeepAwake`'s frame.
+fn parse_frame(params: &glib::Variant) -> Option<Rect> {
+    let ((x, y, w, h),): ((i32, i32, i32, i32),) = params.get()?;
+    Some(Rect {
+        x: f64::from(x),
+        y: f64::from(y),
+        w: f64::from(w),
+        h: f64::from(h),
+    })
 }

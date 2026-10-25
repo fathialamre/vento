@@ -14,16 +14,31 @@ import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 6;
+const API_VERSION = 7;
 
 // Vento's StatusNotifierItem Id, by which its tray icon is found.
 const TRAY_ID = 'vento';
+
+// Vento's own bus name and object, which open the Keep Awake tab when its
+// cup is clicked.
+const VENTO_NAME = 'io.github.fathialamre.Vento';
+const VENTO_PATH = '/io/github/fathialamre/Vento';
+const VENTO_INTERFACE = 'io.github.fathialamre.Vento1';
+// The cup's place in the top bar's status area.
+const AWAKE_ROLE = 'vento-keep-awake';
+// The cup: Caffeine's, as Yaru draws it, else a close stand-in.
+const AWAKE_ICONS = [
+    'my-caffeine-on-symbolic',
+    'caffeine-cup-full-symbolic',
+    'preferences-desktop-screensaver-symbolic',
+];
 
 // The room kept in the top bar for the Pocket island: its two wings and the
 // gap between them.
@@ -103,6 +118,12 @@ const IFACE = `
          background, edge and text; false when it cannot tell -->
     <method name="MenuColors">
       <arg type="(bsss)" direction="out" name="colors"/>
+    </method>
+    <!-- Shows the Keep Awake cup left of Vento's tray icon, or hides it.
+         It goes too when the caller leaves the bus. A click on it calls
+         OpenKeepAwake on Vento's own object -->
+    <method name="ShowAwakeIndicator">
+      <arg type="b" direction="in" name="shown"/>
     </method>
     <method name="EndStartup">
       <arg type="s" direction="in" name="token"/>
@@ -222,6 +243,22 @@ function trayIconPressed(event) {
     return Clutter.EVENT_STOP;
 }
 
+/** Asks Vento to open its Keep Awake tab under `cup`. */
+function openKeepAwake(cup) {
+    const [x, y] = cup.get_transformed_position();
+    const [w, h] = cup.get_transformed_size();
+    const frame = [Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    Gio.DBus.session.call(VENTO_NAME, VENTO_PATH, VENTO_INTERFACE, 'OpenKeepAwake',
+        new GLib.Variant('((iiii))', [frame]), null, Gio.DBusCallFlags.NONE, 1000, null,
+        (bus, result) => {
+            try {
+                bus.call_finish(result);
+            } catch (e) {
+                logError(e, 'Vento: cannot open Keep Awake');
+            }
+        });
+}
+
 class Service {
     constructor() {
         this._dragSerial = 0;
@@ -233,6 +270,8 @@ class Service {
         this._previousWindow = null;
         this._slot = null;
         this._slotWatch = 0;
+        this._awake = null;
+        this._awakeWatch = 0;
     }
 
     Version() {
@@ -309,6 +348,14 @@ class Service {
             return false;
         Main.activateWindow(previous);
         return true;
+    }
+
+    ShowAwakeIndicatorAsync([shown], invocation) {
+        if (shown)
+            this._showAwake(invocation.get_sender());
+        else
+            this.hideAwake();
+        invocation.return_value(null);
     }
 
     ReserveIslandAsync([reserve], invocation) {
@@ -416,6 +463,44 @@ class Service {
         this.monitorsChanged();
     }
 
+    _showAwake(owner) {
+        if (this._awake)
+            return;
+        const cup = new PanelMenu.Button(0.0, 'Vento Keep Awake', true);
+        cup.add_child(new St.Icon({
+            gicon: new Gio.ThemedIcon({names: AWAKE_ICONS}),
+            style_class: 'system-status-icon',
+        }));
+        cup.connect('button-press-event', () => {
+            openKeepAwake(cup);
+            return Clutter.EVENT_STOP;
+        });
+        // Just left of Vento's icon, which the AppIndicator extension adds
+        // to the right box.
+        const vento = trayIcon(TRAY_ID)?.container;
+        const index = vento ? Math.max(0, Main.panel._rightBox.get_children().indexOf(vento)) : 0;
+        Main.panel.addToStatusArea(AWAKE_ROLE, cup, index, 'right');
+        cup.connectObject('destroy', () => {
+            this._awake = null;
+        }, this);
+        this._awake = cup;
+        this._awakeWatch = Gio.bus_watch_name(Gio.BusType.SESSION, owner,
+            Gio.BusNameWatcherFlags.NONE, null, () => this.hideAwake());
+    }
+
+    /** Takes the Keep Awake cup away. */
+    hideAwake() {
+        if (this._awakeWatch) {
+            Gio.bus_unwatch_name(this._awakeWatch);
+            this._awakeWatch = 0;
+        }
+        if (this._awake) {
+            this._awake.disconnectObject(this);
+            this._awake.destroy();
+            this._awake = null;
+        }
+    }
+
     /** Gives the room back. */
     release() {
         if (this._slotWatch) {
@@ -491,6 +576,7 @@ export default class VentoExtension extends Extension {
         global.display.disconnectObject(this);
         global.stage.disconnectObject(this);
         this._service.release();
+        this._service.hideAwake();
         Gio.bus_unown_name(this._nameId);
         this._dbus.unexport();
         this._dbus = null;

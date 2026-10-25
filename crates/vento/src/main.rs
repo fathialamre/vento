@@ -4,6 +4,8 @@
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod archive_ui;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod awake;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod exec;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[cfg_attr(target_os = "linux", path = "hotkey_linux.rs")]
@@ -308,9 +310,15 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_pocket_shortcut(&settings);
         apply_clip_shortcut(&settings);
         apply_screen_shortcut(&settings);
+        let (awake_panel, awake_info) = (panel.clone(), tray_info.clone());
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
+            keep_awake: panel.keep_awake(),
+            on_open_keep_awake: Box::new(move |icon| {
+                awake_info.dismiss();
+                awake_panel.toggle_keep_awake_at(icon);
+            }),
             on_open_panel: Box::new(move |icon| {
                 tray_info.dismiss();
                 panel.toggle_at(icon);

@@ -25,6 +25,7 @@ use slint::{
     CloseRequestResponse, ComponentHandle, Image, LogicalPosition, Model, ModelRc, SharedString,
     Timer, VecModel,
 };
+use vento_core::awake::{Chip, TIMED_CHIPS, default_until};
 use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
@@ -37,6 +38,7 @@ use vento_core::settings::{
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
 
+use crate::awake::KeepAwake;
 use crate::lazy_window::LazyWindow;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
@@ -67,6 +69,9 @@ const ARROW_BLEND: f64 = 3.0;
 /// the rounded corner, half the arrow and the curve that blends it into
 /// the top edge all fit beside it.
 const ARROW_MARGIN: f64 = CORNER_RADIUS + ARROW_W / 2.0 + ARROW_BLEND;
+
+/// The Keep Awake tab's place in the tab bar.
+const KEEP_AWAKE_TAB: i32 = 4;
 
 /// The choices of the panel's segmented controls, in the order shown.
 const LAYOUTS: [Layout; 2] = [Layout::Honeycomb, Layout::Petals];
@@ -149,6 +154,9 @@ pub type TryShortcut = Box<dyn Fn(ShortcutFor, &str) -> Result<(), String>>;
 pub struct PanelController {
     platform: Rc<dyn Platform>,
     hub: Rc<SettingsHub>,
+    /// What the Keep Awake tab shows and changes; it lives as long as the
+    /// panel, which is as long as vento.
+    keep_awake: Rc<KeepAwake>,
     /// The panel's window while it is open, and for a while after it
     /// closes. Use [`PanelController::window`] or
     /// [`PanelController::existing`].
@@ -211,9 +219,11 @@ impl PanelController {
         on_clear_history: Box<dyn Fn()>,
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
+        let keep_awake = KeepAwake::new(platform.clone(), hub.clone());
         let panel = Rc::new_cyclic(|this| Self {
             platform,
             hub,
+            keep_awake,
             window: LazyWindow::new(),
             paused: Cell::new(false),
             tab: Cell::new(0),
@@ -243,6 +253,13 @@ impl PanelController {
             if let Some(panel) = this.upgrade() {
                 panel.show_notice();
                 panel.show_settings();
+            }
+        }));
+        // The status line counts down while the panel is open.
+        let this = Rc::downgrade(&panel);
+        panel.keep_awake.on_change(Box::new(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.show_awake();
             }
         }));
         panel
@@ -389,6 +406,7 @@ impl PanelController {
             }
         });
         self.connect_clipboard_tab(window);
+        self.connect_awake_tab(window);
         // While recording, the menu bar is away, so ⌘Q and ⌘H reach the
         // recorder instead of quitting or hiding vento.
         let this = self.this.clone();
@@ -439,6 +457,52 @@ impl PanelController {
                 (panel.on_clear_history)();
             }
         });
+    }
+
+    fn connect_awake_tab(&self, window: &SettingsPanel) {
+        let this = self.this.clone();
+        window.on_awake_switched(move |on| {
+            let Some(panel) = this.upgrade() else { return };
+            if on {
+                panel.keep_awake.start(Chip::Forever);
+            } else {
+                panel.keep_awake.stop();
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_chip_clicked(move |i| {
+            let Some(panel) = this.upgrade() else { return };
+            match chip_at(i) {
+                Some(chip) => panel.keep_awake.toggle(chip),
+                // Until… while it runs: the tab opens its popup otherwise.
+                None => panel.keep_awake.stop(),
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_until_started(move |hour, minute| {
+            let Some(panel) = this.upgrade() else { return };
+            let (Ok(hour), Ok(minute)) = (i8::try_from(hour), i8::try_from(minute)) else {
+                return;
+            };
+            panel.keep_awake.start(Chip::Until { hour, minute });
+        });
+        let this = self.this.clone();
+        window.on_awake_screen_off_toggled(move |on| {
+            if let Some(panel) = this.upgrade() {
+                panel.apply(|s| s.keep_awake_screen_off = on);
+            }
+        });
+    }
+
+    /// Shows what Keep Awake holds now.
+    fn show_awake(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
+        let session = self.keep_awake.session();
+        window.set_awake_status(self.keep_awake.status().into());
+        window.set_awake_on(session.is_some());
+        window.set_awake_chip(session.map_or(-1, |s| chip_index(s.chip)));
     }
 
     fn connect_move_tab(&self, window: &SettingsPanel) {
@@ -653,6 +717,7 @@ impl PanelController {
         window.set_remove_after_drop(settings.pocket_remove_after_drop);
         window.set_keep_copies(settings.pocket_keep_copies);
         window.set_clip_history(settings.clipboard_history);
+        window.set_awake_screen_off(settings.keep_awake_screen_off);
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
     }
@@ -742,6 +807,30 @@ impl PanelController {
             window.set_terminals(ModelRc::new(VecModel::from(names)));
         }
         *self.terminals.borrow_mut() = terminals;
+    }
+
+    /// What the Keep Awake tab shows and changes.
+    pub fn keep_awake(&self) -> Rc<KeepAwake> {
+        self.keep_awake.clone()
+    }
+
+    /// Opens the panel on the Keep Awake tab under `icon` (its mark in the
+    /// menu bar), or closes it when it is open on that tab already.
+    pub fn toggle_keep_awake_at(&self, icon: Rect) {
+        let on_tab = self
+            .existing()
+            .is_some_and(|window| window.get_tab() == KEEP_AWAKE_TAB);
+        if self.is_open() {
+            self.close();
+            if on_tab {
+                return;
+            }
+        }
+        self.tab.set(KEEP_AWAKE_TAB);
+        if let Some(window) = self.existing() {
+            window.set_tab(KEEP_AWAKE_TAB);
+        }
+        self.open_at(icon);
     }
 
     /// Opens the panel under `icon` (the menu-bar icon's frame, global
@@ -845,6 +934,10 @@ impl PanelController {
         // Also lists the recent folders as they are now.
         self.show_settings();
         self.show_menu_colors(&window);
+        self.show_awake();
+        let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
+        window.set_awake_until_hour(hour.into());
+        window.set_awake_until_minute(minute.into());
         let height = f64::from(window.get_window_height());
         let Placement { x, y, arrow_x } = panel_position(icon, height, &self.platform.screens());
         window.set_arrow_x(arrow_x as f32);
@@ -1138,6 +1231,27 @@ fn key_char(code: KeyCode) -> Option<char> {
         (KeyCode::Digit9, '9'),
     ];
     KEYS.iter().find(|(k, _)| *k == code).map(|(_, c)| *c)
+}
+
+/// The Keep Awake chip at `i` of the tab (see `KeepAwakeTab`): the timed
+/// ones, then ∞. `None` for Until…, which asks for its time first.
+fn chip_at(i: i32) -> Option<Chip> {
+    let i = usize::try_from(i).ok()?;
+    match TIMED_CHIPS.get(i) {
+        Some(&length) => Some(Chip::For(length)),
+        None if i == TIMED_CHIPS.len() => Some(Chip::Forever),
+        None => None,
+    }
+}
+
+/// Where `chip` is in the tab; -1 for a timed one it does not show.
+fn chip_index(chip: Chip) -> i32 {
+    let index = match chip {
+        Chip::For(length) => TIMED_CHIPS.iter().position(|&l| l == length),
+        Chip::Forever => Some(TIMED_CHIPS.len()),
+        Chip::Until { .. } => Some(TIMED_CHIPS.len() + 1),
+    };
+    index.and_then(|i| i32::try_from(i).ok()).unwrap_or(-1)
 }
 
 /// How the platform writes the shortcut `spec`: symbols (`⌃⌥P`) on a Mac,
@@ -1573,6 +1687,22 @@ mod tests {
             panic!("P is a combination");
         };
         assert!(parse_shortcut(&bare).is_none());
+    }
+
+    #[test]
+    fn keep_awake_chips_and_their_places_match() {
+        for i in 0..7 {
+            let chip = chip_at(i).unwrap();
+            assert_eq!(chip_index(chip), i);
+        }
+        assert_eq!(chip_at(2), Some(Chip::For(Duration::from_secs(60 * 60))));
+        assert_eq!(chip_at(6), Some(Chip::Forever));
+        // Until… asks for its time first; nothing past it.
+        assert_eq!(chip_at(7), None);
+        assert_eq!(chip_at(8), None);
+        assert_eq!(chip_at(-1), None);
+        assert_eq!(chip_index(Chip::Until { hour: 7, minute: 0 }), 7);
+        assert_eq!(chip_index(Chip::For(Duration::from_secs(1))), -1);
     }
 
     #[test]

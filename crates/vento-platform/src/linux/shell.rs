@@ -24,7 +24,7 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 6;
+const API_VERSION: u32 = 7;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -280,6 +280,16 @@ pub(super) fn menu_colors() -> Option<MenuColors> {
         border: parse_color(&border)?,
         text: parse_color(&text)?,
     })
+}
+
+/// Shows or hides the Keep Awake cup in the top bar.
+pub(super) fn show_awake_indicator(shown: bool) {
+    let Ok(bus) = super::session_bus() else {
+        return;
+    };
+    if let Err(e) = call(&bus, "ShowAwakeIndicator", Some(&(shown,).to_variant())) {
+        log::warn!("cannot show the Keep Awake cup: {e}");
+    }
 }
 
 /// `#rrggbbaa`, as Cogl writes a colour, or `#rrggbb` (opaque).

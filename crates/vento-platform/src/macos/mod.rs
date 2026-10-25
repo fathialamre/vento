@@ -16,10 +16,12 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
 use crate::{
-    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, TerminalApp,
+    AppInfo, AwakeHold, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage,
+    TerminalApp,
 };
 
 mod apps;
+mod awake;
 mod catcher;
 mod clicks;
 mod clipboard;
@@ -63,6 +65,8 @@ pub struct MacPlatform {
     suspended_menu: RefCell<Option<Option<Retained<NSMenu>>>>,
     /// The watch [`Platform::watch_outside_clicks`] runs, while it runs.
     outside_clicks: RefCell<Option<clicks::ClickMonitor>>,
+    /// Keep Awake's power assertion.
+    awake: awake::Assertion,
 }
 
 impl Default for MacPlatform {
@@ -80,11 +84,17 @@ impl MacPlatform {
             previous_app: RefCell::new(None),
             suspended_menu: RefCell::new(None),
             outside_clicks: RefCell::new(None),
+            awake: awake::Assertion::default(),
         }
     }
 }
 
 impl Platform for MacPlatform {
+    /// An IOKit power assertion, as Amphetamine does.
+    fn keep_awake(&self, hold: Option<AwakeHold>) -> Result<(), PlatformError> {
+        self.awake.set(hold)
+    }
+
     fn prepare_app(&self) {
         let Some(mtm) = MainThreadMarker::new() else {
             log::warn!("prepare_app called off the main thread; ignored");

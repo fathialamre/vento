@@ -16,11 +16,12 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
 use crate::{
-    AppInfo, DropCatcher, IslandHome, MenuColors, MenuEntry, Platform, PlatformError, RgbaImage,
-    StubPlatform, TerminalApp,
+    AppInfo, AwakeHold, DropCatcher, IslandHome, MenuColors, MenuEntry, Platform, PlatformError,
+    RgbaImage, StubPlatform, TerminalApp,
 };
 
 mod apps;
+mod awake;
 mod catcher;
 mod clip_owner;
 mod clipboard;
@@ -76,6 +77,10 @@ pub struct LinuxPlatform {
     on_terminate: RefCell<Option<terminate::Handler>>,
     /// Runs when another launch asks this Vento to open.
     on_reopen: RefCell<Option<terminate::Handler>>,
+    /// Keep Awake's inhibitor.
+    awake: awake::Inhibitor,
+    /// Runs when the Keep Awake cup is clicked.
+    on_awake_indicator: RefCell<Option<instance::FrameHandler>>,
 }
 
 impl Default for LinuxPlatform {
@@ -96,6 +101,8 @@ impl LinuxPlatform {
             catcher: OnceCell::new(),
             on_terminate: RefCell::new(None),
             on_reopen: RefCell::new(None),
+            awake: awake::Inhibitor::default(),
+            on_awake_indicator: RefCell::new(None),
         }
     }
 
@@ -145,6 +152,11 @@ impl Platform for LinuxPlatform {
             && let Some(handler) = self.on_reopen.borrow().as_ref()
         {
             (handler.0)();
+        }
+        if let Some(frame) = instance::awake_indicator_clicked()
+            && let Some(handler) = self.on_awake_indicator.borrow().as_ref()
+        {
+            (handler.0)(frame);
         }
         match self.shell.state() {
             Some(state) => shell::to_sample(&state),
@@ -326,6 +338,22 @@ impl Platform for LinuxPlatform {
     fn on_terminate(&self, f: Box<dyn Fn()>) {
         *self.on_terminate.borrow_mut() = Some(terminate::Handler(f));
         terminate::listen();
+    }
+
+    /// GNOME's session manager, as Caffeine does.
+    fn keep_awake(&self, hold: Option<AwakeHold>) -> Result<(), PlatformError> {
+        self.awake.set(hold)
+    }
+
+    /// Drawn by the Vento extension, left of Vento's tray icon.
+    fn show_awake_indicator(&self, shown: bool) {
+        shell::show_awake_indicator(shown);
+    }
+
+    /// The extension asks through Vento's own bus name (see
+    /// `claim_instance`); handed on from the next input sample.
+    fn on_awake_indicator(&self, f: Box<dyn Fn(Rect)>) {
+        *self.on_awake_indicator.borrow_mut() = Some(instance::FrameHandler(f));
     }
 
     /// GNOME Shell's theme, as it styles the top bar's menus.

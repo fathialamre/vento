@@ -57,6 +57,13 @@ pub struct IslandHome {
     pub slot: Option<Rect>,
 }
 
+/// How [`Platform::keep_awake`] holds the computer awake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AwakeHold {
+    /// The screen stays on too: it does not dim, blank or lock.
+    pub screen: bool,
+}
+
 /// The colours the desktop's own menus use (GNOME Shell's theme), each
 /// RGBA8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,6 +295,26 @@ pub trait Platform {
     /// Run `f` when vento is launched again while it runs (the app grid,
     /// a second start at login). Main thread only.
     fn on_reopen(&self, f: Box<dyn Fn()>) {
+        let _ = f;
+    }
+    /// Keeps the computer from sleeping while idle, and the screen on too
+    /// when `hold.screen`, until called again; `None` lets it sleep as
+    /// usual again. Replaces any earlier hold, which ends with the process
+    /// in any case. Main thread only.
+    fn keep_awake(&self, hold: Option<AwakeHold>) -> Result<(), PlatformError> {
+        let _ = hold;
+        Err(PlatformError::Unsupported)
+    }
+    /// Shows or hides a Keep Awake mark that the desktop draws in its top
+    /// bar (GNOME's, through the Vento extension); a click on it runs the
+    /// [`Platform::on_awake_indicator`] handler. Where the app draws its own
+    /// (a menu-bar icon on the Mac), nothing. Main thread only.
+    fn show_awake_indicator(&self, shown: bool) {
+        let _ = shown;
+    }
+    /// Run `f` with the mark's frame, in global logical points, when it is
+    /// clicked. Replaces any earlier `f`. Main thread only.
+    fn on_awake_indicator(&self, f: Box<dyn Fn(Rect)>) {
         let _ = f;
     }
     /// The colours the desktop's own menus use, for vento's panel to match;

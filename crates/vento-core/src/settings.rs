@@ -45,6 +45,9 @@ pub struct Settings {
     /// Global shortcut that starts Copy from screen, in the same form as
     /// [`Settings::pocket_shortcut`].
     pub screen_text_shortcut: String,
+    /// Whether Keep Awake lets the screen dim, blank and lock as usual,
+    /// keeping only the system awake.
+    pub keep_awake_screen_off: bool,
     /// Folders pinned to the move ring, in order (unique, at most
     /// [`MAX_PINNED`]).
     pub pinned_folders: Vec<PathBuf>,
@@ -108,6 +111,7 @@ impl Default for Settings {
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
             screen_text_shortcut: default_screen_text_shortcut(),
+            keep_awake_screen_off: false,
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
@@ -133,6 +137,7 @@ struct RawSettings {
     clipboard_history: bool,
     clipboard_shortcut: String,
     screen_text_shortcut: String,
+    keep_awake_screen_off: bool,
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
@@ -160,6 +165,7 @@ impl From<&Settings> for RawSettings {
             clipboard_history: s.clipboard_history,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
             screen_text_shortcut: s.screen_text_shortcut.clone(),
+            keep_awake_screen_off: s.keep_awake_screen_off,
             pinned_folders: s.pinned_folders.clone(),
             move_hold_ms: s.move_hold_ms,
             hidden_actions: s
@@ -230,6 +236,7 @@ impl From<RawSettings> for Settings {
             clipboard_history: raw.clipboard_history,
             clipboard_shortcut: raw.clipboard_shortcut,
             screen_text_shortcut: raw.screen_text_shortcut,
+            keep_awake_screen_off: raw.keep_awake_screen_off,
             pinned_folders,
             move_hold_ms,
             hidden_actions,
@@ -580,6 +587,19 @@ mod tests {
         let s = Settings {
             clipboard_history: false,
             clipboard_shortcut: "cmd+shift+c".into(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn keep_awake_keeps_the_screen_on_unless_saved_otherwise() {
+        assert!(!Settings::default().keep_awake_screen_off);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            keep_awake_screen_off: true,
             ..Settings::default()
         };
         s.save(&p).unwrap();

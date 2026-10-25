@@ -2,6 +2,7 @@
 
 pub mod actions;
 pub mod archive;
+pub mod awake;
 pub mod clip;
 pub mod clip_history;
 pub mod clip_store;
