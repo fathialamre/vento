@@ -17,14 +17,14 @@ use gio::prelude::*;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 
-use crate::MenuEntry;
+use crate::{MenuColors, MenuEntry};
 
 const BUS_NAME: &str = "org.vento.Shell1";
 const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 5;
+const API_VERSION: u32 = 6;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -263,6 +263,34 @@ pub(super) fn tray_icon_frame(id: &str) -> Option<Rect> {
     call(&bus, "TrayIconFrame", Some(&(id,).to_variant()))
         .ok()
         .and_then(|r| parse_slot(&r))
+}
+
+/// The colours GNOME Shell's theme gives its menus; `None` when the
+/// extension cannot tell.
+pub(super) fn menu_colors() -> Option<MenuColors> {
+    let bus = super::session_bus().ok()?;
+    let reply = call(&bus, "MenuColors", None).ok()?;
+    let (known, background, border, text): (bool, String, String, String) =
+        reply.try_child_value(0)?.get()?;
+    if !known {
+        return None;
+    }
+    Some(MenuColors {
+        background: parse_color(&background)?,
+        border: parse_color(&border)?,
+        text: parse_color(&text)?,
+    })
+}
+
+/// `#rrggbbaa`, as Cogl writes a colour, or `#rrggbb` (opaque).
+fn parse_color(text: &str) -> Option<[u8; 4]> {
+    let hex = text.strip_prefix('#')?;
+    if !matches!(hex.len(), 6 | 8) || !hex.is_ascii() {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    let alpha = if hex.len() == 8 { byte(6)? } else { 255 };
+    Some([byte(0)?, byte(2)?, byte(4)?, alpha])
 }
 
 /// X11 pixels per logical pixel, given both widths of the screens. GNOME
@@ -744,6 +772,16 @@ mod tests {
             child.get().unwrap();
         assert_eq!((kind.as_str(), id, title.as_str()), ("item", 7, "Files"));
         assert!(icon.ends_with("org.gnome.Nautilus.desktop"));
+    }
+
+    #[test]
+    fn colours_are_read_as_cogl_writes_them() {
+        assert_eq!(parse_color("#36363aff"), Some([0x36, 0x36, 0x3a, 0xff]));
+        assert_eq!(parse_color("#ededed"), Some([0xed, 0xed, 0xed, 0xff]));
+        assert_eq!(parse_color("#00000080"), Some([0, 0, 0, 0x80]));
+        for bad in ["", "#", "ededed", "#ededе", "#edededf", "#gggggg"] {
+            assert_eq!(parse_color(bad), None, "{bad:?}");
+        }
     }
 
     #[test]

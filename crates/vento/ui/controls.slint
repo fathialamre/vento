@@ -166,7 +166,7 @@ export component MenuField inherits Rectangle {
 
     height: 28px;
     border-radius: 8px;
-    background: touch.has-hover ? Theme.selected : Theme.surface;
+    background: touch.has-hover ? Theme.hover : Theme.surface;
     accessible-role: combobox;
     accessible-label: self.label;
     accessible-value: self.valid ? self.items[self.current] : "";
@@ -414,7 +414,7 @@ component StepButton inherits Rectangle {
     width: 24px;
     height: 24px;
     border-radius: 6px;
-    background: self.enabled && touch.has-hover ? Theme.selected : Theme.surface;
+    background: self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
     accessible-role: button;
     accessible-label: self.label;
     accessible-enabled: self.enabled;
@@ -493,7 +493,7 @@ export component ShortcutField inherits Rectangle {
 
     height: 28px;
     border-radius: 8px;
-    background: self.recording || (self.enabled && touch.has-hover) ? Theme.selected : Theme.surface;
+    background: self.recording || (self.enabled && touch.has-hover) ? Theme.hover : Theme.surface;
     border-width: self.recording ? 2px : 0px;
     border-color: Theme.accent;
     accessible-role: button;

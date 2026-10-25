@@ -57,6 +57,25 @@ pub struct IslandHome {
     pub slot: Option<Rect>,
 }
 
+/// The colours the desktop's own menus use (GNOME Shell's theme), each
+/// RGBA8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MenuColors {
+    pub background: [u8; 4],
+    /// The menus' edge.
+    pub border: [u8; 4],
+    pub text: [u8; 4],
+}
+
+impl MenuColors {
+    /// Whether the menus are dark: their background is darker than mid
+    /// grey (relative luminance, as WCAG weighs the channels).
+    pub fn is_dark(&self) -> bool {
+        let [r, g, b, _] = self.background.map(f64::from);
+        0.2126 * r + 0.7152 * g + 0.0722 * b < 127.5
+    }
+}
+
 /// An RGBA8 image, not premultiplied, rows top to bottom.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RgbaImage {
@@ -270,6 +289,11 @@ pub trait Platform {
     /// a second start at login). Main thread only.
     fn on_reopen(&self, f: Box<dyn Fn()>) {
         let _ = f;
+    }
+    /// The colours the desktop's own menus use, for vento's panel to match;
+    /// `None` where it keeps its own. Asked each time the panel opens.
+    fn menu_colors(&self) -> Option<MenuColors> {
+        None
     }
     /// Bring vento to the front so a window of its own can take keystrokes.
     /// Main thread only.
@@ -562,5 +586,25 @@ pub fn current() -> Rc<dyn Platform> {
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         Rc::new(StubPlatform)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menus_are_dark_when_their_background_is() {
+        let menus = |background| MenuColors {
+            background,
+            border: [0; 4],
+            text: [0; 4],
+        };
+        // Yaru's menus, light and dark.
+        assert!(!menus([0xff, 0xff, 0xff, 0xff]).is_dark());
+        assert!(menus([0x36, 0x36, 0x3a, 0xff]).is_dark());
+        // Green weighs most: a bright green is light, a bright blue dark.
+        assert!(!menus([0, 0xc0, 0, 0xff]).is_dark());
+        assert!(menus([0, 0, 0xff, 0xff]).is_dark());
     }
 }

@@ -40,7 +40,7 @@ use vento_platform::{Platform, TerminalApp};
 use crate::lazy_window::LazyWindow;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
-use crate::ui::{ActionRow, FolderRow, Icons, SettingsPanel};
+use crate::ui::{ActionRow, FolderRow, Icons, SettingsPanel, Theme};
 use crate::wheel::action_icon;
 
 /// Panel width in logical points (matches `settings.slint`).
@@ -657,6 +657,22 @@ impl PanelController {
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
     }
 
+    /// Matches the desktop's own menus where the platform gives their
+    /// colours, as they are now: a theme change shows at the next open.
+    fn show_menu_colors(&self, window: &SettingsPanel) {
+        let theme = window.global::<Theme>();
+        let Some(colors) = self.platform.menu_colors() else {
+            theme.set_system_colors(false);
+            return;
+        };
+        let color = |[r, g, b, a]: [u8; 4]| slint::Color::from_argb_u8(a, r, g, b);
+        theme.set_system_bg(color(colors.background));
+        theme.set_system_border(color(colors.border));
+        theme.set_system_text(color(colors.text));
+        theme.set_system_dark(colors.is_dark());
+        theme.set_system_colors(true);
+    }
+
     /// Lists the pinned folders (a missing one too, dimmed, so it can be
     /// unpinned) and the recent ones the ring would show now.
     fn show_folders(&self, window: &SettingsPanel, settings: &Settings) {
@@ -828,6 +844,7 @@ impl PanelController {
         self.load_terminals(&window);
         // Also lists the recent folders as they are now.
         self.show_settings();
+        self.show_menu_colors(&window);
         let height = f64::from(window.get_window_height());
         let Placement { x, y, arrow_x } = panel_position(icon, height, &self.platform.screens());
         window.set_arrow_x(arrow_x as f32);

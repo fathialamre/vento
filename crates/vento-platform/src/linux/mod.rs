@@ -16,8 +16,8 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
 use crate::{
-    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, StubPlatform,
-    TerminalApp,
+    AppInfo, DropCatcher, IslandHome, MenuColors, MenuEntry, Platform, PlatformError, RgbaImage,
+    StubPlatform, TerminalApp,
 };
 
 mod apps;
@@ -326,6 +326,11 @@ impl Platform for LinuxPlatform {
     fn on_terminate(&self, f: Box<dyn Fn()>) {
         *self.on_terminate.borrow_mut() = Some(terminate::Handler(f));
         terminate::listen();
+    }
+
+    /// GNOME Shell's theme, as it styles the top bar's menus.
+    fn menu_colors(&self) -> Option<MenuColors> {
+        shell::menu_colors()
     }
 
     /// When another launch asks this Vento to open (see `claim_instance`),

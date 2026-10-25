@@ -1,27 +1,47 @@
 // The settings panel's colours, dark or light with the system appearance.
 // Orange is the accent in both; the wheel and the Pocket keep their own
-// dark look.
+// dark look. Where the platform gives the colours of the desktop's own
+// menus (GNOME Shell's theme), the panel takes its background, edge and
+// text from them, is dark when they are, and makes its other greys as the
+// shell does: its text, faint, over its background.
 
 import { Palette } from "std-widgets.slint";
 
 export global Theme {
-    in-out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    in property <bool> system-colors: false;
+    in property <bool> system-dark;
+    in property <color> system-bg;
+    in property <color> system-border;
+    in property <color> system-text;
 
-    out property <color> bg: root.dark ? #1f1f22 : #f1f9fa;
-    out property <color> surface: root.dark ? #2b2b2f : #e2eaec;
+    in-out property <bool> dark: root.system-colors ? root.system-dark : Palette.color-scheme == ColorScheme.dark;
+
+    // The system text at `amount` over the system background, opaque.
+    pure function tint(amount: float) -> color {
+        root.system-text.mix(root.system-bg, amount)
+    }
+
+    out property <color> bg: root.system-colors ? root.system-bg : root.dark ? #1f1f22 : #f1f9fa;
+    // A field or button at rest, and a flat control under the pointer (the
+    // shell's hover).
+    out property <color> surface: root.system-colors ? root.tint(0.1) : root.dark ? #2b2b2f : #e2eaec;
+    // A field or button under the pointer (the shell's pressed).
+    out property <color> hover: root.system-colors ? root.tint(0.15) : root.selected;
     // A raised card on the panel (the tab bar), a shade lighter than `bg`
     // with a hairline edge.
-    out property <color> card: root.dark ? #2b2b2f : #f6fbfc;
-    out property <color> card-border: root.dark ? #ffffff14 : #e4e9e9;
+    out property <color> card: root.system-colors ? root.tint(0.05) : root.dark ? #2b2b2f : #f6fbfc;
+    out property <color> card-border: root.system-colors ? root.tint(0.1) : root.dark ? #ffffff14 : #e4e9e9;
     // The chosen tab: the accent, faint.
     out property <color> accent-soft: root.dark ? #ff6a1a33 : #ff6a1a1f;
-    out property <color> selected: root.dark ? #3a3a40 : #ffffff;
-    out property <color> text: root.dark ? #f2f2f3 : #1d1d1f;
-    out property <color> muted: root.dark ? #9a9aa2 : #6e6e73;
-    out property <color> separator: root.dark ? #ffffff14 : #0000000f;
+    // The chosen item of a segmented control, a dropdown's list, a row
+    // being dragged: raised above `surface`.
+    out property <color> selected: root.system-colors ? (root.system-dark ? root.tint(0.2) : root.system-bg) : root.dark ? #3a3a40 : #ffffff;
+    out property <color> text: root.system-colors ? root.system-text : root.dark ? #f2f2f3 : #1d1d1f;
+    out property <color> muted: root.system-colors ? root.tint(0.6) : root.dark ? #9a9aa2 : #6e6e73;
+    out property <color> separator: root.system-colors ? root.tint(root.system-dark ? 0.1 : 0.15) : root.dark ? #ffffff14 : #0000000f;
     // The hairline around the panel and its arrow.
-    out property <color> border: root.dark ? #ffffff1f : #0000001a;
-    out property <color> switch-off: root.dark ? #4a4a50 : #c9c9ce;
+    out property <color> border: root.system-colors ? root.system-border : root.dark ? #ffffff1f : #0000001a;
+    out property <color> switch-off: root.system-colors ? root.tint(0.22) : root.dark ? #4a4a50 : #c9c9ce;
     out property <color> danger: root.dark ? #ff7b72 : #d93a2f;
     out property <color> accent: #ff6a1a;
 }

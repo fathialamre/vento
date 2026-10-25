@@ -20,7 +20,7 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 5;
+const API_VERSION = 6;
 
 // Vento's StatusNotifierItem Id, by which its tray icon is found.
 const TRAY_ID = 'vento';
@@ -98,6 +98,11 @@ const IFACE = `
     <method name="TrayIconFrame">
       <arg type="s" direction="in" name="id"/>
       <arg type="(biiii)" direction="out" name="frame"/>
+    </method>
+    <!-- The colours the shell's theme gives its menus, as #rrggbbaa:
+         background, edge and text; false when it cannot tell -->
+    <method name="MenuColors">
+      <arg type="(bsss)" direction="out" name="colors"/>
     </method>
     <method name="EndStartup">
       <arg type="s" direction="in" name="token"/>
@@ -330,6 +335,29 @@ class Service {
         const [x, y] = icon.get_transformed_position();
         const [w, h] = icon.get_transformed_size();
         return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    }
+
+    MenuColors() {
+        // A menu built as the top bar's are and never shown, so the
+        // theme's rules for those apply to it.
+        const menu = new St.BoxLayout({style_class: 'popup-menu', visible: false});
+        const content = new St.BoxLayout({style_class: 'popup-menu-content'});
+        menu.add_child(content);
+        Main.uiGroup.add_child(menu);
+        try {
+            const node = content.get_theme_node();
+            return [
+                true,
+                node.get_background_color().to_string(),
+                node.get_border_color(St.Side.TOP).to_string(),
+                node.get_foreground_color().to_string(),
+            ];
+        } catch (e) {
+            logError(e, 'Vento: cannot read the menu colours');
+            return [false, '', '', ''];
+        } finally {
+            menu.destroy();
+        }
     }
 
     EndStartup(token) {
