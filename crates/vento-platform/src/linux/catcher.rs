@@ -412,6 +412,8 @@ pub(super) struct LinuxCatcher {
     handler: RefCell<Option<Handler>>,
     /// Counts shows and hides, so a late hide never undoes a newer show.
     generation: Arc<AtomicU64>,
+    /// The X11 screen's width, to tell X11 pixels from logical ones.
+    root_width: u16,
 }
 
 impl std::fmt::Debug for LinuxCatcher {
@@ -487,12 +489,14 @@ impl LinuxCatcher {
             .name("vento-drop-catcher".into())
             .spawn(move || target.serve())
             .map_err(|e| failed(&e))?;
+        let root_width = conn.setup().roots[screen].width_in_pixels;
         Ok(Self {
             conn,
             window,
             events,
             handler: RefCell::new(None),
             generation: Arc::new(AtomicU64::new(0)),
+            root_width,
         })
     }
 
@@ -511,14 +515,14 @@ impl LinuxCatcher {
 }
 
 impl DropCatcher for LinuxCatcher {
-    /// `rect` is taken as X11 coordinates, which XWayland makes logical
-    /// ones, as the rest of vento's X11 code does.
+    /// `rect` is logical; XWayland may count more pixels to the point.
     fn show(&self, rect: Rect) {
+        let scale = super::shell::x11_scale(self.root_width);
         let aux = ConfigureWindowAux::new()
-            .x(rect.x.round() as i32)
-            .y(rect.y.round() as i32)
-            .width(rect.w.round().max(1.0) as u32)
-            .height(rect.h.round().max(1.0) as u32)
+            .x((rect.x * scale).round() as i32)
+            .y((rect.y * scale).round() as i32)
+            .width((rect.w * scale).round().max(1.0) as u32)
+            .height((rect.h * scale).round().max(1.0) as u32)
             .stack_mode(StackMode::ABOVE);
         self.generation.fetch_add(1, Ordering::SeqCst);
         let _ = self.conn.configure_window(self.window, &aux);

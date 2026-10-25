@@ -1054,6 +1054,11 @@ impl PocketController {
             self.set_view(View::Pocket);
         }
         let f = self.island_frames().unwrap_or(f);
+        self.window.set_bar_hover(
+            home.slot.is_some()
+                && after == Presence::Collapsed
+                && geometry::contains(&f.collapsed, sample.cursor),
+        );
         if !self.shape_input(after) {
             let inside = hits(&f, after, sample.cursor);
             if changed || inside != self.hittest.get() {

@@ -50,6 +50,10 @@ pub struct IslandHome {
     pub notch: Option<Rect>,
     /// Height of the menu bar on that screen.
     pub menu_bar_h: f64,
+    /// Room kept free in the menu bar for the collapsed island (GNOME's top
+    /// bar keeps some for it); the island then sits there, as beside a
+    /// notch, rather than in the middle of the screen.
+    pub slot: Option<Rect>,
 }
 
 /// An RGBA8 image, not premultiplied, rows top to bottom.

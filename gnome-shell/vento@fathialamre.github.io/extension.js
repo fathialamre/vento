@@ -8,6 +8,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
+import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -16,7 +17,11 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 1;
+const API_VERSION = 2;
+
+// The room kept in the top bar for the Pocket island: its two wings and the
+// gap between them.
+const SLOT_WIDTH = 96;
 
 // Clutter.ModifierType.BUTTON1_MASK.
 const BUTTON1 = 1 << 8;
@@ -58,6 +63,16 @@ const IFACE = `
       <arg type="u" direction="in" name="pid"/>
       <arg type="b" direction="out" name="done"/>
     </method>
+    <!-- Keep room in the top bar for the Pocket island, after the clock,
+         while the caller stays on the bus -->
+    <method name="ReserveIsland">
+      <arg type="b" direction="in" name="reserve"/>
+    </method>
+    <!-- Whether the room is there, and its x y w h; it moving bumps the
+         monitors serial -->
+    <method name="IslandSlot">
+      <arg type="(biiii)" direction="out" name="slot"/>
+    </method>
   </interface>
 </node>`;
 
@@ -86,6 +101,8 @@ class Service {
         this._clipSerial = 0;
         this._monitorsSerial = 0;
         this._previousWindow = null;
+        this._slot = null;
+        this._slotWatch = 0;
     }
 
     Version() {
@@ -164,6 +181,56 @@ class Service {
         return true;
     }
 
+    ReserveIslandAsync([reserve], invocation) {
+        if (reserve)
+            this._reserve(invocation.get_sender());
+        else
+            this.release();
+        invocation.return_value(null);
+    }
+
+    IslandSlot() {
+        const slot = this._slot;
+        if (!slot || !slot.get_stage())
+            return [false, 0, 0, 0, 0];
+        const [x, y] = slot.get_transformed_position();
+        const [w, h] = slot.get_transformed_size();
+        return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    }
+
+    /** Puts the room after the clock, for as long as `owner` is on the bus. */
+    _reserve(owner) {
+        if (this._slot)
+            return;
+        const slot = new St.Widget({width: SLOT_WIDTH, y_expand: true, reactive: false});
+        const box = Main.panel._centerBox;
+        const clock = Main.panel.statusArea.dateMenu?.container;
+        if (clock && clock.get_parent() === box)
+            box.insert_child_above(slot, clock);
+        else
+            box.add_child(slot);
+        // The clock's width changes with the time: Vento moves the island.
+        slot.connectObject('notify::allocation', () => this.monitorsChanged(), this);
+        this._slot = slot;
+        this._slotWatch = Gio.bus_watch_name(Gio.BusType.SESSION, owner,
+            Gio.BusNameWatcherFlags.NONE, null, () => this.release());
+        this.monitorsChanged();
+    }
+
+    /** Gives the room back. */
+    release() {
+        if (this._slotWatch) {
+            Gio.bus_unwatch_name(this._slotWatch);
+            this._slotWatch = 0;
+        }
+        if (this._slot) {
+            this._slot.disconnectObject(this);
+            this._slot.destroy();
+            this._slot = null;
+            this.monitorsChanged();
+        }
+    }
+
     dragStarted() {
         const types = global.display.get_selection()
             .get_mimetypes(Meta.SelectionType.SELECTION_DND);
@@ -220,6 +287,7 @@ export default class VentoExtension extends Extension {
         global.display.get_selection().disconnectObject(this);
         Main.layoutManager.disconnectObject(this);
         global.display.disconnectObject(this);
+        this._service.release();
         Gio.bus_unown_name(this._nameId);
         this._dbus.unexport();
         this._dbus = null;

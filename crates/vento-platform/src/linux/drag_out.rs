@@ -239,6 +239,8 @@ struct Drag {
     /// The compositor's own XDND window, which stands for the Wayland
     /// window under the pointer; see [`compositor_drop_window`].
     compositor: Option<u32>,
+    /// X11 pixels per logical pixel: the extension's pointer is logical.
+    scale: f64,
 }
 
 impl Drag {
@@ -339,10 +341,7 @@ impl Drag {
             self.accepted
         );
         self.ungrab(time);
-        let at = Point {
-            x: f64::from(x),
-            y: f64::from(y),
-        };
+        let at = self.logical(x, y);
         match self.target {
             Some((_, to)) if self.accepted => {
                 self.send(to, self.atoms.drop, [self.source, 0, time, 0, 0]);
@@ -403,13 +402,30 @@ impl Drag {
     }
 
     /// Runs the drag until it is dropped or cancelled.
+    /// The logical point `p` in X11 root coordinates.
+    fn x11(&self, p: Point) -> (i16, i16) {
+        (
+            (p.x * self.scale).round() as i16,
+            (p.y * self.scale).round() as i16,
+        )
+    }
+
+    /// The X11 root point (`x`, `y`) as a logical one.
+    fn logical(&self, x: i16, y: i16) -> Point {
+        Point {
+            x: f64::from(x) / self.scale,
+            y: f64::from(y) / self.scale,
+        }
+    }
+
     fn run(mut self) -> DragEnd {
-        let at = |x: i16, y: i16| Point {
-            x: f64::from(x),
-            y: f64::from(y),
+        let scale = self.scale;
+        let at = move |x: i16, y: i16| Point {
+            x: f64::from(x) / scale,
+            y: f64::from(y) / scale,
         };
         let (mut x, mut y) = match super::shell::pointer_now() {
-            Some((_, p)) => (p.x as i16, p.y as i16),
+            Some((_, p)) => self.x11(p),
             None => (0, 0),
         };
         self.moved(x, y, CURRENT_TIME);
@@ -445,13 +461,13 @@ impl Drag {
                 match super::shell::pointer_now() {
                     Some((true, p)) => {
                         silent_since = None;
-                        if (p.x as i16, p.y as i16) != (x, y) {
-                            (x, y) = (p.x as i16, p.y as i16);
+                        if self.x11(p) != (x, y) {
+                            (x, y) = self.x11(p);
                             self.moved(x, y, CURRENT_TIME);
                         }
                     }
                     Some((false, p)) => {
-                        (x, y) = (p.x as i16, p.y as i16);
+                        (x, y) = self.x11(p);
                         match self.released(x, y, CURRENT_TIME) {
                             Some(end) => return end,
                             None => dropped_since = Some(Instant::now()),
@@ -559,7 +575,8 @@ fn begin(data: Vec<u8>, image: Option<&RgbaImage>) -> Result<Drag, String> {
         picture.draw(&conn);
     }
     let compositor = compositor_drop_window(&conn, root, &atoms);
-    log::debug!("drag out: compositor drop window {compositor:x?}");
+    let scale = super::shell::x11_scale(conn.setup().roots[screen].width_in_pixels);
+    log::debug!("drag out: compositor drop window {compositor:x?}, scale {scale}");
     Ok(Drag {
         conn,
         atoms,
@@ -570,6 +587,7 @@ fn begin(data: Vec<u8>, image: Option<&RgbaImage>) -> Result<Drag, String> {
         accepted: false,
         picture,
         compositor,
+        scale,
     })
 }
 

@@ -80,16 +80,28 @@ pub(super) fn top_height(home: &IslandHome) -> f64 {
 }
 
 /// Every shape is centred on the screen, as the window is; the notch sits in
-/// the middle of its screen (to within half a point). Showing the Pocket, the
+/// the middle of its screen (to within half a point). With room kept for it
+/// in the menu bar (a slot), the island fills that room as it would sit
+/// around a notch, and every shape is centred on the slot. Showing the Pocket, the
 /// expanded island widens to fit `count` items, up to the screen's width less
 /// a margin; the row scrolls if that is still too narrow. Showing the
 /// Clipboard, it keeps the width of an empty Pocket and is taller.
 pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
     let screen = home.screen;
-    let mid = screen.x + screen.w / 2.0;
     let top_h = top_height(home);
-    let notch_w = home.notch.map_or(0.0, |n| n.w);
-    let collapsed = if home.notch.is_some() {
+    let (mid, notch_w, notch_style) = match home.slot {
+        Some(slot) => (
+            slot.x + slot.w / 2.0,
+            (slot.w - 2.0 * WING_W).max(0.0),
+            true,
+        ),
+        None => (
+            screen.x + screen.w / 2.0,
+            home.notch.map_or(0.0, |n| n.w),
+            home.notch.is_some(),
+        ),
+    };
+    let collapsed = if notch_style {
         let w = notch_w + 2.0 * WING_W;
         Rect {
             x: mid - w / 2.0,
@@ -129,7 +141,7 @@ pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
         h: top_h + panel_h,
     };
     Frames {
-        notch_style: home.notch.is_some(),
+        notch_style,
         notch_w,
         top_h,
         collapsed,
@@ -242,6 +254,7 @@ mod tests {
             screen: rect(0.0, 0.0, 1512.0, 982.0),
             notch: Some(rect((1512.0 - notch_w) / 2.0, 0.0, notch_w, 32.0)),
             menu_bar_h,
+            slot: None,
         }
     }
 
@@ -250,7 +263,24 @@ mod tests {
             screen: rect(0.0, 0.0, 1440.0, 900.0),
             notch: None,
             menu_bar_h,
+            slot: None,
         }
+    }
+
+    #[test]
+    fn a_slot_in_the_top_bar_holds_the_island() {
+        // GNOME: a 96-wide slot right of the clock in a 32-high top bar.
+        let home = IslandHome {
+            slot: Some(rect(1060.0, 0.0, 96.0, 32.0)),
+            ..plain(32.0)
+        };
+        let f = frames(&home, 2, OFF);
+        assert!(f.notch_style);
+        assert_eq!(f.notch_w, 8.0);
+        assert_eq!(f.collapsed, rect(1060.0, 0.0, 96.0, 32.0));
+        // Centred on the slot, not on the screen.
+        assert_eq!(f.expanded.x + f.expanded.w / 2.0, 1108.0);
+        assert_eq!(f.expanded.y, 0.0);
     }
 
     #[test]

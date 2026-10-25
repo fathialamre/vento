@@ -22,7 +22,7 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 1;
+const API_VERSION: u32 = 2;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -87,6 +87,18 @@ fn parse_state(reply: &glib::Variant) -> Option<ShellState> {
         drag_cancelled,
         clip_serial: clip,
         monitors_serial: monitors,
+    })
+}
+
+/// `IslandSlot()`'s `(biiii)`: the room kept for the island in the top bar,
+/// if it is there.
+fn parse_slot(reply: &glib::Variant) -> Option<Rect> {
+    let (shown, x, y, w, h): (bool, i32, i32, i32, i32) = reply.try_child_value(0)?.get()?;
+    (shown && w > 0 && h > 0).then(|| Rect {
+        x: f64::from(x),
+        y: f64::from(y),
+        w: f64::from(w),
+        h: f64::from(h),
     })
 }
 
@@ -165,6 +177,34 @@ pub(super) fn pointer_now() -> Option<(bool, Point)> {
 }
 
 /// The monitor whose frame holds `p`.
+/// X11 pixels per logical pixel, given both widths of the screens. GNOME
+/// that scales X11 apps natively has XWayland draw at one whole scale for
+/// all screens (2 at 133 %); otherwise X11 and logical pixels are the same.
+fn scale_between(x11_width: f64, logical_width: f64) -> f64 {
+    if logical_width > 0.0 && x11_width > 0.0 {
+        (x11_width / logical_width).round().max(1.0)
+    } else {
+        1.0
+    }
+}
+
+/// [`scale_between`] for an X11 screen `x11_width` pixels wide and the
+/// screens GNOME has now (asked directly; 1 if the extension is silent).
+pub(super) fn x11_scale(x11_width: u16) -> f64 {
+    let logical = super::session_bus()
+        .ok()
+        .and_then(|bus| call(&bus, "Monitors", None).ok())
+        .and_then(|r| parse_monitors(&r))
+        .map(|monitors| {
+            monitors
+                .iter()
+                .map(|m| m.frame.x + m.frame.w)
+                .fold(0.0, f64::max)
+        })
+        .unwrap_or(0.0);
+    scale_between(f64::from(x11_width), logical)
+}
+
 pub(super) fn monitor_at(monitors: &[Monitor], p: Point) -> Option<&Monitor> {
     monitors.iter().find(|m| {
         let f = m.frame;
@@ -198,6 +238,8 @@ struct Latest {
     monitors: Option<Vec<Monitor>>,
     /// The `monitors_serial` the monitors above were read at.
     monitors_serial: Option<u32>,
+    /// The room in the top bar for the Pocket island, read with the monitors.
+    island_slot: Option<Rect>,
 }
 
 fn call(
@@ -268,11 +310,20 @@ fn refresh(bus: &gio::DBusConnection, latest: &Mutex<Latest>, reported_missing: 
     } else {
         None
     };
+    // Asked again with the monitors: the extension forgets it when GNOME
+    // turns extensions off (the lock screen does), and starts over.
+    let slot = stale.then(|| {
+        let _ = call(bus, "ReserveIsland", Some(&(true,).to_variant()));
+        call(bus, "IslandSlot", None)
+            .ok()
+            .and_then(|r| parse_slot(&r))
+    });
     let mut l = latest.lock().unwrap();
     l.state = state;
     if let (Some(m), Some(s)) = (monitors, state) {
         l.monitors = Some(m);
         l.monitors_serial = Some(s.monitors_serial);
+        l.island_slot = slot.flatten();
     }
 }
 
@@ -344,6 +395,11 @@ impl Shell {
             .monitors
             .clone()
             .unwrap_or_default()
+    }
+
+    /// The room the extension keeps for the Pocket island in the top bar.
+    pub fn island_slot(&self) -> Option<Rect> {
+        self.latest.lock().unwrap().island_slot
     }
 
     /// The serial the current monitors were read at.
@@ -559,6 +615,16 @@ mod tests {
         assert!(!click.drag_cancelled, "a later click is no Escape");
         let next = settle_cancel(at(mask::BUTTON1, 6, true), &mut released);
         assert!(next.drag_cancelled, "the next drag's cancel counts again");
+    }
+
+    #[test]
+    fn x11_scale_is_a_whole_number_at_least_one() {
+        // 133 %: XWayland at 2.
+        assert_eq!(scale_between(3072.0, 1536.0), 2.0);
+        // No native scaling: the same pixels.
+        assert_eq!(scale_between(2048.0, 2048.0), 1.0);
+        assert_eq!(scale_between(2048.0, 0.0), 1.0);
+        assert_eq!(scale_between(1000.0, 2048.0), 1.0);
     }
 
     #[test]

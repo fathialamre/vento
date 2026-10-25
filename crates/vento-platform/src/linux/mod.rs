@@ -208,13 +208,19 @@ impl Platform for LinuxPlatform {
     }
 
     /// The primary screen: GNOME screens have no notch, and the top bar
-    /// stands in for the menu bar.
+    /// stands in for the menu bar. The island sits in the room the
+    /// extension keeps for it in the top bar, when that is on this screen.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *self.shell.monitors().first()?;
+        let slot = self.shell.island_slot().filter(|s| {
+            let f = primary.frame;
+            s.x >= f.x && s.x + s.w <= f.x + f.w && s.y >= f.y && s.y < f.y + f.h
+        });
         Some(IslandHome {
             screen: primary.frame,
             notch: None,
             menu_bar_h: (primary.work.y - primary.frame.y).max(0.0),
+            slot,
         })
     }
 

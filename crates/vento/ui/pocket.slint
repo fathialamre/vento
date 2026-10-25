@@ -534,6 +534,9 @@ export component PocketIsland inherits Window {
     in property <length> notch-w;
     // Height of the menu bar (or the notch, if taller).
     in property <length> top-h;
+    // The pointer rests on the collapsed island where it sits in a top bar
+    // (GNOME): it lights up as the bar's own buttons do.
+    in property <bool> bar-hover;
     // At most eight; `count` is the total, so the rest show as "+N".
     in property <[PocketCell]> cells;
     in property <int> count;
@@ -619,7 +622,8 @@ export component PocketIsland inherits Window {
         y: root.expanded ? 0px : root.collapsed-y;
         animate width, height, y { duration: 160ms; easing: ease-out; }
 
-        background: #000000;
+        background: root.bar-hover && !root.expanded ? #2b2b2b : #000000;
+        animate background { duration: 120ms; }
         clip: true;
         border-top-left-radius: root.expanded ? 0px : root.pill-r;
         border-top-right-radius: root.expanded ? 0px : root.pill-r;
