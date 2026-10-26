@@ -118,8 +118,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # Writes lossy WebP for the Convert action, as on the Mac (`webp.rs`).
 libwebp-sys = "0.14"
 # Reads and writes HEIC for the Convert action through the system libheif
-# (LGPL-3.0; `libheif-dev` to build). 1.21 is Ubuntu 26.04's.
-libheif-rs = { version = "3", default-features = false, features = ["v1_21"] }
+# (LGPL-3.0; `libheif-dev` to build). Built against 1.17's API, which is all
+# Vento uses, so it builds on Ubuntu 24.04 (CI) and runs on newer libheif.
+libheif-rs = { version = "3", default-features = false, features = ["v1_17"] }
 resvg = { version = "0.48", default-features = false }
 # Already in the app through winit; our own connection for vento's windows.
 x11rb = { version = "0.13", features = ["shape"] }
