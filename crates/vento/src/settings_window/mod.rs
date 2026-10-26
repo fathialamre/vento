@@ -373,6 +373,12 @@ impl SettingsWindowController {
             EventResult::Propagate
         });
         let this = self.this.clone();
+        window.on_close_requested(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.close();
+            }
+        });
+        let this = self.this.clone();
         window.on_open_settings_file(move || {
             if let Some(controller) = this.upgrade() {
                 crate::tray::open_settings_file(&*controller.platform);
@@ -891,7 +897,11 @@ impl SettingsWindowController {
             self.window.release_later();
             return;
         }
-        window.window().with_winit_window(|w| w.focus_window());
+        // A minimised window comes back too.
+        window.window().with_winit_window(|w| {
+            w.set_minimized(false);
+            w.focus_window();
+        });
         // A new window gets its native window, and so its title bar, at the
         // end of this turn of the event loop.
         let this = self.this.clone();

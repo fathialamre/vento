@@ -164,6 +164,9 @@ export component SettingsWindow inherits Window {
     callback clip-shortcut-recording-started();
     callback screen-shortcut-recording-started();
     callback shortcut-recording-stopped();
+    // Esc, or ⌘W (Ctrl+W elsewhere): vento closes the window as its close
+    // button does. While a shortcut field records, Esc only cancels that.
+    callback close-requested();
 
     // The name of the page shown, which picks its body.
     property <string> label: root.pages[root.page].label;
@@ -181,8 +184,9 @@ export component SettingsWindow inherits Window {
     }
 
     // Leaving the Pocket, Clipboard or Copy from screen page removes the
-    // field that was recording.
+    // field that was recording. The new page starts at its top.
     changed page => {
+        flick.content-y = 0;
         if (root.shortcut-recording || root.clip-shortcut-recording
             || root.screen-shortcut-recording) {
             root.stop-recording();
@@ -190,6 +194,22 @@ export component SettingsWindow inherits Window {
     }
 
     keys := FocusScope {
+        // A shortcut field that records has the focus and takes every key
+        // first; this is a guard for the moment it gives the focus back.
+        // `control` is ⌘ on a Mac.
+        key-pressed(event) => {
+            if (root.shortcut-recording || root.clip-shortcut-recording
+                || root.screen-shortcut-recording) {
+                return reject;
+            }
+            if (event.text == Key.Escape
+                || (event.modifiers.control && (event.text == "w" || event.text == "W"))) {
+                root.close-requested();
+                return accept;
+            }
+            return reject;
+        }
+
         HorizontalLayout {
             Rectangle {
                 width: 180px;
