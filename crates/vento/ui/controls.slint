@@ -15,6 +15,9 @@ export global PanelIcons {
     out property <image> grip: @image-url("icons/grip-vertical.svg");
     out property <image> add: @image-url("icons/plus.svg");
     out property <image> folder: @image-url("icons/folder.svg");
+    // Drawn in Tabler's style (a coffee cup; text in a scan frame).
+    out property <image> awake: @image-url("icons/coffee.svg");
+    out property <image> scan-text: @image-url("icons/scan-text.svg");
 }
 
 // A small heading over a group of controls.
@@ -166,7 +169,7 @@ export component MenuField inherits Rectangle {
 
     height: 28px;
     border-radius: 8px;
-    background: touch.has-hover ? Theme.selected : Theme.surface;
+    background: touch.has-hover ? Theme.hover : Theme.surface;
     accessible-role: combobox;
     accessible-label: self.label;
     accessible-value: self.valid ? self.items[self.current] : "";
@@ -369,6 +372,36 @@ export component TextButton inherits Rectangle {
     }
 }
 
+// A time choice of the Keep Awake tab, on `surface` like the other
+// fields, drawn chosen (the accent, faint, as the chosen tab) while its
+// time runs.
+export component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> chosen;
+    callback clicked();
+
+    height: 28px;
+    border-radius: 8px;
+    background: self.chosen ? Theme.accent-soft : touch.has-hover ? Theme.hover : Theme.surface;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    Text {
+        text: root.label;
+        font-size: 12px;
+        color: root.chosen ? Theme.accent : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 // A small square button showing only an icon; `label` names it for
 // assistive technology.
 export component IconButton inherits Rectangle {
@@ -414,7 +447,7 @@ component StepButton inherits Rectangle {
     width: 24px;
     height: 24px;
     border-radius: 6px;
-    background: self.enabled && touch.has-hover ? Theme.selected : Theme.surface;
+    background: self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
     accessible-role: button;
     accessible-label: self.label;
     accessible-enabled: self.enabled;
@@ -483,7 +516,7 @@ export component Stepper inherits HorizontalLayout {
 // cancels. vento reads the combination itself and ends the recording. A
 // disabled field shows its shortcut dimmed and cannot start recording.
 export component ShortcutField inherits Rectangle {
-    // The shortcut as symbols, e.g. "⌃⌥P".
+    // The shortcut as the platform writes it, e.g. "⌃⌥P" or "Ctrl+Alt+P".
     in property <string> text;
     in property <string> label;
     in property <bool> enabled: true;
@@ -493,7 +526,7 @@ export component ShortcutField inherits Rectangle {
 
     height: 28px;
     border-radius: 8px;
-    background: self.recording || (self.enabled && touch.has-hover) ? Theme.selected : Theme.surface;
+    background: self.recording || (self.enabled && touch.has-hover) ? Theme.hover : Theme.surface;
     border-width: self.recording ? 2px : 0px;
     border-color: Theme.accent;
     accessible-role: button;

@@ -5,21 +5,58 @@
 // the session bus as org.vento.Shell1. Vento polls it; nothing here sends
 // signals, so every change is a counter Vento compares.
 
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
+import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 1;
+const API_VERSION = 8;
+
+// Vento's StatusNotifierItem Id, by which its tray icon is found.
+const TRAY_ID = 'vento';
+
+// Vento's own bus name and object, which open the Keep Awake tab when its
+// cup is clicked.
+const VENTO_NAME = 'io.github.fathialamre.Vento';
+const VENTO_PATH = '/io/github/fathialamre/Vento';
+const VENTO_INTERFACE = 'io.github.fathialamre.Vento1';
+// Copy from screen: how dark the screen goes while an area is chosen, and
+// the chosen area's edge.
+const SELECT_DIM = 'background-color: rgba(0, 0, 0, 0.35);';
+const SELECT_EDGE = 'border: 1px solid rgba(255, 255, 255, 0.9);';
+
+Gio._promisify(Shell.Screenshot.prototype, 'screenshot_area');
+
+// The cup's place in the top bar's status area.
+const AWAKE_ROLE = 'vento-keep-awake';
+// The cup: Caffeine's, as Yaru draws it, else a close stand-in.
+const AWAKE_ICONS = [
+    'my-caffeine-on-symbolic',
+    'caffeine-cup-full-symbolic',
+    'preferences-desktop-screensaver-symbolic',
+];
+
+// The room kept in the top bar for the Pocket island: its two wings and the
+// gap between them.
+const SLOT_WIDTH = 96;
 
 // Clutter.ModifierType.BUTTON1_MASK.
 const BUTTON1 = 1 << 8;
+// BUTTON1_MASK to BUTTON5_MASK.
+const BUTTONS = 0x1f << 8;
+// How long a menu waits for the button that asked for it to go up.
+const MENU_PRESS_WAIT_MS = 3000;
 
 const FILE_TYPES = ['text/uri-list', 'x-special/gnome-copied-files'];
 
@@ -58,6 +95,58 @@ const IFACE = `
       <arg type="u" direction="in" name="pid"/>
       <arg type="b" direction="out" name="done"/>
     </method>
+    <!-- Keep room in the top bar for the Pocket island, after the clock,
+         while the caller stays on the bus -->
+    <method name="ReserveIsland">
+      <arg type="b" direction="in" name="reserve"/>
+    </method>
+    <!-- Whether the room is there, and its x y w h; it moving bumps the
+         monitors serial -->
+    <method name="IslandSlot">
+      <arg type="(biiii)" direction="out" name="slot"/>
+    </method>
+    <!-- Show a menu at the pointer and answer once it closes with the id
+         chosen, or -1. Each entry: kind ("item", "submenu", "separator"),
+         id, enabled, title, icon (a .desktop file, or ""), children -->
+    <method name="ShowMenu">
+      <arg type="a(subssav)" direction="in" name="entries"/>
+      <arg type="i" direction="out" name="chosen"/>
+    </method>
+    <!-- Ends the startup sequence of an activation token Vento was given
+         and cannot use (its windows are X11): GNOME shows a busy pointer
+         until a sequence ends -->
+    <!-- Where the top bar shows the tray icon of the app whose
+         StatusNotifierItem Id is id; false when it shows none -->
+    <method name="TrayIconFrame">
+      <arg type="s" direction="in" name="id"/>
+      <arg type="(biiii)" direction="out" name="frame"/>
+    </method>
+    <!-- The colours the shell's theme gives its menus, as #rrggbbaa:
+         background, edge and text; false when it cannot tell -->
+    <method name="MenuColors">
+      <arg type="(bsss)" direction="out" name="colors"/>
+    </method>
+    <!-- Shows the Keep Awake cup left of Vento's tray icon, or hides it.
+         It goes too when the caller leaves the bus. A click on it calls
+         OpenKeepAwake on Vento's own object -->
+    <method name="ShowAwakeIndicator">
+      <arg type="b" direction="in" name="shown"/>
+    </method>
+    <!-- Copy from screen: dims every screen and lets the user drag a
+         rectangle; answered when the drag ends (false when cancelled with
+         Esc or a right click), in logical global coordinates. The dimming
+         is gone from the screen by then -->
+    <method name="SelectArea">
+      <arg type="(b(iiii))" direction="out" name="area"/>
+    </method>
+    <!-- That rectangle as a PNG, never written to disk -->
+    <method name="CaptureArea">
+      <arg type="(iiii)" direction="in" name="area"/>
+      <arg type="ay" direction="out" name="png"/>
+    </method>
+    <method name="EndStartup">
+      <arg type="s" direction="in" name="token"/>
+    </method>
   </interface>
 </node>`;
 
@@ -77,6 +166,200 @@ function readSelection(selectionType, type, done) {
     });
 }
 
+/** The icon of the app in the .desktop file at `path`, or null. */
+function appIcon(path) {
+    if (!path)
+        return null;
+    try {
+        return Gio.DesktopAppInfo.new_from_filename(path)?.get_icon() ?? null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Adds `entries` to `menu`; a choice calls `choose`. Each is a `(subssav)`,
+ * unpacked or still a GLib.Variant (children arrive boxed in `av`).
+ */
+function addEntries(menu, entries, choose) {
+    for (const raw of entries) {
+        const entry = raw instanceof GLib.Variant ? raw.recursiveUnpack() : raw;
+        const [kind, id, enabled, title, icon, children] = entry;
+        let item;
+        if (kind === 'separator') {
+            item = new PopupMenu.PopupSeparatorMenuItem();
+        } else if (kind === 'submenu') {
+            item = new PopupMenu.PopupSubMenuMenuItem(title);
+            addEntries(item.menu, children, choose);
+        } else {
+            const gicon = appIcon(icon);
+            item = gicon
+                ? new PopupMenu.PopupImageMenuItem(title, gicon)
+                : new PopupMenu.PopupMenuItem(title);
+            item.connect('activate', () => choose(id));
+        }
+        if (kind !== 'separator')
+            item.setSensitive(enabled);
+        menu.addMenuItem(item);
+    }
+}
+
+/** Opens a menu of `entries` at the pointer; `done` hears the id chosen, or -1. */
+function showMenu(entries, done) {
+    const [x, y] = global.get_pointer();
+    const anchor = new St.Widget({x, y, width: 1, height: 1, opacity: 0});
+    Main.layoutManager.uiGroup.add_child(anchor);
+    const menu = new PopupMenu.PopupMenu(anchor, 0, St.Side.TOP);
+    menu.actor.hide();
+    Main.layoutManager.uiGroup.add_child(menu.actor);
+    const manager = new PopupMenu.PopupMenuManager(anchor);
+    manager.addMenu(menu);
+    let chosen = -1;
+    addEntries(menu, entries, id => {
+        chosen = id;
+    });
+    menu.connect('open-state-changed', (_menu, open) => {
+        if (open)
+            return;
+        // After the item's own activate, which closes the menu.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            manager.removeMenu(menu);
+            menu.destroy();
+            anchor.destroy();
+            done(chosen);
+            return GLib.SOURCE_REMOVE;
+        });
+    });
+    menu.open(true);
+}
+
+/**
+ * The top bar's tray icon of the app whose StatusNotifierItem Id is `id`,
+ * as the AppIndicator extension adds it, or undefined when none is shown.
+ */
+function trayIcon(id) {
+    return Object.values(Main.panel.statusArea)
+        .find(a => a?._indicator?.id === id && a.is_mapped());
+}
+
+/**
+ * Opens Settings on a left click on Vento's tray icon: the AppIndicator
+ * extension would open the menu, and activate Vento only on a double
+ * click. A right click still opens the menu.
+ */
+function trayIconPressed(event) {
+    if (event.type() !== Clutter.EventType.BUTTON_PRESS ||
+        event.get_button() !== Clutter.BUTTON_PRIMARY)
+        return Clutter.EVENT_PROPAGATE;
+    const icon = trayIcon(TRAY_ID);
+    if (!icon || !icon.contains(global.stage.get_event_actor(event)))
+        return Clutter.EVENT_PROPAGATE;
+    Main.panel.menuManager.activeMenu?.close();
+    // Through the AppIndicator extension, which also hands Vento an
+    // activation token for the click.
+    icon._indicator.open(...event.get_coords(), event.get_time())
+        .catch(logError);
+    return Clutter.EVENT_STOP;
+}
+
+/** Asks Vento to open its Keep Awake tab under `cup`. */
+function openKeepAwake(cup) {
+    const [x, y] = cup.get_transformed_position();
+    const [w, h] = cup.get_transformed_size();
+    const frame = [Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    Gio.DBus.session.call(VENTO_NAME, VENTO_PATH, VENTO_INTERFACE, 'OpenKeepAwake',
+        new GLib.Variant('((iiii))', [frame]), null, Gio.DBusCallFlags.NONE, 1000, null,
+        (bus, result) => {
+            try {
+                bus.call_finish(result);
+            } catch (e) {
+                logError(e, 'Vento: cannot open Keep Awake');
+            }
+        });
+}
+
+/**
+ * Dims every screen and lets the user drag a rectangle; `done` gets it as
+ * [x, y, width, height] once the dimming is off the screen, or null when
+ * cancelled. Clicks and keys go nowhere else meanwhile.
+ */
+function selectArea(done) {
+    const overlay = new St.Widget({
+        reactive: true,
+        can_focus: true,
+        x: 0,
+        y: 0,
+        width: global.stage.width,
+        height: global.stage.height,
+    });
+    // Four dim panes around the rectangle, so it stays clear, and its edge.
+    const panes = [0, 1, 2, 3].map(() => new St.Widget({style: SELECT_DIM}));
+    const edge = new St.Widget({style: SELECT_EDGE, visible: false});
+    for (const pane of panes)
+        overlay.add_child(pane);
+    overlay.add_child(edge);
+    const show = (x, y, w, h) => {
+        const [W, H] = [overlay.width, overlay.height];
+        const boxes = [[0, 0, W, y], [0, y + h, W, H - y - h], [0, y, x, h], [x + w, y, W - x - w, h]];
+        boxes.forEach(([bx, by, bw, bh], i) => {
+            panes[i].set_position(bx, by);
+            panes[i].set_size(Math.max(0, bw), Math.max(0, bh));
+        });
+        edge.visible = w > 0 && h > 0;
+        edge.set_position(x - 1, y - 1);
+        edge.set_size(w + 2, h + 2);
+    };
+    show(0, 0, 0, 0);
+    overlay.set_cursor_type(Clutter.CursorType.CROSSHAIR);
+    Main.uiGroup.add_child(overlay);
+    const grab = Main.pushModal(overlay);
+    overlay.grab_key_focus();
+
+    let start = null;
+    let area = null;
+    const rect = (event) => {
+        const [x, y] = event.get_coords();
+        const [x0, y0] = start;
+        return [Math.round(Math.min(x, x0)), Math.round(Math.min(y, y0)),
+            Math.round(Math.abs(x - x0)), Math.round(Math.abs(y - y0))];
+    };
+    const finish = (result) => {
+        Main.popModal(grab);
+        overlay.destroy();
+        // Answer once a frame without the dimming is on the screen, so a
+        // capture right after sees what is under it.
+        const id = global.stage.connect('after-paint', () => {
+            global.stage.disconnect(id);
+            done(result);
+        });
+        global.stage.queue_redraw();
+    };
+    overlay.connect('button-press-event', (_actor, event) => {
+        if (event.get_button() === Clutter.BUTTON_PRIMARY)
+            start = event.get_coords();
+        else
+            finish(null);
+        return Clutter.EVENT_STOP;
+    });
+    overlay.connect('motion-event', (_actor, event) => {
+        if (start) {
+            area = rect(event);
+            show(...area);
+        }
+        return Clutter.EVENT_STOP;
+    });
+    overlay.connect('button-release-event', (_actor, event) => {
+        if (start && event.get_button() === Clutter.BUTTON_PRIMARY)
+            finish(rect(event));
+        return Clutter.EVENT_STOP;
+    });
+    overlay.connect('key-press-event', (_actor, event) => {
+        if (event.get_key_symbol() === Clutter.KEY_Escape)
+            finish(null);
+        return Clutter.EVENT_STOP;
+    });
+}
+
 class Service {
     constructor() {
         this._dragSerial = 0;
@@ -86,6 +369,11 @@ class Service {
         this._clipSerial = 0;
         this._monitorsSerial = 0;
         this._previousWindow = null;
+        this._slot = null;
+        this._slotWatch = 0;
+        this._awake = null;
+        this._awakeWatch = 0;
+        this._selecting = false;
     }
 
     Version() {
@@ -164,6 +452,197 @@ class Service {
         return true;
     }
 
+    SelectAreaAsync(_params, invocation) {
+        if (this._selecting) {
+            invocation.return_value(new GLib.Variant('((b(iiii)))', [[false, [0, 0, 0, 0]]]));
+            return;
+        }
+        this._selecting = true;
+        selectArea(area => {
+            this._selecting = false;
+            invocation.return_value(new GLib.Variant('((b(iiii)))',
+                [[area !== null, area ?? [0, 0, 0, 0]]]));
+        });
+    }
+
+    async CaptureAreaAsync([[x, y, width, height]], invocation) {
+        const stream = Gio.MemoryOutputStream.new_resizable();
+        try {
+            await new Shell.Screenshot().screenshot_area(x, y, width, height, stream);
+            stream.close(null);
+            const png = stream.steal_as_bytes().toArray();
+            invocation.return_value(new GLib.Variant('(ay)', [png]));
+        } catch (e) {
+            invocation.return_error_literal(Gio.DBusError, Gio.DBusError.FAILED,
+                `cannot capture the area: ${e.message}`);
+        }
+    }
+
+    ShowAwakeIndicatorAsync([shown], invocation) {
+        if (shown)
+            this._showAwake(invocation.get_sender());
+        else
+            this.hideAwake();
+        invocation.return_value(null);
+    }
+
+    ReserveIslandAsync([reserve], invocation) {
+        if (reserve)
+            this._reserve(invocation.get_sender());
+        else
+            this.release();
+        invocation.return_value(null);
+    }
+
+    IslandSlot() {
+        const slot = this._slot;
+        if (!slot || !slot.get_stage())
+            return [false, 0, 0, 0, 0];
+        const [x, y] = slot.get_transformed_position();
+        const [w, h] = slot.get_transformed_size();
+        return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    }
+
+    TrayIconFrame(id) {
+        const icon = trayIcon(id);
+        if (!icon)
+            return [false, 0, 0, 0, 0];
+        const [x, y] = icon.get_transformed_position();
+        const [w, h] = icon.get_transformed_size();
+        return [true, Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
+    }
+
+    MenuColors() {
+        // A menu built as the top bar's are and never shown, so the
+        // theme's rules for those apply to it.
+        const menu = new St.BoxLayout({style_class: 'popup-menu', visible: false});
+        const content = new St.BoxLayout({style_class: 'popup-menu-content'});
+        menu.add_child(content);
+        Main.uiGroup.add_child(menu);
+        try {
+            const node = content.get_theme_node();
+            return [
+                true,
+                node.get_background_color().to_string(),
+                node.get_border_color(St.Side.TOP).to_string(),
+                node.get_foreground_color().to_string(),
+            ];
+        } catch (e) {
+            logError(e, 'Vento: cannot read the menu colours');
+            return [false, '', '', ''];
+        } finally {
+            menu.destroy();
+        }
+    }
+
+    EndStartup(token) {
+        const tracker = Shell.WindowTracker.get_default();
+        const sequence = tracker.get_startup_sequences()
+            .find(s => s.get_id() === token);
+        if (sequence)
+            sequence.complete();
+        else
+            console.warn(`Vento: no startup sequence for token ${token}`);
+    }
+
+    ShowMenuAsync([entries], invocation) {
+        // Opened on the press, the menu would take its release as a choice.
+        const started = GLib.get_monotonic_time();
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, () => {
+            const [, , mods] = global.get_pointer();
+            const waited = (GLib.get_monotonic_time() - started) / 1000;
+            if ((mods & BUTTONS) !== 0 && waited < MENU_PRESS_WAIT_MS)
+                return GLib.SOURCE_CONTINUE;
+            const answer = chosen =>
+                invocation.return_value(new GLib.Variant('(i)', [chosen]));
+            try {
+                showMenu(entries, answer);
+            } catch (e) {
+                // Vento waits for the answer: never leave it waiting.
+                console.warn(`Vento: cannot show the menu: ${e.message}`);
+                answer(-1);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /** Puts the room after the clock, for as long as `owner` is on the bus. */
+    _reserve(owner) {
+        if (this._slot)
+            return;
+        const slot = new St.Widget({width: SLOT_WIDTH, y_expand: true, reactive: false});
+        const box = Main.panel._centerBox;
+        const clock = Main.panel.statusArea.dateMenu?.container;
+        if (clock && clock.get_parent() === box)
+            box.insert_child_above(slot, clock);
+        else
+            box.add_child(slot);
+        // The clock's width changes with the time: Vento moves the island.
+        // The top bar goes with its children when the session ends.
+        slot.connectObject(
+            'notify::allocation', () => this.monitorsChanged(),
+            'destroy', () => {
+                this._slot = null;
+            },
+            this);
+        this._slot = slot;
+        this._slotWatch = Gio.bus_watch_name(Gio.BusType.SESSION, owner,
+            Gio.BusNameWatcherFlags.NONE, null, () => this.release());
+        this.monitorsChanged();
+    }
+
+    _showAwake(owner) {
+        if (this._awake)
+            return;
+        const cup = new PanelMenu.Button(0.0, 'Vento Keep Awake', true);
+        cup.add_child(new St.Icon({
+            gicon: new Gio.ThemedIcon({names: AWAKE_ICONS}),
+            style_class: 'system-status-icon',
+        }));
+        cup.connect('button-press-event', () => {
+            openKeepAwake(cup);
+            return Clutter.EVENT_STOP;
+        });
+        // Just left of Vento's icon, which the AppIndicator extension adds
+        // to the right box.
+        const vento = trayIcon(TRAY_ID)?.container;
+        const index = vento ? Math.max(0, Main.panel._rightBox.get_children().indexOf(vento)) : 0;
+        Main.panel.addToStatusArea(AWAKE_ROLE, cup, index, 'right');
+        cup.connectObject('destroy', () => {
+            this._awake = null;
+        }, this);
+        this._awake = cup;
+        this._awakeWatch = Gio.bus_watch_name(Gio.BusType.SESSION, owner,
+            Gio.BusNameWatcherFlags.NONE, null, () => this.hideAwake());
+    }
+
+    /** Takes the Keep Awake cup away. */
+    hideAwake() {
+        if (this._awakeWatch) {
+            Gio.bus_unwatch_name(this._awakeWatch);
+            this._awakeWatch = 0;
+        }
+        if (this._awake) {
+            this._awake.disconnectObject(this);
+            this._awake.destroy();
+            this._awake = null;
+        }
+    }
+
+    /** Gives the room back. */
+    release() {
+        if (this._slotWatch) {
+            Gio.bus_unwatch_name(this._slotWatch);
+            this._slotWatch = 0;
+        }
+        if (this._slot) {
+            this._slot.disconnectObject(this);
+            this._slot.destroy();
+            this._slot = null;
+            this.monitorsChanged();
+        }
+    }
+
     dragStarted() {
         const types = global.display.get_selection()
             .get_mimetypes(Meta.SelectionType.SELECTION_DND);
@@ -213,6 +692,9 @@ export default class VentoExtension extends Extension {
         global.display.connectObject(
             'workareas-changed', () => service.monitorsChanged(),
             this);
+        global.stage.connectObject(
+            'captured-event', (_stage, event) => trayIconPressed(event),
+            this);
     }
 
     disable() {
@@ -220,6 +702,9 @@ export default class VentoExtension extends Extension {
         global.display.get_selection().disconnectObject(this);
         Main.layoutManager.disconnectObject(this);
         global.display.disconnectObject(this);
+        global.stage.disconnectObject(this);
+        this._service.release();
+        this._service.hideAwake();
         Gio.bus_unown_name(this._nameId);
         this._dbus.unexport();
         this._dbus = null;

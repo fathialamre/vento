@@ -25,6 +25,7 @@ use slint::{
     CloseRequestResponse, ComponentHandle, Image, LogicalPosition, Model, ModelRc, SharedString,
     Timer, VecModel,
 };
+use vento_core::awake::{Chip, TIMED_CHIPS, default_until};
 use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
@@ -32,15 +33,16 @@ use vento_core::geometry::{Layout, Point, Rect, screen_for};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
     MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, Settings,
-    is_reserved_shortcut, move_row, parse_shortcut, shortcut_symbols,
+    is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
 
+use crate::awake::KeepAwake;
 use crate::lazy_window::LazyWindow;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
-use crate::ui::{ActionRow, FolderRow, Icons, SettingsPanel};
+use crate::ui::{ActionRow, FolderRow, Icons, SettingsPanel, Theme};
 use crate::wheel::action_icon;
 
 /// Panel width in logical points (matches `settings.slint`).
@@ -68,6 +70,9 @@ const ARROW_BLEND: f64 = 3.0;
 /// the top edge all fit beside it.
 const ARROW_MARGIN: f64 = CORNER_RADIUS + ARROW_W / 2.0 + ARROW_BLEND;
 
+/// The Keep Awake tab's place in the tab bar.
+const KEEP_AWAKE_TAB: i32 = 4;
+
 /// The choices of the panel's segmented controls, in the order shown.
 const LAYOUTS: [Layout; 2] = [Layout::Honeycomb, Layout::Petals];
 const TRIGGERS: [Modifier; 4] = [
@@ -76,6 +81,12 @@ const TRIGGERS: [Modifier; 4] = [
     Modifier::Shift,
     Modifier::Meta,
 ];
+/// What the Trigger choices are called: the Mac's names on a Mac, GNOME's
+/// elsewhere.
+#[cfg(target_os = "macos")]
+const TRIGGER_NAMES: [&str; 4] = ["Control", "Option", "Shift", "Command"];
+#[cfg(not(target_os = "macos"))]
+const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
 
 /// Size of the Finder icons in the Move tab, in points.
@@ -143,6 +154,9 @@ pub type TryShortcut = Box<dyn Fn(ShortcutFor, &str) -> Result<(), String>>;
 pub struct PanelController {
     platform: Rc<dyn Platform>,
     hub: Rc<SettingsHub>,
+    /// What the Keep Awake tab shows and changes; it lives as long as the
+    /// panel, which is as long as vento.
+    keep_awake: Rc<KeepAwake>,
     /// The panel's window while it is open, and for a while after it
     /// closes. Use [`PanelController::window`] or
     /// [`PanelController::existing`].
@@ -156,6 +170,8 @@ pub struct PanelController {
     /// Pauses or resumes vento; the panel shows the result through
     /// [`PanelController::set_paused`].
     on_pause: Box<dyn Fn(bool)>,
+    /// Starts Copy from screen, for the footer's Copy text.
+    on_copy_from_screen: RefCell<Option<Box<dyn Fn()>>>,
     /// Folders recently moved or copied to, shared with the wheel and the
     /// executor.
     recent: Rc<RefCell<RecentDestinations>>,
@@ -205,14 +221,17 @@ impl PanelController {
         on_clear_history: Box<dyn Fn()>,
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
+        let keep_awake = KeepAwake::new(platform.clone(), hub.clone());
         let panel = Rc::new_cyclic(|this| Self {
             platform,
             hub,
+            keep_awake,
             window: LazyWindow::new(),
             paused: Cell::new(false),
             tab: Cell::new(0),
             screen_text_supported,
             on_pause,
+            on_copy_from_screen: RefCell::new(None),
             recent,
             try_shortcut,
             on_clear_history,
@@ -239,6 +258,13 @@ impl PanelController {
                 panel.show_settings();
             }
         }));
+        // The status line counts down while the panel is open.
+        let this = Rc::downgrade(&panel);
+        panel.keep_awake.on_change(Box::new(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.show_awake();
+            }
+        }));
         panel
     }
 
@@ -253,6 +279,8 @@ impl PanelController {
             window.set_pinned(ModelRc::from(self.pinned.clone()));
             window.set_recent(ModelRc::from(self.recent_rows.clone()));
             window.set_screen_text_supported(self.screen_text_supported);
+            let trigger_names: Vec<SharedString> = TRIGGER_NAMES.map(Into::into).into();
+            window.set_trigger_names(ModelRc::from(trigger_names.as_slice()));
             window.set_paused(self.paused.get());
             window.set_tab(self.tab.get());
             // A new native window: AppKit has yet to be told to keep it.
@@ -278,6 +306,15 @@ impl PanelController {
         window.on_pause_clicked(move || {
             if let Some(panel) = this.upgrade() {
                 (panel.on_pause)(!panel.paused.get());
+            }
+        });
+        let this = self.this.clone();
+        window.on_copy_from_screen_clicked(move || {
+            let Some(panel) = this.upgrade() else { return };
+            // Out of the way of the area the user is about to choose.
+            panel.close();
+            if let Some(start) = panel.on_copy_from_screen.borrow().as_ref() {
+                start();
             }
         });
         window.on_quit_clicked(|| {
@@ -381,6 +418,7 @@ impl PanelController {
             }
         });
         self.connect_clipboard_tab(window);
+        self.connect_awake_tab(window);
         // While recording, the menu bar is away, so ⌘Q and ⌘H reach the
         // recorder instead of quitting or hiding vento.
         let this = self.this.clone();
@@ -431,6 +469,52 @@ impl PanelController {
                 (panel.on_clear_history)();
             }
         });
+    }
+
+    fn connect_awake_tab(&self, window: &SettingsPanel) {
+        let this = self.this.clone();
+        window.on_awake_switched(move |on| {
+            let Some(panel) = this.upgrade() else { return };
+            if on {
+                panel.keep_awake.start(Chip::Forever);
+            } else {
+                panel.keep_awake.stop();
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_chip_clicked(move |i| {
+            let Some(panel) = this.upgrade() else { return };
+            match chip_at(i) {
+                Some(chip) => panel.keep_awake.toggle(chip),
+                // Until… while it runs: the tab opens its popup otherwise.
+                None => panel.keep_awake.stop(),
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_until_started(move |hour, minute| {
+            let Some(panel) = this.upgrade() else { return };
+            let (Ok(hour), Ok(minute)) = (i8::try_from(hour), i8::try_from(minute)) else {
+                return;
+            };
+            panel.keep_awake.start(Chip::Until { hour, minute });
+        });
+        let this = self.this.clone();
+        window.on_awake_screen_off_toggled(move |on| {
+            if let Some(panel) = this.upgrade() {
+                panel.apply(|s| s.keep_awake_screen_off = on);
+            }
+        });
+    }
+
+    /// Shows what Keep Awake holds now.
+    fn show_awake(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
+        let session = self.keep_awake.session();
+        window.set_awake_status(self.keep_awake.status().into());
+        window.set_awake_on(session.is_some());
+        window.set_awake_chip(session.map_or(-1, |s| chip_index(s.chip)));
     }
 
     fn connect_move_tab(&self, window: &SettingsPanel) {
@@ -640,13 +724,30 @@ impl PanelController {
         window.set_hold(format!("{hold} ms").into());
         window.set_hold_can_decrease(hold > MIN_MOVE_HOLD_MS);
         window.set_hold_can_increase(hold < MAX_MOVE_HOLD_MS);
-        let symbols = |spec: &str| shortcut_symbols(spec).unwrap_or_else(|| spec.to_owned());
+        let symbols = |spec: &str| shortcut_text(spec).unwrap_or_else(|| spec.to_owned());
         window.set_shortcut(symbols(&settings.pocket_shortcut).into());
         window.set_remove_after_drop(settings.pocket_remove_after_drop);
         window.set_keep_copies(settings.pocket_keep_copies);
         window.set_clip_history(settings.clipboard_history);
+        window.set_awake_screen_off(settings.keep_awake_screen_off);
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+    }
+
+    /// Matches the desktop's own menus where the platform gives their
+    /// colours, as they are now: a theme change shows at the next open.
+    fn show_menu_colors(&self, window: &SettingsPanel) {
+        let theme = window.global::<Theme>();
+        let Some(colors) = self.platform.menu_colors() else {
+            theme.set_system_colors(false);
+            return;
+        };
+        let color = |[r, g, b, a]: [u8; 4]| slint::Color::from_argb_u8(a, r, g, b);
+        theme.set_system_bg(color(colors.background));
+        theme.set_system_border(color(colors.border));
+        theme.set_system_text(color(colors.text));
+        theme.set_system_dark(colors.is_dark());
+        theme.set_system_colors(true);
     }
 
     /// Lists the pinned folders (a missing one too, dimmed, so it can be
@@ -718,6 +819,35 @@ impl PanelController {
             window.set_terminals(ModelRc::new(VecModel::from(names)));
         }
         *self.terminals.borrow_mut() = terminals;
+    }
+
+    /// Has the footer's Copy text call `start`.
+    pub fn set_on_copy_from_screen(&self, start: Box<dyn Fn()>) {
+        *self.on_copy_from_screen.borrow_mut() = Some(start);
+    }
+
+    /// What the Keep Awake tab shows and changes.
+    pub fn keep_awake(&self) -> Rc<KeepAwake> {
+        self.keep_awake.clone()
+    }
+
+    /// Opens the panel on the Keep Awake tab under `icon` (its mark in the
+    /// menu bar), or closes it when it is open on that tab already.
+    pub fn toggle_keep_awake_at(&self, icon: Rect) {
+        let on_tab = self
+            .existing()
+            .is_some_and(|window| window.get_tab() == KEEP_AWAKE_TAB);
+        if self.is_open() {
+            self.close();
+            if on_tab {
+                return;
+            }
+        }
+        self.tab.set(KEEP_AWAKE_TAB);
+        if let Some(window) = self.existing() {
+            window.set_tab(KEEP_AWAKE_TAB);
+        }
+        self.open_at(icon);
     }
 
     /// Opens the panel under `icon` (the menu-bar icon's frame, global
@@ -794,7 +924,9 @@ impl PanelController {
     /// Opens the panel under `icon`. A new window opens once it has its
     /// native window, so that AppKit can be told to keep its frame as it
     /// shows.
-    fn open_at(&self, icon: Rect) {
+    /// Opens the panel under `icon` (global logical points), if it is
+    /// closed.
+    pub fn open_at(&self, icon: Rect) {
         self.window();
         let this = self.this.clone();
         self.window.when_native(move || {
@@ -818,6 +950,11 @@ impl PanelController {
         self.load_terminals(&window);
         // Also lists the recent folders as they are now.
         self.show_settings();
+        self.show_menu_colors(&window);
+        self.show_awake();
+        let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
+        window.set_awake_until_hour(hour.into());
+        window.set_awake_until_minute(minute.into());
         let height = f64::from(window.get_window_height());
         let Placement { x, y, arrow_x } = panel_position(icon, height, &self.platform.screens());
         window.set_arrow_x(arrow_x as f32);
@@ -1113,9 +1250,41 @@ fn key_char(code: KeyCode) -> Option<char> {
     KEYS.iter().find(|(k, _)| *k == code).map(|(_, c)| *c)
 }
 
+/// The Keep Awake chip at `i` of the tab (see `KeepAwakeTab`): the timed
+/// ones, then ∞. `None` for Until…, which asks for its time first.
+fn chip_at(i: i32) -> Option<Chip> {
+    let i = usize::try_from(i).ok()?;
+    match TIMED_CHIPS.get(i) {
+        Some(&length) => Some(Chip::For(length)),
+        None if i == TIMED_CHIPS.len() => Some(Chip::Forever),
+        None => None,
+    }
+}
+
+/// Where `chip` is in the tab; -1 for a timed one it does not show.
+fn chip_index(chip: Chip) -> i32 {
+    let index = match chip {
+        Chip::For(length) => TIMED_CHIPS.iter().position(|&l| l == length),
+        Chip::Forever => Some(TIMED_CHIPS.len()),
+        Chip::Until { .. } => Some(TIMED_CHIPS.len() + 1),
+    };
+    index.and_then(|i| i32::try_from(i).ok()).unwrap_or(-1)
+}
+
+/// How the platform writes the shortcut `spec`: symbols (`⌃⌥P`) on a Mac,
+/// GNOME's words (`Ctrl+Alt+P`) elsewhere. `None` when it does not parse.
+fn shortcut_text(spec: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    return vento_core::settings::shortcut_symbols(spec);
+    #[cfg(not(target_os = "macos"))]
+    return vento_core::settings::shortcut_label(spec);
+}
+
 /// Why the recorded shortcut `spec` is refused before trying to register
 /// it, or `None` when it may be tried. Shift alone only types a capital, so
-/// it is not a modifier for this. The same keys as either of the shortcuts
+/// it is not a modifier for this. The ones macOS keeps for itself are
+/// refused on a Mac; elsewhere one the desktop keeps fails to register,
+/// which says so. The same keys as either of the shortcuts
 /// `target` is not, as `saved` holds them, are refused too, even while one is
 /// not registered.
 fn shortcut_refusal(spec: &str, target: ShortcutFor, saved: &Settings) -> Option<&'static str> {
@@ -1127,7 +1296,9 @@ fn shortcut_refusal(spec: &str, target: ShortcutFor, saved: &Settings) -> Option
     match keys {
         None => Some(NOT_A_SHORTCUT),
         Some((m, _)) if m == shift_only => Some(NOT_A_SHORTCUT),
-        Some(_) if is_reserved_shortcut(spec) => Some(RESERVED_SHORTCUT),
+        Some(_) if cfg!(target_os = "macos") && is_reserved_shortcut(spec) => {
+            Some(RESERVED_SHORTCUT)
+        }
         Some(_) => target
             .others()
             .into_iter()
@@ -1536,6 +1707,22 @@ mod tests {
     }
 
     #[test]
+    fn keep_awake_chips_and_their_places_match() {
+        for i in 0..7 {
+            let chip = chip_at(i).unwrap();
+            assert_eq!(chip_index(chip), i);
+        }
+        assert_eq!(chip_at(2), Some(Chip::For(Duration::from_secs(60 * 60))));
+        assert_eq!(chip_at(6), Some(Chip::Forever));
+        // Until… asks for its time first; nothing past it.
+        assert_eq!(chip_at(7), None);
+        assert_eq!(chip_at(8), None);
+        assert_eq!(chip_at(-1), None);
+        assert_eq!(chip_index(Chip::Until { hour: 7, minute: 0 }), 7);
+        assert_eq!(chip_index(Chip::For(Duration::from_secs(1))), -1);
+    }
+
+    #[test]
     fn refused_shortcuts_say_why() {
         let defaults = Settings::default();
         let refusal = |spec| shortcut_refusal(spec, ShortcutFor::Pocket, &defaults);
@@ -1543,9 +1730,11 @@ mod tests {
         assert_eq!(refusal("p"), Some(NOT_A_SHORTCUT));
         assert_eq!(refusal("ctrl+alt+?"), Some(NOT_A_SHORTCUT));
         assert_eq!(refusal("shift+k"), Some(NOT_A_SHORTCUT));
-        assert_eq!(refusal("cmd+q"), Some(RESERVED_SHORTCUT));
-        assert_eq!(refusal("cmd+h"), Some(RESERVED_SHORTCUT));
-        assert_eq!(refusal("cmd+shift+4"), Some(RESERVED_SHORTCUT));
+        // macOS's own shortcuts are only refused on a Mac.
+        let reserved = cfg!(target_os = "macos").then_some(RESERVED_SHORTCUT);
+        assert_eq!(refusal("cmd+q"), reserved);
+        assert_eq!(refusal("cmd+h"), reserved);
+        assert_eq!(refusal("cmd+shift+4"), reserved);
         assert_eq!(
             refusal("ctrl+alt+v"),
             Some("The Clipboard uses this shortcut")
@@ -1564,7 +1753,11 @@ mod tests {
             Some("The Pocket uses this shortcut")
         );
         assert_eq!(
-            shortcut_refusal("ctrl+alt+t", ShortcutFor::Pocket, &defaults),
+            shortcut_refusal(
+                &defaults.screen_text_shortcut,
+                ShortcutFor::Pocket,
+                &defaults
+            ),
             Some("Copy from screen uses this shortcut")
         );
         assert_eq!(
@@ -1696,12 +1889,19 @@ mod tests {
     #[test]
     fn a_refused_shortcut_is_never_tried() {
         let defaults = saved("ctrl+alt+p", "ctrl+alt+v");
+        #[cfg(target_os = "macos")]
+        {
+            let (outcome, calls, _) =
+                apply_with_fakes(ShortcutFor::Pocket, "cmd+q", &defaults, &[], false);
+            assert!(matches!(
+                outcome,
+                ShortcutOutcome::Refused(RESERVED_SHORTCUT)
+            ));
+            assert!(calls.is_empty());
+        }
         let (outcome, calls, _) =
-            apply_with_fakes(ShortcutFor::Pocket, "cmd+q", &defaults, &[], false);
-        assert!(matches!(
-            outcome,
-            ShortcutOutcome::Refused(RESERVED_SHORTCUT)
-        ));
+            apply_with_fakes(ShortcutFor::Pocket, "shift+k", &defaults, &[], false);
+        assert!(matches!(outcome, ShortcutOutcome::Refused(NOT_A_SHORTCUT)));
         assert!(calls.is_empty());
         let (outcome, calls, _) =
             apply_with_fakes(ShortcutFor::Pocket, "ctrl+alt+?", &defaults, &[], false);

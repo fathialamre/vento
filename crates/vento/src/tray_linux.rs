@@ -3,7 +3,7 @@
 //! menu has Settings (for hosts where a left click opens the menu too),
 //! then the items macOS has.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use ksni::blocking::TrayMethods;
@@ -14,6 +14,7 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
+use crate::awake::KeepAwake;
 use crate::exec::{Executor, UndoKind, undo_menu_text};
 use crate::pause::PauseSwitch;
 
@@ -47,8 +48,19 @@ thread_local! {
     static DISPATCH: RefCell<Option<Dispatch>> = const { RefCell::new(None) };
 }
 
-/// Hands `action` to the main thread.
+/// Hands `action` to the main thread. Called by ksni for a click, when the
+/// tray host may have given an activation token for it: vento's windows
+/// cannot use it, so it is ended at once, or GNOME's pointer stays busy
+/// until the token times out.
 fn send(action: Action) {
+    if let Some(token) = ksni::current_xdg_activation_token() {
+        let spawned = std::thread::Builder::new()
+            .name("vento-end-startup".into())
+            .spawn(move || vento_platform::end_startup(&token));
+        if let Err(e) = spawned {
+            warn!("cannot end the tray click's startup: {e}");
+        }
+    }
     if let Err(e) = slint::invoke_from_event_loop(move || {
         DISPATCH.with(|slot| {
             if let Some(dispatch) = slot.borrow().as_ref() {
@@ -83,8 +95,13 @@ fn to_icon(png: &[u8]) -> Option<Icon> {
     })
 }
 
-/// Where the icon is when it was clicked at `cursor`: a slot of the top bar
-/// (the `bar_h` above the first screen's work area) around it.
+/// The tray's StatusNotifierItem id, by which the shell finds its icon.
+const TRAY_ID: &str = "vento";
+
+/// Where the icon is when it was clicked at `cursor`, when the shell cannot
+/// say: a slot of the top bar (the `bar_h` above the first screen's work
+/// area) around it. A click on the menu is below the icon and often to one
+/// side, so this is only a guess.
 fn icon_frame(cursor: Point, screen_top: f64, bar_h: f64) -> Rect {
     Rect {
         x: cursor.x - ICON_W / 2.0,
@@ -92,6 +109,28 @@ fn icon_frame(cursor: Point, screen_top: f64, bar_h: f64) -> Rect {
         w: ICON_W,
         h: bar_h,
     }
+}
+
+/// Has the shell show Keep Awake's cup in the top bar while something is
+/// held, and opens the Keep Awake tab when it is clicked. Needs no tray
+/// host: the Vento extension draws the cup.
+fn show_awake_cup(
+    platform: &Rc<dyn Platform>,
+    keep_awake: &Rc<KeepAwake>,
+    on_open: Box<dyn Fn(Rect)>,
+) {
+    platform.on_awake_indicator(on_open);
+    let shown = Cell::new(false);
+    let keep = Rc::downgrade(keep_awake);
+    let platform = Rc::downgrade(platform);
+    keep_awake.on_change(Box::new(move || {
+        let on = keep.upgrade().is_some_and(|k| k.session().is_some());
+        if shown.replace(on) != on
+            && let Some(platform) = platform.upgrade()
+        {
+            platform.show_awake_indicator(on);
+        }
+    }));
 }
 
 /// The tray's state, kept on its thread.
@@ -104,7 +143,7 @@ struct VentoTray {
 
 impl Tray for VentoTray {
     fn id(&self) -> String {
-        "vento".into()
+        TRAY_ID.into()
     }
 
     fn title(&self) -> String {
@@ -173,6 +212,11 @@ pub struct TrayDeps {
     pub exec: Rc<Executor>,
     /// Places the panel under the icon.
     pub platform: Rc<dyn Platform>,
+    /// Shows its cup in the top bar while it holds the computer awake.
+    pub keep_awake: Rc<KeepAwake>,
+    /// Opens the panel on the Keep Awake tab under the cup; given the cup's
+    /// frame in global logical points.
+    pub on_open_keep_awake: Box<dyn Fn(Rect)>,
     /// Opens the panel under the icon; given the icon's frame in global
     /// logical points.
     pub on_open_panel: Box<dyn Fn(Rect)>,
@@ -189,10 +233,13 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let TrayDeps {
         exec,
         platform,
+        keep_awake,
+        on_open_keep_awake,
         on_open_panel,
         pause,
         on_copy_from_screen,
     } = deps;
+    show_awake_cup(&platform, &keep_awake, on_open_keep_awake);
     let tray = VentoTray {
         icons: MARKS.iter().filter_map(|png| to_icon(png)).collect(),
         copy_from_screen: on_copy_from_screen.is_some(),
@@ -228,7 +275,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 let (top, bar_h) = platform
                     .pocket_home()
                     .map_or((0.0, 32.0), |home| (home.screen.y, home.menu_bar_h));
-                on_open_panel(icon_frame(cursor, top, bar_h));
+                let icon = vento_platform::tray_icon_frame(TRAY_ID)
+                    .unwrap_or_else(|| icon_frame(cursor, top, bar_h));
+                on_open_panel(icon);
             }
             Action::CopyFromScreen => {
                 if let Some(start) = &on_copy_from_screen {

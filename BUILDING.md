@@ -7,7 +7,7 @@ yourself if you want to add features or fix something, or if you have an Intel M
 
 ## Requirements
 
-- macOS 13 or later
+- macOS 13 or later, or Linux with GNOME on Wayland (see [Linux](#linux))
 - Rust via [rustup](https://rustup.rs): `rust-toolchain.toml` pins the toolchain
   (1.99.1) and rustup installs it on first build; the crates need at least 1.93.
 
@@ -26,7 +26,8 @@ Quit any other copy of Vento first, so two wheels don't open at once.
 | Crate | What lives there |
 |-------|------------------|
 | `crates/vento-core` | Everything that does not need the operating system: the drag trigger, wheel and ring geometry, actions, settings, file moves and copies with undo, archives, the Pocket's data, folder sizes. Pure Rust with unit tests. |
-| `crates/vento-platform` | Talking to the system behind one `Platform` trait: global mouse and key state, screens, clipboard, terminals, the folder picker, the Trash. `macos/` is the real implementation; `stub.rs` stands in on other systems. |
+| `crates/vento-platform` | Talking to the system behind one `Platform` trait: global mouse and key state, screens, clipboard, terminals, the folder picker, the Trash. `macos/` and `linux/` are the real implementations; `stub.rs` stands in on other systems. |
+| `gnome-shell/` | The GNOME Shell extension Vento needs on Linux: it tells Vento the pointer, drags, screens and clipboard, which GNOME's Wayland hides from apps. |
 | `crates/vento` | The app: the menu bar icon, the wheel and every window (Slint files in `crates/vento/ui/`), and the glue that runs actions. |
 
 A new action usually means an `ActionId` in `vento-core/src/actions.rs`, its work
@@ -67,13 +68,60 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## Linux and Windows
+## Linux
 
-The released app is macOS only for now; Linux and Windows support is in progress.
-`vento-core` already builds and passes its tests on both. What is missing is a
-`Platform` implementation for each in `vento-platform` (mouse and key state, the
-dragged files, overlay windows for the wheel, the Pocket's drop target,
-clipboard, terminals, the folder picker, the Trash), and the app in
-`crates/vento` is only built for macOS so far. Until then `stub.rs` stands in. If
-you want to help, `vento-platform/src/lib.rs` lists everything a new system
-needs.
+Vento runs on GNOME on Wayland (built and tried on Ubuntu 26.04). Wayland lets
+no app see the pointer, drags in other apps or the clipboard, or place its own
+windows, so Vento comes in two parts:
+
+- the app, whose windows are X11 windows under XWayland, so the wheel and the
+  Pocket island can sit exactly under the cursor, above every window;
+- a GNOME Shell extension (`gnome-shell/vento@fathialamre.github.io`) that
+  answers the app over the session bus.
+
+Building needs a few development packages:
+
+```sh
+sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev
+```
+
+and running needs `libxkbcommon-x11-0` (`sudo apt install libxkbcommon-x11-0`).
+Convert reads and writes HEIC with libheif's plugins; without them HEIC is
+just not offered:
+
+```sh
+sudo apt install libheif-plugin-libde265 libheif-plugin-x265
+```
+
+To install Vento for your user (the app in `~/.local/bin`, its launcher and
+icon, the extension, enabled, and a start at every login):
+
+```sh
+scripts/install-linux.sh
+```
+
+The release build links with fat LTO and needs about 7 GB of memory; on a
+small machine without swap, add some first. The first time, log out and back
+in once so GNOME Shell loads the extension; after a change to the extension,
+log out again to load the new version. Vento then starts at login, or from the
+app grid. The first launch asks you to allow its global shortcuts.
+`scripts/install-linux.sh --no-autostart` installs it without the start at
+login (GNOME's startup apps can also turn it off), and
+`scripts/install-linux.sh --uninstall` removes it all, and keeps your settings
+and data.
+
+Global shortcuts go through the desktop portal, which only knows apps by their
+`.desktop` file, so they work once Vento is installed. Started from a terminal
+(`cargo run -p vento`), Vento belongs to that terminal's app, and GNOME may file
+its shortcuts under that app's name.
+
+Not there yet on Linux: Copy from screen.
+
+## Windows
+
+`vento-core` builds and passes its tests on Windows. What is missing is a
+`Platform` implementation in `vento-platform` (mouse and key state, the dragged
+files, overlay windows for the wheel, the Pocket's drop target, clipboard,
+terminals, the folder picker, the Trash) and the app's windows; until then
+`stub.rs` stands in. If you want to help, `vento-platform/src/lib.rs` lists
+everything a new system needs.

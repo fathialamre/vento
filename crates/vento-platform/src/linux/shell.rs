@@ -17,15 +17,21 @@ use gio::prelude::*;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 
+use crate::{MenuColors, MenuEntry};
+
 const BUS_NAME: &str = "org.vento.Shell1";
 const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 1;
+const API_VERSION: u32 = 8;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
+/// How long a capture of the screens may take.
+const CAPTURE_TIMEOUT_MS: i32 = 10_000;
+/// How long a menu may stay open; past it Vento stops waiting.
+const MENU_TIMEOUT_MS: i32 = 10 * 60 * 1000;
 
 /// How long reading one clipboard type may take: a picture can be large.
 const READ_TIMEOUT_MS: i32 = 2000;
@@ -87,6 +93,18 @@ fn parse_state(reply: &glib::Variant) -> Option<ShellState> {
         drag_cancelled,
         clip_serial: clip,
         monitors_serial: monitors,
+    })
+}
+
+/// `IslandSlot()`'s `(biiii)`: the room kept for the island in the top bar,
+/// if it is there.
+fn parse_slot(reply: &glib::Variant) -> Option<Rect> {
+    let (shown, x, y, w, h): (bool, i32, i32, i32, i32) = reply.try_child_value(0)?.get()?;
+    (shown && w > 0 && h > 0).then(|| Rect {
+        x: f64::from(x),
+        y: f64::from(y),
+        w: f64::from(w),
+        h: f64::from(h),
     })
 }
 
@@ -154,7 +172,209 @@ pub(super) fn local_paths(uris: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Whether the left button is down, and where the pointer is, asked of
+/// the extension directly; `None` when it is not answering. Blocks for one
+/// call; any thread.
+pub(super) fn pointer_now() -> Option<(bool, Point)> {
+    let bus = super::session_bus().ok()?;
+    let state = parse_state(&call(&bus, "State", None).ok()?)?;
+    let sample = to_sample(&state);
+    Some((sample.left_down, sample.cursor))
+}
+
 /// The monitor whose frame holds `p`.
+/// `entry` as one `(subssav)` of `ShowMenu()`: kind, id, enabled, title,
+/// icon (a `.desktop` file, or empty), children.
+fn menu_entry(entry: &MenuEntry) -> glib::Variant {
+    let (kind, id, enabled, title, icon, children): (
+        &str,
+        u32,
+        bool,
+        &str,
+        String,
+        Vec<glib::Variant>,
+    ) = match entry {
+        MenuEntry::Item {
+            id,
+            title,
+            enabled,
+            icon,
+        } => (
+            "item",
+            *id,
+            *enabled,
+            title,
+            icon.as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            Vec::new(),
+        ),
+        MenuEntry::Submenu {
+            title,
+            enabled,
+            children,
+        } => (
+            "submenu",
+            0,
+            *enabled,
+            title,
+            String::new(),
+            children
+                .iter()
+                .map(|c| menu_entry(c).to_variant())
+                .collect(),
+        ),
+        MenuEntry::Separator => ("separator", 0, false, "", String::new(), Vec::new()),
+    };
+    (kind, id, enabled, title, icon, children).to_variant()
+}
+
+/// Shows `entries` as a GNOME menu at the pointer and waits until it
+/// closes; the id of the item chosen, if any.
+pub(super) fn show_menu(entries: &[MenuEntry]) -> Option<u32> {
+    let bus = super::session_bus().ok()?;
+    let list: Vec<glib::Variant> = entries.iter().map(menu_entry).collect();
+    let args = glib::Variant::tuple_from_iter([glib::Variant::array_from_iter_with_type(
+        glib::VariantTy::new("(subssav)").ok()?,
+        list,
+    )]);
+    // As long as the menu stays open.
+    let reply = call_within(&bus, "ShowMenu", Some(&args), MENU_TIMEOUT_MS)
+        .inspect_err(|e| log::warn!("cannot show the menu: {e}"))
+        .ok()?;
+    let chosen: i32 = reply.try_child_value(0)?.get()?;
+    u32::try_from(chosen).ok()
+}
+
+/// Ends the startup sequence of activation `token`, which vento was given
+/// (a tray click) and cannot use: its windows are X11. GNOME shows a busy
+/// pointer until the sequence ends.
+pub(super) fn end_startup(token: &str) {
+    let Ok(bus) = super::session_bus() else {
+        return;
+    };
+    if let Err(e) = call(&bus, "EndStartup", Some(&(token,).to_variant())) {
+        log::debug!("cannot end startup {token}: {e}");
+    }
+}
+
+/// Where the top bar shows the tray icon whose StatusNotifierItem id is
+/// `id`, in logical global coordinates; `None` when it shows none.
+pub(super) fn tray_icon_frame(id: &str) -> Option<Rect> {
+    let bus = super::session_bus().ok()?;
+    call(&bus, "TrayIconFrame", Some(&(id,).to_variant()))
+        .ok()
+        .and_then(|r| parse_slot(&r))
+}
+
+/// The colours GNOME Shell's theme gives its menus; `None` when the
+/// extension cannot tell.
+pub(super) fn menu_colors() -> Option<MenuColors> {
+    let bus = super::session_bus().ok()?;
+    let reply = call(&bus, "MenuColors", None).ok()?;
+    let (known, background, border, text): (bool, String, String, String) =
+        reply.try_child_value(0)?.get()?;
+    if !known {
+        return None;
+    }
+    Some(MenuColors {
+        background: parse_color(&background)?,
+        border: parse_color(&border)?,
+        text: parse_color(&text)?,
+    })
+}
+
+/// Dims the screens and waits for the user to drag a rectangle (Copy from
+/// screen), however long that takes; `None` when cancelled or the extension
+/// does not answer. Blocks: call off the main thread.
+pub(super) fn select_area() -> Option<Rect> {
+    let bus = super::session_bus().ok()?;
+    let reply = call_within(&bus, "SelectArea", None, i32::MAX)
+        .inspect_err(|e| log::warn!("cannot select an area: {e}"))
+        .ok()?;
+    parse_area(&reply)
+}
+
+/// `SelectArea`'s `((b(iiii)))`: the rectangle, or `None` when cancelled.
+fn parse_area(reply: &glib::Variant) -> Option<Rect> {
+    let (chosen, (x, y, w, h)): (bool, (i32, i32, i32, i32)) = reply.try_child_value(0)?.get()?;
+    (chosen && w > 0 && h > 0).then(|| Rect {
+        x: f64::from(x),
+        y: f64::from(y),
+        w: f64::from(w),
+        h: f64::from(h),
+    })
+}
+
+/// The area `rect` (logical global coordinates) of the screens as a PNG.
+/// Blocks: call off the main thread.
+pub(super) fn capture_area(rect: Rect) -> Result<Vec<u8>, glib::Error> {
+    let bus = super::session_bus()?;
+    let area = (
+        rect.x.round() as i32,
+        rect.y.round() as i32,
+        rect.w.round() as i32,
+        rect.h.round() as i32,
+    );
+    let reply = call_within(
+        &bus,
+        "CaptureArea",
+        Some(&(area,).to_variant()),
+        CAPTURE_TIMEOUT_MS,
+    )?;
+    let (png,): (Vec<u8>,) = reply.get().unwrap_or_default();
+    Ok(png)
+}
+
+/// Shows or hides the Keep Awake cup in the top bar.
+pub(super) fn show_awake_indicator(shown: bool) {
+    let Ok(bus) = super::session_bus() else {
+        return;
+    };
+    if let Err(e) = call(&bus, "ShowAwakeIndicator", Some(&(shown,).to_variant())) {
+        log::warn!("cannot show the Keep Awake cup: {e}");
+    }
+}
+
+/// `#rrggbbaa`, as Cogl writes a colour, or `#rrggbb` (opaque).
+fn parse_color(text: &str) -> Option<[u8; 4]> {
+    let hex = text.strip_prefix('#')?;
+    if !matches!(hex.len(), 6 | 8) || !hex.is_ascii() {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    let alpha = if hex.len() == 8 { byte(6)? } else { 255 };
+    Some([byte(0)?, byte(2)?, byte(4)?, alpha])
+}
+
+/// X11 pixels per logical pixel, given both widths of the screens. GNOME
+/// that scales X11 apps natively has XWayland draw at one whole scale for
+/// all screens (2 at 133 %); otherwise X11 and logical pixels are the same.
+fn scale_between(x11_width: f64, logical_width: f64) -> f64 {
+    if logical_width > 0.0 && x11_width > 0.0 {
+        (x11_width / logical_width).round().max(1.0)
+    } else {
+        1.0
+    }
+}
+
+/// [`scale_between`] for an X11 screen `x11_width` pixels wide and the
+/// screens GNOME has now (asked directly; 1 if the extension is silent).
+pub(super) fn x11_scale(x11_width: u16) -> f64 {
+    let logical = super::session_bus()
+        .ok()
+        .and_then(|bus| call(&bus, "Monitors", None).ok())
+        .and_then(|r| parse_monitors(&r))
+        .map(|monitors| {
+            monitors
+                .iter()
+                .map(|m| m.frame.x + m.frame.w)
+                .fold(0.0, f64::max)
+        })
+        .unwrap_or(0.0);
+    scale_between(f64::from(x11_width), logical)
+}
+
 pub(super) fn monitor_at(monitors: &[Monitor], p: Point) -> Option<&Monitor> {
     monitors.iter().find(|m| {
         let f = m.frame;
@@ -188,6 +408,8 @@ struct Latest {
     monitors: Option<Vec<Monitor>>,
     /// The `monitors_serial` the monitors above were read at.
     monitors_serial: Option<u32>,
+    /// The room in the top bar for the Pocket island, read with the monitors.
+    island_slot: Option<Rect>,
 }
 
 fn call(
@@ -258,11 +480,20 @@ fn refresh(bus: &gio::DBusConnection, latest: &Mutex<Latest>, reported_missing: 
     } else {
         None
     };
+    // Asked again with the monitors: the extension forgets it when GNOME
+    // turns extensions off (the lock screen does), and starts over.
+    let slot = stale.then(|| {
+        let _ = call(bus, "ReserveIsland", Some(&(true,).to_variant()));
+        call(bus, "IslandSlot", None)
+            .ok()
+            .and_then(|r| parse_slot(&r))
+    });
     let mut l = latest.lock().unwrap();
     l.state = state;
     if let (Some(m), Some(s)) = (monitors, state) {
         l.monitors = Some(m);
         l.monitors_serial = Some(s.monitors_serial);
+        l.island_slot = slot.flatten();
     }
 }
 
@@ -292,7 +523,7 @@ pub(super) struct Shell {
 impl Shell {
     pub fn connect() -> Self {
         let latest = Arc::new(Mutex::new(Latest::default()));
-        let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)
+        let bus = super::session_bus()
             .inspect_err(|e| log::warn!("no session bus: {e}"))
             .ok();
         let wake = bus.clone().map(|bus| {
@@ -334,6 +565,11 @@ impl Shell {
             .monitors
             .clone()
             .unwrap_or_default()
+    }
+
+    /// The room the extension keeps for the Pocket island in the top bar.
+    pub fn island_slot(&self) -> Option<Rect> {
+        self.latest.lock().unwrap().island_slot
     }
 
     /// The serial the current monitors were read at.
@@ -549,6 +785,83 @@ mod tests {
         assert!(!click.drag_cancelled, "a later click is no Escape");
         let next = settle_cancel(at(mask::BUTTON1, 6, true), &mut released);
         assert!(next.drag_cancelled, "the next drag's cancel counts again");
+    }
+
+    #[test]
+    fn menus_go_as_nested_entries() {
+        let entry = menu_entry(&MenuEntry::Submenu {
+            title: "Open With".into(),
+            enabled: true,
+            children: vec![
+                MenuEntry::Item {
+                    id: 7,
+                    title: "Files".into(),
+                    enabled: true,
+                    icon: Some(PathBuf::from(
+                        "/usr/share/applications/org.gnome.Nautilus.desktop",
+                    )),
+                },
+                MenuEntry::Separator,
+            ],
+        });
+        assert_eq!(entry.type_().as_str(), "(subssav)");
+        let (kind, _, enabled, title, _, children): (
+            String,
+            u32,
+            bool,
+            String,
+            String,
+            Vec<glib::Variant>,
+        ) = entry.get().unwrap();
+        assert_eq!(
+            (kind.as_str(), enabled, title.as_str()),
+            ("submenu", true, "Open With")
+        );
+        assert_eq!(children.len(), 2);
+        // Each child is boxed once in the `av`, the entry inside.
+        assert_eq!(children[0].type_().as_str(), "v");
+        let child = children[0].as_variant().unwrap();
+        assert_eq!(child.type_().as_str(), "(subssav)");
+        let (kind, id, _, title, icon, _): (String, u32, bool, String, String, Vec<glib::Variant>) =
+            child.get().unwrap();
+        assert_eq!((kind.as_str(), id, title.as_str()), ("item", 7, "Files"));
+        assert!(icon.ends_with("org.gnome.Nautilus.desktop"));
+    }
+
+    #[test]
+    fn a_selected_area_is_read_as_the_extension_answers() {
+        let reply = |chosen: bool, area: (i32, i32, i32, i32)| ((chosen, area),).to_variant();
+        assert_eq!(
+            parse_area(&reply(true, (10, 20, 300, 40))),
+            Some(Rect {
+                x: 10.0,
+                y: 20.0,
+                w: 300.0,
+                h: 40.0
+            })
+        );
+        assert_eq!(parse_area(&reply(false, (0, 0, 0, 0))), None);
+        assert_eq!(parse_area(&reply(true, (5, 5, 0, 9))), None);
+    }
+
+    #[test]
+    fn colours_are_read_as_cogl_writes_them() {
+        assert_eq!(parse_color("#36363aff"), Some([0x36, 0x36, 0x3a, 0xff]));
+        assert_eq!(parse_color("#ededed"), Some([0xed, 0xed, 0xed, 0xff]));
+        assert_eq!(parse_color("#00000080"), Some([0, 0, 0, 0x80]));
+        for bad in ["", "#", "ededed", "#ededе", "#edededf", "#gggggg"] {
+            assert_eq!(parse_color(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn x11_scale_is_a_whole_number_at_least_one() {
+        // 133 %: XWayland at 2.
+        assert_eq!(scale_between(3072.0, 1536.0), 2.0);
+        // No native scaling: the same pixels.
+        assert_eq!(scale_between(2048.0, 2048.0), 1.0);
+        assert_eq!(scale_between(2048.0, 0.0), 1.0);
+        assert_eq!(scale_between(1000.0, 2048.0), 1.0);
     }
 
     #[test]

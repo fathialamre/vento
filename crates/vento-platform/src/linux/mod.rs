@@ -6,7 +6,7 @@
 //! The clipboard is read through the extension and written as the owner
 //! of the X11 `CLIPBOARD`; vento's windows are X11 ones under XWayland.
 
-use std::cell::{Cell, OnceCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -16,21 +16,47 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::InputSample;
 
 use crate::{
-    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, StubPlatform,
-    TerminalApp,
+    AppInfo, AwakeHold, DropCatcher, IslandHome, MenuColors, MenuEntry, Platform, PlatformError,
+    RgbaImage, StubPlatform, TerminalApp,
 };
 
 mod apps;
+mod awake;
+mod catcher;
 mod clip_owner;
 mod clipboard;
+mod drag_out;
+mod heif;
 mod icons;
+pub(crate) mod image_io;
+mod instance;
 mod portal;
+pub(crate) mod screen_text;
 mod shell;
+mod shortcuts;
 mod terminal;
+mod terminate;
 mod thumbs;
 mod trash;
 mod x11;
 
+pub use drag_out::{DragEnd, start_file_drag};
+pub use instance::claim_instance;
+
+/// Where the top bar shows the tray icon whose StatusNotifierItem id is
+/// `id`, in logical global coordinates; `None` when it shows none. Blocks
+/// for one short call.
+pub fn tray_icon_frame(id: &str) -> Option<Rect> {
+    shell::tray_icon_frame(id)
+}
+
+/// Ends the startup of activation `token`, given with a tray click: vento's
+/// X11 windows cannot use it, and GNOME shows a busy pointer until it ends.
+/// Blocks for one short call; any thread.
+pub fn end_startup(token: &str) {
+    shell::end_startup(token);
+}
+pub use shortcuts::{APP_ID, GlobalShortcut, bind_global_shortcut};
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
 
 /// [`Platform::file_icon`] at `scale`, for a worker thread.
@@ -48,6 +74,16 @@ pub struct LinuxPlatform {
     screens_seen: Cell<Option<u32>>,
     /// Owns the clipboard for vento's copies; made on the first one.
     clip_owner: OnceCell<Option<clip_owner::ClipOwner>>,
+    /// The Pocket's drop target; made when first asked for.
+    catcher: OnceCell<Option<Rc<catcher::LinuxCatcher>>>,
+    /// Runs before vento quits on a signal.
+    on_terminate: RefCell<Option<terminate::Handler>>,
+    /// Runs when another launch asks this Vento to open.
+    on_reopen: RefCell<Option<terminate::Handler>>,
+    /// Keep Awake's inhibitor.
+    awake: awake::Inhibitor,
+    /// Runs when the Keep Awake cup is clicked.
+    on_awake_indicator: RefCell<Option<instance::FrameHandler>>,
 }
 
 impl Default for LinuxPlatform {
@@ -58,11 +94,18 @@ impl Default for LinuxPlatform {
 
 impl LinuxPlatform {
     pub fn new() -> Self {
+        // First, before any other portal call on the session bus.
+        shortcuts::register_app();
         Self {
             stub: StubPlatform,
             shell: shell::Shell::connect(),
             screens_seen: Cell::new(None),
             clip_owner: OnceCell::new(),
+            catcher: OnceCell::new(),
+            on_terminate: RefCell::new(None),
+            on_reopen: RefCell::new(None),
+            awake: awake::Inhibitor::default(),
+            on_awake_indicator: RefCell::new(None),
         }
     }
 
@@ -78,6 +121,19 @@ impl LinuxPlatform {
     }
 }
 
+/// The session bus, one connection for the whole run. GLib keeps its
+/// shared connection only while something holds it, and a new one is a new
+/// client to the portal: the app id registered on the first would not
+/// cover calls made on a later one.
+fn session_bus() -> Result<gio::DBusConnection, gio::glib::Error> {
+    static BUS: std::sync::OnceLock<gio::DBusConnection> = std::sync::OnceLock::new();
+    if let Some(bus) = BUS.get() {
+        return Ok(bus.clone());
+    }
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
+    Ok(BUS.get_or_init(|| bus).clone())
+}
+
 /// How long [`Platform::write_clipboard`] waits for GNOME to see the copy.
 const CLIP_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -85,6 +141,27 @@ impl Platform for LinuxPlatform {
     fn prepare_app(&self) {}
 
     fn sample_input(&self) -> InputSample {
+        if terminate::asked() {
+            if let Some(handler) = self.on_terminate.borrow().as_ref() {
+                log::info!("tidying up before quitting");
+                (handler.0)();
+            }
+            std::process::exit(0);
+        }
+        if let Some(Some(catcher)) = self.catcher.get() {
+            catcher.pump();
+        }
+        if instance::asked_to_open()
+            && let Some(handler) = self.on_reopen.borrow().as_ref()
+        {
+            (handler.0)();
+        }
+        screen_text::deliver_selection(|| self.shell.monitors());
+        if let Some(frame) = instance::awake_indicator_clicked()
+            && let Some(handler) = self.on_awake_indicator.borrow().as_ref()
+        {
+            (handler.0)(frame);
+        }
         match self.shell.state() {
             Some(state) => shell::to_sample(&state),
             None => self.stub.sample_input(),
@@ -182,13 +259,19 @@ impl Platform for LinuxPlatform {
     }
 
     /// The primary screen: GNOME screens have no notch, and the top bar
-    /// stands in for the menu bar.
+    /// stands in for the menu bar. The island sits in the room the
+    /// extension keeps for it in the top bar, when that is on this screen.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *self.shell.monitors().first()?;
+        let slot = self.shell.island_slot().filter(|s| {
+            let f = primary.frame;
+            s.x >= f.x && s.x + s.w <= f.x + f.w && s.y >= f.y && s.y < f.y + f.h
+        });
         Some(IslandHome {
             screen: primary.frame,
             notch: None,
             menu_bar_h: (primary.work.y - primary.frame.y).max(0.0),
+            slot,
         })
     }
 
@@ -217,6 +300,14 @@ impl Platform for LinuxPlatform {
         x11::make_override_redirect(window)
     }
 
+    fn set_input_rect(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rect: Option<Rect>,
+    ) -> Result<(), PlatformError> {
+        x11::set_input_rect(window, rect)
+    }
+
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
         let scale = self.scale_factor_at(Point { x: 0.0, y: 0.0 });
         icons::file_icon(path, (f64::from(px) * scale).round() as u32)
@@ -227,7 +318,13 @@ impl Platform for LinuxPlatform {
     }
 
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>> {
-        self.stub.drop_catcher()
+        let catcher = self.catcher.get_or_init(|| {
+            catcher::LinuxCatcher::start()
+                .map(Rc::new)
+                .inspect_err(|e| log::warn!("no drop catcher: {e}"))
+                .ok()
+        });
+        catcher.clone().map(|c| c as Rc<dyn DropCatcher>)
     }
 
     fn trash(&self, path: &Path) -> Result<(), PlatformError> {
@@ -240,8 +337,38 @@ impl Platform for LinuxPlatform {
         before.is_some() && before != now
     }
 
+    /// On SIGTERM (GNOME ending the session), SIGINT or SIGHUP, run from
+    /// the next input sample, which comes at least every 100 ms.
     fn on_terminate(&self, f: Box<dyn Fn()>) {
-        self.stub.on_terminate(f)
+        *self.on_terminate.borrow_mut() = Some(terminate::Handler(f));
+        terminate::listen();
+    }
+
+    /// GNOME's session manager, as Caffeine does.
+    fn keep_awake(&self, hold: Option<AwakeHold>) -> Result<(), PlatformError> {
+        self.awake.set(hold)
+    }
+
+    /// Drawn by the Vento extension, left of Vento's tray icon.
+    fn show_awake_indicator(&self, shown: bool) {
+        shell::show_awake_indicator(shown);
+    }
+
+    /// The extension asks through Vento's own bus name (see
+    /// `claim_instance`); handed on from the next input sample.
+    fn on_awake_indicator(&self, f: Box<dyn Fn(Rect)>) {
+        *self.on_awake_indicator.borrow_mut() = Some(instance::FrameHandler(f));
+    }
+
+    /// GNOME Shell's theme, as it styles the top bar's menus.
+    fn menu_colors(&self) -> Option<MenuColors> {
+        shell::menu_colors()
+    }
+
+    /// When another launch asks this Vento to open (see `claim_instance`),
+    /// from the next input sample.
+    fn on_reopen(&self, f: Box<dyn Fn()>) {
+        *self.on_reopen.borrow_mut() = Some(terminate::Handler(f));
     }
 
     fn activate_app(&self) {
@@ -304,7 +431,9 @@ impl Platform for LinuxPlatform {
         at: Point,
         entries: &[MenuEntry],
     ) -> Option<u32> {
-        self.stub.context_menu(window, at, entries)
+        // GNOME opens it at the pointer, where the click was.
+        let _ = (window, at);
+        shell::show_menu(entries)
     }
 }
 

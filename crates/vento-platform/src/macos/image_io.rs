@@ -29,7 +29,7 @@ use objc2_image_io::{
 };
 use vento_core::convert::{ConvertError, ImageFormat};
 
-use super::webp;
+use crate::webp;
 
 /// Property dictionaries as ImageIO hands them out: string keys, any values.
 type Properties = CFDictionary<CFString, CFType>;

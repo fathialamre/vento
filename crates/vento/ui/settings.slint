@@ -7,7 +7,7 @@ import { Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
     PanelIcons, SectionHeading, Separator, Switch, SwitchRow, Segmented, MenuField, LayoutCard,
-    TextButton, IconButton, Stepper, ShortcutField, ReorderRow, DragGrip,
+    TextButton, IconButton, Stepper, ShortcutField, ReorderRow, DragGrip, Chip,
 } from "controls.slint";
 
 // One action in the Wheel tab's list, shown on the wheel or not.
@@ -668,8 +668,223 @@ component ClipboardTab inherits VerticalLayout {
     }
 }
 
+// Keep Awake: a card with what is held now and the switch, a row of
+// times, the two open-ended choices and the one option.
+component KeepAwakeTab inherits VerticalLayout {
+    // The status line, and whether anything is held.
+    in property <string> status;
+    in property <bool> on;
+    // The running chip: 0 to 5 the timed ones, 6 until stopped, 7 until a
+    // time; -1 none.
+    in property <int> chip;
+    in property <bool> screen-off;
+    // The time the Until popup shows, set by vento as the panel opens.
+    in-out property <int> until-hour;
+    in-out property <int> until-minute;
+    // The switch: on starts "until stopped", off stops what runs.
+    callback switched(bool);
+    // A chip other than "Until a time…", or that one while it runs.
+    callback chip-clicked(int);
+    // The Until popup's Start.
+    callback until-started(int, int);
+    callback screen-off-toggled(bool);
+
+    property <[string]> times: ["15 min", "30 min", "1 h", "2 h", "4 h", "8 h"];
+
+    function two-digits(n: int) -> string {
+        return (n < 10 ? "0" : "") + n;
+    }
+
+    spacing: 8px;
+
+    Rectangle {
+        background: Theme.card;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.card-border;
+
+        HorizontalLayout {
+            padding: 10px;
+            spacing: 10px;
+
+            VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 34px;
+                    height: 34px;
+                    border-radius: self.height / 2;
+                    background: root.on ? Theme.accent-soft : Theme.surface;
+
+                    Image {
+                        source: PanelIcons.awake;
+                        width: 20px;
+                        height: 20px;
+                        colorize: root.on ? Theme.accent : Theme.muted;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                horizontal-stretch: 1;
+
+                Text {
+                    text: root.on ? "Awake" : "Not keeping awake";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+
+                Text {
+                    text: root.status;
+                    font-size: 12px;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Switch {
+                    on: root.on;
+                    label: "Keep Awake";
+                    toggled(on) => { root.switched(on); }
+                }
+            }
+        }
+    }
+
+    SectionHeading {
+        text: "Stay awake for";
+    }
+
+    HorizontalLayout {
+        spacing: 4px;
+
+        for time[i] in root.times: Chip {
+            horizontal-stretch: 1;
+            label: time;
+            chosen: root.chip == i;
+            clicked => { root.chip-clicked(i); }
+        }
+    }
+
+    Rectangle {
+        height: 28px;
+
+        HorizontalLayout {
+            spacing: 4px;
+
+            Chip {
+                horizontal-stretch: 1;
+                label: "Until I stop it";
+                chosen: root.chip == 6;
+                clicked => { root.chip-clicked(6); }
+            }
+
+            Chip {
+                horizontal-stretch: 1;
+                label: "Until a time…";
+                chosen: root.chip == 7;
+                clicked => {
+                    if (root.chip == 7) {
+                        root.chip-clicked(7);
+                    } else {
+                        until-popup.show();
+                    }
+                }
+            }
+        }
+
+        // Under "Until a time…", at the right edge.
+        until-popup := PopupWindow {
+            x: parent.width - self.width;
+            y: parent.height + 4px;
+            width: 252px;
+            height: 112px;
+            close-policy: PopupClosePolicy.close-on-click-outside;
+
+            Rectangle {
+                background: Theme.selected;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.separator;
+                drop-shadow-blur: 8px;
+                drop-shadow-offset-y: 2px;
+                drop-shadow-color: #00000040;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Stay awake until";
+                        font-size: 12px;
+                        color: Theme.muted;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 4px;
+
+                        Stepper {
+                            text: root.two-digits(root.until-hour);
+                            label: "Hour";
+                            can-decrease: true;
+                            can-increase: true;
+                            decrease => { root.until-hour = Math.mod(root.until-hour + 23, 24); }
+                            increase => { root.until-hour = Math.mod(root.until-hour + 1, 24); }
+                        }
+
+                        Text {
+                            text: ":";
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                        }
+
+                        Stepper {
+                            text: root.two-digits(root.until-minute);
+                            label: "Minute";
+                            can-decrease: true;
+                            can-increase: true;
+                            decrease => { root.until-minute = Math.mod(root.until-minute + 55, 60); }
+                            increase => { root.until-minute = Math.mod(root.until-minute + 5, 60); }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+
+                        TextButton {
+                            label: "Start";
+                            clicked => {
+                                root.until-started(root.until-hour, root.until-minute);
+                                until-popup.close();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Separator { }
+
+    SwitchRow {
+        label: "Let the screen turn off";
+        on: root.screen-off;
+        toggled(on) => { root.screen-off-toggled(on); }
+    }
+}
+
 component GeneralTab inherits VerticalLayout {
-    // 0 Control, 1 Option, 2 Shift, 3 Command.
+    // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
+    // the Mac's names on a Mac, the platform's elsewhere.
+    in property <[string]> trigger-names;
     in property <int> trigger;
     // A shake during a file drag opens the wheel too.
     in property <bool> shake-to-open;
@@ -699,7 +914,7 @@ component GeneralTab inherits VerticalLayout {
     }
 
     Segmented {
-        items: ["Control", "Option", "Shift", "Command"];
+        items: root.trigger-names;
         current: root.trigger;
         chosen(i) => { root.trigger-chosen(i); }
     }
@@ -894,7 +1109,9 @@ export component SettingsPanel inherits Window {
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
-    // 0 Control, 1 Option, 2 Shift, 3 Command.
+    // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
+    // the Mac's names on a Mac, the platform's elsewhere.
+    in property <[string]> trigger-names;
     in property <int> trigger;
     // A shake during a file drag opens the wheel too.
     in property <bool> shake-to-open;
@@ -960,6 +1177,19 @@ export component SettingsPanel inherits Window {
     callback clip-history-toggled(bool);
     // "Clear history": the history empties at once, with no Undo.
     callback clip-history-cleared();
+    // Keep Awake: the status line, whether anything is held, the running
+    // chip (see KeepAwakeTab), the option, and the time the Until… popup
+    // opens at.
+    in property <string> awake-status;
+    in property <bool> awake-on;
+    in property <int> awake-chip: -1;
+    in property <bool> awake-screen-off;
+    in-out property <int> awake-until-hour;
+    in-out property <int> awake-until-minute;
+    callback awake-switched(bool);
+    callback awake-chip-clicked(int);
+    callback awake-until-started(int, int);
+    callback awake-screen-off-toggled(bool);
     // The Pocket's or the Clipboard's shortcut field started recording,
     // and either recording ended (each way it can end goes through
     // `stop-recording`).
@@ -970,6 +1200,8 @@ export component SettingsPanel inherits Window {
 
     callback pause-clicked();
     callback quit-clicked();
+    // Starts Copy from screen; shown where it is supported.
+    callback copy-from-screen-clicked();
     // Done or Esc.
     callback close-requested();
 
@@ -1050,6 +1282,7 @@ export component SettingsPanel inherits Window {
                         { icon: Icons.move, label: "Move" },
                         { icon: Icons.pocket, label: "Pocket" },
                         { icon: Icons.clipboard, label: "Clipboard" },
+                        { icon: PanelIcons.awake, label: "Keep Awake" },
                         { icon: PanelIcons.general, label: "General" },
                     ];
                 }
@@ -1106,7 +1339,20 @@ export component SettingsPanel inherits Window {
                         recording-cancelled => { root.stop-recording(); }
                         history-cleared => { root.clip-history-cleared(); }
                     }
-                    if root.tab == 4: GeneralTab {
+                    if root.tab == 4: KeepAwakeTab {
+                        status: root.awake-status;
+                        on: root.awake-on;
+                        chip: root.awake-chip;
+                        screen-off: root.awake-screen-off;
+                        until-hour <=> root.awake-until-hour;
+                        until-minute <=> root.awake-until-minute;
+                        switched(on) => { root.awake-switched(on); }
+                        chip-clicked(i) => { root.awake-chip-clicked(i); }
+                        until-started(hour, minute) => { root.awake-until-started(hour, minute); }
+                        screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
+                    }
+                    if root.tab == 5: GeneralTab {
+                        trigger-names: root.trigger-names;
                         trigger: root.trigger;
                         shake-to-open: root.shake-to-open;
                         terminals: root.terminals;
@@ -1145,6 +1391,12 @@ export component SettingsPanel inherits Window {
                         icon: PanelIcons.quit;
                         label: "Quit";
                         clicked => { root.quit-clicked(); }
+                    }
+
+                    if root.screen-text-supported: FooterItem {
+                        icon: PanelIcons.scan-text;
+                        label: "Copy text";
+                        clicked => { root.copy-from-screen-clicked(); }
                     }
 
                     Rectangle {

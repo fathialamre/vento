@@ -57,6 +57,12 @@ const REMOVE: u32 = 4;
 /// Open With's apps take ids from here on, in the order they are listed.
 const FIRST_APP: u32 = 100;
 
+/// The file manager's name in "Show in …".
+#[cfg(not(target_os = "linux"))]
+const REVEAL_TITLE: &str = "Show in Finder";
+#[cfg(target_os = "linux")]
+const REVEAL_TITLE: &str = "Show in Files";
+
 /// A cell's context menu: its entries, and the action behind each id.
 pub(super) struct ItemMenu {
     pub(super) entries: Vec<MenuEntry>,
@@ -116,7 +122,7 @@ impl ItemMenu {
                 enabled: any && !paths.is_empty(),
                 children,
             },
-            item(REVEAL, "Show in Finder", any),
+            item(REVEAL, REVEAL_TITLE, any),
             MenuEntry::Separator,
             item(COPY, "Copy", any),
             item(REMOVE, "Remove from Pocket", true),
@@ -228,7 +234,7 @@ mod tests {
             vec![
                 ("Open".into(), true),
                 ("Open With >".into(), true),
-                ("Show in Finder".into(), true),
+                (REVEAL_TITLE.into(), true),
                 ("-".into(), false),
                 ("Copy".into(), true),
                 ("Remove from Pocket".into(), true),
@@ -298,7 +304,7 @@ mod tests {
             vec![
                 ("Open".into(), false),
                 ("Open With >".into(), false),
-                ("Show in Finder".into(), false),
+                (REVEAL_TITLE.into(), false),
                 ("-".into(), false),
                 ("Copy".into(), false),
                 ("Remove from Pocket".into(), true),
@@ -323,7 +329,7 @@ mod tests {
         let e = &menu.entries;
         assert_eq!(menu.action(id_of(e, "Open")), Some(MenuAction::Open));
         assert_eq!(
-            menu.action(id_of(e, "Show in Finder")),
+            menu.action(id_of(e, REVEAL_TITLE)),
             Some(MenuAction::Reveal)
         );
         assert_eq!(menu.action(id_of(e, "Copy")), Some(MenuAction::Copy));

@@ -45,6 +45,9 @@ pub struct Settings {
     /// Global shortcut that starts Copy from screen, in the same form as
     /// [`Settings::pocket_shortcut`].
     pub screen_text_shortcut: String,
+    /// Whether Keep Awake lets the screen dim, blank and lock as usual,
+    /// keeping only the system awake.
+    pub keep_awake_screen_off: bool,
     /// Folders pinned to the move ring, in order (unique, at most
     /// [`MAX_PINNED`]).
     pub pinned_folders: Vec<PathBuf>,
@@ -79,8 +82,14 @@ fn default_clipboard_shortcut() -> String {
     "ctrl+alt+v".to_owned()
 }
 
+/// Copy from screen's shortcut: ⌃⌥T on a Mac; elsewhere Ctrl+Alt+O (for
+/// OCR), as GNOME opens a terminal on Ctrl+Alt+T.
 fn default_screen_text_shortcut() -> String {
-    "ctrl+alt+t".to_owned()
+    if cfg!(target_os = "macos") {
+        "ctrl+alt+t".to_owned()
+    } else {
+        "ctrl+alt+o".to_owned()
+    }
 }
 
 fn default_actions() -> Vec<ActionId> {
@@ -108,6 +117,7 @@ impl Default for Settings {
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
             screen_text_shortcut: default_screen_text_shortcut(),
+            keep_awake_screen_off: false,
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
@@ -133,6 +143,7 @@ struct RawSettings {
     clipboard_history: bool,
     clipboard_shortcut: String,
     screen_text_shortcut: String,
+    keep_awake_screen_off: bool,
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
@@ -160,6 +171,7 @@ impl From<&Settings> for RawSettings {
             clipboard_history: s.clipboard_history,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
             screen_text_shortcut: s.screen_text_shortcut.clone(),
+            keep_awake_screen_off: s.keep_awake_screen_off,
             pinned_folders: s.pinned_folders.clone(),
             move_hold_ms: s.move_hold_ms,
             hidden_actions: s
@@ -230,6 +242,7 @@ impl From<RawSettings> for Settings {
             clipboard_history: raw.clipboard_history,
             clipboard_shortcut: raw.clipboard_shortcut,
             screen_text_shortcut: raw.screen_text_shortcut,
+            keep_awake_screen_off: raw.keep_awake_screen_off,
             pinned_folders,
             move_hold_ms,
             hidden_actions,
@@ -449,6 +462,26 @@ pub fn shortcut_symbols(spec: &str) -> Option<String> {
     Some(text)
 }
 
+/// How GNOME writes the shortcut `spec`: its modifiers as words in GTK's
+/// order Shift, Ctrl, Alt, Super, then the key upper-cased, all joined by
+/// `+` (`"ctrl+alt+p"` → `"Ctrl+Alt+P"`). `None` when it does not parse.
+pub fn shortcut_label(spec: &str) -> Option<String> {
+    let (m, key) = parse_shortcut(spec)?;
+    let mut text = String::new();
+    for (held, word) in [
+        (m.shift, "Shift+"),
+        (m.ctrl, "Ctrl+"),
+        (m.alt, "Alt+"),
+        (m.meta, "Super+"),
+    ] {
+        if held {
+            text.push_str(word);
+        }
+    }
+    text.push(key.to_ascii_uppercase());
+    Some(text)
+}
+
 /// Location of the settings file.
 pub fn settings_path() -> PathBuf {
     match ProjectDirs::from("", "", "vento") {
@@ -567,8 +600,26 @@ mod tests {
     }
 
     #[test]
+    fn keep_awake_keeps_the_screen_on_unless_saved_otherwise() {
+        assert!(!Settings::default().keep_awake_screen_off);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            keep_awake_screen_off: true,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
     fn screen_text_defaults() {
-        assert_eq!(Settings::default().screen_text_shortcut, "ctrl+alt+t");
+        let expected = if cfg!(target_os = "macos") {
+            "ctrl+alt+t"
+        } else {
+            "ctrl+alt+o"
+        };
+        assert_eq!(Settings::default().screen_text_shortcut, expected);
     }
 
     #[test]
@@ -577,7 +628,7 @@ mod tests {
         let p = dir.path().join("settings.toml");
         std::fs::write(&p, "trigger = \"ctrl\"\n").unwrap();
         let s = Settings::try_load(&p).unwrap();
-        assert_eq!(s.screen_text_shortcut, "ctrl+alt+t");
+        assert_eq!(s.screen_text_shortcut, default_screen_text_shortcut());
     }
 
     #[test]
@@ -674,6 +725,22 @@ mod tests {
         );
         assert_eq!(super::shortcut_symbols("ctrl+p+q"), None);
         assert_eq!(super::shortcut_symbols("p"), None);
+    }
+
+    #[test]
+    fn shortcut_label() {
+        assert_eq!(
+            super::shortcut_label("ctrl+alt+p").as_deref(),
+            Some("Ctrl+Alt+P")
+        );
+        // Always in GTK's order Shift, Ctrl, Alt, Super.
+        assert_eq!(
+            super::shortcut_label("meta+alt+ctrl+shift+k").as_deref(),
+            Some("Shift+Ctrl+Alt+Super+K")
+        );
+        assert_eq!(super::shortcut_label("cmd+7").as_deref(), Some("Super+7"));
+        assert_eq!(super::shortcut_label("ctrl+p+q"), None);
+        assert_eq!(super::shortcut_label("p"), None);
     }
 
     #[test]

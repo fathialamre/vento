@@ -96,7 +96,7 @@ pub(super) fn reveal(paths: &[PathBuf]) {
         .iter()
         .map(|p| gio::File::for_path(p).uri().to_string())
         .collect();
-    let shown = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).and_then(|bus| {
+    let shown = super::session_bus().and_then(|bus| {
         bus.call_sync(
             Some("org.freedesktop.FileManager1"),
             "/org/freedesktop/FileManager1",

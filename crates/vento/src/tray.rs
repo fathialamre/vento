@@ -1,7 +1,9 @@
 //! Menu-bar icon: a left click opens the panel, a right click shows the menu
-//! with Copy from screen, undo, pause, settings file access and quit.
+//! with Copy from screen, undo, pause, settings file access and quit. While
+//! Keep Awake holds the Mac awake, a cup shows beside it; a click on the cup
+//! opens the panel on the Keep Awake tab.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::process::Command;
 use std::rc::Rc;
 
@@ -12,13 +14,18 @@ use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
+use crate::awake::KeepAwake;
 use crate::exec::{Executor, undo_menu_text};
 use crate::pause::PauseSwitch;
 
 /// The flame mark as a black template image, 36 px: an 18 pt glyph at 2x.
 const FLAME_PNG: &[u8] = include_bytes!("../assets/menu-bar-flame@2x.png");
-/// Side length of the flame in pixels.
+/// The Keep Awake cup, the same way.
+const CUP_PNG: &[u8] = include_bytes!("../assets/menu-bar-cup@2x.png");
+/// Side length of the flame and the cup in pixels.
 const FLAME_SIZE: u32 = 36;
+/// The cup's tray icon id, which tells its clicks from Vento's.
+const CUP_ID: &str = "vento-keep-awake";
 /// Side length of the menu-bar icon in pixels. tray-icon shows an image
 /// taller than 22 pt at 22 pt, so the 44 px icon lands at 22 pt and the
 /// flame centred in it at 18 pt, sharp on Retina screens.
@@ -37,6 +44,8 @@ thread_local! {
     static DISPATCH: RefCell<Option<Dispatch>> = const { RefCell::new(None) };
     /// Acts on a left click on the icon; lives on the main thread too.
     static PANEL_DISPATCH: RefCell<Option<PanelDispatch>> = const { RefCell::new(None) };
+    /// Acts on a left click on the Keep Awake cup; main thread too.
+    static CUP_DISPATCH: RefCell<Option<PanelDispatch>> = const { RefCell::new(None) };
 }
 
 /// How far above a screen's work area (which starts below the menu bar) the
@@ -104,13 +113,14 @@ pub struct TrayHandle {
     _icon: TrayIcon,
 }
 
-/// A 44x44 RGBA image of the flame centred on a transparent margin: black
-/// with an alpha mask, so macOS can tint it as a template image.
+/// A 44x44 RGBA image of the bundled 36x36 `mark` (the flame or the cup)
+/// centred on a transparent margin: black with an alpha mask, so macOS can
+/// tint it as a template image.
 ///
 /// # Panics
-/// If the bundled flame is not a 36x36 RGBA PNG.
-fn tray_icon_rgba() -> Vec<u8> {
-    let mut reader = png::Decoder::new(std::io::Cursor::new(FLAME_PNG))
+/// If `mark` is not a 36x36 RGBA PNG.
+fn tray_icon_rgba(mark: &[u8]) -> Vec<u8> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(mark))
         .read_info()
         .expect("the bundled flame is a PNG");
     let mut flame = vec![0u8; reader.output_buffer_size().expect("flame fits in memory")];
@@ -143,6 +153,11 @@ pub struct TrayDeps {
     pub exec: Rc<Executor>,
     /// Places the icon on its screen.
     pub platform: Rc<dyn Platform>,
+    /// Shows its cup beside the icon while it holds the Mac awake.
+    pub keep_awake: Rc<KeepAwake>,
+    /// Opens the panel on the Keep Awake tab under the cup; given the cup's
+    /// frame in global logical points.
+    pub on_open_keep_awake: Box<dyn Fn(Rect)>,
     /// Opens the panel under the icon; given the icon's frame in global
     /// logical points.
     pub on_open_panel: Box<dyn Fn(Rect)>,
@@ -161,6 +176,8 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let TrayDeps {
         exec,
         platform,
+        keep_awake,
+        on_open_keep_awake,
         on_open_panel,
         pause,
         on_copy_from_screen,
@@ -191,7 +208,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     ])
     .expect("cannot build the tray menu");
 
-    let icon = Icon::from_rgba(tray_icon_rgba(), ICON_SIZE, ICON_SIZE)
+    let icon = Icon::from_rgba(tray_icon_rgba(FLAME_PNG), ICON_SIZE, ICON_SIZE)
         .expect("tray icon has a valid size");
     let tray = TrayIconBuilder::new()
         .with_icon_templated(icon)
@@ -252,19 +269,46 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }
     }));
 
-    // A left click on the icon opens the panel. Same forwarding as the menu:
-    // only the (Send) frame crosses to the main thread.
+    // The cup comes and goes with Keep Awake.
+    {
+        let cup: RefCell<Option<TrayIcon>> = RefCell::new(None);
+        let shown = Cell::new(false);
+        let keep = Rc::downgrade(&keep_awake);
+        keep_awake.on_change(Box::new(move || {
+            let on = keep.upgrade().is_some_and(|k| k.session().is_some());
+            if shown.replace(on) == on {
+                return;
+            }
+            *cup.borrow_mut() = if on { build_cup() } else { None };
+        }));
+    }
+
+    // A left click on the icon opens the panel, one on the cup the Keep
+    // Awake tab. Same forwarding as the menu: only the (Send) frame crosses
+    // to the main thread.
+    let frame_of = {
+        let platform = platform.clone();
+        move |physical: &tray_icon::Rect| {
+            let cursor = platform.sample_input().cursor;
+            icon_frame(physical, cursor, &platform.screens(), &|p| {
+                platform.scale_factor_at(p)
+            })
+        }
+    };
+    let cup_frame_of = frame_of.clone();
     PANEL_DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |physical: tray_icon::Rect| {
-            let cursor = platform.sample_input().cursor;
-            let frame = icon_frame(&physical, cursor, &platform.screens(), &|p| {
-                platform.scale_factor_at(p)
-            });
-            on_open_panel(frame);
+            on_open_panel(frame_of(&physical));
+        }));
+    });
+    CUP_DISPATCH.with(|slot| {
+        *slot.borrow_mut() = Some(Box::new(move |physical: tray_icon::Rect| {
+            on_open_keep_awake(cup_frame_of(&physical));
         }));
     });
     TrayIconEvent::set_event_handler(Some(|event: TrayIconEvent| {
         let TrayIconEvent::Click {
+            id,
             rect,
             button: MouseButton::Left,
             button_state: MouseButtonState::Up,
@@ -273,8 +317,14 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         else {
             return;
         };
+        let on_cup = id == CUP_ID;
         if let Err(e) = slint::invoke_from_event_loop(move || {
-            PANEL_DISPATCH.with(|slot| {
+            let slot = if on_cup {
+                &CUP_DISPATCH
+            } else {
+                &PANEL_DISPATCH
+            };
+            slot.with(|slot| {
                 if let Some(dispatch) = slot.borrow().as_ref() {
                     dispatch(rect);
                 }
@@ -285,6 +335,20 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     }));
 
     TrayHandle { _icon: tray }
+}
+
+/// The Keep Awake cup's menu-bar icon, with no menu: a click opens the
+/// panel. `None`, logged, when macOS will not make it.
+fn build_cup() -> Option<TrayIcon> {
+    let icon = Icon::from_rgba(tray_icon_rgba(CUP_PNG), ICON_SIZE, ICON_SIZE)
+        .expect("the cup has a valid size");
+    TrayIconBuilder::new()
+        .with_id(CUP_ID)
+        .with_icon_templated(icon)
+        .with_tooltip("Keep Awake")
+        .build()
+        .inspect_err(|e| warn!("cannot show the Keep Awake cup: {e}"))
+        .ok()
 }
 
 /// Opens the settings file in the default text editor, writing the defaults
@@ -406,12 +470,13 @@ mod tests {
 
     #[test]
     fn icon_has_the_right_length() {
-        assert_eq!(tray_icon_rgba().len(), 44 * 44 * 4);
+        assert_eq!(tray_icon_rgba(FLAME_PNG).len(), 44 * 44 * 4);
+        assert_eq!(tray_icon_rgba(CUP_PNG).len(), 44 * 44 * 4);
     }
 
     #[test]
     fn icon_margin_is_transparent() {
-        let rgba = tray_icon_rgba();
+        let rgba = tray_icon_rgba(FLAME_PNG);
         for y in 0..44 {
             for x in 0..44 {
                 if !(4..40).contains(&x) || !(4..40).contains(&y) {
@@ -423,7 +488,7 @@ mod tests {
 
     #[test]
     fn icon_holds_the_flame() {
-        let rgba = tray_icon_rgba();
+        let rgba = tray_icon_rgba(FLAME_PNG);
         let opaque = (0..44 * 44)
             .filter(|i| alpha(&rgba, i % 44, i / 44) == 255)
             .count();
@@ -432,7 +497,7 @@ mod tests {
 
     #[test]
     fn icon_is_black() {
-        let rgba = tray_icon_rgba();
+        let rgba = tray_icon_rgba(FLAME_PNG);
         assert!(
             rgba.as_chunks::<4>()
                 .0

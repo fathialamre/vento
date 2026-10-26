@@ -134,12 +134,16 @@ fn key_code(key: char) -> Option<Code> {
 /// Registers `spec` as a global shortcut and calls `on_press` on the main
 /// thread each time it is pressed. Other shortcuts stay registered with their
 /// own actions; to register the same key again, drop its earlier handle
-/// first, so the key is free.
+/// first, so the key is free. macOS shows the user no `description`.
 ///
 /// # Errors
 /// If the spec is invalid or the key cannot be registered (for example,
 /// another app holds it).
-pub fn install_hotkey(spec: &str, on_press: Box<dyn Fn()>) -> Result<HotkeyHandle, String> {
+pub fn install_hotkey(
+    spec: &str,
+    _description: &str,
+    on_press: Box<dyn Fn()>,
+) -> Result<HotkeyHandle, String> {
     let hotkey = to_hotkey(spec)?;
     let manager = manager()?;
     manager.register(hotkey).map_err(|e| e.to_string())?;
@@ -197,24 +201,24 @@ mod tests {
     #[test]
     fn two_shortcuts_register_side_by_side() {
         // Keys no one else holds, so only vento's own registrations can clash.
-        let first = install_hotkey("ctrl+alt+shift+cmd+8", Box::new(|| {}));
-        let second = install_hotkey("ctrl+alt+shift+cmd+9", Box::new(|| {}));
+        let first = install_hotkey("ctrl+alt+shift+cmd+8", "test", Box::new(|| {}));
+        let second = install_hotkey("ctrl+alt+shift+cmd+9", "test", Box::new(|| {}));
         assert!(first.is_ok(), "first: {:?}", first.as_ref().err());
         assert!(second.is_ok(), "second: {:?}", second.as_ref().err());
     }
 
     #[test]
     fn the_same_key_twice_is_refused() {
-        let _held = install_hotkey("ctrl+alt+shift+cmd+6", Box::new(|| {})).unwrap();
-        let again = install_hotkey("ctrl+alt+shift+cmd+6", Box::new(|| {}));
+        let _held = install_hotkey("ctrl+alt+shift+cmd+6", "test", Box::new(|| {})).unwrap();
+        let again = install_hotkey("ctrl+alt+shift+cmd+6", "test", Box::new(|| {}));
         assert!(again.is_err());
     }
 
     #[test]
     fn a_dropped_shortcut_frees_its_key() {
-        let held = install_hotkey("ctrl+alt+shift+cmd+7", Box::new(|| {})).unwrap();
+        let held = install_hotkey("ctrl+alt+shift+cmd+7", "test", Box::new(|| {})).unwrap();
         drop(held);
-        let again = install_hotkey("ctrl+alt+shift+cmd+7", Box::new(|| {}));
+        let again = install_hotkey("ctrl+alt+shift+cmd+7", "test", Box::new(|| {}));
         assert!(again.is_ok(), "again: {:?}", again.as_ref().err());
     }
 

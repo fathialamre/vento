@@ -4,6 +4,8 @@
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod archive_ui;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod awake;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod exec;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[cfg_attr(target_os = "linux", path = "hotkey_linux.rs")]
@@ -54,7 +56,14 @@ fn main() -> Result<(), slint::PlatformError> {
     /// How long the island stays open to confirm an add from the wheel.
     const POCKET_CONFIRM: Duration = Duration::from_millis(1500);
 
-    env_logger::init();
+    // Warnings show without RUST_LOG: they are what explains a failure
+    // after the fact (a hold Keep Awake could not release, say).
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    // A second launch (the app grid) opens the running Vento's settings.
+    #[cfg(target_os = "linux")]
+    if !vento_platform::claim_instance() {
+        return Ok(());
+    }
     select_backend()?;
     let hub = settings_hub::SettingsHub::new(settings_path());
     if let Some(reason) = hub.load_error() {
@@ -121,8 +130,14 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         })
     };
-    let pocket_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Pocket)));
-    let clip_slot = Rc::new(ShortcutSlot::new(open_on(pocket::View::Clipboard)));
+    let pocket_slot = Rc::new(ShortcutSlot::new(
+        "Open the Pocket",
+        open_on(pocket::View::Pocket),
+    ));
+    let clip_slot = Rc::new(ShortcutSlot::new(
+        "Open the clipboard history",
+        open_on(pocket::View::Clipboard),
+    ));
     // Copy from screen needs macOS 14: on macOS 13 it has no shortcut, no
     // menu item and no settings field.
     let os = vento_platform::screen_text();
@@ -141,9 +156,12 @@ fn main() -> Result<(), slint::PlatformError> {
             hide_access: Box::new(move || hider.hide_if_shown()),
         })
     });
-    let screen_slot = screen_text
-        .clone()
-        .map(|controller| Rc::new(ShortcutSlot::new(Rc::new(move || controller.start()))));
+    let screen_slot = screen_text.clone().map(|controller| {
+        Rc::new(ShortcutSlot::new(
+            "Copy from screen",
+            Rc::new(move || controller.start()),
+        ))
+    });
     let panel = {
         let pause = pause.clone();
         let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
@@ -170,6 +188,9 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    if let Some(controller) = screen_text.clone() {
+        panel.set_on_copy_from_screen(Box::new(move || controller.start()));
+    }
     // The Info window and the panel never show together: whichever opens
     // closes the other, keeping the focus for itself.
     {
@@ -202,6 +223,25 @@ fn main() -> Result<(), slint::PlatformError> {
         if let Some(pocket) = flusher.upgrade() {
             pocket.flush_pending();
         }
+    }));
+    // Launched again while running: the settings, under the island.
+    let reopened = Rc::downgrade(&panel);
+    let homes = Rc::downgrade(&platform);
+    platform.on_reopen(Box::new(move || {
+        let (Some(panel), Some(platform)) = (reopened.upgrade(), homes.upgrade()) else {
+            return;
+        };
+        let Some(home) = platform.pocket_home() else {
+            return;
+        };
+        log::info!("launched again: opening the settings");
+        let icon = home.slot.unwrap_or(vento_core::geometry::Rect {
+            x: home.screen.x + home.screen.w / 2.0 - 16.0,
+            y: home.screen.y,
+            w: 32.0,
+            h: home.menu_bar_h,
+        });
+        panel.open_at(icon);
     }));
     let observer = pocket.clone();
     controller.set_sample_listener(Box::new(move |sample, dragging| {
@@ -275,9 +315,15 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_pocket_shortcut(&settings);
         apply_clip_shortcut(&settings);
         apply_screen_shortcut(&settings);
+        let (awake_panel, awake_info) = (panel.clone(), tray_info.clone());
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
+            keep_awake: panel.keep_awake(),
+            on_open_keep_awake: Box::new(move |icon| {
+                awake_info.dismiss();
+                awake_panel.toggle_keep_awake_at(icon);
+            }),
             on_open_panel: Box::new(move |icon| {
                 tray_info.dismiss();
                 panel.toggle_at(icon);
@@ -298,6 +344,9 @@ fn main() -> Result<(), slint::PlatformError> {
 /// if any.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 struct ShortcutSlot {
+    /// What the shortcut does, where the system names it (GNOME asks the
+    /// user to allow it under this name).
+    description: &'static str,
     action: std::rc::Rc<dyn Fn()>,
     held: std::cell::RefCell<Option<(String, hotkey::HotkeyHandle)>>,
 }
@@ -305,8 +354,9 @@ struct ShortcutSlot {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 impl ShortcutSlot {
     /// A slot with no key registered yet, calling `action` on each press.
-    fn new(action: std::rc::Rc<dyn Fn()>) -> Self {
+    fn new(description: &'static str, action: std::rc::Rc<dyn Fn()>) -> Self {
         Self {
+            description,
             action,
             held: std::cell::RefCell::new(None),
         }
@@ -327,7 +377,7 @@ impl ShortcutSlot {
         // Free the old key first, so the same key can be registered again.
         self.unregister();
         let action = self.action.clone();
-        let handle = hotkey::install_hotkey(spec, Box::new(move || action()))?;
+        let handle = hotkey::install_hotkey(spec, self.description, Box::new(move || action()))?;
         *self.held.borrow_mut() = Some((spec.to_owned(), handle));
         Ok(())
     }

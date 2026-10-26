@@ -18,13 +18,18 @@ pub use stub::{StubPlatform, StubScreenText};
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod webp;
 #[cfg(target_os = "macos")]
 pub use macos::{MacPlatform, MacScreenText};
 
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::LinuxPlatform;
+pub use linux::{
+    APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, claim_instance,
+    end_startup, start_file_drag, tray_icon_frame,
+};
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +53,36 @@ pub struct IslandHome {
     pub notch: Option<Rect>,
     /// Height of the menu bar on that screen.
     pub menu_bar_h: f64,
+    /// Room kept free in the menu bar for the collapsed island (GNOME's top
+    /// bar keeps some for it); the island then sits there, as beside a
+    /// notch, rather than in the middle of the screen.
+    pub slot: Option<Rect>,
+}
+
+/// How [`Platform::keep_awake`] holds the computer awake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AwakeHold {
+    /// The screen stays on too: it does not dim, blank or lock.
+    pub screen: bool,
+}
+
+/// The colours the desktop's own menus use (GNOME Shell's theme), each
+/// RGBA8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MenuColors {
+    pub background: [u8; 4],
+    /// The menus' edge.
+    pub border: [u8; 4],
+    pub text: [u8; 4],
+}
+
+impl MenuColors {
+    /// Whether the menus are dark: their background is darker than mid
+    /// grey (relative luminance, as WCAG weighs the channels).
+    pub fn is_dark(&self) -> bool {
+        let [r, g, b, _] = self.background.map(f64::from);
+        0.2126 * r + 0.7152 * g + 0.0722 * b < 127.5
+    }
 }
 
 /// An RGBA8 image, not premultiplied, rows top to bottom.
@@ -60,7 +95,7 @@ pub struct RgbaImage {
 }
 
 /// Content dropped on the [`DropCatcher`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Dropped {
     /// One or more files or folders.
     Files(Vec<PathBuf>),
@@ -70,6 +105,22 @@ pub enum Dropped {
     Url(String),
     /// Image data as dragged; `ext` is `"png"` or `"tiff"`.
     Image { bytes: Vec<u8>, ext: &'static str },
+}
+
+/// Image data shows as its size: logs would otherwise print every byte.
+impl std::fmt::Debug for Dropped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Files(paths) => f.debug_tuple("Files").field(paths).finish(),
+            Self::Text(text) => f.debug_tuple("Text").field(text).finish(),
+            Self::Url(url) => f.debug_tuple("Url").field(url).finish(),
+            Self::Image { bytes, ext } => f
+                .debug_struct("Image")
+                .field("bytes", &bytes.len())
+                .field("ext", ext)
+                .finish(),
+        }
+    }
 }
 
 /// What the [`DropCatcher`] reports while a drag passes over it.
@@ -209,6 +260,19 @@ pub trait Platform {
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError>;
+    /// Let this window take the pointer only inside `rect`, in physical
+    /// pixels from its top-left corner, or nowhere when `None`; clicks
+    /// elsewhere fall through to what is below. `Unsupported` where vento
+    /// turns hit-testing on and off as the pointer moves instead. Main
+    /// thread only.
+    fn set_input_rect(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rect: Option<Rect>,
+    ) -> Result<(), PlatformError> {
+        let _ = (window, rect);
+        Err(PlatformError::Unsupported)
+    }
     /// The Finder icon of `path`, rendered at `px`×`px` points times the
     /// main screen's backing scale. `None` if `path` doesn't exist or the
     /// icon can't be rendered. Main thread only.
@@ -230,6 +294,36 @@ pub trait Platform {
     /// when the system ends it (log out, shut down). Replaces any earlier
     /// `f`.
     fn on_terminate(&self, f: Box<dyn Fn()>);
+    /// Run `f` when vento is launched again while it runs (the app grid,
+    /// a second start at login). Main thread only.
+    fn on_reopen(&self, f: Box<dyn Fn()>) {
+        let _ = f;
+    }
+    /// Keeps the computer from sleeping while idle, and the screen on too
+    /// when `hold.screen`, until called again; `None` lets it sleep as
+    /// usual again. Replaces any earlier hold, which ends with the process
+    /// in any case. Main thread only.
+    fn keep_awake(&self, hold: Option<AwakeHold>) -> Result<(), PlatformError> {
+        let _ = hold;
+        Err(PlatformError::Unsupported)
+    }
+    /// Shows or hides a Keep Awake mark that the desktop draws in its top
+    /// bar (GNOME's, through the Vento extension); a click on it runs the
+    /// [`Platform::on_awake_indicator`] handler. Where the app draws its own
+    /// (a menu-bar icon on the Mac), nothing. Main thread only.
+    fn show_awake_indicator(&self, shown: bool) {
+        let _ = shown;
+    }
+    /// Run `f` with the mark's frame, in global logical points, when it is
+    /// clicked. Replaces any earlier `f`. Main thread only.
+    fn on_awake_indicator(&self, f: Box<dyn Fn(Rect)>) {
+        let _ = f;
+    }
+    /// The colours the desktop's own menus use, for vento's panel to match;
+    /// `None` where it keeps its own. Asked each time the panel opens.
+    fn menu_colors(&self) -> Option<MenuColors> {
+        None
+    }
     /// Bring vento to the front so a window of its own can take keystrokes.
     /// Main thread only.
     fn activate_app(&self);
@@ -315,7 +409,11 @@ pub fn screen_text() -> Rc<dyn ScreenText> {
     {
         Rc::new(MacScreenText)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        Rc::new(linux::screen_text::LinuxScreenText)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         Rc::new(StubScreenText)
     }
@@ -329,7 +427,11 @@ pub fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, PlatformError> 
     {
         macos::read_screen_text(sel)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::screen_text::read_screen_text(sel)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::read_screen_text(sel)
     }
@@ -343,7 +445,11 @@ pub fn screen_text_languages() -> Vec<String> {
     {
         macos::screen_text_languages()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::screen_text::screen_text_languages()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::screen_text_languages()
     }
@@ -459,9 +565,26 @@ pub fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
     {
         macos::probe_image(path)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::image_io::probe_image(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::probe_image(path)
+    }
+}
+
+/// The formats Convert can write here, in the ring's order: on Linux, HEIC
+/// only with libheif's encoder.
+pub fn convert_targets() -> Vec<ImageFormat> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::image_io::targets()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        ImageFormat::TARGETS.to_vec()
     }
 }
 
@@ -474,7 +597,11 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
     {
         macos::write_image(src, dst, format)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::image_io::write_image(src, dst, format)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::write_image(src, dst, format)
     }
@@ -521,5 +648,25 @@ pub fn current() -> Rc<dyn Platform> {
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         Rc::new(StubPlatform)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menus_are_dark_when_their_background_is() {
+        let menus = |background| MenuColors {
+            background,
+            border: [0; 4],
+            text: [0; 4],
+        };
+        // Yaru's menus, light and dark.
+        assert!(!menus([0xff, 0xff, 0xff, 0xff]).is_dark());
+        assert!(menus([0x36, 0x36, 0x3a, 0xff]).is_dark());
+        // Green weighs most: a bright green is light, a bright blue dark.
+        assert!(!menus([0, 0xc0, 0, 0xff]).is_dark());
+        assert!(menus([0, 0, 0xff, 0xff]).is_dark());
     }
 }
