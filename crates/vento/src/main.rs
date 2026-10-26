@@ -199,6 +199,8 @@ fn main() -> Result<(), slint::PlatformError> {
         panel::PanelController::new(
             platform.clone(),
             hub.clone(),
+            Rc::downgrade(&pocket),
+            executor.clone(),
             supported,
             Box::new(move |paused| pause.set(paused)),
         )

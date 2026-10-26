@@ -113,7 +113,7 @@ fn icon_frame(cursor: Point, screen_top: f64, bar_h: f64) -> Rect {
 }
 
 /// Has the shell show Keep Awake's cup in the top bar while something is
-/// held, and opens the Keep Awake tab when it is clicked. Needs no tray
+/// held, and opens the Quick panel when it is clicked. Needs no tray
 /// host: the Vento extension draws the cup.
 fn show_awake_cup(
     platform: &Rc<dyn Platform>,
@@ -215,8 +215,8 @@ pub struct TrayDeps {
     pub platform: Rc<dyn Platform>,
     /// Shows its cup in the top bar while it holds the computer awake.
     pub keep_awake: Rc<KeepAwake>,
-    /// Opens the panel on the Keep Awake tab under the cup; given the cup's
-    /// frame in global logical points.
+    /// Opens the Quick panel under the cup; given the cup's frame in global
+    /// logical points.
     pub on_open_keep_awake: Box<dyn Fn(Rect)>,
     /// Opens the panel under the icon; given the icon's frame in global
     /// logical points.

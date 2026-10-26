@@ -10,6 +10,7 @@
 use std::cell::Cell;
 
 use vento_core::settings::Appearance;
+use vento_platform::Platform;
 
 use crate::ui::Theme;
 
@@ -40,6 +41,24 @@ pub fn index(a: Appearance) -> i32 {
 /// Gives a window's `Theme` the current setting.
 pub fn apply(theme: &Theme<'_>) {
     theme.set_appearance(index(current()));
+}
+
+/// Matches the desktop's own menus where the platform gives their colours,
+/// as they are now (a theme change shows at the next open), and gives
+/// `theme` the Appearance setting, which decides whether those colours
+/// apply.
+pub fn show_menu_colors(platform: &dyn Platform, theme: &Theme<'_>) {
+    apply(theme);
+    let Some(colors) = platform.menu_colors() else {
+        theme.set_system_colors(false);
+        return;
+    };
+    let color = |[r, g, b, a]: [u8; 4]| slint::Color::from_argb_u8(a, r, g, b);
+    theme.set_system_bg(color(colors.background));
+    theme.set_system_border(color(colors.border));
+    theme.set_system_text(color(colors.text));
+    theme.set_system_dark(colors.is_dark());
+    theme.set_system_colors(true);
 }
 
 #[cfg(test)]

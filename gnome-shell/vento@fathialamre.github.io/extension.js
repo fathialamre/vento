@@ -26,7 +26,7 @@ const API_VERSION = 8;
 // Vento's StatusNotifierItem Id, by which its tray icon is found.
 const TRAY_ID = 'vento';
 
-// Vento's own bus name and object, which open the Keep Awake tab when its
+// Vento's own bus name and object, which open the Quick panel when its
 // cup is clicked.
 const VENTO_NAME = 'io.github.fathialamre.Vento';
 const VENTO_PATH = '/io/github/fathialamre/Vento';
@@ -262,7 +262,7 @@ function trayIconPressed(event) {
     return Clutter.EVENT_STOP;
 }
 
-/** Asks Vento to open its Keep Awake tab under `cup`. */
+/** Asks Vento to open its Quick panel under `cup`. */
 function openKeepAwake(cup) {
     const [x, y] = cup.get_transformed_position();
     const [w, h] = cup.get_transformed_size();

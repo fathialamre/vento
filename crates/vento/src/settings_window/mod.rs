@@ -34,9 +34,9 @@ use vento_core::settings::{
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
 
-use crate::appearance;
+use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
-use crate::panel::{set_rows, show_menu_colors};
+use crate::panel::set_rows;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
@@ -1077,7 +1077,7 @@ fn key_char(code: KeyCode) -> Option<char> {
 
 /// How the platform writes the shortcut `spec`: symbols (`⌃⌥P`) on a Mac,
 /// GNOME's words (`Ctrl+Alt+P`) elsewhere. `None` when it does not parse.
-fn shortcut_text(spec: &str) -> Option<String> {
+pub(crate) fn shortcut_text(spec: &str) -> Option<String> {
     #[cfg(target_os = "macos")]
     return vento_core::settings::shortcut_symbols(spec);
     #[cfg(not(target_os = "macos"))]

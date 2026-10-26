@@ -1,7 +1,7 @@
-//! Menu-bar icon: a left click opens the panel, a right click shows the menu
-//! with Copy from screen, undo, pause, settings file access and quit. While
-//! Keep Awake holds the Mac awake, a cup shows beside it; a click on the cup
-//! opens the panel on the Keep Awake tab.
+//! Menu-bar icon: a left click opens the Quick panel, a right click shows
+//! the menu with Copy from screen, undo, pause, settings file access and
+//! quit. While Keep Awake holds the Mac awake, a cup shows beside it; a
+//! click on the cup opens the Quick panel under it.
 
 use std::cell::{Cell, RefCell};
 use std::process::Command;
@@ -155,8 +155,8 @@ pub struct TrayDeps {
     pub platform: Rc<dyn Platform>,
     /// Shows its cup beside the icon while it holds the Mac awake.
     pub keep_awake: Rc<KeepAwake>,
-    /// Opens the panel on the Keep Awake tab under the cup; given the cup's
-    /// frame in global logical points.
+    /// Opens the Quick panel under the cup; given the cup's frame in global
+    /// logical points.
     pub on_open_keep_awake: Box<dyn Fn(Rect)>,
     /// Opens the panel under the icon; given the icon's frame in global
     /// logical points.

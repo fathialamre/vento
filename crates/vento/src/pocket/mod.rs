@@ -1412,6 +1412,11 @@ impl PocketController {
         }
     }
 
+    /// How many items the Pocket holds.
+    pub fn item_count(&self) -> usize {
+        self.pocket.borrow().items().len()
+    }
+
     /// Pushes the count into the window, and the clipboard history with it.
     /// The cells are rebuilt only while the island is expanded (a hidden or
     /// collapsed island shows none), so a copy made meanwhile costs no look
@@ -1420,7 +1425,7 @@ impl PocketController {
         if self.expanded() {
             self.refresh_cells();
         }
-        let count = self.pocket.borrow().items().len();
+        let count = self.item_count();
         self.window
             .set_count(i32::try_from(count).unwrap_or(i32::MAX));
         self.refresh_clip();

@@ -1,9 +1,10 @@
-//! The menu-bar panel: hangs under the menu-bar icon on a left click, its
-//! arrow pointing at the icon, and closes on Esc, Done, a second click on
-//! the icon or a click in another app. Losing focus alone (⌘-Tab, another
-//! app coming forward) leaves it open. It holds Keep Awake, Pause, Copy
-//! text, Quit and Settings…, which opens the Settings window
-//! ([`crate::settings_window`]).
+//! The Quick panel: hangs under the menu-bar icon (or Keep Awake's cup) on
+//! a left click, its arrow pointing at the icon, and closes on Esc, Done, a
+//! second click on the icon or a click in another app. Losing focus alone
+//! (⌘-Tab, another app coming forward) leaves it open. It says whether
+//! vento is paused and holds the quick actions (Copy text, Clipboard,
+//! Pocket, Keep Awake), Keep Awake's times, Undo, Quit and Settings…, which
+//! opens the Settings window ([`crate::settings_window`]).
 //!
 //! The window is created on the first open and dropped once the panel has
 //! been closed for [`crate::lazy_window::IDLE`], taking its native window
@@ -24,20 +25,22 @@ use vento_core::awake::{Chip, TIMED_CHIPS, default_until};
 use vento_core::geometry::{Point, Rect, screen_for};
 use vento_platform::Platform;
 
-use crate::appearance;
+use crate::appearance::{self, show_menu_colors};
 use crate::awake::KeepAwake;
+use crate::exec::{Executor, undo_menu_text};
 use crate::lazy_window::LazyWindow;
+use crate::pocket::{PocketController, View};
 use crate::settings_hub::SettingsHub;
-use crate::settings_window::notice_text;
-use crate::ui::{SettingsPanel, Theme};
+use crate::settings_window::{notice_text, shortcut_text};
+use crate::ui::{QuickPanel, Theme};
 
-/// Panel width in logical points (matches `settings.slint`).
+/// Panel width in logical points (matches `quick.slint`).
 const WIDTH: f64 = 340.0;
 /// Gap between the bottom of the menu-bar icon and the arrow's visible tip.
 const TIP_GAP: f64 = 1.25;
 /// How far below the top of the window the arrow's visible tip is: the
 /// outline's rounded apex lies 1.75 pt down, its hairline's outer edge half
-/// a point above that (matches `settings.slint`).
+/// a point above that (matches `quick.slint`).
 const TIP_INSET: f64 = 1.25;
 /// Gap between the bottom of the menu-bar icon and the top of the window.
 const GAP: f64 = TIP_GAP - TIP_INSET;
@@ -45,36 +48,41 @@ const GAP: f64 = TIP_GAP - TIP_INSET;
 /// of the work area.
 const INSET: f64 = 8.0;
 /// The panel body's corner radius and the arrow's base width (both match
-/// `settings.slint`).
+/// `quick.slint`).
 const CORNER_RADIUS: f64 = 16.0;
 const ARROW_W: f64 = 20.0;
 /// How far the base of the arrow curves into the top edge on each side
-/// (matches `settings.slint`).
+/// (matches `quick.slint`).
 const ARROW_BLEND: f64 = 3.0;
 /// The least distance from the arrow's centre to either side of the panel:
 /// the rounded corner, half the arrow and the curve that blends it into
 /// the top edge all fit beside it.
 const ARROW_MARGIN: f64 = CORNER_RADIUS + ARROW_W / 2.0 + ARROW_BLEND;
 
-/// Opens, places and closes the menu-bar panel.
+/// Opens, places and closes the Quick panel.
 pub struct PanelController {
     platform: Rc<dyn Platform>,
     hub: Rc<SettingsHub>,
     /// What the panel's Keep Awake shows and changes; it lives as long as
     /// the panel, which is as long as vento.
     keep_awake: Rc<KeepAwake>,
+    /// The island the Clipboard and Pocket tiles open, and whose items the
+    /// Pocket tile counts.
+    pocket: Weak<PocketController>,
+    /// What the Undo row offers to undo, and undoes.
+    exec: Rc<Executor>,
     /// The panel's window while it is open, and for a while after it
     /// closes. Use [`PanelController::window`] or
     /// [`PanelController::existing`].
-    window: LazyWindow<SettingsPanel>,
-    /// Whether vento is paused, for the Pause item of the next window.
+    window: LazyWindow<QuickPanel>,
+    /// Whether vento is paused, for the status row of the next window.
     paused: Cell<bool>,
-    /// Whether the footer offers Copy text.
+    /// Whether the panel has the Copy text tile.
     screen_text_supported: bool,
     /// Pauses or resumes vento; the panel shows the result through
     /// [`PanelController::set_paused`].
     on_pause: Box<dyn Fn(bool)>,
-    /// Starts Copy from screen, for the footer's Copy text.
+    /// Starts Copy from screen, for the Copy text tile.
     on_copy_from_screen: RefCell<Option<Box<dyn Fn()>>>,
     /// Opens the Settings window, for the footer's Settings….
     on_open_settings: RefCell<Option<Box<dyn Fn()>>>,
@@ -87,11 +95,13 @@ pub struct PanelController {
 
 impl PanelController {
     /// Creates the (closed) panel; its window comes with the first open.
-    /// `screen_text_supported` says whether the footer offers Copy text;
-    /// `on_pause` is called with the state the Pause item asks for.
+    /// `screen_text_supported` says whether it has the Copy text tile;
+    /// `on_pause` is called with the state the Pause button asks for.
     pub fn new(
         platform: Rc<dyn Platform>,
         hub: Rc<SettingsHub>,
+        pocket: Weak<PocketController>,
+        exec: Rc<Executor>,
         screen_text_supported: bool,
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
@@ -100,6 +110,8 @@ impl PanelController {
             platform,
             hub,
             keep_awake,
+            pocket,
+            exec,
             window: LazyWindow::new(),
             paused: Cell::new(false),
             screen_text_supported,
@@ -110,12 +122,20 @@ impl PanelController {
             frame_kept: Cell::new(false),
             this: this.clone(),
         });
-        // A saved change clears the load error: drop the notice with it.
-        // With no window there is no notice to update.
+        // A saved change clears the load error: drop the notice with it,
+        // and show the shortcuts and the history setting as saved. With no
+        // window there is nothing to update.
         let this = Rc::downgrade(&panel);
         panel.hub.on_change(Box::new(move |_, _| {
             if let Some(panel) = this.upgrade() {
-                panel.show_notice();
+                panel.show_settings();
+            }
+        }));
+        // A move finishing or an undo starting while the panel is open.
+        let this = Rc::downgrade(&panel);
+        panel.exec.on_undo_changed(Box::new(move |_| {
+            if let Some(panel) = this.upgrade() {
+                panel.show_undo();
             }
         }));
         // The status line counts down while the panel is open.
@@ -132,9 +152,9 @@ impl PanelController {
     ///
     /// # Panics
     /// If the Slint window cannot be created.
-    fn window(&self) -> SettingsPanel {
+    fn window(&self) -> QuickPanel {
         self.window.get_or_create(|| {
-            let window = SettingsPanel::new().expect("cannot create the settings panel");
+            let window = QuickPanel::new().expect("cannot create the quick panel");
             appearance::apply(&window.global::<Theme>());
             window.set_screen_text_supported(self.screen_text_supported);
             window.set_paused(self.paused.get());
@@ -146,11 +166,11 @@ impl PanelController {
     }
 
     /// The panel's window, if it has one now.
-    fn existing(&self) -> Option<SettingsPanel> {
+    fn existing(&self) -> Option<QuickPanel> {
         self.window.get()
     }
 
-    fn connect(&self, window: &SettingsPanel) {
+    fn connect(&self, window: &QuickPanel) {
         let this = self.this.clone();
         window.on_close_requested(move || {
             if let Some(panel) = this.upgrade() {
@@ -179,6 +199,24 @@ impl PanelController {
             panel.close();
             if let Some(start) = panel.on_copy_from_screen.borrow().as_ref() {
                 start();
+            }
+        });
+        let this = self.this.clone();
+        window.on_clipboard_clicked(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.open_island(View::Clipboard);
+            }
+        });
+        let this = self.this.clone();
+        window.on_pocket_clicked(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.open_island(View::Pocket);
+            }
+        });
+        let this = self.this.clone();
+        window.on_undo_clicked(move || {
+            if let Some(panel) = this.upgrade() {
+                panel.exec.undo_last();
             }
         });
         window.on_quit_clicked(|| {
@@ -213,13 +251,20 @@ impl PanelController {
         self.connect_awake(window);
     }
 
-    fn connect_awake(&self, window: &SettingsPanel) {
+    fn connect_awake(&self, window: &QuickPanel) {
+        // The tile stops what runs, or starts "until stopped".
         let this = self.this.clone();
-        window.on_awake_switched(move |on| {
+        window.on_awake_tile_clicked(move || {
             let Some(panel) = this.upgrade() else { return };
-            if on {
-                panel.keep_awake.start(Chip::Forever);
+            if panel.keep_awake.session().is_some() {
+                panel.keep_awake.stop();
             } else {
+                panel.keep_awake.start(Chip::Forever);
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_stop_clicked(move || {
+            if let Some(panel) = this.upgrade() {
                 panel.keep_awake.stop();
             }
         });
@@ -240,6 +285,23 @@ impl PanelController {
             };
             panel.keep_awake.start(Chip::Until { hour, minute });
         });
+    }
+
+    /// Closes the panel and opens the island on `view`.
+    fn open_island(&self, view: View) {
+        self.close();
+        if let Some(pocket) = self.pocket.upgrade() {
+            pocket.open_view(view);
+        }
+    }
+
+    /// Shows what Undo would undo now, or hides the Undo row.
+    fn show_undo(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
+        let text = self.exec.has_undo().map(|kind| undo_menu_text(Some(kind)));
+        window.set_undo_text(text.unwrap_or_default().into());
     }
 
     /// Shows what Keep Awake holds now.
@@ -269,7 +331,7 @@ impl PanelController {
             .unwrap_or(true)
     }
 
-    /// Has the footer's Copy text call `start`.
+    /// Has the Copy text tile call `start`.
     pub fn set_on_copy_from_screen(&self, start: Box<dyn Fn()>) {
         *self.on_copy_from_screen.borrow_mut() = Some(start);
     }
@@ -320,7 +382,7 @@ impl PanelController {
         if let Some(window) = self.existing()
             && let Err(e) = window.hide()
         {
-            warn!("cannot hide the settings panel: {e}");
+            warn!("cannot hide the quick panel: {e}");
         }
         self.window.release_later();
         if hand_back {
@@ -372,8 +434,11 @@ impl PanelController {
         let window = self.window();
         // Pick up hand edits of the settings file.
         self.hub.refresh_from_disk();
-        self.show_notice();
+        self.show_settings();
         show_menu_colors(&*self.platform, &window.global::<Theme>());
+        let count = self.pocket.upgrade().map_or(0, |p| p.item_count());
+        window.set_pocket_count(pocket_count_text(count).into());
+        self.show_undo();
         self.show_awake();
         let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
         window.set_awake_until_hour(hour.into());
@@ -391,7 +456,7 @@ impl PanelController {
         // becomes key and takes Esc.
         self.platform.activate_app();
         if let Err(e) = window.show() {
-            warn!("cannot show the settings panel: {e}");
+            warn!("cannot show the quick panel: {e}");
             self.open.set(false);
             self.platform.deactivate_app();
             self.window.release_later();
@@ -453,7 +518,7 @@ impl PanelController {
 
     /// Tells AppKit to leave the panel where it is placed: on its own it
     /// pushes a window whose top meets the menu bar a menu bar further down.
-    fn keep_frame(&self, window: &SettingsPanel) {
+    fn keep_frame(&self, window: &QuickPanel) {
         let result = match window.window().window_handle().window_handle() {
             Ok(handle) => self
                 .platform
@@ -463,7 +528,7 @@ impl PanelController {
         };
         match result {
             Ok(()) => self.frame_kept.set(true),
-            Err(e) => warn!("cannot keep the settings panel under the menu bar: {e}"),
+            Err(e) => warn!("cannot keep the quick panel under the menu bar: {e}"),
         }
     }
 
@@ -486,34 +551,33 @@ impl PanelController {
         contains(&frame, self.platform.sample_input().cursor)
     }
 
-    fn show_notice(&self) {
+    /// Shows the notice for a settings file that could not be loaded, the
+    /// Copy from screen and Clipboard shortcuts, and whether the clipboard
+    /// history is on.
+    fn show_settings(&self) {
         let Some(window) = self.existing() else {
             return;
         };
         let notice = self.hub.load_error().map(|e| notice_text(&e));
         window.set_notice(notice.unwrap_or_default().into());
+        let settings = self.hub.current();
+        let shortcut = |spec: &str| shortcut_text(spec).unwrap_or_default().into();
+        window.set_screen_text_shortcut(shortcut(&settings.screen_text_shortcut));
+        window.set_clip_shortcut(shortcut(&settings.clipboard_shortcut));
+        window.set_clip_history(settings.clipboard_history);
     }
 }
 
-/// Matches the desktop's own menus where the platform gives their colours,
-/// as they are now (a theme change shows at the next open), and gives
-/// `theme` the Appearance setting, which decides whether those colours
-/// apply.
-pub(crate) fn show_menu_colors(platform: &dyn Platform, theme: &Theme<'_>) {
-    appearance::apply(theme);
-    let Some(colors) = platform.menu_colors() else {
-        theme.set_system_colors(false);
-        return;
-    };
-    let color = |[r, g, b, a]: [u8; 4]| slint::Color::from_argb_u8(a, r, g, b);
-    theme.set_system_bg(color(colors.background));
-    theme.set_system_border(color(colors.border));
-    theme.set_system_text(color(colors.text));
-    theme.set_system_dark(colors.is_dark());
-    theme.set_system_colors(true);
+/// What the Pocket tile says about the Pocket holding `n` items.
+pub fn pocket_count_text(n: usize) -> String {
+    match n {
+        0 => "Empty".into(),
+        1 => "1 item".into(),
+        n => format!("{n} items"),
+    }
 }
 
-/// The Keep Awake chip at `i` of the panel (see `KeepAwakeTab`): the timed
+/// The Keep Awake chip at `i` of the panel (see `AwakeChips`): the timed
 /// ones, then ∞. `None` for Until…, which asks for its time first.
 fn chip_at(i: i32) -> Option<Chip> {
     let i = usize::try_from(i).ok()?;
@@ -718,6 +782,13 @@ mod tests {
             panel_position(icon, 400.0, &[]),
             at(-60.0, 24.0, WIDTH / 2.0)
         );
+    }
+
+    #[test]
+    fn pocket_tile_counts_its_items() {
+        assert_eq!(pocket_count_text(0), "Empty");
+        assert_eq!(pocket_count_text(1), "1 item");
+        assert_eq!(pocket_count_text(3), "3 items");
     }
 
     #[test]
