@@ -729,15 +729,17 @@ impl SettingsWindowController {
     }
 
     /// Sets every control from the settings in effect, and the window's
-    /// look from the Appearance setting: the window stays open while it
-    /// changes, so it restyles at once. (`appearance::current` is already
-    /// the new one: main's hub listener, which sets it, comes first.)
+    /// look, title bar included, from the Appearance setting: the window
+    /// stays open while it changes, so it restyles at once.
+    /// (`appearance::current` is already the new one: main's hub listener,
+    /// which sets it, comes first.)
     fn show_settings(&self) {
         let Some(window) = self.existing() else {
             return;
         };
         let settings = self.hub.current();
         appearance::apply(&window.global::<Theme>());
+        show_title_bar(&window);
         window.set_appearance(choice_index(&APPEARANCES, settings.appearance));
         let icons = window.global::<Icons>();
         let rows: Vec<ActionRow> = settings
@@ -890,6 +892,14 @@ impl SettingsWindowController {
             return;
         }
         window.window().with_winit_window(|w| w.focus_window());
+        // A new window gets its native window, and so its title bar, at the
+        // end of this turn of the event loop.
+        let this = self.this.clone();
+        self.window.when_native(move || {
+            if let Some(window) = this.upgrade().and_then(|c| c.existing()) {
+                show_title_bar(&window);
+            }
+        });
         debug!("settings window open");
     }
 
@@ -969,6 +979,16 @@ fn turn(event: &WindowEvent) -> Turn {
 /// is open (`other_window_open`), which has the focus or is taking it.
 fn hands_focus_back(reopened: bool, other_window_open: bool) -> bool {
     !reopened && !other_window_open
+}
+
+/// Gives the native title bar of `window` the Appearance setting, as
+/// [`appearance::title_bar_theme`] says: the platform draws it, so the
+/// window's `Theme` alone leaves it with the system's look. Does nothing
+/// before the window has its native window.
+fn show_title_bar(window: &SettingsWindow) {
+    let theme =
+        appearance::title_bar_theme(appearance::current(), window.global::<Theme>().get_dark());
+    window.window().with_winit_window(|w| w.set_theme(theme));
 }
 
 /// Closes the window: `stop_recording` ends a recording in progress (when

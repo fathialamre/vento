@@ -9,6 +9,7 @@
 
 use std::cell::Cell;
 
+use slint::winit_030::winit::window::Theme as WindowTheme;
 use vento_core::settings::Appearance;
 use vento_platform::Platform;
 
@@ -35,6 +36,21 @@ pub fn index(a: Appearance) -> i32 {
         Appearance::System => 0,
         Appearance::Light => 1,
         Appearance::Dark => 2,
+    }
+}
+
+/// The theme for the native title bar of a framed window (the Settings
+/// window) under `a`, whose content is dark when `content_dark`. Light and
+/// Dark force it. Under System a Mac's follows the system (`None`); X11 has
+/// no such choice (winit asks for the dark variant for `None`), so there it
+/// matches the content, which follows the desktop.
+pub fn title_bar_theme(a: Appearance, content_dark: bool) -> Option<WindowTheme> {
+    match a {
+        Appearance::Light => Some(WindowTheme::Light),
+        Appearance::Dark => Some(WindowTheme::Dark),
+        Appearance::System if cfg!(target_os = "macos") => None,
+        Appearance::System if content_dark => Some(WindowTheme::Dark),
+        Appearance::System => Some(WindowTheme::Light),
     }
 }
 
@@ -70,6 +86,31 @@ mod tests {
         assert_eq!(index(Appearance::System), 0);
         assert_eq!(index(Appearance::Light), 1);
         assert_eq!(index(Appearance::Dark), 2);
+    }
+
+    #[test]
+    fn the_title_bar_is_forced_light_or_dark_and_follows_the_system_on_a_mac() {
+        assert_eq!(
+            title_bar_theme(Appearance::Light, true),
+            Some(WindowTheme::Light)
+        );
+        assert_eq!(
+            title_bar_theme(Appearance::Dark, false),
+            Some(WindowTheme::Dark)
+        );
+        if cfg!(target_os = "macos") {
+            assert_eq!(title_bar_theme(Appearance::System, true), None);
+            assert_eq!(title_bar_theme(Appearance::System, false), None);
+        } else {
+            assert_eq!(
+                title_bar_theme(Appearance::System, true),
+                Some(WindowTheme::Dark)
+            );
+            assert_eq!(
+                title_bar_theme(Appearance::System, false),
+                Some(WindowTheme::Light)
+            );
+        }
     }
 
     #[test]
