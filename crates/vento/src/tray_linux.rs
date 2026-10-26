@@ -1,7 +1,6 @@
 //! The tray icon on Linux: a StatusNotifierItem, which Ubuntu's AppIndicator
-//! extension shows in GNOME's top bar. A left click opens the panel; the
-//! menu has Settings…, which opens the Settings window, then the items
-//! macOS has.
+//! extension shows in GNOME's top bar. A left click opens the Quick panel;
+//! the menu offers the same quick actions and Settings…, as on macOS.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -10,13 +9,15 @@ use ksni::blocking::TrayMethods;
 use ksni::menu::{CheckmarkItem, StandardItem};
 use ksni::{Icon, MenuItem, ToolTip, Tray};
 use log::warn;
+use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
-use crate::awake::KeepAwake;
+use crate::awake::{KeepAwake, keep_awake_menu_text};
 use crate::exec::{Executor, UndoKind, undo_menu_text};
 use crate::pause::PauseSwitch;
+use crate::settings_hub::SettingsHub;
 
 /// The white mark, for GNOME's dark top bar, at two sizes; the host shows
 /// the nearer one.
@@ -34,6 +35,9 @@ enum Action {
     OpenPanel,
     OpenSettings,
     CopyFromScreen,
+    OpenClipboard,
+    OpenPocket,
+    ToggleKeepAwake,
     Undo,
     Pause(bool),
     OpenSettingsFile,
@@ -140,6 +144,10 @@ struct VentoTray {
     copy_from_screen: bool,
     undo: Option<UndoKind>,
     paused: bool,
+    /// Whether Keep Awake holds the computer awake, for the item's text.
+    keep_awake_on: bool,
+    /// Whether the clipboard history is on, which the clipboard item needs.
+    clip_history: bool,
 }
 
 impl Tray for VentoTray {
@@ -175,15 +183,28 @@ impl Tray for VentoTray {
                 ..Default::default()
             })
         };
-        let mut menu = vec![
-            item("Settings…", true, Action::OpenSettings),
-            MenuItem::Separator,
-        ];
+        // While paused, the items that do nothing meanwhile are greyed out.
+        let mut menu = Vec::new();
         if self.copy_from_screen {
-            menu.push(item("Copy from screen", true, Action::CopyFromScreen));
-            menu.push(MenuItem::Separator);
+            menu.push(item(
+                "Copy from screen",
+                !self.paused,
+                Action::CopyFromScreen,
+            ));
         }
         menu.extend([
+            item(
+                "Open clipboard history",
+                !self.paused && self.clip_history,
+                Action::OpenClipboard,
+            ),
+            item("Open the Pocket", !self.paused, Action::OpenPocket),
+            MenuItem::Separator,
+            item(
+                keep_awake_menu_text(self.keep_awake_on),
+                true,
+                Action::ToggleKeepAwake,
+            ),
             item(undo_menu_text(self.undo), self.undo.is_some(), Action::Undo),
             MenuItem::Checkmark(CheckmarkItem {
                 label: "Pause Vento".into(),
@@ -195,6 +216,7 @@ impl Tray for VentoTray {
                 ..Default::default()
             }),
             MenuItem::Separator,
+            item("Settings…", true, Action::OpenSettings),
             item("Open settings file", true, Action::OpenSettingsFile),
             MenuItem::Separator,
             item("Quit Vento", true, Action::Quit),
@@ -215,16 +237,19 @@ pub struct TrayDeps {
     pub platform: Rc<dyn Platform>,
     /// Shows its cup in the top bar while it holds the computer awake.
     pub keep_awake: Rc<KeepAwake>,
-    /// Opens the Quick panel under the cup; given the cup's frame in global
-    /// logical points.
-    pub on_open_keep_awake: Box<dyn Fn(Rect)>,
-    /// Opens the panel under the icon; given the icon's frame in global
-    /// logical points.
+    /// Opens the Quick panel under the icon or the cup; given the frame of
+    /// the one clicked in global logical points.
     pub on_open_panel: Box<dyn Fn(Rect)>,
+    /// Opens the island on the clipboard history.
+    pub on_open_clipboard: Box<dyn Fn()>,
+    /// Opens the island on the Pocket.
+    pub on_open_pocket: Box<dyn Fn()>,
     /// Opens the Settings window.
     pub on_open_settings: Box<dyn Fn()>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
+    /// The settings, for whether the clipboard history is on.
+    pub hub: Rc<SettingsHub>,
     /// Starts Copy from screen; `None` leaves the item out.
     pub on_copy_from_screen: Option<Box<dyn Fn()>>,
 }
@@ -237,18 +262,28 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         exec,
         platform,
         keep_awake,
-        on_open_keep_awake,
         on_open_panel,
+        on_open_clipboard,
+        on_open_pocket,
         on_open_settings,
         pause,
+        hub,
         on_copy_from_screen,
     } = deps;
-    show_awake_cup(&platform, &keep_awake, on_open_keep_awake);
+    let on_open_panel: Rc<dyn Fn(Rect)> = Rc::from(on_open_panel);
+    let on_open_cup = on_open_panel.clone();
+    show_awake_cup(
+        &platform,
+        &keep_awake,
+        Box::new(move |cup| on_open_cup(cup)),
+    );
     let tray = VentoTray {
         icons: MARKS.iter().filter_map(|png| to_icon(png)).collect(),
         copy_from_screen: on_copy_from_screen.is_some(),
         undo: exec.has_undo(),
         paused: pause.is_paused(),
+        keep_awake_on: keep_awake.session().is_some(),
+        clip_history: hub.current().clipboard_history,
     };
     let handle = match tray.spawn() {
         Ok(handle) => handle,
@@ -258,7 +293,8 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }
     };
 
-    // Keep the Undo item and the Pause check in step with the app.
+    // Keep the Undo item, the Pause check, the Keep Awake item and the
+    // clipboard item in step with the app.
     {
         let handle = handle.clone();
         exec.on_undo_changed(Box::new(move |kind| {
@@ -269,6 +305,24 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         let handle = handle.clone();
         pause.on_change(Box::new(move |paused| {
             handle.update(|tray| tray.paused = paused);
+        }));
+    }
+
+    {
+        let handle = handle.clone();
+        let keep = Rc::downgrade(&keep_awake);
+        keep_awake.on_change(Box::new(move || {
+            if let Some(keep) = keep.upgrade() {
+                let on = keep.session().is_some();
+                handle.update(|tray| tray.keep_awake_on = on);
+            }
+        }));
+    }
+    {
+        let handle = handle.clone();
+        hub.on_change(Box::new(move |_old, new| {
+            let history = new.clipboard_history;
+            handle.update(|tray| tray.clip_history = history);
         }));
     }
 
@@ -284,6 +338,15 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 on_open_panel(icon);
             }
             Action::OpenSettings => on_open_settings(),
+            Action::OpenClipboard => on_open_clipboard(),
+            Action::OpenPocket => on_open_pocket(),
+            Action::ToggleKeepAwake => {
+                if keep_awake.session().is_some() {
+                    keep_awake.stop();
+                } else {
+                    keep_awake.start(Chip::Forever);
+                }
+            }
             Action::CopyFromScreen => {
                 if let Some(start) = &on_copy_from_screen {
                     start();

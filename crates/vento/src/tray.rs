@@ -1,7 +1,8 @@
 //! Menu-bar icon: a left click opens the Quick panel, a right click shows
-//! the menu with Copy from screen, undo, pause, settings file access and
-//! quit. While Keep Awake holds the Mac awake, a cup shows beside it; a
-//! click on the cup opens the Quick panel under it.
+//! the menu, which offers the panel's quick actions (Copy from screen, the
+//! clipboard history, the Pocket, Keep Awake, undo, pause) and Settings….
+//! While Keep Awake holds the Mac awake, a cup shows beside it; a click on
+//! the cup opens the Quick panel under it.
 
 use std::cell::{Cell, RefCell};
 use std::process::Command;
@@ -10,13 +11,15 @@ use std::rc::Rc;
 use log::warn;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
-use crate::awake::KeepAwake;
+use crate::awake::{KeepAwake, keep_awake_menu_text};
 use crate::exec::{Executor, undo_menu_text};
 use crate::pause::PauseSwitch;
+use crate::settings_hub::SettingsHub;
 
 /// The flame mark as a black template image, 36 px: an 18 pt glyph at 2x.
 const FLAME_PNG: &[u8] = include_bytes!("../assets/menu-bar-flame@2x.png");
@@ -155,14 +158,19 @@ pub struct TrayDeps {
     pub platform: Rc<dyn Platform>,
     /// Shows its cup beside the icon while it holds the Mac awake.
     pub keep_awake: Rc<KeepAwake>,
-    /// Opens the Quick panel under the cup; given the cup's frame in global
-    /// logical points.
-    pub on_open_keep_awake: Box<dyn Fn(Rect)>,
-    /// Opens the panel under the icon; given the icon's frame in global
-    /// logical points.
+    /// Opens the Quick panel under the icon or the cup; given the frame of
+    /// the one clicked in global logical points.
     pub on_open_panel: Box<dyn Fn(Rect)>,
+    /// Opens the island on the clipboard history.
+    pub on_open_clipboard: Box<dyn Fn()>,
+    /// Opens the island on the Pocket.
+    pub on_open_pocket: Box<dyn Fn()>,
+    /// Opens the Settings window.
+    pub on_open_settings: Box<dyn Fn()>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
+    /// The settings, for whether the clipboard history is on.
+    pub hub: Rc<SettingsHub>,
     /// Starts Copy from screen; `None` leaves the item out (macOS 13).
     pub on_copy_from_screen: Option<Box<dyn Fn()>>,
 }
@@ -177,31 +185,51 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         exec,
         platform,
         keep_awake,
-        on_open_keep_awake,
         on_open_panel,
+        on_open_clipboard,
+        on_open_pocket,
+        on_open_settings,
         pause,
+        hub,
         on_copy_from_screen,
     } = deps;
+    let paused = pause.is_paused();
     let copy_from_screen =
-        on_copy_from_screen.map(|start| (MenuItem::new("Copy from screen", true, None), start));
+        on_copy_from_screen.map(|start| (MenuItem::new("Copy from screen", !paused, None), start));
+    let clipboard = MenuItem::new(
+        "Open clipboard history",
+        !paused && hub.current().clipboard_history,
+        None,
+    );
+    let pocket = MenuItem::new("Open the Pocket", !paused, None);
+    let keep_awake_item = MenuItem::new(
+        keep_awake_menu_text(keep_awake.session().is_some()),
+        true,
+        None,
+    );
     let undo = MenuItem::new(
         undo_menu_text(exec.has_undo()),
         exec.has_undo().is_some(),
         None,
     );
-    let pause_item = CheckMenuItem::new("Pause Vento", true, pause.is_paused(), None);
+    let pause_item = CheckMenuItem::new("Pause Vento", true, paused, None);
+    let settings_item = MenuItem::new("Settings…", true, None);
     let open_settings = MenuItem::new("Open settings file", true, None);
     let quit = MenuItem::new("Quit Vento", true, None);
 
     let menu = Menu::new();
     if let Some((item, _)) = &copy_from_screen {
-        menu.append_items(&[item, &PredefinedMenuItem::separator()])
-            .expect("cannot build the tray menu");
+        menu.append(item).expect("cannot build the tray menu");
     }
     menu.append_items(&[
+        &clipboard,
+        &pocket,
+        &PredefinedMenuItem::separator(),
+        &keep_awake_item,
         &undo,
         &pause_item,
         &PredefinedMenuItem::separator(),
+        &settings_item,
         &open_settings,
         &PredefinedMenuItem::separator(),
         &quit,
@@ -227,25 +255,80 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }));
     }
 
+    // Pausing greys out the items that do nothing meanwhile, and the
+    // clipboard item is greyed too while the history is off. Both the
+    // Pause and the setting move, so each listener refreshes all three.
+    let sync_gated = {
+        let items = (
+            copy_from_screen.as_ref().map(|(item, _)| item.clone()),
+            clipboard.clone(),
+            pocket.clone(),
+        );
+        Rc::new(move |paused: bool, history: bool| {
+            let (copy, clipboard, pocket) = &items;
+            if let Some(copy) = copy {
+                copy.set_enabled(!paused);
+            }
+            clipboard.set_enabled(!paused && history);
+            pocket.set_enabled(!paused);
+        })
+    };
+
     // Keep the Pause item in step with the panel's Pause.
     {
         let pause_item = pause_item.clone();
-        pause.on_change(Box::new(move |paused| pause_item.set_checked(paused)));
+        let (sync_gated, hub) = (sync_gated.clone(), hub.clone());
+        pause.on_change(Box::new(move |paused| {
+            pause_item.set_checked(paused);
+            sync_gated(paused, hub.current().clipboard_history);
+        }));
+    }
+    {
+        let pause = Rc::downgrade(&pause);
+        hub.on_change(Box::new(move |_old, new| {
+            if let Some(pause) = pause.upgrade() {
+                sync_gated(pause.is_paused(), new.clipboard_history);
+            }
+        }));
+    }
+
+    // Keep the Keep Awake item saying what a click does.
+    {
+        let item = keep_awake_item.clone();
+        let keep = Rc::downgrade(&keep_awake);
+        keep_awake.on_change(Box::new(move || {
+            if let Some(keep) = keep.upgrade() {
+                item.set_text(keep_awake_menu_text(keep.session().is_some()));
+            }
+        }));
     }
 
     // Menu clicks arrive via a handler that may run on any thread: forward
     // only the (Send) item id to the main thread and act on it there.
     let opener = platform.clone();
+    let menu_keep = keep_awake.clone();
     DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |id: &MenuId| {
             if let Some((item, start)) = &copy_from_screen
                 && id == item.id()
             {
                 start();
+            } else if id == clipboard.id() {
+                on_open_clipboard();
+            } else if id == pocket.id() {
+                on_open_pocket();
+            } else if id == keep_awake_item.id() {
+                if menu_keep.session().is_some() {
+                    menu_keep.stop();
+                } else {
+                    menu_keep.start(Chip::Forever);
+                }
             } else if id == undo.id() {
                 exec.undo_last();
             } else if id == pause_item.id() {
                 pause.set(pause_item.is_checked());
+            } else if id == settings_item.id() {
+                on_open_settings();
             } else if id == open_settings.id() {
                 open_settings_file(&*opener);
             } else if id == quit.id() {
@@ -284,9 +367,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }));
     }
 
-    // A left click on the icon opens the panel, one on the cup the Keep
-    // Awake tab. Same forwarding as the menu: only the (Send) frame crosses
-    // to the main thread.
+    // A left click on the icon or on the cup opens the panel under it. Same
+    // forwarding as the menu: only the (Send) frame crosses to the main
+    // thread.
     let frame_of = {
         let platform = platform.clone();
         move |physical: &tray_icon::Rect| {
@@ -297,6 +380,8 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }
     };
     let cup_frame_of = frame_of.clone();
+    let on_open_panel: Rc<dyn Fn(Rect)> = Rc::from(on_open_panel);
+    let on_open_cup = on_open_panel.clone();
     PANEL_DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |physical: tray_icon::Rect| {
             on_open_panel(frame_of(&physical));
@@ -304,7 +389,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     });
     CUP_DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |physical: tray_icon::Rect| {
-            on_open_keep_awake(cup_frame_of(&physical));
+            on_open_cup(cup_frame_of(&physical));
         }));
     });
     TrayIconEvent::set_event_handler(Some(|event: TrayIconEvent| {

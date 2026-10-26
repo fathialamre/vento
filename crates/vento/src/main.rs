@@ -325,29 +325,29 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_handle = Rc::new(RefCell::new(None));
     let keep = tray_handle.clone();
     let tray_info = info.clone();
-    #[cfg(target_os = "linux")]
     let tray_settings = settings.clone();
+    let (open_clipboard, open_pocket) = (
+        open_on(pocket::View::Clipboard),
+        open_on(pocket::View::Pocket),
+    );
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
         apply_clip_shortcut(&settings);
         apply_screen_shortcut(&settings);
-        let (awake_panel, awake_info) = (panel.clone(), tray_info.clone());
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
             keep_awake: panel.keep_awake(),
-            on_open_keep_awake: Box::new(move |icon| {
-                awake_info.dismiss();
-                awake_panel.toggle_at(icon);
-            }),
             on_open_panel: Box::new(move |icon| {
                 tray_info.dismiss();
                 panel.toggle_at(icon);
             }),
-            #[cfg(target_os = "linux")]
+            on_open_clipboard: Box::new(move || open_clipboard()),
+            on_open_pocket: Box::new(move || open_pocket()),
             on_open_settings: Box::new(move || tray_settings.open()),
             pause,
+            hub,
             on_copy_from_screen: screen_text
                 .map(|controller| Box::new(move || controller.start()) as Box<dyn Fn()>),
         }));
