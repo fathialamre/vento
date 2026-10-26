@@ -1,36 +1,41 @@
 # Vento settings
 
-Everything here is optional: the settings panel under the menu bar icon covers
-the same options. This page is for reading or editing the settings file by hand.
+Everything here is optional: the Settings window (Settings… in the panel under
+the menu bar icon) covers the same options. This page is for reading or
+editing the settings file by hand.
 
 ## The menu bar icon
 
 Vento lives in the menu bar.
 
-- **Left click** the icon to open the settings panel. Its tabs are Wheel
-  (layout, which actions show and in what order), Move (pinned and recent
-  folders, the hold delay), Pocket (shortcut, remove after drag-out, keep a
-  copy), Clipboard (history on or off, its shortcut, Clear history) and General
-  (trigger, shake to open, terminal, Copy path format, and the Copy from screen
-  shortcut); Pause and Quit are at
-  the bottom. It follows the system light or dark appearance. Changes apply and
-  are saved at once.
-- **Right click** for the menu: Undo last move/copy/archive, Copy from screen
-  (macOS 14 or later), Pause, Open settings file, Quit.
+- **Left click** the icon to open the Quick panel: whether Vento is on or
+  paused (with Pause or Resume), the Copy text, Clipboard, Pocket and Keep Awake
+  tiles, Keep Awake's times, an Undo row when there is something to undo, and
+  Settings… and Quit. It follows the Appearance setting. Settings… opens the
+  Vento Settings window, whose pages are General (trigger, shake to open,
+  terminal, Copy path format, Appearance), Wheel (layout, which actions show and
+  in what order), Move (pinned and recent folders, the hold delay), Pocket
+  (shortcut, remove after drag-out, keep a copy), Clipboard (history on or off,
+  its shortcut, Clear history), Copy from screen (its shortcut), Keep Awake (let
+  the screen turn off) and About (the version, Open settings file). Changes
+  apply and are saved at once.
+- **Right click** for the menu: Copy from screen (macOS 14 or later), Open
+  clipboard history, Open the Pocket, Start or Stop Keep Awake, Undo last
+  move/copy/archive, Pause, Settings…, Open settings file, Quit.
 
 ## The settings file
 
 `~/Library/Application Support/vento/settings.toml`
 
-The settings panel writes this file; you can also edit it by hand, and Vento
-picks up your edit when the panel next opens or changes something. All keys are
-optional; omitted keys use their defaults. If the file cannot be parsed, or a
-value has the wrong type or a spelling not listed below (for `layout`,
-`trigger` or `copy_path_format`, say), the whole file is rejected: at
-startup all defaults apply and a warning is logged; while Vento runs the current
-settings stay and the panel shows the reason. Unknown or duplicate action names
-are dropped individually. Values shown are the defaults, except `terminal`,
-which is an example.
+The Settings window writes this file; you can also edit it by hand, and Vento
+picks up your edit when the Quick panel or the Settings window next opens or
+changes something. All keys are optional; omitted keys use their defaults. If
+the file cannot be parsed, or a value has the wrong type or a spelling not
+listed below (for `layout`, `trigger` or `copy_path_format`, say), the whole
+file is rejected: at startup all defaults apply and a warning is logged; while
+Vento runs the current settings stay and the Quick panel shows the reason.
+Unknown or duplicate action names are dropped individually. Values shown are
+the defaults, except `terminal`, which is an example.
 
 ```toml
 # "honeycomb" or "petals"
@@ -49,12 +54,12 @@ shake_to_open = true
 # it.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
-# Actions turned off in the panel
+# Actions turned off in the Settings window
 hidden_actions = []
 
-# Every action in the panel's order, shown or hidden, so switching one on or
-# off keeps its place. Written by the panel; ignored when the shown actions in
-# it are not in the same order as `actions`
+# Every action in the Wheel page's order, shown or hidden, so switching one
+# on or off keeps its place. Written by the Settings window; ignored when the
+# shown actions in it are not in the same order as `actions`
 action_order = []
 
 # Folders pinned to the Move and Copy to ring, in order; only the first 7 count
@@ -101,8 +106,8 @@ screen_text_shortcut = "ctrl+alt+t"
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the
-General tab field are hidden and the shortcut is not registered. The first use
-asks for Screen Recording; see the [README](README.md#copy-from-screen).
+Copy from screen page are hidden and the shortcut is not registered. The
+first use asks for Screen Recording; see the [README](README.md#copy-from-screen).
 
 ## Where Vento keeps its data
 

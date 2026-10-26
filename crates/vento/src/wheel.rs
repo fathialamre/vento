@@ -168,7 +168,7 @@ fn classify(
     }
 }
 
-/// The icon `action` shows on the wheel and in the settings panel.
+/// The icon `action` shows on the wheel and in the Settings window.
 pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
     match action {
         ActionId::Pocket => icons.get_pocket(),

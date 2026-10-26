@@ -1,5 +1,5 @@
 //! Keep Awake: the running session, the platform hold that matches it and
-//! the timer that ends it. The settings panel shows it and hands it clicks.
+//! the timer that ends it. The Quick panel shows it and hands it clicks.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};

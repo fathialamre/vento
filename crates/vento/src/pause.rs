@@ -1,5 +1,5 @@
 //! Whether vento is paused: the one state the tray's "Pause Vento" item and
-//! the panel's Pause both show and change.
+//! the Quick panel's Pause both show and change.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

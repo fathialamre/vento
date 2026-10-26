@@ -106,13 +106,13 @@ A shake counts when the pointer comes back along the way it just moved four
 times within about half a second, each swing at least 40 points. Small wiggles
 and a drag that turns corners don't count. Shaking only works while dragging
 files, like the wheel itself; turn it off with **Shake to open** in the
-settings panel's General tab.
+**General** page of the Settings window.
 
 ## The actions
 
 The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
 **Copy to, Archive, Convert** and **Info** are off until you switch them on in
-the settings panel's **Wheel** tab, where you can also change the order.
+the **Wheel** page of the Settings window, where you can also change the order.
 
 ### Pocket
 
@@ -144,7 +144,7 @@ recently and the folders you pinned. Let go on a folder and the file goes there.
 Changed your mind? Click **Undo** on the notice, or choose **Undo last move** from
 the menu bar icon.
 
-Pin up to seven folders in the settings panel's **Move** tab.
+Pin up to seven folders on the **Move** page of the Settings window.
 
 ### Copy to *(off at first)*
 
@@ -213,7 +213,7 @@ paste them one by one somewhere else. Open the island and switch to the
 
 The history stays after you quit or restart. It is stored **unencrypted** in
 `~/Library/Application Support/vento`; see [SETTINGS.md](SETTINGS.md). Switch it
-off, or change its shortcut, in the settings panel's **Clipboard** tab.
+off, or change its shortcut, on the **Clipboard** page of the Settings window.
 
 ## Copy from screen
 
@@ -228,31 +228,49 @@ a recent macOS; older versions may read only some languages. It needs macOS 14 o
 later, and asks for **Screen Recording** the first time you use it (see
 [install](#install-and-first-launch) for what to do after an update). macOS 15
 and later may ask you from time to time to confirm that Vento can keep recording
-the screen; that is normal. Change the shortcut in the settings panel's
-**General** tab.
+the screen; that is normal. Change the shortcut on the **Copy from
+screen** page of the Settings window.
 
-## Settings
+## The Quick panel and Settings
 
-**Click** the Vento icon in the menu bar to open the settings panel. Changes apply
-right away.
+**Click** the Vento icon in the menu bar to open the Quick panel. It tells you
+whether Vento is on or paused, with a button to pause or resume it, and puts the
+things you reach for most one click away:
 
-| Wheel | Move |
-|:---:|:---:|
-| <img src=".github/assets/settings-wheel.png" alt="Wheel tab: layout and the list of actions with on and off switches" width="300"> | <img src=".github/assets/settings-move.png" alt="Move tab: pinned folders, recent folders and the hold time" width="300"> |
-| Honeycomb or petals layout; which actions show and in what order. | Pinned and recent folders for the Move ring, and how long to hold. |
+- **Copy text** starts [Copy from screen](#copy-from-screen). It is left out on
+  a Mac that cannot do that.
+- **Clipboard** opens the island on your clipboard history.
+- **Pocket** opens the island on the Pocket and says how many items it holds.
+- **Keep Awake** keeps your Mac and its screen on. Click the tile to start or
+  stop it, or pick how long below it: from 15 minutes up to 8 hours, until a time you
+  choose, or until you stop it. While it runs a small cup shows beside the Vento
+  icon; click the cup to open the panel.
 
-| Pocket | Clipboard |
-|:---:|:---:|
-| <img src=".github/assets/settings-pocket.png" alt="Pocket tab: shortcut and two switches" width="300"> | <img src=".github/assets/settings-clipboard.png" alt="Clipboard tab: clipboard history switch, its shortcut and Clear history" width="300"> |
-| The Pocket shortcut, and what happens after you drag items out. | Clipboard history on or off, its shortcut, and clearing it. |
+After a move, copy or archive, an **Undo** row appears at the bottom. While Vento
+is paused, Copy text, Clipboard and Pocket are greyed out; **Resume** brings them
+back.
 
-| General | |
-|:---:|:---:|
-| <img src=".github/assets/settings-general.png" alt="General tab: trigger key, Shake to open, terminal app and Copy path format" width="300"> | |
-| The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, and the Copy from screen shortcut. | |
+Choose **Settings…** to open the **Vento Settings** window. It stays open while
+you work, and choosing Settings… again brings it forward. Pick a page on the left;
+changes apply right away.
 
-**Right-click** the icon for the menu: undo the last move, copy or archive, pause
-Vento, or quit.
+| Page | What it holds |
+|---|---|
+| General | The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, and **Appearance**: follow the system, or always light or dark. |
+| Wheel | Honeycomb or petals layout; which actions show and in what order. |
+| Move | Pinned and recent folders for the Move ring, and how long to hold. |
+| Pocket | The Pocket shortcut, and what happens after you drag items out. |
+| Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
+| Copy from screen | Its shortcut. |
+| Keep Awake | Whether the screen may turn off while Keep Awake runs. |
+| About | The version, and a button that opens the settings file. |
+
+The wheel, the Pocket and the notices that offer Undo keep their dark look
+whichever Appearance you choose.
+
+**Right-click** the icon for the same things as a menu: Copy from screen, the
+clipboard history, the Pocket, Keep Awake, undo the last move, copy or archive,
+pause Vento, Settings…, open the settings file, or quit.
 
 <img src=".github/assets/menu.png" alt="Vento menu with Undo last move, Pause Vento, Open settings file and Quit Vento" width="170">
 

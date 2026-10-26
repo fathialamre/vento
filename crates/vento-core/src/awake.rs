@@ -1,4 +1,4 @@
-//! Keep Awake: what a chip of the settings panel asks for, the session it
+//! Keep Awake: what a chip of the Quick panel asks for, the session it
 //! starts and how the panel words it. Pure: callers pass the time and the
 //! time zone.
 

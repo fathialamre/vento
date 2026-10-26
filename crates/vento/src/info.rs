@@ -93,7 +93,7 @@ impl InfoController {
         controller
     }
 
-    /// Runs before each open; main sets it to close the settings panel.
+    /// Runs before each open; main sets it to close the Quick panel.
     pub fn set_before_open(&self, f: Box<dyn Fn()>) {
         *self.before_open.borrow_mut() = Some(f);
     }
@@ -174,7 +174,7 @@ impl InfoController {
     }
 
     /// Hides the window, stops the count and hands focus back to the app
-    /// that had it (on the next turn of the event loop, as the settings
+    /// that had it (on the next turn of the event loop, as the Quick
     /// panel does). For Done, Esc and a click outside.
     pub fn close(&self) {
         self.close_with(true);
