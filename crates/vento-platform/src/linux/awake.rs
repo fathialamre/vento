@@ -2,7 +2,7 @@
 //! inhibitor when the connection that asked for it closes, so one never
 //! outlives vento.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use gio::glib;
 use gio::prelude::*;
@@ -26,6 +26,9 @@ const TIMEOUT_MS: i32 = 5_000;
 #[derive(Debug, Default)]
 pub(super) struct Inhibitor {
     cookie: Cell<Option<u32>>,
+    /// Inhibitors GNOME did not release when asked, tried again at every
+    /// change rather than left holding the computer awake.
+    stale: RefCell<Vec<u32>>,
 }
 
 impl Inhibitor {
@@ -38,8 +41,11 @@ impl Inhibitor {
             None => None,
         };
         if let Some(old) = self.cookie.replace(new) {
-            uninhibit(&bus, old);
+            self.stale.borrow_mut().push(old);
         }
+        self.stale
+            .borrow_mut()
+            .retain(|&cookie| !uninhibit(&bus, cookie));
         Ok(())
     }
 }
@@ -65,8 +71,10 @@ fn inhibit(bus: &gio::DBusConnection, hold: AwakeHold) -> Result<u32, PlatformEr
     Ok(cookie)
 }
 
-fn uninhibit(bus: &gio::DBusConnection, cookie: u32) {
-    if let Err(e) = bus.call_sync(
+/// Whether `cookie` is released: GNOME let it go, or holds no such
+/// inhibitor (any more).
+fn uninhibit(bus: &gio::DBusConnection, cookie: u32) -> bool {
+    match bus.call_sync(
         Some(BUS_NAME),
         OBJECT_PATH,
         INTERFACE,
@@ -77,10 +85,47 @@ fn uninhibit(bus: &gio::DBusConnection, cookie: u32) {
         TIMEOUT_MS,
         gio::Cancellable::NONE,
     ) {
-        log::warn!("cannot release the Keep Awake inhibitor {cookie}: {e}");
+        Ok(_) => true,
+        Err(e) if e.message().contains("Invalid cookie") => true,
+        Err(e) => {
+            log::warn!("cannot release the Keep Awake inhibitor {cookie}: {e}");
+            false
+        }
     }
 }
 
 fn failed(e: glib::Error) -> PlatformError {
     PlatformError::Failed(format!("Keep Awake: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// How many of GNOME's inhibitors are vento's.
+    fn ventos() -> usize {
+        let out = std::process::Command::new("gnome-session-inhibit")
+            .arg("--list")
+            .output()
+            .expect("gnome-session-inhibit runs");
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| l.starts_with(APP_ID) && l.contains(REASON))
+            .count()
+    }
+
+    /// Needs a GNOME session; run with `--ignored` by hand.
+    #[test]
+    #[ignore]
+    fn a_released_hold_leaves_no_inhibitor() {
+        let before = ventos();
+        let inhibitor = Inhibitor::default();
+        inhibitor.set(Some(AwakeHold { screen: true })).unwrap();
+        assert_eq!(ventos(), before + 1);
+        // Replacing keeps one.
+        inhibitor.set(Some(AwakeHold { screen: false })).unwrap();
+        assert_eq!(ventos(), before + 1);
+        inhibitor.set(None).unwrap();
+        assert_eq!(ventos(), before);
+    }
 }

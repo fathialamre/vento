@@ -56,7 +56,9 @@ fn main() -> Result<(), slint::PlatformError> {
     /// How long the island stays open to confirm an add from the wheel.
     const POCKET_CONFIRM: Duration = Duration::from_millis(1500);
 
-    env_logger::init();
+    // Warnings show without RUST_LOG: they are what explains a failure
+    // after the fact (a hold Keep Awake could not release, say).
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     // A second launch (the app grid) opens the running Vento's settings.
     #[cfg(target_os = "linux")]
     if !vento_platform::claim_instance() {

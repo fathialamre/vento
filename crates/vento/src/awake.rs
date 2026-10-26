@@ -6,7 +6,7 @@ use std::rc::{Rc, Weak};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
-use log::warn;
+use log::{debug, warn};
 use slint::{Timer, TimerMode};
 use vento_core::awake::{Chip, Session};
 use vento_platform::{AwakeHold, Platform};
@@ -137,6 +137,7 @@ impl KeepAwake {
         if self.held.get() == hold {
             return true;
         }
+        debug!("Keep Awake: {:?} -> {hold:?}", self.held.get());
         match self.platform.keep_awake(hold) {
             Ok(()) => {
                 self.held.set(hold);

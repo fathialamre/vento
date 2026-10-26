@@ -319,7 +319,11 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         };
         let on_cup = id == CUP_ID;
         if let Err(e) = slint::invoke_from_event_loop(move || {
-            let slot = if on_cup { &CUP_DISPATCH } else { &PANEL_DISPATCH };
+            let slot = if on_cup {
+                &CUP_DISPATCH
+            } else {
+                &PANEL_DISPATCH
+            };
             slot.with(|slot| {
                 if let Some(dispatch) = slot.borrow().as_ref() {
                     dispatch(rect);
