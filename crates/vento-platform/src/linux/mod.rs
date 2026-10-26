@@ -27,6 +27,7 @@ mod clip_owner;
 mod clipboard;
 mod drag_out;
 mod icons;
+pub(crate) mod image_io;
 mod instance;
 mod portal;
 mod shell;

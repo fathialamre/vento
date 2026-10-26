@@ -1,6 +1,6 @@
-//! WebP encoding for the Convert action, with libwebp: ImageIO reads WebP but
-//! can't write it. The colour profile, Exif and XMP go into an extended
-//! `RIFF/WEBP` container.
+//! WebP encoding for the Convert action, with libwebp: neither ImageIO (on
+//! the Mac) nor the `image` crate (on Linux) writes lossy WebP. The colour
+//! profile, Exif and XMP go into an extended `RIFF/WEBP` container.
 
 use std::ffi::c_int;
 use std::{ptr, slice};
@@ -23,7 +23,7 @@ const XMP_PREFIX: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
 
 /// What a WebP file carries besides its pixels, as raw blocks.
 #[derive(Default)]
-pub(super) struct Metadata<'a> {
+pub(crate) struct Metadata<'a> {
     /// The ICC profile the pixels are in.
     pub icc: Option<&'a [u8]>,
     /// Exif, from the TIFF header on.
@@ -35,8 +35,20 @@ pub(super) struct Metadata<'a> {
 /// Encodes premultiplied RGBA pixels, `width * 4` bytes a row, as a WebP
 /// file carrying `metadata`; the Exif pixel size is set to the image's.
 /// Un-premultiplies `pixels` in place. `None` when libwebp fails.
-pub(super) fn encode(
+#[cfg(target_os = "macos")]
+pub(crate) fn encode(
     pixels: &mut [u8],
+    width: usize,
+    height: usize,
+    metadata: &Metadata,
+) -> Option<Vec<u8>> {
+    unpremultiply(pixels);
+    encode_rgba(pixels, width, height, metadata)
+}
+
+/// [`encode`] for straight (not premultiplied) RGBA pixels.
+pub(crate) fn encode_rgba(
+    pixels: &[u8],
     width: usize,
     height: usize,
     metadata: &Metadata,
@@ -45,7 +57,6 @@ pub(super) fn encode(
     if pixels.len() < stride.checked_mul(height)? {
         return None;
     }
-    unpremultiply(pixels);
     let (w, h, stride) = (
         c_int::try_from(width).ok()?,
         c_int::try_from(height).ok()?,
@@ -79,7 +90,8 @@ pub(super) fn encode(
 }
 
 /// The Exif (from the TIFF header on) and XMP blocks of a JPEG file.
-pub(super) fn jpeg_metadata(jpeg: &[u8]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn jpeg_metadata(jpeg: &[u8]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
     let (mut exif, mut xmp) = (None, None);
     if !jpeg.starts_with(&[0xff, 0xd8]) {
         return (None, None);
@@ -195,7 +207,7 @@ fn chunk(out: &mut Vec<u8>, fourcc: &[u8; 4], payload: &[u8]) {
 
 /// Rewrites the Exif `PixelXDimension` and `PixelYDimension` in a TIFF
 /// block. Leaves what it can't follow as it is.
-fn set_exif_size(tiff: &mut [u8], width: usize, height: usize) {
+pub(crate) fn set_exif_size(tiff: &mut [u8], width: usize, height: usize) {
     let big_endian = match tiff.get(..2) {
         Some(b"MM") => true,
         Some(b"II") => false,
@@ -248,6 +260,7 @@ fn set_exif_size(tiff: &mut [u8], width: usize, height: usize) {
 }
 
 /// Turns premultiplied RGBA into straight RGBA, as libwebp expects.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn unpremultiply(pixels: &mut [u8]) {
     for [r, g, b, a] in pixels.as_chunks_mut::<4>().0 {
         let alpha = u32::from(*a);
@@ -479,8 +492,8 @@ mod tests {
 
     #[test]
     fn encodes_a_simple_file_without_metadata() {
-        let mut pixels = [200, 100, 50, 255].repeat(4 * 3);
-        let file = encode(&mut pixels, 4, 3, &Metadata::default()).unwrap();
+        let pixels = [200, 100, 50, 255].repeat(4 * 3);
+        let file = encode_rgba(&pixels, 4, 3, &Metadata::default()).unwrap();
         let chunks = chunks(&file);
         assert_eq!(chunks.len(), 1);
         assert_eq!(&chunks[0].0, b"VP8 ");

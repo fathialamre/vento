@@ -898,7 +898,7 @@ impl WheelController {
         let mut items = if is_convert {
             RingItems::Formats(ring_formats(
                 &self.platform.drag_paths(),
-                ImageFormat::TARGETS,
+                &vento_platform::convert_targets(),
             ))
         } else {
             RingItems::Folders(self.destinations())

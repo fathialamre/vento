@@ -11,7 +11,7 @@ use log::{debug, info, warn};
 use slint::Timer;
 use vento_core::actions::ActionId;
 use vento_core::archive::Progress;
-use vento_core::convert::{ImageFormat, ring_formats};
+use vento_core::convert::ring_formats;
 use vento_core::destinations::{RecentDestinations, recent_path};
 use vento_core::fileops::{
     CopyOutcome, CopyRecord, CopyUndoOutcome, FileOpError, MoveOutcome, MoveRecord, copy_items,
@@ -420,7 +420,7 @@ impl Executor {
             ActionId::Info => warn!("Info is handled by the info controller"),
             ActionId::Convert => match format {
                 Some(format) => self.convert(paths, format, at),
-                None if ring_formats(&paths, ImageFormat::TARGETS).is_empty() => {
+                None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
                     self.toast_error(action, "no images", at);
                 }
                 None => self.toast.show(HOLD_FOR_FORMAT_TEXT, None, at),

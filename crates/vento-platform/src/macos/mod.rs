@@ -40,7 +40,6 @@ mod select;
 mod terminal;
 mod thumbnail;
 mod trash;
-mod webp;
 
 pub(crate) use icons::file_icon_at;
 pub(crate) use image_io::{probe_image, write_image};

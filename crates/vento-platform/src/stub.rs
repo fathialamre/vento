@@ -45,17 +45,17 @@ pub(crate) fn volume_scope(_start: &Path) -> vento_core::sizes::VolumeScope {
 }
 
 /// Message of the image conversion stubs.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
 const NO_IMAGE_CONVERSION: &str = "image conversion is not available on this system";
 
 /// No image codec here.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
 pub(crate) fn probe_image(_path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
     Err(ConvertError::Unsupported(NO_IMAGE_CONVERSION.into()))
 }
 
 /// No image codec here.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
 pub(crate) fn write_image(
     _src: &Path,
     _dst: &Path,
