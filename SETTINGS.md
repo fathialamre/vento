@@ -67,6 +67,10 @@ move_hold_ms = 400
 # "plain" or "shell_quoted" (single-quoted for POSIX shells)
 copy_path_format = "plain"
 
+# "system" (follow the light or dark look of the system), "light" or "dark";
+# the wheel, the Pocket and toasts stay dark either way
+appearance = "system"
+
 # Bundle id of the terminal app to open; the default (and the fallback when
 # the app is not installed) is Terminal.app
 # terminal = "com.googlecode.iterm2"

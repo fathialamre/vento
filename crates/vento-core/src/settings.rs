@@ -13,6 +13,17 @@ use crate::geometry::{Layout, MAX_ACTIONS};
 use crate::paths::PathFormat;
 use crate::trigger::{Modifier, Modifiers};
 
+/// Whether the panels and windows use a light or dark look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Appearance {
+    /// Follow the light or dark look of the system.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 /// User-configurable behaviour of the wheel.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -27,6 +38,9 @@ pub struct Settings {
     pub actions: Vec<ActionId>,
     /// Format used by the Copy path action.
     pub copy_path_format: PathFormat,
+    /// Light or dark look of the Quick panel and the Settings window. The
+    /// wheel, the Pocket and toasts stay dark either way.
+    pub appearance: Appearance,
     /// Bundle id of the terminal app to open; `None` (or an app that is not
     /// installed) means Terminal.app.
     pub terminal: Option<String>,
@@ -110,6 +124,7 @@ impl Default for Settings {
             shake_to_open: true,
             actions: default_actions(),
             copy_path_format: PathFormat::Plain,
+            appearance: Appearance::System,
             terminal: None,
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
@@ -136,6 +151,7 @@ struct RawSettings {
     shake_to_open: bool,
     actions: Vec<String>,
     copy_path_format: PathFormat,
+    appearance: Appearance,
     terminal: Option<String>,
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
@@ -164,6 +180,7 @@ impl From<&Settings> for RawSettings {
             shake_to_open: s.shake_to_open,
             actions: s.actions.iter().map(|a| a.key().to_owned()).collect(),
             copy_path_format: s.copy_path_format,
+            appearance: s.appearance,
             terminal: s.terminal.clone(),
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
@@ -235,6 +252,7 @@ impl From<RawSettings> for Settings {
             shake_to_open: raw.shake_to_open,
             actions,
             copy_path_format: raw.copy_path_format,
+            appearance: raw.appearance,
             terminal: raw.terminal,
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
@@ -610,6 +628,42 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn appearance_follows_the_system_unless_saved_otherwise() {
+        assert_eq!(Settings::default().appearance, Appearance::System);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            appearance: Appearance::Dark,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("appearance = \"dark\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn old_file_without_appearance_follows_the_system() {
+        let (_dir, p) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(
+            Settings::try_load(&p).unwrap().appearance,
+            Appearance::System
+        );
+    }
+
+    #[test]
+    fn a_misspelt_appearance_rejects_the_file_like_any_other_choice() {
+        let (_dir, p) = write_temp("appearance = \"sepia\"\n");
+        assert!(matches!(
+            Settings::try_load(&p),
+            Err(SettingsError::Parse { line: Some(1), .. })
+        ));
     }
 
     #[test]
