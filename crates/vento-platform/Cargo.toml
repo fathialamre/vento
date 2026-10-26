@@ -117,6 +117,9 @@ gio-unix = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "gif", "bmp", "webp"] }
 # Writes lossy WebP for the Convert action, as on the Mac (`webp.rs`).
 libwebp-sys = "0.14"
+# Reads and writes HEIC for the Convert action through the system libheif
+# (LGPL-3.0; `libheif-dev` to build). 1.21 is Ubuntu 26.04's.
+libheif-rs = { version = "3", default-features = false, features = ["v1_21"] }
 resvg = { version = "0.48", default-features = false }
 # Already in the app through winit; our own connection for vento's windows.
 x11rb = { version = "0.13", features = ["shape"] }

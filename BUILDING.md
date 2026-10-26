@@ -82,10 +82,16 @@ windows, so Vento comes in two parts:
 Building needs a few development packages:
 
 ```sh
-sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev
+sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev
 ```
 
 and running needs `libxkbcommon-x11-0` (`sudo apt install libxkbcommon-x11-0`).
+Convert reads and writes HEIC with libheif's plugins; without them HEIC is
+just not offered:
+
+```sh
+sudo apt install libheif-plugin-libde265 libheif-plugin-x265
+```
 
 To install Vento for your user (the app in `~/.local/bin`, its launcher and
 icon, the extension, enabled, and a start at every login):
