@@ -23,10 +23,11 @@ use vento_core::info::{Facts, Subject, ViewContext, subject_of, view};
 use vento_core::sizes::{self, CountOptions, Progress, Tally, count};
 use vento_platform::Platform;
 
+use crate::appearance;
 use crate::panel::set_rows;
 use crate::pocket::to_image;
 use crate::toast::{Toaster, position_below};
-use crate::ui::{InfoBar, InfoDetail, InfoWindow};
+use crate::ui::{InfoBar, InfoDetail, InfoWindow, Theme};
 
 /// The least time between two updates of the window while counting.
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -154,6 +155,7 @@ impl InfoController {
         // vento runs as an accessory app: bring it forward so the window
         // becomes key and takes Esc.
         self.platform.activate_app();
+        appearance::apply(&window.global::<Theme>());
         if let Err(e) = window.show() {
             warn!("cannot show the info window: {e}");
             self.open.set(false);
@@ -223,6 +225,7 @@ impl InfoController {
         window.set_details(ModelRc::from(self.details.clone()));
         window.set_biggest(ModelRc::from(self.biggest.clone()));
         self.connect(&window);
+        appearance::apply(&window.global::<Theme>());
         *self.window.borrow_mut() = Some(window.clone_strong());
         window
     }

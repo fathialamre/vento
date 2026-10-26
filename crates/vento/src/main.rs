@@ -2,6 +2,8 @@
 //! are dragged from Finder and Ctrl is pressed.
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod appearance;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod archive_ui;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod awake;
@@ -69,6 +71,10 @@ fn main() -> Result<(), slint::PlatformError> {
     if let Some(reason) = hub.load_error() {
         log::warn!("settings file not loaded, using the defaults: {reason}");
     }
+    appearance::set_current(hub.current().appearance);
+    hub.on_change(Box::new(|_old, new| {
+        appearance::set_current(new.appearance)
+    }));
     // The copy the executor and the Pocket read; the wheel keeps its own
     // through its constructor and its hub listener.
     let shared = hub.shared();

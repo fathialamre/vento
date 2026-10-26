@@ -38,6 +38,7 @@ use vento_core::settings::{
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
 
+use crate::appearance;
 use crate::awake::KeepAwake;
 use crate::lazy_window::LazyWindow;
 use crate::pocket::{display_name, to_image};
@@ -275,6 +276,7 @@ impl PanelController {
     fn window(&self) -> SettingsPanel {
         self.window.get_or_create(|| {
             let window = SettingsPanel::new().expect("cannot create the settings panel");
+            appearance::apply(&window.global::<Theme>());
             window.set_actions(ModelRc::from(self.actions.clone()));
             window.set_pinned(ModelRc::from(self.pinned.clone()));
             window.set_recent(ModelRc::from(self.recent_rows.clone()));
@@ -738,6 +740,7 @@ impl PanelController {
     /// colours, as they are now: a theme change shows at the next open.
     fn show_menu_colors(&self, window: &SettingsPanel) {
         let theme = window.global::<Theme>();
+        appearance::apply(&theme);
         let Some(colors) = self.platform.menu_colors() else {
             theme.set_system_colors(false);
             return;
