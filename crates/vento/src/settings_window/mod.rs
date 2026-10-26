@@ -231,6 +231,12 @@ pub struct SettingsWindowController {
     open: Cell<bool>,
     /// The modifier keys held now, for the shortcut recorder.
     modifiers: Cell<ModifiersState>,
+    /// Runs when the user turns to the window; main sets it to close the
+    /// Quick panel and the Info window.
+    on_activated: RefCell<Option<Box<dyn Fn()>>>,
+    /// Whether another vento window (the Quick panel, the Info window) is
+    /// open; main sets it. That window keeps the focus when this one closes.
+    other_window_open: RefCell<Option<Box<dyn Fn() -> bool>>>,
     this: Weak<Self>,
 }
 
@@ -269,6 +275,8 @@ impl SettingsWindowController {
             placed: Cell::new(false),
             open: Cell::new(false),
             modifiers: Cell::new(ModifiersState::empty()),
+            on_activated: RefCell::new(None),
+            other_window_open: RefCell::new(None),
             this: this.clone(),
         });
         // A saved change clears the load error: drop the notice with it.
@@ -283,6 +291,21 @@ impl SettingsWindowController {
             }
         }));
         controller
+    }
+
+    /// Has the window call `f` when the user turns to it: a click in it, or
+    /// it becoming the key window. The Quick panel and the Info window stay
+    /// above every other window, and their watch for clicks outside them
+    /// only sees clicks in other apps, so main closes them from here.
+    pub fn set_on_activated(&self, f: Box<dyn Fn()>) {
+        *self.on_activated.borrow_mut() = Some(f);
+    }
+
+    /// Has the window ask `f` whether another vento window is open as it
+    /// closes: focus is then left with that window instead of handed back
+    /// to the app that had it.
+    pub fn set_other_window_open(&self, f: Box<dyn Fn() -> bool>) {
+        *self.other_window_open.borrow_mut() = Some(f);
     }
 
     /// The window, created and connected if there is none.
@@ -335,6 +358,7 @@ impl SettingsWindowController {
             let Some(controller) = this.upgrade() else {
                 return EventResult::Propagate;
             };
+            controller.turned_to(turn(event));
             match event {
                 WindowEvent::ModifiersChanged(modifiers) => {
                     controller.modifiers.set(modifiers.state());
@@ -556,6 +580,48 @@ impl SettingsWindowController {
         if let Some(folder) = picked {
             self.apply(|s| pin_folder(s, &folder));
         }
+    }
+
+    /// Tells main the user turned to the window, at once for `Turn::Now`,
+    /// and for `Turn::IfStillKey` on the next turn of the event loop if the
+    /// window is still key then.
+    fn turned_to(&self, turn: Turn) {
+        match turn {
+            Turn::No => {}
+            Turn::Now => self.activated(),
+            Turn::IfStillKey => {
+                let this = self.this.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(controller) = this.upgrade()
+                        && controller.is_open()
+                        && controller.has_focus()
+                    {
+                        controller.activated();
+                    }
+                });
+            }
+        }
+    }
+
+    fn activated(&self) {
+        if let Some(f) = self.on_activated.borrow().as_ref() {
+            f();
+        }
+    }
+
+    /// Whether the window is the key window (it takes the keyboard).
+    fn has_focus(&self) -> bool {
+        self.existing()
+            .and_then(|window| window.window().with_winit_window(|w| w.has_focus()))
+            .unwrap_or(false)
+    }
+
+    /// Whether another vento window is open, as main says.
+    fn other_window_open(&self) -> bool {
+        self.other_window_open
+            .borrow()
+            .as_ref()
+            .is_some_and(|f| f())
     }
 
     /// Makes the open window the key window again.
@@ -830,7 +896,8 @@ impl SettingsWindowController {
     /// Hides the window (a recording in progress ends without a change),
     /// remembers its page for the next open, and hands focus back to the
     /// app that had it on the next turn of the event loop, unless the window
-    /// is open again by then.
+    /// is open again by then or another vento window is open (it has the
+    /// focus, or is about to).
     pub fn close(&self) {
         if !self.open.replace(false) {
             return;
@@ -859,7 +926,7 @@ impl SettingsWindowController {
         let this = self.this.clone();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(controller) = this.upgrade()
-                && !controller.is_open()
+                && hands_focus_back(controller.is_open(), controller.other_window_open())
             {
                 controller.platform.deactivate_app();
             }
@@ -870,6 +937,38 @@ impl SettingsWindowController {
     pub fn is_open(&self) -> bool {
         self.open.get()
     }
+}
+
+/// What an event of the window says about the user turning to it.
+#[derive(Debug, PartialEq)]
+enum Turn {
+    /// A click in the window: the user turned to it.
+    Now,
+    /// The window became key. Whether the user turned to it shows on the
+    /// next turn of the event loop: an activation that brings another vento
+    /// window forward can make this one key on the way.
+    IfStillKey,
+    /// Neither.
+    No,
+}
+
+/// What `event` says about the user turning to the window.
+fn turn(event: &WindowEvent) -> Turn {
+    match event {
+        WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            ..
+        } => Turn::Now,
+        WindowEvent::Focused(true) => Turn::IfStillKey,
+        _ => Turn::No,
+    }
+}
+
+/// Whether the closed window hands focus back to the app that had it:
+/// not when it is open again (`reopened`), nor while another vento window
+/// is open (`other_window_open`), which has the focus or is taking it.
+fn hands_focus_back(reopened: bool, other_window_open: bool) -> bool {
+    !reopened && !other_window_open
 }
 
 /// Closes the window: `stop_recording` ends a recording in progress (when
@@ -1615,6 +1714,28 @@ mod tests {
         // Not recording: nothing to stop, but the menu bar comes back all
         // the same.
         assert_eq!(close(false), ["restore menu", "hide"]);
+    }
+
+    #[test]
+    fn a_click_or_the_keyboard_turns_the_user_to_the_window() {
+        use slint::winit_030::winit::event::{DeviceId, MouseButton};
+        let click = |state| WindowEvent::MouseInput {
+            device_id: DeviceId::dummy(),
+            state,
+            button: MouseButton::Left,
+        };
+        assert_eq!(turn(&click(ElementState::Pressed)), Turn::Now);
+        assert_eq!(turn(&click(ElementState::Released)), Turn::No);
+        assert_eq!(turn(&WindowEvent::Focused(true)), Turn::IfStillKey);
+        assert_eq!(turn(&WindowEvent::Focused(false)), Turn::No);
+    }
+
+    #[test]
+    fn closing_leaves_the_focus_with_another_vento_window() {
+        assert!(hands_focus_back(false, false));
+        // Open again by then, or the Quick panel or Info is open.
+        assert!(!hands_focus_back(true, false));
+        assert!(!hands_focus_back(false, true));
     }
 
     #[test]

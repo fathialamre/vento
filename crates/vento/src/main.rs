@@ -218,13 +218,32 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     // The Info window and the panel never show together: whichever opens
     // closes the other, keeping the focus for itself. The Settings window
-    // is an ordinary window and stays.
+    // is an ordinary window and stays; turning to it closes both, and it
+    // leaves the focus with either when it closes.
     {
         let panel = Rc::downgrade(&panel);
         info.set_before_open(Box::new(move || {
             if let Some(panel) = panel.upgrade() {
                 panel.close_for_other_window();
             }
+        }));
+    }
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        settings.set_on_activated(Box::new(move || {
+            if let Some(panel) = panel.upgrade() {
+                panel.close_for_other_window();
+            }
+            if let Some(info) = info.upgrade() {
+                info.dismiss();
+            }
+        }));
+    }
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        settings.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
         }));
     }
     {
