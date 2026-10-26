@@ -664,6 +664,8 @@ export component AboutPage inherits VerticalLayout {
     // The running version, "0.2.0".
     in property <string> version;
     callback open-settings-file();
+    // Opens the licences, on the web.
+    callback open-licenses();
 
     spacing: 8px;
 
@@ -698,5 +700,14 @@ export component AboutPage inherits VerticalLayout {
         font-size: 12px;
         color: Theme.muted;
         wrap: word-wrap;
+    }
+
+    HorizontalLayout {
+        alignment: start;
+
+        TextButton {
+            label: "View licenses";
+            clicked => { root.open-licenses(); }
+        }
     }
 }

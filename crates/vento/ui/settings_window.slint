@@ -155,8 +155,9 @@ export component SettingsWindow inherits Window {
     // "Clear history": the history empties at once, with no Undo.
     callback clip-history-cleared();
     callback awake-screen-off-toggled(bool);
-    // About's "Open settings file".
+    // About's "Open settings file" and "View licenses".
     callback open-settings-file();
+    callback open-licenses();
     // The Pocket's, the Clipboard's or Copy from screen's shortcut field
     // started recording, and either recording ended (each way it can end
     // goes through `stop-recording`).
@@ -332,6 +333,7 @@ export component SettingsWindow inherits Window {
                     if root.label == "About": AboutPage {
                         version: root.version;
                         open-settings-file => { root.open-settings-file(); }
+                        open-licenses => { root.open-licenses(); }
                     }
                 }
             }

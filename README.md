@@ -241,7 +241,8 @@ things you reach for most one click away:
   a Mac that cannot do that.
 - **Clipboard** opens the island on your clipboard history.
 - **Pocket** opens the island on the Pocket and says how many items it holds.
-- **Keep Awake** keeps your Mac and its screen on. Click the tile to start or
+- **Keep Awake** keeps your Mac awake, and its screen on unless you choose
+  otherwise on the Keep Awake page of Settings. Click the tile to start or
   stop it, or pick how long below it: from 15 minutes up to 8 hours, until a time you
   choose, or until you stop it. While it runs a small cup shows beside the Vento
   icon; click the cup to open the panel.
@@ -263,7 +264,7 @@ changes apply right away.
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
 | Keep Awake | Whether the screen may turn off while Keep Awake runs. |
-| About | The version, and a button that opens the settings file. |
+| About | The version, a button that opens the settings file, and one that shows the licenses. |
 
 The wheel, the Pocket and the notices that offer Undo keep their dark look
 whichever Appearance you choose.
@@ -272,7 +273,7 @@ whichever Appearance you choose.
 clipboard history, the Pocket, Keep Awake, undo the last move, copy or archive,
 pause Vento, Settings…, open the settings file, or quit.
 
-<img src=".github/assets/menu.png" alt="Vento menu with Undo last move, Pause Vento, Open settings file and Quit Vento" width="170">
+<img src=".github/assets/menu.png" alt="Vento menu with Copy from screen, Open clipboard history, Open the Pocket, Start Keep Awake, Undo last move, Pause Vento, Settings…, Open settings file and Quit Vento" width="170">
 
 Prefer a text file? Everything is also in `settings.toml`; see
 [SETTINGS.md](SETTINGS.md).

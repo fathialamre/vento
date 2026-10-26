@@ -1,7 +1,7 @@
 //! The Settings window: an ordinary titled window with a sidebar of pages,
-//! one per feature, opened from the panel's Settings… (on Linux also from
-//! the tray menu and a second launch). Every control applies and saves its
-//! change at once.
+//! one per feature, opened from the panel's and the menu-bar menu's
+//! Settings… (on Linux also by a second launch). Every control applies and
+//! saves its change at once.
 //!
 //! The window is created on the first open and dropped once it has been
 //! closed for [`crate::lazy_window::IDLE`], taking its native window and
@@ -11,6 +11,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -63,6 +64,10 @@ const TRIGGER_NAMES: [&str; 4] = ["Control", "Option", "Shift", "Command"];
 #[cfg(not(target_os = "macos"))]
 const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
+
+/// The licences of Vento and of what it bundles: the README's License
+/// section, which links each licence file.
+const LICENSES_URL: &str = "https://github.com/fathialamre/vento#license";
 
 /// Size of the Finder icons in the Move page, in points.
 const FOLDER_ICON_PX: u32 = 16;
@@ -384,6 +389,7 @@ impl SettingsWindowController {
                 crate::tray::open_settings_file(&*controller.platform);
             }
         });
+        window.on_open_licenses(|| open_link(LICENSES_URL));
         self.connect_controls(window);
     }
 
@@ -1015,6 +1021,26 @@ fn close_with(
     }
     restore_app_menu();
     hide();
+}
+
+/// Opens `url` in the default browser. The opener is waited for on a
+/// thread of its own: unwaited it would stay a zombie, and waiting here
+/// would stall the window.
+fn open_link(url: &'static str) {
+    #[cfg(target_os = "macos")]
+    const OPENER: &str = "open";
+    #[cfg(not(target_os = "macos"))]
+    const OPENER: &str = "xdg-open";
+    let opener = std::thread::Builder::new()
+        .name("open-link".into())
+        .spawn(move || match Command::new(OPENER).arg(url).status() {
+            Ok(status) if status.success() => {}
+            Ok(status) => warn!("{OPENER} {url} failed: {status}"),
+            Err(e) => warn!("cannot open {url}: {e}"),
+        });
+    if let Err(e) = opener {
+        warn!("cannot start opening {url}: {e}");
+    }
 }
 
 /// The top-left corner that centres a `w` × `h` window on `screen`; a
