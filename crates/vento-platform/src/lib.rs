@@ -409,7 +409,11 @@ pub fn screen_text() -> Rc<dyn ScreenText> {
     {
         Rc::new(MacScreenText)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        Rc::new(linux::screen_text::LinuxScreenText)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         Rc::new(StubScreenText)
     }
@@ -423,7 +427,11 @@ pub fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, PlatformError> 
     {
         macos::read_screen_text(sel)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::screen_text::read_screen_text(sel)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::read_screen_text(sel)
     }
@@ -437,7 +445,11 @@ pub fn screen_text_languages() -> Vec<String> {
     {
         macos::screen_text_languages()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::screen_text::screen_text_languages()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::screen_text_languages()
     }

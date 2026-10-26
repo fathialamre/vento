@@ -188,6 +188,9 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    if let Some(controller) = screen_text.clone() {
+        panel.set_on_copy_from_screen(Box::new(move || controller.start()));
+    }
     // The Info window and the panel never show together: whichever opens
     // closes the other, keeping the focus for itself.
     {

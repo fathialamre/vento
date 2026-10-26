@@ -21,7 +21,7 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 7;
+const API_VERSION = 8;
 
 // Vento's StatusNotifierItem Id, by which its tray icon is found.
 const TRAY_ID = 'vento';
@@ -31,6 +31,13 @@ const TRAY_ID = 'vento';
 const VENTO_NAME = 'io.github.fathialamre.Vento';
 const VENTO_PATH = '/io/github/fathialamre/Vento';
 const VENTO_INTERFACE = 'io.github.fathialamre.Vento1';
+// Copy from screen: how dark the screen goes while an area is chosen, and
+// the chosen area's edge.
+const SELECT_DIM = 'background-color: rgba(0, 0, 0, 0.35);';
+const SELECT_EDGE = 'border: 1px solid rgba(255, 255, 255, 0.9);';
+
+Gio._promisify(Shell.Screenshot.prototype, 'screenshot_area');
+
 // The cup's place in the top bar's status area.
 const AWAKE_ROLE = 'vento-keep-awake';
 // The cup: Caffeine's, as Yaru draws it, else a close stand-in.
@@ -124,6 +131,18 @@ const IFACE = `
          OpenKeepAwake on Vento's own object -->
     <method name="ShowAwakeIndicator">
       <arg type="b" direction="in" name="shown"/>
+    </method>
+    <!-- Copy from screen: dims every screen and lets the user drag a
+         rectangle; answered when the drag ends (false when cancelled with
+         Esc or a right click), in logical global coordinates. The dimming
+         is gone from the screen by then -->
+    <method name="SelectArea">
+      <arg type="(b(iiii))" direction="out" name="area"/>
+    </method>
+    <!-- That rectangle as a PNG, never written to disk -->
+    <method name="CaptureArea">
+      <arg type="(iiii)" direction="in" name="area"/>
+      <arg type="ay" direction="out" name="png"/>
     </method>
     <method name="EndStartup">
       <arg type="s" direction="in" name="token"/>
@@ -259,6 +278,88 @@ function openKeepAwake(cup) {
         });
 }
 
+/**
+ * Dims every screen and lets the user drag a rectangle; `done` gets it as
+ * [x, y, width, height] once the dimming is off the screen, or null when
+ * cancelled. Clicks and keys go nowhere else meanwhile.
+ */
+function selectArea(done) {
+    const overlay = new St.Widget({
+        reactive: true,
+        can_focus: true,
+        x: 0,
+        y: 0,
+        width: global.stage.width,
+        height: global.stage.height,
+    });
+    // Four dim panes around the rectangle, so it stays clear, and its edge.
+    const panes = [0, 1, 2, 3].map(() => new St.Widget({style: SELECT_DIM}));
+    const edge = new St.Widget({style: SELECT_EDGE, visible: false});
+    for (const pane of panes)
+        overlay.add_child(pane);
+    overlay.add_child(edge);
+    const show = (x, y, w, h) => {
+        const [W, H] = [overlay.width, overlay.height];
+        const boxes = [[0, 0, W, y], [0, y + h, W, H - y - h], [0, y, x, h], [x + w, y, W - x - w, h]];
+        boxes.forEach(([bx, by, bw, bh], i) => {
+            panes[i].set_position(bx, by);
+            panes[i].set_size(Math.max(0, bw), Math.max(0, bh));
+        });
+        edge.visible = w > 0 && h > 0;
+        edge.set_position(x - 1, y - 1);
+        edge.set_size(w + 2, h + 2);
+    };
+    show(0, 0, 0, 0);
+    overlay.set_cursor_type(Clutter.CursorType.CROSSHAIR);
+    Main.uiGroup.add_child(overlay);
+    const grab = Main.pushModal(overlay);
+    overlay.grab_key_focus();
+
+    let start = null;
+    let area = null;
+    const rect = (event) => {
+        const [x, y] = event.get_coords();
+        const [x0, y0] = start;
+        return [Math.round(Math.min(x, x0)), Math.round(Math.min(y, y0)),
+            Math.round(Math.abs(x - x0)), Math.round(Math.abs(y - y0))];
+    };
+    const finish = (result) => {
+        Main.popModal(grab);
+        overlay.destroy();
+        // Answer once a frame without the dimming is on the screen, so a
+        // capture right after sees what is under it.
+        const id = global.stage.connect('after-paint', () => {
+            global.stage.disconnect(id);
+            done(result);
+        });
+        global.stage.queue_redraw();
+    };
+    overlay.connect('button-press-event', (_actor, event) => {
+        if (event.get_button() === Clutter.BUTTON_PRIMARY)
+            start = event.get_coords();
+        else
+            finish(null);
+        return Clutter.EVENT_STOP;
+    });
+    overlay.connect('motion-event', (_actor, event) => {
+        if (start) {
+            area = rect(event);
+            show(...area);
+        }
+        return Clutter.EVENT_STOP;
+    });
+    overlay.connect('button-release-event', (_actor, event) => {
+        if (start && event.get_button() === Clutter.BUTTON_PRIMARY)
+            finish(rect(event));
+        return Clutter.EVENT_STOP;
+    });
+    overlay.connect('key-press-event', (_actor, event) => {
+        if (event.get_key_symbol() === Clutter.KEY_Escape)
+            finish(null);
+        return Clutter.EVENT_STOP;
+    });
+}
+
 class Service {
     constructor() {
         this._dragSerial = 0;
@@ -272,6 +373,7 @@ class Service {
         this._slotWatch = 0;
         this._awake = null;
         this._awakeWatch = 0;
+        this._selecting = false;
     }
 
     Version() {
@@ -348,6 +450,32 @@ class Service {
             return false;
         Main.activateWindow(previous);
         return true;
+    }
+
+    SelectAreaAsync(_params, invocation) {
+        if (this._selecting) {
+            invocation.return_value(new GLib.Variant('((b(iiii)))', [[false, [0, 0, 0, 0]]]));
+            return;
+        }
+        this._selecting = true;
+        selectArea(area => {
+            this._selecting = false;
+            invocation.return_value(new GLib.Variant('((b(iiii)))',
+                [[area !== null, area ?? [0, 0, 0, 0]]]));
+        });
+    }
+
+    async CaptureAreaAsync([[x, y, width, height]], invocation) {
+        const stream = Gio.MemoryOutputStream.new_resizable();
+        try {
+            await new Shell.Screenshot().screenshot_area(x, y, width, height, stream);
+            stream.close(null);
+            const png = stream.steal_as_bytes().toArray();
+            invocation.return_value(new GLib.Variant('(ay)', [png]));
+        } catch (e) {
+            invocation.return_error_literal(Gio.DBusError, Gio.DBusError.FAILED,
+                `cannot capture the area: ${e.message}`);
+        }
     }
 
     ShowAwakeIndicatorAsync([shown], invocation) {

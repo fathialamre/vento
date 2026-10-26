@@ -82,8 +82,14 @@ fn default_clipboard_shortcut() -> String {
     "ctrl+alt+v".to_owned()
 }
 
+/// Copy from screen's shortcut: ⌃⌥T on a Mac; elsewhere Ctrl+Alt+O (for
+/// OCR), as GNOME opens a terminal on Ctrl+Alt+T.
 fn default_screen_text_shortcut() -> String {
-    "ctrl+alt+t".to_owned()
+    if cfg!(target_os = "macos") {
+        "ctrl+alt+t".to_owned()
+    } else {
+        "ctrl+alt+o".to_owned()
+    }
 }
 
 fn default_actions() -> Vec<ActionId> {
@@ -608,7 +614,12 @@ mod tests {
 
     #[test]
     fn screen_text_defaults() {
-        assert_eq!(Settings::default().screen_text_shortcut, "ctrl+alt+t");
+        let expected = if cfg!(target_os = "macos") {
+            "ctrl+alt+t"
+        } else {
+            "ctrl+alt+o"
+        };
+        assert_eq!(Settings::default().screen_text_shortcut, expected);
     }
 
     #[test]
@@ -617,7 +628,7 @@ mod tests {
         let p = dir.path().join("settings.toml");
         std::fs::write(&p, "trigger = \"ctrl\"\n").unwrap();
         let s = Settings::try_load(&p).unwrap();
-        assert_eq!(s.screen_text_shortcut, "ctrl+alt+t");
+        assert_eq!(s.screen_text_shortcut, default_screen_text_shortcut());
     }
 
     #[test]

@@ -1200,6 +1200,8 @@ export component SettingsPanel inherits Window {
 
     callback pause-clicked();
     callback quit-clicked();
+    // Starts Copy from screen; shown where it is supported.
+    callback copy-from-screen-clicked();
     // Done or Esc.
     callback close-requested();
 
@@ -1389,6 +1391,12 @@ export component SettingsPanel inherits Window {
                         icon: PanelIcons.quit;
                         label: "Quit";
                         clicked => { root.quit-clicked(); }
+                    }
+
+                    if root.screen-text-supported: FooterItem {
+                        icon: PanelIcons.scan-text;
+                        label: "Copy text";
+                        clicked => { root.copy-from-screen-clicked(); }
                     }
 
                     Rectangle {

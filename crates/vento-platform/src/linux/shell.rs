@@ -24,10 +24,12 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 7;
+const API_VERSION: u32 = 8;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
+/// How long a capture of the screens may take.
+const CAPTURE_TIMEOUT_MS: i32 = 10_000;
 /// How long a menu may stay open; past it Vento stops waiting.
 const MENU_TIMEOUT_MS: i32 = 10 * 60 * 1000;
 
@@ -280,6 +282,48 @@ pub(super) fn menu_colors() -> Option<MenuColors> {
         border: parse_color(&border)?,
         text: parse_color(&text)?,
     })
+}
+
+/// Dims the screens and waits for the user to drag a rectangle (Copy from
+/// screen), however long that takes; `None` when cancelled or the extension
+/// does not answer. Blocks: call off the main thread.
+pub(super) fn select_area() -> Option<Rect> {
+    let bus = super::session_bus().ok()?;
+    let reply = call_within(&bus, "SelectArea", None, i32::MAX)
+        .inspect_err(|e| log::warn!("cannot select an area: {e}"))
+        .ok()?;
+    parse_area(&reply)
+}
+
+/// `SelectArea`'s `((b(iiii)))`: the rectangle, or `None` when cancelled.
+fn parse_area(reply: &glib::Variant) -> Option<Rect> {
+    let (chosen, (x, y, w, h)): (bool, (i32, i32, i32, i32)) = reply.try_child_value(0)?.get()?;
+    (chosen && w > 0 && h > 0).then(|| Rect {
+        x: f64::from(x),
+        y: f64::from(y),
+        w: f64::from(w),
+        h: f64::from(h),
+    })
+}
+
+/// The area `rect` (logical global coordinates) of the screens as a PNG.
+/// Blocks: call off the main thread.
+pub(super) fn capture_area(rect: Rect) -> Result<Vec<u8>, glib::Error> {
+    let bus = super::session_bus()?;
+    let area = (
+        rect.x.round() as i32,
+        rect.y.round() as i32,
+        rect.w.round() as i32,
+        rect.h.round() as i32,
+    );
+    let reply = call_within(
+        &bus,
+        "CaptureArea",
+        Some(&(area,).to_variant()),
+        CAPTURE_TIMEOUT_MS,
+    )?;
+    let (png,): (Vec<u8>,) = reply.get().unwrap_or_default();
+    Ok(png)
 }
 
 /// Shows or hides the Keep Awake cup in the top bar.
@@ -782,6 +826,22 @@ mod tests {
             child.get().unwrap();
         assert_eq!((kind.as_str(), id, title.as_str()), ("item", 7, "Files"));
         assert!(icon.ends_with("org.gnome.Nautilus.desktop"));
+    }
+
+    #[test]
+    fn a_selected_area_is_read_as_the_extension_answers() {
+        let reply = |chosen: bool, area: (i32, i32, i32, i32)| ((chosen, area),).to_variant();
+        assert_eq!(
+            parse_area(&reply(true, (10, 20, 300, 40))),
+            Some(Rect {
+                x: 10.0,
+                y: 20.0,
+                w: 300.0,
+                h: 40.0
+            })
+        );
+        assert_eq!(parse_area(&reply(false, (0, 0, 0, 0))), None);
+        assert_eq!(parse_area(&reply(true, (5, 5, 0, 9))), None);
     }
 
     #[test]

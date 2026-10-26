@@ -170,6 +170,8 @@ pub struct PanelController {
     /// Pauses or resumes vento; the panel shows the result through
     /// [`PanelController::set_paused`].
     on_pause: Box<dyn Fn(bool)>,
+    /// Starts Copy from screen, for the footer's Copy text.
+    on_copy_from_screen: RefCell<Option<Box<dyn Fn()>>>,
     /// Folders recently moved or copied to, shared with the wheel and the
     /// executor.
     recent: Rc<RefCell<RecentDestinations>>,
@@ -229,6 +231,7 @@ impl PanelController {
             tab: Cell::new(0),
             screen_text_supported,
             on_pause,
+            on_copy_from_screen: RefCell::new(None),
             recent,
             try_shortcut,
             on_clear_history,
@@ -303,6 +306,15 @@ impl PanelController {
         window.on_pause_clicked(move || {
             if let Some(panel) = this.upgrade() {
                 (panel.on_pause)(!panel.paused.get());
+            }
+        });
+        let this = self.this.clone();
+        window.on_copy_from_screen_clicked(move || {
+            let Some(panel) = this.upgrade() else { return };
+            // Out of the way of the area the user is about to choose.
+            panel.close();
+            if let Some(start) = panel.on_copy_from_screen.borrow().as_ref() {
+                start();
             }
         });
         window.on_quit_clicked(|| {
@@ -807,6 +819,11 @@ impl PanelController {
             window.set_terminals(ModelRc::new(VecModel::from(names)));
         }
         *self.terminals.borrow_mut() = terminals;
+    }
+
+    /// Has the footer's Copy text call `start`.
+    pub fn set_on_copy_from_screen(&self, start: Box<dyn Fn()>) {
+        *self.on_copy_from_screen.borrow_mut() = Some(start);
     }
 
     /// What the Keep Awake tab shows and changes.
@@ -1736,7 +1753,11 @@ mod tests {
             Some("The Pocket uses this shortcut")
         );
         assert_eq!(
-            shortcut_refusal("ctrl+alt+t", ShortcutFor::Pocket, &defaults),
+            shortcut_refusal(
+                &defaults.screen_text_shortcut,
+                ShortcutFor::Pocket,
+                &defaults
+            ),
             Some("Copy from screen uses this shortcut")
         );
         assert_eq!(

@@ -92,6 +92,7 @@ clipboard_history = true
 clipboard_shortcut = "ctrl+alt+v"
 
 # Global shortcut for Copy from screen; same form as pocket_shortcut
+# ("ctrl+alt+o" on Linux, where GNOME opens a terminal on Ctrl+Alt+T)
 screen_text_shortcut = "ctrl+alt+t"
 ```
 

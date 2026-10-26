@@ -31,6 +31,7 @@ mod icons;
 pub(crate) mod image_io;
 mod instance;
 mod portal;
+pub(crate) mod screen_text;
 mod shell;
 mod shortcuts;
 mod terminal;
@@ -155,6 +156,7 @@ impl Platform for LinuxPlatform {
         {
             (handler.0)();
         }
+        screen_text::deliver_selection(|| self.shell.monitors());
         if let Some(frame) = instance::awake_indicator_clicked()
             && let Some(handler) = self.on_awake_indicator.borrow().as_ref()
         {
