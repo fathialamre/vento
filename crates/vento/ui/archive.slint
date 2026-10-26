@@ -231,27 +231,39 @@ export component PasswordPrompt inherits Window {
                         clicked => { input.focus(); }
                     }
 
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
+                    // Clips a long password and scrolls it to keep the cursor
+                    // in view, as the std-widgets `LineEdit` does.
+                    Rectangle {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        clip: true;
 
-                        VerticalLayout {
-                            alignment: center;
+                        input := TextInput {
+                            property <length> computed-x;
 
-                            input := TextInput {
-                                input-type: InputType.password;
-                                text <=> root.password;
-                                color: Theme.text;
-                                font-size: 13px;
-                                selection-background-color: Theme.accent-soft;
-                                selection-foreground-color: Theme.text;
-                                single-line: true;
-                                accessible-label: "Password";
-                                accessible-placeholder-text: "Password";
-                                accepted => {
-                                    if (root.password != "") {
-                                        root.submit();
-                                    }
+                            x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+                            width: max(parent.width - self.text-cursor-width, self.preferred-width);
+                            height: 100%;
+                            vertical-alignment: center;
+                            input-type: InputType.password;
+                            text <=> root.password;
+                            color: Theme.text;
+                            font-size: 13px;
+                            selection-background-color: Theme.accent-soft;
+                            selection-foreground-color: Theme.text;
+                            single-line: true;
+                            accessible-label: "Password";
+                            accessible-placeholder-text: "Password";
+                            cursor-position-changed(cursor-position) => {
+                                if cursor-position.x + self.computed-x < 0px {
+                                    self.computed-x = -cursor-position.x;
+                                } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                                    self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                                }
+                            }
+                            accepted => {
+                                if (root.password != "") {
+                                    root.submit();
                                 }
                             }
                         }
