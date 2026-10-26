@@ -1,7 +1,7 @@
 //! The tray icon on Linux: a StatusNotifierItem, which Ubuntu's AppIndicator
 //! extension shows in GNOME's top bar. A left click opens the panel; the
-//! menu has Settings (for hosts where a left click opens the menu too),
-//! then the items macOS has.
+//! menu has Settings…, which opens the Settings window, then the items
+//! macOS has.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -32,6 +32,7 @@ const ICON_W: f64 = 24.0;
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Action {
     OpenPanel,
+    OpenSettings,
     CopyFromScreen,
     Undo,
     Pause(bool),
@@ -175,7 +176,7 @@ impl Tray for VentoTray {
             })
         };
         let mut menu = vec![
-            item("Settings…", true, Action::OpenPanel),
+            item("Settings…", true, Action::OpenSettings),
             MenuItem::Separator,
         ];
         if self.copy_from_screen {
@@ -220,6 +221,8 @@ pub struct TrayDeps {
     /// Opens the panel under the icon; given the icon's frame in global
     /// logical points.
     pub on_open_panel: Box<dyn Fn(Rect)>,
+    /// Opens the Settings window.
+    pub on_open_settings: Box<dyn Fn()>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
     /// Starts Copy from screen; `None` leaves the item out.
@@ -236,6 +239,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         keep_awake,
         on_open_keep_awake,
         on_open_panel,
+        on_open_settings,
         pause,
         on_copy_from_screen,
     } = deps;
@@ -279,6 +283,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                     .unwrap_or_else(|| icon_frame(cursor, top, bar_h));
                 on_open_panel(icon);
             }
+            Action::OpenSettings => on_open_settings(),
             Action::CopyFromScreen => {
                 if let Some(start) = &on_copy_from_screen {
                     start();
@@ -306,7 +311,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
 
 /// Opens the settings file with its default app, writing the defaults
 /// first if the file does not exist.
-fn open_settings_file(platform: &dyn Platform) {
+pub(crate) fn open_settings_file(platform: &dyn Platform) {
     let path = settings_path();
     if !path.exists()
         && let Err(e) = Settings::default().save(&path)

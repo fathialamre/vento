@@ -1,0 +1,320 @@
+// The Settings window: an ordinary titled window with a sidebar of pages on
+// the left, one per feature, and the chosen page on the right under its
+// name. It follows the Appearance setting through `Theme`.
+
+import { Theme } from "theme.slint";
+import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
+    CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
+
+// One row of the sidebar.
+export struct PageItem { icon: image, label: string }
+
+// A sidebar row: the page's icon and name, on the accent's faint tint while
+// it is the page shown.
+component SidebarRow inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> chosen;
+    callback clicked();
+
+    height: 30px;
+    border-radius: 7px;
+    background: self.chosen ? Theme.accent-soft : (touch.has-hover ? Theme.surface : transparent);
+    accessible-role: tab;
+    accessible-label: self.label;
+    accessible-item-selected: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+
+        // A fixed-size image sits at the top of a row; centre it on the label.
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 16px;
+                height: 16px;
+                colorize: root.chosen ? Theme.accent : Theme.muted;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: root.chosen ? Theme.accent : Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SettingsWindow inherits Window {
+    title: "Vento Settings";
+    default-font-size: 13px;
+    preferred-width: 680px;
+    preferred-height: 520px;
+    min-width: 560px;
+    min-height: 420px;
+    background: Theme.bg;
+
+    // The sidebar's rows, in order, and the one shown (an index into them).
+    // The page shown is found by its name, so a page left out (Copy from
+    // screen, where unsupported) moves the rows after it up.
+    in property <[PageItem]> pages;
+    in-out property <int> page;
+    // Shown above the page when not empty.
+    in property <string> notice;
+
+    // The settings in effect, as the controls show them.
+    // 0 System, 1 Light, 2 Dark.
+    in property <int> appearance;
+    // 0 Honeycomb, 1 Petals.
+    in property <int> wheel-layout;
+    // The wheel's actions, the shown ones first, and how many are shown.
+    in property <[ActionRow]> actions;
+    in property <int> shown-actions;
+    // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
+    // the Mac's names on a Mac, the platform's elsewhere.
+    in property <[string]> trigger-names;
+    in property <int> trigger;
+    // A shake during a file drag opens the wheel too.
+    in property <bool> shake-to-open;
+    // The installed terminals' names, and the one in use.
+    in property <[string]> terminals;
+    in property <int> terminal;
+    // 0 Plain, 1 Shell-quoted.
+    in property <int> path-format;
+    // The pinned folders in ring order, and whether there is room for more.
+    in property <[FolderRow]> pinned;
+    in property <bool> pinned-full;
+    // The recent folders the ring shows now (pinned ones left out), and
+    // whether the history behind them holds any folder.
+    in property <[FolderRow]> recent;
+    in property <bool> recent-history;
+    // The hold delay as shown ("400 ms"), and whether it can go down or up.
+    in property <string> hold;
+    in property <bool> hold-can-decrease;
+    in property <bool> hold-can-increase;
+    // The Pocket shortcut as symbols, and why a recorded one was refused.
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    // The shortcut field is waiting for a key combination.
+    in-out property <bool> shortcut-recording;
+    in property <bool> remove-after-drop;
+    in property <bool> keep-copies;
+    // The clipboard history records copies.
+    in property <bool> clip-history;
+    // The Clipboard shortcut as symbols, why a recorded one was refused,
+    // and whether its field is waiting for a key combination.
+    in property <string> clip-shortcut;
+    in-out property <string> clip-shortcut-error;
+    in-out property <bool> clip-shortcut-recording;
+    // Whether Copy from screen is available, its shortcut as symbols, why
+    // a recorded one was refused, and whether its field is waiting for a
+    // key combination.
+    in property <bool> screen-text-supported;
+    in property <string> screen-shortcut;
+    in-out property <string> screen-shortcut-error;
+    in-out property <bool> screen-shortcut-recording;
+    // Keep Awake lets the screen turn off.
+    in property <bool> awake-screen-off;
+    // The running version, for About.
+    in property <string> version;
+
+    // A control asks for a change; vento applies and saves it and sets the
+    // properties above from the result.
+    callback appearance-chosen(int);
+    callback layout-chosen(int);
+    callback action-toggled(int, bool);
+    // A row of the Wheel page's list dragged from one place to another.
+    callback action-moved(int, int);
+    callback trigger-chosen(int);
+    callback shake-to-open-toggled(bool);
+    callback terminal-chosen(int);
+    callback path-format-chosen(int);
+    // "Add folder": vento shows the folder picker.
+    callback add-folder();
+    callback pinned-moved(int, int);
+    callback unpinned(int);
+    // A recent folder's pin button.
+    callback recent-pinned(int);
+    callback recent-cleared();
+    // The hold delay's − (-1) or + (1).
+    callback hold-stepped(int);
+    callback remove-after-drop-toggled(bool);
+    callback keep-copies-toggled(bool);
+    callback clip-history-toggled(bool);
+    // "Clear history": the history empties at once, with no Undo.
+    callback clip-history-cleared();
+    callback awake-screen-off-toggled(bool);
+    // About's "Open settings file".
+    callback open-settings-file();
+    // The Pocket's, the Clipboard's or Copy from screen's shortcut field
+    // started recording, and either recording ended (each way it can end
+    // goes through `stop-recording`).
+    callback shortcut-recording-started();
+    callback clip-shortcut-recording-started();
+    callback screen-shortcut-recording-started();
+    callback shortcut-recording-stopped();
+
+    // The name of the page shown, which picks its body.
+    property <string> label: root.pages[root.page].label;
+
+    forward-focus: keys;
+
+    // Ends a shortcut recording without a change and gives the keyboard
+    // back to the window.
+    public function stop-recording() {
+        root.shortcut-recording = false;
+        root.clip-shortcut-recording = false;
+        root.screen-shortcut-recording = false;
+        keys.focus();
+        root.shortcut-recording-stopped();
+    }
+
+    // Leaving the Pocket, Clipboard or Copy from screen page removes the
+    // field that was recording.
+    changed page => {
+        if (root.shortcut-recording || root.clip-shortcut-recording
+            || root.screen-shortcut-recording) {
+            root.stop-recording();
+        }
+    }
+
+    keys := FocusScope {
+        HorizontalLayout {
+            Rectangle {
+                width: 180px;
+                background: Theme.card;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 2px;
+                    alignment: start;
+
+                    for item[i] in root.pages: SidebarRow {
+                        icon: item.icon;
+                        label: item.label;
+                        chosen: i == root.page;
+                        clicked => { root.page = i; }
+                    }
+                }
+
+                // The hairline between the sidebar and the page.
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    background: Theme.separator;
+                }
+            }
+
+            flick := Flickable {
+                horizontal-stretch: 1;
+                content-width: self.width;
+                content-height: max(self.height, body.preferred-height);
+
+                body := VerticalLayout {
+                    width: flick.width;
+                    height: max(flick.height, self.preferred-height);
+                    padding: 20px;
+                    spacing: 12px;
+                    alignment: start;
+
+                    Text {
+                        text: root.label;
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: Theme.text;
+                    }
+
+                    if root.notice != "": Notice {
+                        text: root.notice;
+                    }
+
+                    if root.label == "General": GeneralPage {
+                        appearance: root.appearance;
+                        trigger-names: root.trigger-names;
+                        trigger: root.trigger;
+                        shake-to-open: root.shake-to-open;
+                        terminals: root.terminals;
+                        terminal: root.terminal;
+                        path-format: root.path-format;
+                        appearance-chosen(i) => { root.appearance-chosen(i); }
+                        trigger-chosen(i) => { root.trigger-chosen(i); }
+                        shake-to-open-toggled(on) => { root.shake-to-open-toggled(on); }
+                        terminal-chosen(i) => { root.terminal-chosen(i); }
+                        path-format-chosen(i) => { root.path-format-chosen(i); }
+                    }
+                    if root.label == "Wheel": WheelPage {
+                        wheel-layout: root.wheel-layout;
+                        actions: root.actions;
+                        shown-actions: root.shown-actions;
+                        layout-chosen(i) => { root.layout-chosen(i); }
+                        action-toggled(i, on) => { root.action-toggled(i, on); }
+                        action-moved(from, to) => { root.action-moved(from, to); }
+                    }
+                    if root.label == "Move": MovePage {
+                        pinned: root.pinned;
+                        pinned-full: root.pinned-full;
+                        recent: root.recent;
+                        has-history: root.recent-history;
+                        can-pin: !root.pinned-full;
+                        hold: root.hold;
+                        hold-can-decrease: root.hold-can-decrease;
+                        hold-can-increase: root.hold-can-increase;
+                        add-folder => { root.add-folder(); }
+                        pinned-moved(from, to) => { root.pinned-moved(from, to); }
+                        unpinned(i) => { root.unpinned(i); }
+                        recent-pinned(i) => { root.recent-pinned(i); }
+                        recent-cleared => { root.recent-cleared(); }
+                        hold-stepped(step) => { root.hold-stepped(step); }
+                    }
+                    if root.label == "Pocket": PocketPage {
+                        shortcut: root.shortcut;
+                        shortcut-error <=> root.shortcut-error;
+                        recording <=> root.shortcut-recording;
+                        remove-after-drop: root.remove-after-drop;
+                        keep-copies: root.keep-copies;
+                        recording-started => { root.shortcut-recording-started(); }
+                        recording-cancelled => { root.stop-recording(); }
+                        remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
+                        keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
+                    }
+                    if root.label == "Clipboard": ClipboardPage {
+                        history: root.clip-history;
+                        shortcut: root.clip-shortcut;
+                        shortcut-error <=> root.clip-shortcut-error;
+                        recording <=> root.clip-shortcut-recording;
+                        history-toggled(on) => { root.clip-history-toggled(on); }
+                        recording-started => { root.clip-shortcut-recording-started(); }
+                        recording-cancelled => { root.stop-recording(); }
+                        history-cleared => { root.clip-history-cleared(); }
+                    }
+                    if root.label == "Copy from screen" && root.screen-text-supported: CopyFromScreenPage {
+                        shortcut: root.screen-shortcut;
+                        shortcut-error <=> root.screen-shortcut-error;
+                        recording <=> root.screen-shortcut-recording;
+                        recording-started => { root.screen-shortcut-recording-started(); }
+                        recording-cancelled => { root.stop-recording(); }
+                    }
+                    if root.label == "Keep Awake": KeepAwakePage {
+                        screen-off: root.awake-screen-off;
+                        screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
+                    }
+                    if root.label == "About": AboutPage {
+                        version: root.version;
+                        open-settings-file => { root.open-settings-file(); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -27,6 +27,8 @@ mod screen_text;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod settings_hub;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod settings_window;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod toast;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
@@ -126,8 +128,8 @@ fn main() -> Result<(), slint::PlatformError> {
     // shortcut on the history, and the Copy from screen shortcut starts
     // that. Each is registered at startup (the Clipboard one only while the
     // history is on, the Copy from screen one only on macOS 14 or later)
-    // and again whenever it changes, and tried by the panel when one is
-    // recorded.
+    // and again whenever it changes, and tried by the Settings window when
+    // one is recorded.
     let open_on = |view: pocket::View| -> Rc<dyn Fn()> {
         let pocket = Rc::downgrade(&pocket);
         Rc::new(move || {
@@ -168,20 +170,19 @@ fn main() -> Result<(), slint::PlatformError> {
             Rc::new(move || controller.start()),
         ))
     });
-    let panel = {
-        let pause = pause.clone();
+    let settings = {
         let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
         let screen_slot = screen_slot.clone();
         let clearer = Rc::downgrade(&pocket);
-        panel::PanelController::new(
+        settings_window::SettingsWindowController::new(
             platform.clone(),
             hub.clone(),
             recent.clone(),
             supported,
             Box::new(move |which, spec| match which {
-                panel::ShortcutFor::Pocket => pocket_slot.register(spec),
-                panel::ShortcutFor::Clipboard => clip_slot.register(spec),
-                panel::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
+                settings_window::ShortcutFor::Pocket => pocket_slot.register(spec),
+                settings_window::ShortcutFor::Clipboard => clip_slot.register(spec),
+                settings_window::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
                     || Err("Copy from screen needs macOS 14 or later".into()),
                     |slot| slot.register(spec),
                 ),
@@ -191,14 +192,31 @@ fn main() -> Result<(), slint::PlatformError> {
                     pocket.clear_clip_history();
                 }
             }),
+        )
+    };
+    let panel = {
+        let pause = pause.clone();
+        panel::PanelController::new(
+            platform.clone(),
+            hub.clone(),
+            supported,
             Box::new(move |paused| pause.set(paused)),
         )
     };
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));
     }
+    {
+        let settings = Rc::downgrade(&settings);
+        panel.set_on_open_settings(Box::new(move || {
+            if let Some(settings) = settings.upgrade() {
+                settings.open();
+            }
+        }));
+    }
     // The Info window and the panel never show together: whichever opens
-    // closes the other, keeping the focus for itself.
+    // closes the other, keeping the focus for itself. The Settings window
+    // is an ordinary window and stays.
     {
         let panel = Rc::downgrade(&panel);
         info.set_before_open(Box::new(move || {
@@ -230,24 +248,13 @@ fn main() -> Result<(), slint::PlatformError> {
             pocket.flush_pending();
         }
     }));
-    // Launched again while running: the settings, under the island.
-    let reopened = Rc::downgrade(&panel);
-    let homes = Rc::downgrade(&platform);
+    // Launched again while running: the Settings window.
+    let reopened = Rc::downgrade(&settings);
     platform.on_reopen(Box::new(move || {
-        let (Some(panel), Some(platform)) = (reopened.upgrade(), homes.upgrade()) else {
-            return;
-        };
-        let Some(home) = platform.pocket_home() else {
-            return;
-        };
-        log::info!("launched again: opening the settings");
-        let icon = home.slot.unwrap_or(vento_core::geometry::Rect {
-            x: home.screen.x + home.screen.w / 2.0 - 16.0,
-            y: home.screen.y,
-            w: 32.0,
-            h: home.menu_bar_h,
-        });
-        panel.open_at(icon);
+        if let Some(settings) = reopened.upgrade() {
+            log::info!("launched again: opening the settings");
+            settings.open();
+        }
     }));
     let observer = pocket.clone();
     controller.set_sample_listener(Box::new(move |sample, dragging| {
@@ -316,6 +323,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_handle = Rc::new(RefCell::new(None));
     let keep = tray_handle.clone();
     let tray_info = info.clone();
+    #[cfg(target_os = "linux")]
+    let tray_settings = settings.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
@@ -328,12 +337,14 @@ fn main() -> Result<(), slint::PlatformError> {
             keep_awake: panel.keep_awake(),
             on_open_keep_awake: Box::new(move |icon| {
                 awake_info.dismiss();
-                awake_panel.toggle_keep_awake_at(icon);
+                awake_panel.toggle_at(icon);
             }),
             on_open_panel: Box::new(move |icon| {
                 tray_info.dismiss();
                 panel.toggle_at(icon);
             }),
+            #[cfg(target_os = "linux")]
+            on_open_settings: Box::new(move || tray_settings.open()),
             pause,
             on_copy_from_screen: screen_text
                 .map(|controller| Box::new(move || controller.start()) as Box<dyn Fn()>),

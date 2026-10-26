@@ -235,6 +235,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
 
     // Menu clicks arrive via a handler that may run on any thread: forward
     // only the (Send) item id to the main thread and act on it there.
+    let opener = platform.clone();
     DISPATCH.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move |id: &MenuId| {
             if let Some((item, start)) = &copy_from_screen
@@ -246,7 +247,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             } else if id == pause_item.id() {
                 pause.set(pause_item.is_checked());
             } else if id == open_settings.id() {
-                open_settings_file();
+                open_settings_file(&*opener);
             } else if id == quit.id() {
                 // A job still running would leave its partial output behind.
                 exec.shutdown();
@@ -352,8 +353,9 @@ fn build_cup() -> Option<TrayIcon> {
 }
 
 /// Opens the settings file in the default text editor, writing the defaults
-/// first if the file does not exist.
-fn open_settings_file() {
+/// first if the file does not exist. `open -t` needs no platform; it is
+/// taken to match Linux, where the platform opens the file.
+pub(crate) fn open_settings_file(_platform: &dyn Platform) {
     let path = settings_path();
     if !path.exists()
         && let Err(e) = Settings::default().save(&path)

@@ -1,0 +1,702 @@
+// The Settings window's pages, one per feature: the controls each page
+// shows and the callbacks they ask for changes through. The window
+// (`settings_window.slint`) lays them out and passes the settings in.
+
+import { Theme } from "theme.slint";
+import { Icons } from "wheel.slint";
+import {
+    PanelIcons, SectionHeading, Separator, Switch, SwitchRow, Segmented, MenuField, LayoutCard,
+    TextButton, IconButton, Stepper, ShortcutField, ReorderRow, DragGrip,
+} from "controls.slint";
+
+// One action in the Wheel page's list, shown on the wheel or not.
+export struct ActionRow { icon: image, label: string, shown: bool }
+
+// One folder in the Move page: its Finder icon (when `has-icon`), its name,
+// where it is (its parent folder, the home folder as ~) and whether it is
+// missing on disk.
+export struct FolderRow { icon: image, has-icon: bool, name: string, place: string, missing: bool }
+
+// Why the settings file was not loaded.
+export component Notice inherits Rectangle {
+    in property <string> text;
+
+    border-radius: 8px;
+    background: Theme.surface;
+
+    HorizontalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        VerticalLayout {
+            alignment: start;
+
+            Image {
+                source: Icons.missing;
+                width: 14px;
+                height: 14px;
+                colorize: Theme.danger;
+            }
+        }
+
+        Text {
+            text: root.text;
+            font-size: 12px;
+            color: Theme.text;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// The wheel's actions, one row each: a grip to drag the row into a new
+// place, the action's icon and name, and a switch to show or hide it.
+// While a row is dragged it follows the pointer and the rows it passes
+// make room; it drops at the row nearest to where it was let go. The shown
+// rows come first and a row stays among its own kind (switching it on or
+// off moves it between them).
+component ActionList inherits Rectangle {
+    in property <[ActionRow]> rows;
+    // How many of the rows are shown on the wheel (they come first).
+    in property <int> shown-count;
+    callback toggled(int, bool);
+    callback moved(int, int);
+
+    property <length> row-h: 34px;
+    // The row being dragged (-1 for none), how far it has moved, the first
+    // and last place it can go, and the place it would drop at now.
+    property <int> drag-from: -1;
+    property <length> drag-offset;
+    property <int> drag-lo: self.drag-from < self.shown-count ? 0 : self.shown-count;
+    property <int> drag-hi: self.drag-from < self.shown-count
+        ? self.shown-count - 1
+        : self.rows.length - 1;
+    property <int> drag-to: self.drag-from < 0
+        ? -1
+        : clamp(self.drag-from + round(self.drag-offset / self.row-h), self.drag-lo, self.drag-hi);
+
+    height: self.rows.length * self.row-h;
+
+    for row[i] in root.rows: ReorderRow {
+        index: i;
+        drag-from: root.drag-from;
+        drag-to: root.drag-to;
+        drag-offset: root.drag-offset;
+        row-h: root.row-h;
+        width: root.width;
+        accessible-role: list-item;
+        accessible-label: row.label;
+
+        HorizontalLayout {
+            padding-left: 2px;
+            padding-right: 6px;
+            spacing: 8px;
+
+            DragGrip {
+                index: i;
+                row-h: root.row-h;
+                lo: root.drag-lo;
+                hi: root.drag-hi;
+                drop-to: root.drag-to;
+                drag-from <=> root.drag-from;
+                drag-offset <=> root.drag-offset;
+                moved(from, to) => { root.moved(from, to); }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Image {
+                    source: row.icon;
+                    width: 16px;
+                    height: 16px;
+                    colorize: row.shown ? Theme.text : Theme.muted;
+                }
+            }
+
+            Text {
+                text: row.label;
+                font-size: 13px;
+                color: row.shown ? Theme.text : Theme.muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Switch {
+                    on: row.shown;
+                    label: row.label;
+                    toggled(on) => { root.toggled(i, on); }
+                }
+            }
+        }
+    }
+}
+
+export component WheelPage inherits VerticalLayout {
+    // 0 Honeycomb, 1 Petals.
+    in property <int> wheel-layout;
+    in property <[ActionRow]> actions;
+    in property <int> shown-actions;
+    callback layout-chosen(int);
+    callback action-toggled(int, bool);
+    callback action-moved(int, int);
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Layout";
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        LayoutCard {
+            preferred-width: 100px;
+            horizontal-stretch: 1;
+            icon: PanelIcons.wheel;
+            label: "Honeycomb";
+            chosen: root.wheel-layout == 0;
+            clicked => { root.layout-chosen(0); }
+        }
+
+        LayoutCard {
+            preferred-width: 100px;
+            horizontal-stretch: 1;
+            icon: PanelIcons.petals;
+            label: "Petals";
+            chosen: root.wheel-layout == 1;
+            clicked => { root.layout-chosen(1); }
+        }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Actions";
+    }
+
+    ActionList {
+        rows: root.actions;
+        shown-count: root.shown-actions;
+        toggled(i, on) => { root.action-toggled(i, on); }
+        moved(from, to) => { root.action-moved(from, to); }
+    }
+}
+
+// A folder's icon and name, with where it is after them in a dimmer
+// colour; dimmed as a whole when the folder is missing.
+component FolderLabel inherits HorizontalLayout {
+    in property <FolderRow> folder;
+
+    spacing: 8px;
+
+    VerticalLayout {
+        alignment: center;
+
+        if root.folder.has-icon: Image {
+            source: root.folder.icon;
+            width: 16px;
+            height: 16px;
+            opacity: root.folder.missing ? 0.4 : 1;
+        }
+        if !root.folder.has-icon: Image {
+            source: PanelIcons.folder;
+            width: 16px;
+            height: 16px;
+            colorize: Theme.muted;
+            opacity: root.folder.missing ? 0.4 : 1;
+        }
+    }
+
+    // The name keeps to its own width, up to half the narrowest page (the
+    // window's least width leaves the page 340 px); where it is takes the
+    // rest.
+    Text {
+        text: root.folder.name;
+        font-size: 13px;
+        color: root.folder.missing ? Theme.muted : Theme.text;
+        vertical-alignment: center;
+        horizontal-stretch: 0;
+        max-width: 170px;
+        overflow: elide;
+    }
+
+    Text {
+        text: root.folder.missing ? "Missing" : root.folder.place;
+        font-size: 11px;
+        color: Theme.muted;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+        overflow: elide;
+    }
+}
+
+// The pinned folders, in ring order: a grip to drag a row into a new
+// place, the folder, and a button to unpin it.
+component PinnedList inherits Rectangle {
+    in property <[FolderRow]> rows;
+    callback moved(int, int);
+    callback unpinned(int);
+
+    property <length> row-h: 34px;
+    // The row being dragged (-1 for none), how far it has moved, and the
+    // place it would drop at now.
+    property <int> drag-from: -1;
+    property <length> drag-offset;
+    property <int> drag-to: self.drag-from < 0
+        ? -1
+        : clamp(self.drag-from + round(self.drag-offset / self.row-h), 0, self.rows.length - 1);
+
+    height: self.rows.length * self.row-h;
+
+    for row[i] in root.rows: ReorderRow {
+        index: i;
+        drag-from: root.drag-from;
+        drag-to: root.drag-to;
+        drag-offset: root.drag-offset;
+        row-h: root.row-h;
+        width: root.width;
+        accessible-role: list-item;
+        accessible-label: row.name;
+
+        HorizontalLayout {
+            padding-left: 2px;
+            padding-right: 2px;
+            spacing: 8px;
+
+            DragGrip {
+                index: i;
+                row-h: root.row-h;
+                lo: 0;
+                hi: root.rows.length - 1;
+                drop-to: root.drag-to;
+                drag-from <=> root.drag-from;
+                drag-offset <=> root.drag-offset;
+                moved(from, to) => { root.moved(from, to); }
+            }
+
+            FolderLabel {
+                folder: row;
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                IconButton {
+                    icon: Icons.remove;
+                    label: "Unpin " + row.name;
+                    clicked => { root.unpinned(i); }
+                }
+            }
+        }
+    }
+}
+
+// What a list with no rows shows instead.
+component EmptyLine inherits Text {
+    height: 30px;
+    font-size: 12px;
+    color: Theme.muted;
+    vertical-alignment: center;
+}
+
+export component MovePage inherits VerticalLayout {
+    in property <[FolderRow]> pinned;
+    in property <bool> pinned-full;
+    in property <[FolderRow]> recent;
+    // The recent history holds folders, shown or not.
+    in property <bool> has-history;
+    in property <bool> can-pin;
+    in property <string> hold;
+    in property <bool> hold-can-decrease;
+    in property <bool> hold-can-increase;
+    callback add-folder();
+    callback pinned-moved(int, int);
+    callback unpinned(int);
+    callback recent-pinned(int);
+    callback recent-cleared();
+    callback hold-stepped(int);
+
+    spacing: 8px;
+
+    HorizontalLayout {
+        SectionHeading {
+            text: "Pinned";
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        TextButton {
+            label: root.pinned-full ? "Up to 7 folders" : "Add folder";
+            icon: PanelIcons.add;
+            has-icon: !root.pinned-full;
+            enabled: !root.pinned-full;
+            clicked => { root.add-folder(); }
+        }
+    }
+
+    if root.pinned.length == 0: EmptyLine {
+        text: "No pinned folders";
+    }
+
+    if root.pinned.length > 0: PinnedList {
+        rows: root.pinned;
+        moved(from, to) => { root.pinned-moved(from, to); }
+        unpinned(i) => { root.unpinned(i); }
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        SectionHeading {
+            text: "Recent";
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        TextButton {
+            label: "Clear";
+            enabled: root.has-history;
+            clicked => { root.recent-cleared(); }
+        }
+    }
+
+    if root.recent.length == 0: EmptyLine {
+        text: "No recent folders";
+    }
+
+    if root.recent.length > 0: VerticalLayout {
+        for row[i] in root.recent: Rectangle {
+            height: 30px;
+            accessible-role: list-item;
+            accessible-label: row.name;
+
+            HorizontalLayout {
+                padding-left: 2px;
+                padding-right: 2px;
+                spacing: 8px;
+
+                FolderLabel {
+                    folder: row;
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+
+                    IconButton {
+                        icon: Icons.pin;
+                        label: "Pin " + row.name;
+                        enabled: root.can-pin;
+                        clicked => { root.recent-pinned(i); }
+                    }
+                }
+            }
+        }
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            text: "Hold on Move";
+            font-size: 13px;
+            color: Theme.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        // At its own width beside the label, however wide the page.
+        Stepper {
+            horizontal-stretch: 0;
+            text: root.hold;
+            label: "Hold on Move";
+            can-decrease: root.hold-can-decrease;
+            can-increase: root.hold-can-increase;
+            decrease => { root.hold-stepped(-1); }
+            increase => { root.hold-stepped(1); }
+        }
+    }
+}
+
+export component PocketPage inherits VerticalLayout {
+    // The Pocket shortcut as symbols, and why the last one recorded was
+    // refused (empty when it was not).
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    in-out property <bool> recording;
+    in property <bool> remove-after-drop;
+    in property <bool> keep-copies;
+    callback recording-started();
+    callback recording-cancelled();
+    callback remove-after-drop-toggled(bool);
+    callback keep-copies-toggled(bool);
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Shortcut";
+    }
+
+    ShortcutField {
+        text: root.shortcut;
+        label: "Pocket shortcut";
+        recording <=> root.recording;
+        started => {
+            root.shortcut-error = "";
+            root.recording-started();
+        }
+        cancelled => { root.recording-cancelled(); }
+    }
+
+    if root.shortcut-error != "": Text {
+        text: root.shortcut-error;
+        font-size: 12px;
+        color: Theme.danger;
+        wrap: word-wrap;
+    }
+
+    Separator { }
+
+    SwitchRow {
+        label: "Remove after drag-out";
+        on: root.remove-after-drop;
+        toggled(on) => { root.remove-after-drop-toggled(on); }
+    }
+
+    SwitchRow {
+        label: "Keep a copy";
+        on: root.keep-copies;
+        toggled(on) => { root.keep-copies-toggled(on); }
+    }
+}
+
+export component ClipboardPage inherits VerticalLayout {
+    // The history records copies; while it does not, its shortcut is not
+    // registered and its field cannot record.
+    in property <bool> history;
+    // The Clipboard shortcut as symbols, and why the last one recorded was
+    // refused (empty when it was not).
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    in-out property <bool> recording;
+    callback history-toggled(bool);
+    callback recording-started();
+    callback recording-cancelled();
+    callback history-cleared();
+
+    spacing: 8px;
+
+    SwitchRow {
+        label: "Clipboard history";
+        on: root.history;
+        toggled(on) => { root.history-toggled(on); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Shortcut";
+    }
+
+    ShortcutField {
+        text: root.shortcut;
+        label: "Clipboard shortcut";
+        enabled: root.history;
+        recording <=> root.recording;
+        started => {
+            root.shortcut-error = "";
+            root.recording-started();
+        }
+        cancelled => { root.recording-cancelled(); }
+    }
+
+    if root.shortcut-error != "": Text {
+        text: root.shortcut-error;
+        font-size: 12px;
+        color: Theme.danger;
+        wrap: word-wrap;
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        alignment: start;
+
+        TextButton {
+            label: "Clear history";
+            clicked => { root.history-cleared(); }
+        }
+    }
+}
+
+export component GeneralPage inherits VerticalLayout {
+    // 0 System, 1 Light, 2 Dark.
+    in property <int> appearance;
+    // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
+    // the Mac's names on a Mac, the platform's elsewhere.
+    in property <[string]> trigger-names;
+    in property <int> trigger;
+    // A shake during a file drag opens the wheel too.
+    in property <bool> shake-to-open;
+    in property <[string]> terminals;
+    in property <int> terminal;
+    // 0 Plain, 1 Shell-quoted.
+    in property <int> path-format;
+    callback appearance-chosen(int);
+    callback trigger-chosen(int);
+    callback shake-to-open-toggled(bool);
+    callback terminal-chosen(int);
+    callback path-format-chosen(int);
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Appearance";
+    }
+
+    Segmented {
+        items: ["System", "Light", "Dark"];
+        current: root.appearance;
+        chosen(i) => { root.appearance-chosen(i); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Trigger";
+    }
+
+    Segmented {
+        items: root.trigger-names;
+        current: root.trigger;
+        chosen(i) => { root.trigger-chosen(i); }
+    }
+
+    SwitchRow {
+        label: "Shake to open";
+        on: root.shake-to-open;
+        toggled(on) => { root.shake-to-open-toggled(on); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Terminal";
+    }
+
+    MenuField {
+        label: "Terminal";
+        items: root.terminals;
+        current: root.terminal;
+        chosen(i) => { root.terminal-chosen(i); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "Copy path";
+    }
+
+    Segmented {
+        items: ["Plain", "Shell-quoted"];
+        current: root.path-format;
+        chosen(i) => { root.path-format-chosen(i); }
+    }
+}
+
+// Shown only where this computer can read text from the screen.
+export component CopyFromScreenPage inherits VerticalLayout {
+    // The Copy from screen shortcut as symbols, and why the last one
+    // recorded was refused (empty when it was not).
+    in property <string> shortcut;
+    in-out property <string> shortcut-error;
+    in-out property <bool> recording;
+    callback recording-started();
+    callback recording-cancelled();
+
+    spacing: 8px;
+
+    SectionHeading {
+        text: "Shortcut";
+    }
+
+    ShortcutField {
+        text: root.shortcut;
+        label: "Copy from screen shortcut";
+        recording <=> root.recording;
+        started => {
+            root.shortcut-error = "";
+            root.recording-started();
+        }
+        cancelled => { root.recording-cancelled(); }
+    }
+
+    if root.shortcut-error != "": Text {
+        text: root.shortcut-error;
+        font-size: 12px;
+        color: Theme.danger;
+        wrap: word-wrap;
+    }
+}
+
+// Keep Awake's one option; starting and stopping it is the panel's.
+export component KeepAwakePage inherits VerticalLayout {
+    in property <bool> screen-off;
+    callback screen-off-toggled(bool);
+
+    spacing: 8px;
+
+    SwitchRow {
+        label: "Let the screen turn off";
+        on: root.screen-off;
+        toggled(on) => { root.screen-off-toggled(on); }
+    }
+}
+
+export component AboutPage inherits VerticalLayout {
+    // The running version, "0.2.0".
+    in property <string> version;
+    callback open-settings-file();
+
+    spacing: 8px;
+
+    Text {
+        text: "Vento";
+        font-size: 15px;
+        font-weight: 600;
+        color: Theme.text;
+    }
+
+    Text {
+        text: "Version " + root.version;
+        font-size: 12px;
+        color: Theme.muted;
+    }
+
+    Separator { }
+
+    HorizontalLayout {
+        alignment: start;
+
+        TextButton {
+            label: "Open settings file";
+            clicked => { root.open-settings-file(); }
+        }
+    }
+
+    Separator { }
+
+    Text {
+        text: "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.";
+        font-size: 12px;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+}
