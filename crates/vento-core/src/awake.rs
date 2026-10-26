@@ -256,7 +256,9 @@ mod tests {
 
     #[test]
     fn until_across_a_clock_change_lands_on_the_wall_time() {
-        let tz = TimeZone::get("Europe/Berlin").unwrap();
+        // Berlin's rule, given whole: Windows has no zone database to look
+        // the name up in.
+        let tz = TimeZone::posix("CET-1CEST,M3.5.0,M10.5.0/3").unwrap();
         // 2026-10-25 03:00 summer time becomes 02:00 winter time; from
         // 00:30 local (22:30 UTC the day before), 08:00 local is 07:00 UTC.
         let now = jiff::civil::date(2026, 10, 25)
