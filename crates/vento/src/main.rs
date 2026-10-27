@@ -21,6 +21,8 @@ mod panel;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pause;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod pdf;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pocket;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod screen_text;
@@ -107,9 +109,11 @@ fn main() -> Result<(), slint::PlatformError> {
     // Pocket's window is the first. Text made before this is English.
     appearance::apply_language(language_code(&hub.current().language));
     let info = info::InfoController::new(platform.clone(), toaster.clone());
+    let pdf = pdf::PdfController::new(platform.clone(), toaster.clone(), executor.clone());
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
     let drop_info = info.clone();
+    let drop_pdf = pdf.clone();
     let controller = wheel::WheelController::new(
         platform.clone(),
         hub.current(),
@@ -117,6 +121,7 @@ fn main() -> Result<(), slint::PlatformError> {
         Box::new(move |drop: wheel::WheelDrop| match drop.action {
             ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
             ActionId::Info => drop_info.open(drop.paths, drop.at),
+            ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
             _ => drop_executor.run(drop),
         }),
     );
@@ -259,9 +264,22 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let pdf = Rc::downgrade(&pdf);
         settings.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
+                || pdf.upgrade().is_some_and(|p| p.has_windows())
+        }));
+    }
+    // The last PDF window to close leaves the focus with another vento
+    // window that is open.
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let settings = Rc::downgrade(&settings);
+        pdf.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
+                || settings.upgrade().is_some_and(|s| s.is_open())
         }));
     }
     {

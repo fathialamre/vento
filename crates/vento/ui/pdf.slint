@@ -1,0 +1,588 @@
+// The PDF Pages window: an ordinary, resizable window showing every page of
+// the PDFs dropped on the wheel's PDF cell as a grid of thumbnails, in
+// reading order (right to left in a right-to-left language, page 1 at the
+// top right). With several files each page is tinted by its file and
+// carries the file's letter, with a legend in the toolbar. A toolbar of
+// page tools sits above the grid and a footer with the selection and the
+// Save button below it. Double-clicking a page shows it large over the
+// grid. Rust lays the grid out (columns, offset, cell size) and handles
+// every click and key; this file only draws.
+
+import { LineText, Theme } from "theme.slint";
+import { Icons } from "wheel.slint";
+
+// One page of the grid. `image` is its thumbnail once `rendered`; `broken`
+// is a page that could not be drawn (a grey page with a warning). `number`
+// is its place in the grid, from 1. `letter` and `tint` name its file when
+// there are several (`tint` 0 and an empty letter otherwise). `ghost` is
+// the faint place a dragged page left.
+export struct PdfPage {
+    image: image,
+    number: string,
+    letter: string,
+    tint: int,
+    selected: bool,
+    ghost: bool,
+    rendered: bool,
+    broken: bool,
+}
+
+// One file in the toolbar's legend: its letter, its name and its tint.
+export struct PdfSourceTag { letter: string, name: string, tint: int }
+
+// The tints of the files, in order; a file's `tint` counts from 1.
+global PdfTints {
+    out property <[color]> list: [#8e8e93, #3b82f6, #22a06b, #a855f7, #e0a100, #ef4444];
+
+    public pure function of(tint: int) -> color {
+        self.list[Math.mod(tint - 1, self.list.length)]
+    }
+}
+
+// A toolbar button: a label (or symbol) on a flat chip, dimmed while it
+// cannot be used.
+component ToolButton inherits Rectangle {
+    in property <string> label;
+    // Names the button for assistive technology when `label` is a symbol.
+    in property <string> name: self.label;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 24px;
+    min-width: 24px;
+    border-radius: 6px;
+    background: self.enabled && touch.pressed ? Theme.hover
+        : self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
+    opacity: self.enabled ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: self.name;
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 9px;
+
+        Text {
+            text: root.label;
+            font-size: 11px;
+            color: Theme.text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The orange "Save as new PDF" button.
+component SaveButton inherits Rectangle {
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 26px;
+    border-radius: 7px;
+    background: !self.enabled ? Theme.accent : touch.pressed ? #cc5414 : (touch.has-hover ? #ff8040 : Theme.accent);
+    opacity: self.enabled ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: @tr("Save as new PDF");
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+
+        Text {
+            text: @tr("Save as new PDF");
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A thin upright line between groups of toolbar buttons.
+component ToolGap inherits Rectangle {
+    width: 1px;
+    height: 16px;
+    background: Theme.separator;
+}
+
+// One page in the grid: its picture fitted in the cell's page box, its
+// number under it, its file's letter and tint, and the selection and focus
+// marks. Clicks are reported with the ⌘ (`control`) and Shift keys held
+// at the press.
+component PageCell inherits Rectangle {
+    in property <PdfPage> page;
+    in property <bool> focused;
+    // Space between the cell's edge and its page box.
+    in property <length> inset: 6px;
+    // Height of the number under the page box.
+    in property <length> label-height: 20px;
+    callback clicked(bool, bool);
+    callback double-clicked();
+
+    property <length> box-w: self.width - 2 * self.inset;
+    property <length> box-h: self.height - self.label-height - 2 * self.inset;
+    // Width over height of the page: the picture's once drawn, else a
+    // portrait sheet.
+    property <float> ratio: self.page.rendered && !self.page.broken && self.page.image.height > 0
+        ? self.page.image.width / self.page.image.height : 0.75;
+    property <bool> wide: self.ratio * self.box-h > self.box-w;
+    property <length> pw: self.wide ? self.box-w : self.box-h * self.ratio;
+    property <length> ph: self.wide ? self.box-w / self.ratio : self.box-h;
+    property <length> px: self.inset + (self.box-w - self.pw) / 2;
+    property <length> py: self.inset + (self.box-h - self.ph) / 2;
+    property <bool> command;
+    property <bool> shift;
+
+    border-radius: 8px;
+    background: self.page.tint > 0 ? PdfTints.of(self.page.tint).transparentize(0.8)
+        : touch.has-hover ? Theme.surface : transparent;
+    opacity: self.page.ghost ? 0.25 : 1;
+    accessible-role: list-item;
+    accessible-label: self.page.number;
+    accessible-item-selected: self.page.selected;
+
+    // The selection's glow.
+    if root.page.selected: Rectangle {
+        x: root.px - 3px;
+        y: root.py - 3px;
+        width: root.pw + 6px;
+        height: root.ph + 6px;
+        border-radius: 5px;
+        background: Theme.accent.transparentize(0.7);
+    }
+
+    // The keyboard focus.
+    if root.focused: Rectangle {
+        x: root.px - 5px;
+        y: root.py - 5px;
+        width: root.pw + 10px;
+        height: root.ph + 10px;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: Theme.accent.transparentize(0.35);
+    }
+
+    Rectangle {
+        x: root.px;
+        y: root.py;
+        width: root.pw;
+        height: root.ph;
+        border-radius: 3px;
+        clip: true;
+        background: root.page.rendered && !root.page.broken ? white : Theme.surface;
+
+        if root.page.rendered && !root.page.broken: Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.page.image;
+            image-fit: fill;
+        }
+
+        if root.page.broken: Image {
+            width: 20px;
+            height: 20px;
+            source: Icons.missing;
+            colorize: Theme.muted;
+        }
+
+        // The edge, over the picture.
+        Rectangle {
+            border-radius: parent.border-radius;
+            border-width: root.page.selected ? 2px : 1px;
+            border-color: root.page.selected ? Theme.accent : Theme.border;
+        }
+
+        // The file's letter, at the start of the top edge.
+        if root.page.letter != "": Rectangle {
+            x: Theme.rtl ? parent.width - self.width - 4px : 4px;
+            y: 4px;
+            width: letter.preferred-width + 8px;
+            height: 14px;
+            border-radius: 3px;
+            background: PdfTints.of(root.page.tint);
+
+            letter := Text {
+                text: root.page.letter;
+                font-size: 9px;
+                font-weight: 700;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // The selection's tick, at the end of the top edge.
+        if root.page.selected: Rectangle {
+            x: Theme.rtl ? 4px : parent.width - self.width - 4px;
+            y: 4px;
+            width: 15px;
+            height: 15px;
+            border-radius: 7.5px;
+            background: Theme.accent;
+
+            Path {
+                width: 15px;
+                height: 15px;
+                viewbox-width: 15;
+                viewbox-height: 15;
+                commands: "M 4 7.5 L 6.5 10 L 11 5";
+                stroke: white;
+                stroke-width: 1.6px;
+            }
+        }
+    }
+
+    Text {
+        y: root.height - root.label-height;
+        width: root.width;
+        height: root.label-height;
+        text: root.page.number;
+        font-size: 10px;
+        color: Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                root.command = event.modifiers.control;
+                root.shift = event.modifiers.shift;
+            }
+        }
+        clicked => { root.clicked(root.command, root.shift); }
+        double-clicked => { root.double-clicked(); }
+    }
+}
+
+export component PdfWindow inherits Window {
+    default-font-family: Theme.font-family;
+    default-font-size: 13px;
+    title: root.heading;
+    preferred-width: 640px;
+    preferred-height: 660px;
+    min-width: 540px;
+    min-height: 360px;
+    background: Theme.bg;
+    forward-focus: keys;
+
+    // The window title: the files' names and the page count.
+    in property <string> heading;
+    // The grid's pages, in reading order.
+    in property <[PdfPage]> pages;
+    // The files, shown in the toolbar when there are several.
+    in property <[PdfSourceTag]> legend;
+    // The footer's text: the selection, or a hint.
+    in property <string> footer;
+    // Whether any page is selected: the tools that act on a selection work.
+    in property <bool> has-selection;
+    // Whether the grid has pages.
+    in property <bool> has-pages: true;
+    // Whether Save as new PDF works now.
+    in property <bool> can-save: false;
+
+    // The grid's layout, set by Rust (`GridMetrics`): columns, the offset of
+    // the first column from the grid area's left edge, and the cells.
+    in property <int> columns: 1;
+    in property <length> grid-left;
+    in property <length> cell-width: 128px;
+    in property <length> cell-height: 184px;
+    in property <length> gap: 14px;
+    in property <length> pad: 16px;
+    // The page with the keyboard focus (-1 for none), and whether to draw
+    // it (after the arrow keys, not after a click).
+    in property <int> focus-index: -1;
+    in property <bool> show-focus;
+    // The large view of one page, over the grid.
+    in property <bool> large-open;
+    in property <image> large-image;
+
+    // The grid's scroll position (0 or less) and its visible size, for Rust.
+    in-out property <length> content-y <=> flick.content-y;
+    out property <length> grid-width: flick.width;
+    out property <length> grid-height: flick.height;
+
+    // The grid area was resized or scrolled.
+    callback grid-changed();
+    // A page was clicked, with ⌘ and Shift as they were at the press.
+    callback page-clicked(int, bool, bool);
+    // A page was double-clicked.
+    callback page-opened(int);
+    // A click in the grid but on no page.
+    callback background-clicked();
+    // A click on the large view.
+    callback large-closed();
+    // A key, with ⌘ and Shift: true when Rust used it.
+    callback key(string, bool, bool) -> bool;
+    // The toolbar and the footer.
+    callback add-pdf();
+    callback select-all();
+    callback delete-pages();
+    callback extract();
+    callback to-images();
+    callback split();
+    callback rotate(bool);
+    callback save();
+
+    property <int> rows: root.columns > 0 ? Math.ceil(root.pages.length / root.columns) : 0;
+
+    keys := FocusScope {
+        // `control` is ⌘ on a Mac.
+        key-pressed(event) => {
+            if (root.key(event.text, event.modifiers.control, event.modifiers.shift)) {
+                return accept;
+            }
+            return reject;
+        }
+
+        VerticalLayout {
+            // The toolbar.
+            Rectangle {
+                height: 40px;
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 6px;
+                    alignment: start;
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 20 : 0;
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("＋ Add PDF");
+                        name: @tr("Add PDF");
+                        clicked => { root.add-pdf(); }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 19 : 1;
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("Select all");
+                        enabled: root.has-pages;
+                        clicked => { root.select-all(); }
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 18 : 2;
+                        alignment: center;
+
+                        ToolGap { }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 17 : 3;
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("Delete");
+                        enabled: root.has-selection;
+                        clicked => { root.delete-pages(); }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 16 : 4;
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("PDF pages" => "Extract");
+                        enabled: root.has-selection;
+                        clicked => { root.extract(); }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 15 : 5;
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("To images");
+                        enabled: root.has-pages;
+                        clicked => { root.to-images(); }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 14 : 6;
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("Split…");
+                        enabled: root.has-pages;
+                        clicked => { root.split(); }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 13 : 7;
+                        y: (parent.height - self.height) / 2;
+                        label: "↺";
+                        name: @tr("Rotate left");
+                        enabled: root.has-selection;
+                        clicked => { root.rotate(false); }
+                    }
+
+                    ToolButton {
+                        layout-order: Theme.rtl ? 12 : 8;
+                        y: (parent.height - self.height) / 2;
+                        label: "↻";
+                        name: @tr("Rotate right");
+                        enabled: root.has-selection;
+                        clicked => { root.rotate(true); }
+                    }
+
+                    // Pushes the legend to the far end.
+                    Rectangle {
+                        layout-order: Theme.rtl ? 11 : 9;
+                        horizontal-stretch: 1;
+                    }
+
+                    HorizontalLayout {
+                        layout-order: Theme.rtl ? 0 : 10;
+                        spacing: 10px;
+                        horizontal-stretch: 0;
+
+                        for tag[i] in root.legend: HorizontalLayout {
+                            layout-order: Theme.rtl ? root.legend.length - i : i;
+                            spacing: 4px;
+
+                            VerticalLayout {
+                                layout-order: Theme.rtl ? 2 : 0;
+                                alignment: center;
+
+                                Rectangle {
+                                    width: tag-letter.preferred-width + 8px;
+                                    height: 14px;
+                                    border-radius: 3px;
+                                    background: PdfTints.of(tag.tint);
+
+                                    tag-letter := Text {
+                                        text: tag.letter;
+                                        font-size: 9px;
+                                        font-weight: 700;
+                                        color: white;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            LineText {
+                                layout-order: Theme.rtl ? 1 : 0;
+                                max-width: 120px;
+                                text: tag.name;
+                                font-size: 10px;
+                                color: Theme.muted;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+            }
+
+            // The page grid, and the large view over it.
+            area := Rectangle {
+                vertical-stretch: 1;
+
+                flick := Flickable {
+                    content-width: self.width;
+                    content-height: max(self.height,
+                        2 * root.pad + root.rows * root.cell-height + max(0, root.rows - 1) * root.gap);
+
+                    changed width => { root.grid-changed(); }
+                    changed height => { root.grid-changed(); }
+                    changed content-y => { root.grid-changed(); }
+
+                    // Behind the pages: a click on no page.
+                    TouchArea {
+                        width: flick.content-width;
+                        height: flick.content-height;
+                        clicked => { root.background-clicked(); }
+                    }
+
+                    for page[i] in root.pages: PageCell {
+                        x: root.grid-left + root.pad
+                            + (Theme.rtl ? root.columns - 1 - Math.mod(i, root.columns) : Math.mod(i, root.columns))
+                            * (root.cell-width + root.gap);
+                        y: root.pad + Math.floor(i / root.columns) * (root.cell-height + root.gap);
+                        width: root.cell-width;
+                        height: root.cell-height;
+                        page: page;
+                        focused: root.show-focus && root.focus-index == i;
+                        clicked(command, shift) => { root.page-clicked(i, command, shift); }
+                        double-clicked => { root.page-opened(i); }
+                    }
+                }
+
+                if root.large-open: Rectangle {
+                    background: Theme.bg;
+
+                    Image {
+                        x: 16px;
+                        y: 16px;
+                        width: parent.width - 32px;
+                        height: parent.height - 32px;
+                        source: root.large-image;
+                        image-fit: contain;
+                    }
+
+                    TouchArea {
+                        clicked => { root.large-closed(); }
+                    }
+                }
+            }
+
+            // The footer.
+            Rectangle {
+                height: 46px;
+
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+
+                    LineText {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        horizontal-stretch: 1;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: root.footer;
+                        font-size: 11px;
+                        color: Theme.muted;
+                        vertical-alignment: center;
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        alignment: center;
+
+                        SaveButton {
+                            enabled: root.can-save;
+                            clicked => { root.save(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

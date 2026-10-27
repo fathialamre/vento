@@ -1150,7 +1150,7 @@ fn open_link(url: &'static str) {
 
 /// The top-left corner that centres a `w` × `h` window on `screen`; a
 /// window larger than the screen starts at its top-left corner.
-fn centred_on(screen: &Rect, w: f64, h: f64) -> (f64, f64) {
+pub(crate) fn centred_on(screen: &Rect, w: f64, h: f64) -> (f64, f64) {
     (
         screen.x + ((screen.w - w) / 2.0).max(0.0),
         screen.y + ((screen.h - h) / 2.0).max(0.0),

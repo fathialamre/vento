@@ -62,7 +62,6 @@ pub(super) fn pdf_toast_text(outcome: &PdfOutcome) -> String {
 
 /// Toast text for opening PDFs where some paths were left out (`skipped`,
 /// with why), or `None` when nothing was.
-#[allow(dead_code)] // The PDF window shows this (Task 8).
 pub fn pdf_open_toast_text(opened: usize, skipped: &[(PathBuf, PdfError)]) -> Option<String> {
     let (path, error) = skipped.first()?;
     if opened == 0 {
@@ -162,7 +161,7 @@ impl Executor {
     /// PDF window shows its own progress, so `progress` is only handed to the
     /// job (and cancelled when vento quits). Returns `false`, with a Busy
     /// toast and `done` never called, when another job is running.
-    #[allow(dead_code)] // The PDF window calls this (Task 8).
+    #[allow(dead_code)] // The PDF window's Save and page tools call this (Task 10).
     pub fn pdf_job(
         &self,
         job: PdfJob,
