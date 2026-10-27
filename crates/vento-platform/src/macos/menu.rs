@@ -5,10 +5,11 @@ use std::cell::Cell;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::NSObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
-use objc2_app_kit::{NSMenu, NSMenuItem, NSView, NSWorkspace};
+use objc2_app_kit::{NSMenu, NSMenuItem, NSUserInterfaceLayoutDirection, NSView, NSWorkspace};
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSSize, NSString};
 use raw_window_handle::RawWindowHandle;
 use vento_core::geometry::Point;
+use vento_core::i18n;
 
 use crate::MenuEntry;
 
@@ -74,7 +75,7 @@ pub(super) fn context_menu(
         // The items hold their target weakly: it lives until the menu is
         // done.
         let target = MenuTarget::new(mtm);
-        let menu = build(mtm, entries, &target);
+        let menu = build(mtm, entries, &target, i18n::current().rtl);
         let point = view_point(at, view.isFlipped(), view.bounds().size.height);
         let chose = menu.popUpMenuPositioningItem_atLocation_inView(None, point, Some(view));
         let tag = target.ivars().get();
@@ -83,11 +84,45 @@ pub(super) fn context_menu(
     })
 }
 
+/// Lays `menu` out right to left (`rtl`) or left to right: AppKit puts an
+/// item's icon and check on the right and aligns its title to the right.
+pub(super) fn set_direction(menu: &NSMenu, rtl: bool) {
+    menu.setUserInterfaceLayoutDirection(if rtl {
+        NSUserInterfaceLayoutDirection::RightToLeft
+    } else {
+        NSUserInterfaceLayoutDirection::LeftToRight
+    });
+}
+
+/// Lays out the `NSMenu` behind `ns_menu` right to left (`rtl`) or left to
+/// right. For a menu another library owns (the tray's), to be called each
+/// time its text changes, as the direction follows the language. Does
+/// nothing for a null pointer or off the main thread.
+///
+/// # Safety
+/// `ns_menu` is null or points to a live `NSMenu`.
+pub unsafe fn set_ns_menu_direction(ns_menu: *mut std::ffi::c_void, rtl: bool) {
+    if MainThreadMarker::new().is_none() {
+        log::warn!("set_ns_menu_direction called off the main thread; ignored");
+        return;
+    }
+    // SAFETY: the caller guarantees a null or live NSMenu.
+    if let Some(menu) = unsafe { ns_menu.cast::<NSMenu>().as_ref() } {
+        set_direction(menu, rtl);
+    }
+}
+
 /// An NSMenu of `entries` whose leaves send `chooseItem:` to `target`,
-/// enabled exactly as the entries say.
-fn build(mtm: MainThreadMarker, entries: &[MenuEntry], target: &MenuTarget) -> Retained<NSMenu> {
+/// enabled exactly as the entries say, laid out right to left when `rtl`.
+fn build(
+    mtm: MainThreadMarker,
+    entries: &[MenuEntry],
+    target: &MenuTarget,
+    rtl: bool,
+) -> Retained<NSMenu> {
     let menu = NSMenu::new(mtm);
     menu.setAutoenablesItems(false);
+    set_direction(&menu, rtl);
     for entry in entries {
         match entry {
             MenuEntry::Item {
@@ -116,7 +151,7 @@ fn build(mtm: MainThreadMarker, entries: &[MenuEntry], target: &MenuTarget) -> R
                 children,
             } => {
                 let item = new_item(mtm, title, false);
-                let submenu = build(mtm, children, target);
+                let submenu = build(mtm, children, target, rtl);
                 submenu.setTitle(&NSString::from_str(title));
                 item.setSubmenu(Some(&submenu));
                 item.setEnabled(*enabled);

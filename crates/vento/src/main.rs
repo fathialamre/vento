@@ -55,6 +55,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     use vento_core::actions::ActionId;
     use vento_core::destinations::{RecentDestinations, recent_path};
+    use vento_core::i18n::tr;
     use vento_core::settings::{Settings, settings_path};
 
     /// How long the island stays open to confirm an add from the wheel.
@@ -75,9 +76,15 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     appearance::set_current(hub.current().appearance);
     appearance::set_current_theme(hub.current().theme);
-    hub.on_change(Box::new(|_old, new| {
+    hub.on_change(Box::new(|old, new| {
         appearance::set_current(new.appearance);
         appearance::set_current_theme(new.theme);
+        // This listener comes first, so the windows' own listeners (the
+        // Settings window re-applies the look) see the new language. Any
+        // window exists by now, as `apply_language` needs.
+        if old.language != new.language {
+            appearance::apply_language(language_code(&new.language));
+        }
     }));
     // The copy the executor and the Pocket read; the wheel keeps its own
     // through its constructor and its hub listener.
@@ -96,6 +103,9 @@ fn main() -> Result<(), slint::PlatformError> {
         archive_ui::PasswordView::new(platform.clone()),
     );
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
+    // Slint can switch its translation only once a component exists: the
+    // Pocket's window is the first. Text made before this is English.
+    appearance::apply_language(language_code(&hub.current().language));
     let info = info::InfoController::new(platform.clone(), toaster.clone());
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
@@ -141,11 +151,11 @@ fn main() -> Result<(), slint::PlatformError> {
         })
     };
     let pocket_slot = Rc::new(ShortcutSlot::new(
-        "Open the Pocket",
+        || tr("Open the Pocket"),
         open_on(pocket::View::Pocket),
     ));
     let clip_slot = Rc::new(ShortcutSlot::new(
-        "Open the clipboard history",
+        || tr("Open the clipboard history"),
         open_on(pocket::View::Clipboard),
     ));
     // Copy from screen needs macOS 14: on macOS 13 it has no shortcut, no
@@ -168,7 +178,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     let screen_slot = screen_text.clone().map(|controller| {
         Rc::new(ShortcutSlot::new(
-            "Copy from screen",
+            || tr("Copy from screen"),
             Rc::new(move || controller.start()),
         ))
     });
@@ -181,12 +191,18 @@ fn main() -> Result<(), slint::PlatformError> {
             hub.clone(),
             recent.clone(),
             supported,
+            // The window only logs why a key could not be registered, so the
+            // reason is worded in English.
             Box::new(move |which, spec| match which {
-                settings_window::ShortcutFor::Pocket => pocket_slot.register(spec),
-                settings_window::ShortcutFor::Clipboard => clip_slot.register(spec),
+                settings_window::ShortcutFor::Pocket => {
+                    pocket_slot.register(spec).map_err(in_english_text)
+                }
+                settings_window::ShortcutFor::Clipboard => {
+                    clip_slot.register(spec).map_err(in_english_text)
+                }
                 settings_window::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
                     || Err("Copy from screen needs macOS 14 or later".into()),
-                    |slot| slot.register(spec),
+                    |slot| slot.register(spec).map_err(in_english_text),
                 ),
             }),
             Box::new(move || {
@@ -284,27 +300,41 @@ fn main() -> Result<(), slint::PlatformError> {
         observer.observe(sample, dragging);
     }));
 
-    // Registers a shortcut, saying in a toast why one cannot be.
+    // Registers a shortcut, saying in a toast why one cannot be. `name` is
+    // the feature's name for the log, `shown` the same name in the interface
+    // language for the toast.
     let try_slot = {
         let toaster = toaster.clone();
         let platform = platform.clone();
-        move |slot: &ShortcutSlot, name: &str, spec: &str| {
+        move |slot: &ShortcutSlot, name: &str, shown: String, spec: &str| {
             if let Err(reason) = slot.register(spec) {
-                log::warn!("{name} shortcut {spec:?} unavailable: {reason}");
+                log::warn!(
+                    "{name} shortcut {spec:?} unavailable: {}",
+                    in_english_text(reason.clone())
+                );
                 let at = platform.sample_input().cursor;
-                toaster.show(&format!("{name} shortcut unavailable: {reason}"), None, at);
+                toaster.show(
+                    &shortcut_unavailable_text(&shown, &reason.to_string()),
+                    None,
+                    at,
+                );
             }
         }
     };
     let apply_pocket_shortcut = Rc::new({
         let (try_slot, slot) = (try_slot.clone(), pocket_slot);
-        move |s: &Settings| try_slot(&slot, "Pocket", &s.pocket_shortcut)
+        move |s: &Settings| try_slot(&slot, "Pocket", tr("Pocket"), &s.pocket_shortcut)
     });
     let apply_screen_shortcut = Rc::new({
         let (try_slot, slot) = (try_slot.clone(), screen_slot);
         move |s: &Settings| {
             if let Some(slot) = &slot {
-                try_slot(slot, "Copy from screen", &s.screen_text_shortcut);
+                try_slot(
+                    slot,
+                    "Copy from screen",
+                    tr("Copy from screen"),
+                    &s.screen_text_shortcut,
+                );
             }
         }
     });
@@ -313,7 +343,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let slot = clip_slot;
         move |s: &Settings| {
             if s.clipboard_history {
-                try_slot(&slot, "Clipboard", &s.clipboard_shortcut);
+                try_slot(&slot, "Clipboard", tr("Clipboard"), &s.clipboard_shortcut);
             } else {
                 slot.unregister();
             }
@@ -339,12 +369,29 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(pocket) = pocket.upgrade() {
                 pocket.apply_clip_settings(new);
                 pocket.apply_pocket_settings(new);
+                // The first listener has switched the language by now.
+                if old.language != new.language {
+                    pocket.apply_language();
+                }
             }
         }));
     }
 
     // The menu-bar icon needs the running event loop, and lives as long as the app.
-    let tray_handle = Rc::new(RefCell::new(None));
+    let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
+    // The menu is texted when it is made; a language change writes it
+    // again. This listener comes after the first, which switches the
+    // language.
+    {
+        let tray = tray_handle.clone();
+        hub.on_change(Box::new(move |old, new| {
+            if old.language != new.language
+                && let Some(tray) = tray.borrow().as_ref()
+            {
+                tray.retext();
+            }
+        }));
+    }
     let keep = tray_handle.clone();
     let tray_info = info.clone();
     let tray_settings = settings.clone();
@@ -381,13 +428,38 @@ fn main() -> Result<(), slint::PlatformError> {
     result
 }
 
+/// The code of the language the `language` setting asks for now: the
+/// system's preferred languages decide for "auto".
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn language_code(setting: &str) -> &'static str {
+    vento_core::i18n::resolve(setting, &vento_core::i18n::system_languages()).code
+}
+
+/// The toast for a shortcut of the feature `name` that cannot be registered,
+/// for `reason`.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn shortcut_unavailable_text(name: &str, reason: &str) -> String {
+    vento_core::i18n::fill(
+        &vento_core::i18n::tr("{name} shortcut unavailable: {reason}"),
+        &[("name", name), ("reason", reason)],
+    )
+}
+
+/// Why a shortcut failed, in English: for log lines.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn in_english_text(error: vento_core::settings::ShortcutError) -> String {
+    vento_core::i18n::with_language("en", || error.to_string())
+}
+
 /// One global shortcut and what it does: holds the key registered for it,
 /// if any.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 struct ShortcutSlot {
     /// What the shortcut does, where the system names it (GNOME asks the
-    /// user to allow it under this name).
-    description: &'static str,
+    /// user to allow it under this name), in the interface language as of
+    /// the registration: GNOME keeps the name it was first given until the
+    /// next start.
+    description: fn() -> String,
     action: std::rc::Rc<dyn Fn()>,
     held: std::cell::RefCell<Option<(String, hotkey::HotkeyHandle)>>,
 }
@@ -395,7 +467,7 @@ struct ShortcutSlot {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 impl ShortcutSlot {
     /// A slot with no key registered yet, calling `action` on each press.
-    fn new(description: &'static str, action: std::rc::Rc<dyn Fn()>) -> Self {
+    fn new(description: fn() -> String, action: std::rc::Rc<dyn Fn()>) -> Self {
         Self {
             description,
             action,
@@ -406,7 +478,7 @@ impl ShortcutSlot {
     /// Registers `spec` in place of the key this slot holds. Registering the
     /// spec already registered does nothing, so a shortcut the panel has
     /// registered is not registered a second time when its change is saved.
-    fn register(&self, spec: &str) -> Result<(), String> {
+    fn register(&self, spec: &str) -> Result<(), vento_core::settings::ShortcutError> {
         if self
             .held
             .borrow()
@@ -418,7 +490,8 @@ impl ShortcutSlot {
         // Free the old key first, so the same key can be registered again.
         self.unregister();
         let action = self.action.clone();
-        let handle = hotkey::install_hotkey(spec, self.description, Box::new(move || action()))?;
+        let handle =
+            hotkey::install_hotkey(spec, &(self.description)(), Box::new(move || action()))?;
         *self.held.borrow_mut() = Some((spec.to_owned(), handle));
         Ok(())
     }
@@ -473,4 +546,53 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn main() {
     println!("Vento: this platform is not supported yet");
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+mod tests {
+    use super::*;
+    use vento_core::i18n::{tr, with_language};
+
+    #[test]
+    fn a_shortcut_that_cannot_be_registered_is_told_in_the_language() {
+        assert_eq!(
+            shortcut_unavailable_text("Pocket", "in use"),
+            "Pocket shortcut unavailable: in use"
+        );
+        with_language("ar", || {
+            assert_eq!(
+                shortcut_unavailable_text(&tr("Pocket"), "in use"),
+                "اختصار الجيب غير متاح: in use"
+            );
+            assert_eq!(
+                shortcut_unavailable_text(&tr("Copy from screen"), "in use"),
+                "اختصار النسخ من الشاشة غير متاح: in use"
+            );
+        });
+    }
+
+    #[test]
+    fn an_invalid_shortcut_is_toasted_in_the_language_and_logged_in_english() {
+        use vento_core::settings::ShortcutError;
+        let error = ShortcutError::Invalid("p".into());
+        with_language("ar", || {
+            assert_eq!(
+                shortcut_unavailable_text(&tr("Pocket"), &error.to_string()),
+                "اختصار الجيب غير متاح: اختصار غير صالح \"p\""
+            );
+            assert_eq!(in_english_text(error.clone()), "invalid shortcut \"p\"");
+        });
+        assert_eq!(
+            shortcut_unavailable_text("Pocket", &error.to_string()),
+            "Pocket shortcut unavailable: invalid shortcut \"p\""
+        );
+    }
+
+    #[test]
+    fn the_names_gnome_shows_for_the_shortcuts_are_translated() {
+        with_language("ar", || {
+            assert_eq!(tr("Open the Pocket"), "فتح الجيب");
+            assert_eq!(tr("Open the clipboard history"), "فتح سجل الحافظة");
+        });
+    }
 }

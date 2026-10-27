@@ -1,14 +1,14 @@
 //! The one place settings are read and written: every change goes through
 //! here, is saved, and reaches everything that listens.
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
 
 use log::{debug, warn};
-use vento_core::settings::Settings;
+use vento_core::settings::{Settings, SettingsError};
 
 /// Called with the settings before and after a change.
 type Listener = Box<dyn Fn(&Settings, &Settings)>;
@@ -19,7 +19,7 @@ pub struct SettingsHub {
     /// The copy the executor and the Pocket read; replaced in place.
     shared: Rc<RefCell<Settings>>,
     /// Why the file could not be loaded, while that is still true.
-    load_error: RefCell<Option<String>>,
+    load_error: RefCell<Option<SettingsError>>,
     /// Modification time of the file as vento last read or wrote it.
     seen_mtime: Cell<Option<SystemTime>>,
     listeners: RefCell<Vec<Listener>>,
@@ -36,7 +36,7 @@ impl SettingsHub {
             Ok(settings) => (settings, None),
             Err(e) => {
                 warn!("invalid settings {}: {e}", path.display());
-                (Settings::default(), Some(e.to_string()))
+                (Settings::default(), Some(e))
             }
         };
         Rc::new(SettingsHub {
@@ -58,10 +58,11 @@ impl SettingsHub {
         self.shared.borrow().clone()
     }
 
-    /// Why the settings file could not be loaded, e.g. `"line 3: expected ="`;
-    /// `None` when it loaded, or after a change was saved over it.
-    pub fn load_error(&self) -> Option<String> {
-        self.load_error.borrow().clone()
+    /// Why the settings file could not be loaded; `None` when it loaded, or
+    /// after a change was saved over it. The error itself, not its text, so
+    /// whoever shows it words it in the language of that moment.
+    pub fn load_error(&self) -> Option<Ref<'_, SettingsError>> {
+        Ref::filter_map(self.load_error.borrow(), Option::as_ref).ok()
     }
 
     /// Calls `f` with the old and the new settings after every change. A
@@ -109,7 +110,7 @@ impl SettingsHub {
             }
             Err(e) => {
                 warn!("settings not reloaded from {}: {e}", self.path.display());
-                *self.load_error.borrow_mut() = Some(e.to_string());
+                *self.load_error.borrow_mut() = Some(e);
             }
         }
     }
@@ -173,7 +174,10 @@ mod tests {
         let before = fs::read(&path).unwrap();
         let hub = SettingsHub::new(path.clone());
         let error = hub.load_error().expect("an error is recorded");
-        assert!(error.starts_with("line 3:"), "{error}");
+        assert!(
+            matches!(*error, SettingsError::Parse { line: Some(3), .. }),
+            "{error}"
+        );
         assert_eq!(hub.current(), Settings::default());
         assert_eq!(fs::read(&path).unwrap(), before);
     }

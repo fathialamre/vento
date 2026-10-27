@@ -9,10 +9,13 @@ use std::process::Command;
 use std::rc::Rc;
 
 use log::warn;
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{
+    CheckMenuItem, ContextMenu, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem,
+};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
+use vento_core::i18n::{current, tr};
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
@@ -114,6 +117,39 @@ fn icon_frame(
 /// Keeps the menu-bar icon alive.
 pub struct TrayHandle {
     _icon: TrayIcon,
+    /// Sets the menu's text and direction again from the current language.
+    retext: Box<dyn Fn()>,
+}
+
+impl TrayHandle {
+    /// Writes every item's text again in the language now in use, and lays
+    /// the menu out in its direction: call after the language changes.
+    pub fn retext(&self) {
+        (self.retext)();
+    }
+}
+
+/// The menu's items, for writing their text again.
+struct Texted {
+    copy_from_screen: Option<MenuItem>,
+    clipboard: MenuItem,
+    pocket: MenuItem,
+    keep_awake: MenuItem,
+    undo: MenuItem,
+    pause: CheckMenuItem,
+    settings: MenuItem,
+    open_settings: MenuItem,
+    quit: MenuItem,
+    exec: Rc<Executor>,
+}
+
+/// Lays the tray's menu out right to left in a right-to-left language and
+/// left to right otherwise. AppKit reads the direction when the menu is
+/// shown, so this goes with every change of the text.
+fn set_menu_direction(menu: &Menu) {
+    // SAFETY: `ns_menu` is the live NSMenu muda made for `menu`, which the
+    // caller holds; the pointer is used at once on the main thread.
+    unsafe { vento_platform::set_ns_menu_direction(menu.ns_menu(), current().rtl) };
 }
 
 /// A 44x44 RGBA image of the bundled 36x36 `mark` (the flame or the cup)
@@ -194,14 +230,14 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         on_copy_from_screen,
     } = deps;
     let paused = pause.is_paused();
-    let copy_from_screen =
-        on_copy_from_screen.map(|start| (MenuItem::new("Copy from screen", !paused, None), start));
+    let copy_from_screen = on_copy_from_screen
+        .map(|start| (MenuItem::new(tr("Copy from screen"), !paused, None), start));
     let clipboard = MenuItem::new(
-        "Open clipboard history",
+        tr("Open clipboard history"),
         !paused && hub.current().clipboard_history,
         None,
     );
-    let pocket = MenuItem::new("Open the Pocket", !paused, None);
+    let pocket = MenuItem::new(tr("Open the Pocket"), !paused, None);
     let keep_awake_item = MenuItem::new(
         keep_awake_menu_text(keep_awake.session().is_some()),
         true,
@@ -212,10 +248,10 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         exec.has_undo().is_some(),
         None,
     );
-    let pause_item = CheckMenuItem::new("Pause Vento", true, paused, None);
-    let settings_item = MenuItem::new("Settings…", true, None);
-    let open_settings = MenuItem::new("Open settings file", true, None);
-    let quit = MenuItem::new("Quit Vento", true, None);
+    let pause_item = CheckMenuItem::new(tr("Pause Vento"), true, paused, None);
+    let settings_item = MenuItem::new(tr("Settings…"), true, None);
+    let open_settings = MenuItem::new(tr("Open settings file"), true, None);
+    let quit = MenuItem::new(tr("Quit Vento"), true, None);
 
     let menu = Menu::new();
     if let Some((item, _)) = &copy_from_screen {
@@ -235,13 +271,14 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         &quit,
     ])
     .expect("cannot build the tray menu");
+    set_menu_direction(&menu);
 
     let icon = Icon::from_rgba(tray_icon_rgba(FLAME_PNG), ICON_SIZE, ICON_SIZE)
         .expect("tray icon has a valid size");
     let tray = TrayIconBuilder::new()
         .with_icon_templated(icon)
         .with_tooltip("Vento")
-        .with_menu(Box::new(menu))
+        .with_menu(Box::new(menu.clone()))
         .with_menu_on_left_click(false)
         .build()
         .expect("cannot create the menu-bar icon");
@@ -303,6 +340,20 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }));
     }
 
+    // What retexting the menu sets again; the clicks below take the items.
+    let texted = Texted {
+        copy_from_screen: copy_from_screen.as_ref().map(|(item, _)| item.clone()),
+        clipboard: clipboard.clone(),
+        pocket: pocket.clone(),
+        keep_awake: keep_awake_item.clone(),
+        undo: undo.clone(),
+        pause: pause_item.clone(),
+        settings: settings_item.clone(),
+        open_settings: open_settings.clone(),
+        quit: quit.clone(),
+        exec: exec.clone(),
+    };
+
     // Menu clicks arrive via a handler that may run on any thread: forward
     // only the (Send) item id to the main thread and act on it there.
     let opener = platform.clone();
@@ -354,8 +405,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     }));
 
     // The cup comes and goes with Keep Awake.
+    let cup: Rc<RefCell<Option<TrayIcon>>> = Rc::new(RefCell::new(None));
     {
-        let cup: RefCell<Option<TrayIcon>> = RefCell::new(None);
+        let cup = cup.clone();
         let shown = Cell::new(false);
         let keep = Rc::downgrade(&keep_awake);
         keep_awake.on_change(Box::new(move || {
@@ -420,7 +472,41 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }
     }));
 
-    TrayHandle { _icon: tray }
+    let retext = {
+        let keep = Rc::downgrade(&keep_awake);
+        move || {
+            if let Some(copy) = &texted.copy_from_screen {
+                copy.set_text(tr("Copy from screen"));
+            }
+            texted.clipboard.set_text(tr("Open clipboard history"));
+            texted.pocket.set_text(tr("Open the Pocket"));
+            if let Some(keep) = keep.upgrade() {
+                texted
+                    .keep_awake
+                    .set_text(keep_awake_menu_text(keep.session().is_some()));
+            }
+            texted.undo.set_text(undo_menu_text(texted.exec.has_undo()));
+            texted.pause.set_text(tr("Pause Vento"));
+            texted.settings.set_text(tr("Settings…"));
+            texted.open_settings.set_text(tr("Open settings file"));
+            texted.quit.set_text(tr("Quit Vento"));
+            if let Some(cup) = &*cup.borrow()
+                && let Err(e) = cup.set_tooltip(Some(cup_tooltip()))
+            {
+                warn!("cannot retext the Keep Awake cup: {e}");
+            }
+            set_menu_direction(&menu);
+        }
+    };
+    TrayHandle {
+        _icon: tray,
+        retext: Box::new(retext),
+    }
+}
+
+/// The Keep Awake cup's tooltip.
+fn cup_tooltip() -> String {
+    tr("Keep Awake")
 }
 
 /// The Keep Awake cup's menu-bar icon, with no menu: a click opens the
@@ -431,7 +517,7 @@ fn build_cup() -> Option<TrayIcon> {
     TrayIconBuilder::new()
         .with_id(CUP_ID)
         .with_icon_templated(icon)
-        .with_tooltip("Keep Awake")
+        .with_tooltip(cup_tooltip())
         .build()
         .inspect_err(|e| warn!("cannot show the Keep Awake cup: {e}"))
         .ok()

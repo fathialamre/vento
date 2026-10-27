@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use gio::glib;
 use gio::prelude::*;
-use vento_core::settings::parse_shortcut;
+use vento_core::settings::{ShortcutError, parse_shortcut};
 
 use super::portal::{PORTAL, PORTAL_PATH, next_token, request_path};
 
@@ -402,8 +402,8 @@ pub fn bind_global_shortcut(
     spec: &str,
     description: &str,
     on_press: Box<dyn Fn() + Send>,
-) -> Result<GlobalShortcut, String> {
-    let trigger = trigger(spec).ok_or_else(|| format!("invalid shortcut \"{spec}\""))?;
+) -> Result<GlobalShortcut, ShortcutError> {
+    let trigger = trigger(spec).ok_or_else(|| ShortcutError::Invalid(spec.to_owned()))?;
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let wanted = Wanted {

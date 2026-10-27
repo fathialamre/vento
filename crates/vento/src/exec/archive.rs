@@ -15,17 +15,17 @@ use vento_core::archive::{
 };
 use vento_core::fileops::{CopyRecord, CopyUndoOutcome};
 use vento_core::geometry::Point;
+use vento_core::i18n::errors::clauses;
+use vento_core::i18n::{fill, tr, trn};
 use vento_platform::{quarantine_of, set_quarantine};
 
-use super::{Executor, LastOp, display_name, items, name_or_count, on_main, sentence};
-
-/// `"1 archive"` / `"3 archives"`.
-fn archives(n: usize) -> String {
-    format!("{n} {}", if n == 1 { "archive" } else { "archives" })
-}
+use super::{Executor, LastOp, display_name, in_english, on_main, only_name};
+use crate::archive_ui::Verb;
 
 /// Toast for a job the user cancelled.
-pub(super) const CANCELLED_TEXT: &str = "Cancelled";
+pub(super) fn cancelled_text() -> String {
+    tr("Cancelled")
+}
 
 /// What a finished Archive job did, as its toast tells it.
 #[derive(Debug)]
@@ -39,9 +39,14 @@ enum ArchiveResult<'a> {
 /// Toast text for a finished Archive job.
 fn archive_toast_text(result: &ArchiveResult<'_>) -> String {
     match result {
-        ArchiveResult::Compressed { count, output } => {
-            format!("Compressed {} to {output}", items(*count))
-        }
+        ArchiveResult::Compressed { count, output } => fill(
+            &trn(
+                "Compressed {n} item to {name}",
+                "Compressed {n} items to {name}",
+                *count as u64,
+            ),
+            &[("name", output)],
+        ),
         ArchiveResult::Extracted(outcome) => extract_toast_text(outcome),
     }
 }
@@ -55,7 +60,7 @@ fn extract_toast_text(outcome: &BatchOutcome) -> String {
     let failed = outcome.failed.len();
     let skipped = outcome.skipped.len();
     if made == 0 && failed == 0 {
-        return CANCELLED_TEXT.into();
+        return cancelled_text();
     }
     let reason = outcome
         .failed
@@ -65,68 +70,119 @@ fn extract_toast_text(outcome: &BatchOutcome) -> String {
     let mut parts = Vec::new();
     if made == 0 {
         let names: Vec<&Path> = outcome.failed.iter().map(|(a, _)| a.as_path()).collect();
-        parts.push(format!(
-            "couldn't extract {}: {reason}",
-            name_or_count(&names, archives)
-        ));
+        parts.push(match only_name(&names) {
+            Some(name) => fill(
+                &tr("Couldn't extract {name}: {reason}"),
+                &[("name", &name), ("reason", &reason)],
+            ),
+            None => fill(
+                &trn(
+                    "Couldn't extract {n} archive: {reason}",
+                    "Couldn't extract {n} archives: {reason}",
+                    names.len() as u64,
+                ),
+                &[("reason", &reason)],
+            ),
+        });
     } else {
         if outcome.cancelled || failed + skipped == 0 {
             let names: Vec<&Path> = outcome.made.iter().map(|m| m.source.as_path()).collect();
-            parts.push(format!("extracted {}", name_or_count(&names, archives)));
+            parts.push(match only_name(&names) {
+                Some(name) => fill(&tr("Extracted {name}"), &[("name", &name)]),
+                None => trn(
+                    "Extracted {n} archive",
+                    "Extracted {n} archives",
+                    names.len() as u64,
+                ),
+            });
         } else {
-            parts.push(format!("extracted {made} of {}", made + failed + skipped));
+            parts.push(fill(
+                &tr("Extracted {made} of {total}"),
+                &[
+                    ("made", &made.to_string()),
+                    ("total", &(made + failed + skipped).to_string()),
+                ],
+            ));
         }
         if failed > 0 {
-            parts.push(format!("{failed} failed: {reason}"));
+            parts.push(failed_with_reason(failed, &reason));
         }
     }
     if skipped > 0 {
-        parts.push(format!("{skipped} skipped"));
+        parts.push(trn("{n} skipped", "{n} skipped", skipped as u64));
     }
     if outcome.cancelled {
-        parts.push("cancelled".into());
+        parts.push(tr("cancelled"));
     }
-    sentence(&parts)
+    clauses(&parts)
+}
+
+/// `1 failed: reason`, the clause for `n` items that failed, the first for
+/// `reason`.
+pub(super) fn failed_with_reason(n: usize, reason: &str) -> String {
+    fill(
+        &trn("{n} failed: {reason}", "{n} failed: {reason}", n as u64),
+        &[("reason", reason)],
+    )
 }
 
 /// Toast text for a finished undo of an Archive job; `trashed` are the
 /// outputs that went to the Trash.
 pub(super) fn archive_undo_toast_text(outcome: &CopyUndoOutcome, trashed: &[PathBuf]) -> String {
     if trashed.is_empty() && outcome.kept_changed.is_empty() && outcome.failed.is_empty() {
-        return "Nothing left to remove".into();
+        return tr("Nothing left to remove");
     }
     let mut parts = Vec::new();
     if !trashed.is_empty() {
         let names: Vec<&Path> = trashed.iter().map(PathBuf::as_path).collect();
-        parts.push(format!(
-            "moved {} to the Trash",
-            name_or_count(&names, items)
-        ));
+        parts.push(match only_name(&names) {
+            Some(name) => fill(&tr("Moved {name} to the Trash"), &[("name", &name)]),
+            None => trn(
+                "Moved {n} item to the Trash",
+                "Moved {n} items to the Trash",
+                names.len() as u64,
+            ),
+        });
     }
     if !outcome.kept_changed.is_empty() {
         let names: Vec<&Path> = outcome.kept_changed.iter().map(PathBuf::as_path).collect();
-        let since = if names.len() == 1 {
-            "it was"
-        } else {
-            "they were"
-        };
-        parts.push(format!(
-            "kept {}: changed since {since} made",
-            name_or_count(&names, items)
-        ));
+        let n = names.len() as u64;
+        // English starts a sentence with a capital, so the clause that comes
+        // first is worded apart from the ones after it.
+        let first = parts.is_empty();
+        parts.push(match (only_name(&names), first) {
+            (Some(name), true) => fill(
+                &tr("Kept {name}: changed since it was made"),
+                &[("name", &name)],
+            ),
+            (Some(name), false) => fill(
+                &tr("kept {name}: changed since it was made"),
+                &[("name", &name)],
+            ),
+            (None, true) => trn(
+                "Kept {n} item: changed since it was made",
+                "Kept {n} items: changed since they were made",
+                n,
+            ),
+            (None, false) => trn(
+                "kept {n} item: changed since it was made",
+                "kept {n} items: changed since they were made",
+                n,
+            ),
+        });
     }
     if outcome.gone > 0 {
-        parts.push(format!("{} no longer there", outcome.gone));
+        parts.push(trn(
+            "{n} no longer there",
+            "{n} no longer there",
+            outcome.gone as u64,
+        ));
     }
     if let Some((_, reason)) = outcome.failed.first() {
-        parts.push(format!("{} failed: {reason}", outcome.failed.len()));
+        parts.push(failed_with_reason(outcome.failed.len(), reason));
     }
-    sentence(&parts)
+    clauses(&parts)
 }
-
-/// The progress window's verbs.
-const COMPRESSING: &str = "Compressing";
-const EXTRACTING: &str = "Extracting";
 
 /// A password on its way from the password window to the worker.
 type Password = Zeroizing<Vec<u8>>;
@@ -141,19 +197,41 @@ enum ArchiveDone {
     Extracted(BatchOutcome),
 }
 
+/// The toast for a finished Archive job.
+fn archive_done_text(done: &ArchiveDone) -> String {
+    match done {
+        ArchiveDone::Compressed {
+            result: Err(ArchiveError::Cancelled),
+            ..
+        } => cancelled_text(),
+        ArchiveDone::Compressed { result: Err(e), .. } => fill(
+            &tr("Couldn't compress: {reason}"),
+            &[("reason", &e.to_string())],
+        ),
+        ArchiveDone::Compressed {
+            count,
+            result: Ok(made),
+        } => archive_toast_text(&ArchiveResult::Compressed {
+            count: *count,
+            output: display_name(&made.output),
+        }),
+        ArchiveDone::Extracted(outcome) => archive_toast_text(&ArchiveResult::Extracted(outcome)),
+    }
+}
+
 /// The worker's half of Archive: decides between compressing and
 /// extracting, has the progress window follow the job, and runs it.
 fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> ArchiveDone {
     match plan(paths) {
         Plan::Compress { dir, name } => {
-            show_progress(progress, COMPRESSING, at);
+            show_progress(progress, Verb::Compressing, at);
             ArchiveDone::Compressed {
                 count: paths.len(),
                 result: compress(paths, &dir, &name, progress),
             }
         }
         Plan::Extract(archives) => {
-            show_progress(progress, EXTRACTING, at);
+            show_progress(progress, Verb::Extracting, at);
             let mark = copy_quarantine();
             let mut ask = |archive: &Path, why| request_password(archive, why, progress, at);
             ArchiveDone::Extracted(extract_batch(&archives, progress, &mark, &mut ask))
@@ -162,7 +240,7 @@ fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> Archiv
 }
 
 /// Has the main thread's progress window follow `progress`.
-pub(super) fn show_progress(progress: &Arc<Progress>, verb: &'static str, at: Point) {
+pub(super) fn show_progress(progress: &Arc<Progress>, verb: Verb, at: Point) {
     let progress = Arc::clone(progress);
     if let Err(e) = on_main(move |executor| executor.progress.track(progress, verb, at)) {
         warn!("cannot show the progress: {e}");
@@ -259,7 +337,7 @@ impl Executor {
                 if let Some(executor) = this.upgrade()
                     && !progress.is_cancelled()
                 {
-                    executor.progress.track(progress, EXTRACTING, at);
+                    executor.progress.track(progress, Verb::Extracting, at);
                 }
                 // Only fails if the worker is gone, and then no one is waiting.
                 if answer.send(password).is_err() {
@@ -270,29 +348,21 @@ impl Executor {
     }
 
     fn archive_finished(&self, done: ArchiveDone, at: Point) {
-        let (text, made) = match done {
-            ArchiveDone::Compressed {
-                result: Err(ArchiveError::Cancelled),
-                ..
-            } => (CANCELLED_TEXT.to_owned(), Vec::new()),
+        let text = archive_done_text(&done);
+        // The log stays English whatever the interface language is.
+        info!("archive: {}", in_english(|| archive_done_text(&done)));
+        let made = match done {
             ArchiveDone::Compressed { result: Err(e), .. } => {
-                warn!("couldn't compress: {e}");
-                (format!("Couldn't compress: {e}"), Vec::new())
+                if !matches!(e, ArchiveError::Cancelled) {
+                    warn!("couldn't compress: {}", in_english(|| e.to_string()));
+                }
+                Vec::new()
             }
             ArchiveDone::Compressed {
-                count,
-                result: Ok(made),
-            } => {
-                let output = display_name(&made.output);
-                let text = archive_toast_text(&ArchiveResult::Compressed { count, output });
-                (text, vec![made])
-            }
-            ArchiveDone::Extracted(outcome) => {
-                let text = archive_toast_text(&ArchiveResult::Extracted(&outcome));
-                (text, outcome.made)
-            }
+                result: Ok(made), ..
+            } => vec![made],
+            ArchiveDone::Extracted(outcome) => outcome.made,
         };
-        info!("archive: {text}");
         let Some(dest) = made
             .first()
             .and_then(|m| m.output.parent())
@@ -526,6 +596,172 @@ mod tests {
                 &[]
             ),
             "Nothing left to remove"
+        );
+    }
+
+    #[test]
+    fn log_text_stays_english_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            let done = ArchiveDone::Compressed {
+                count: 1,
+                result: Err(ArchiveError::NotEnoughSpace),
+            };
+            assert_eq!(
+                in_english(|| archive_done_text(&done)),
+                "Couldn't compress: not enough disk space"
+            );
+            assert_eq!(
+                archive_done_text(&done),
+                "تعذّر الضغط: لا توجد مساحة كافية على القرص"
+            );
+            let extracted = ArchiveDone::Extracted(extracted(vec![], vec![damaged("/d/a.zip")]));
+            assert_eq!(
+                in_english(|| archive_done_text(&extracted)),
+                "Couldn't extract a.zip: damaged archive: crc"
+            );
+            // Back in Arabic afterwards.
+            assert_eq!(vento_core::i18n::current().code, "ar");
+        });
+    }
+
+    #[test]
+    fn archive_toasts_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            let compressed = |count, output: &str| ArchiveResult::Compressed {
+                count,
+                output: output.into(),
+            };
+            assert_eq!(
+                archive_toast_text(&compressed(2, "Archive.zip")),
+                "تم ضغط عنصرين في Archive.zip"
+            );
+            assert_eq!(
+                archive_toast_text(&compressed(11, "Archive.zip")),
+                "تم ضغط 11 عنصراً في Archive.zip"
+            );
+            // A name stands in for the count: never "1 items".
+            let one = extracted(vec![made("/d/Photos.zip", "/d/Photos")], vec![]);
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&one)),
+                "تم فك ضغط Photos.zip"
+            );
+            let two = extracted(
+                vec![made("/d/a.zip", "/d/a"), made("/d/b.7z", "/d/b")],
+                vec![],
+            );
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&two)),
+                "تم فك ضغط أرشيفين"
+            );
+            // The detail after "damaged archive:" stays as the library words it.
+            let partial = BatchOutcome {
+                made: vec![made("/d/a.zip", "/d/a")],
+                failed: vec![damaged("/d/b.zip")],
+                skipped: vec![p("/d/c.zip")],
+                cancelled: false,
+            };
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&partial)),
+                "تم فك ضغط 1 من 3؛ تعذّرت معالجة عنصر واحد: الأرشيف تالف: crc؛ تم تخطي عنصر واحد"
+            );
+            let all_failed = extracted(vec![], vec![damaged("/d/a.zip"), damaged("/d/b.zip")]);
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&all_failed)),
+                "تعذّر فك ضغط أرشيفين: الأرشيف تالف: crc"
+            );
+            let lone = extracted(vec![], vec![damaged("/d/Photos.zip")]);
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&lone)),
+                "تعذّر فك ضغط Photos.zip: الأرشيف تالف: crc"
+            );
+            let cancelled = BatchOutcome {
+                made: vec![made("/d/Photos.zip", "/d/Photos")],
+                cancelled: true,
+                ..Default::default()
+            };
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&cancelled)),
+                "تم فك ضغط Photos.zip؛ أُلغي"
+            );
+            assert_eq!(
+                archive_toast_text(&ArchiveResult::Extracted(&BatchOutcome::default())),
+                "أُلغي"
+            );
+        });
+    }
+
+    #[test]
+    fn archive_undo_toasts_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            let one = [p("/d/Archive.zip")];
+            let trashed = |n| CopyUndoOutcome {
+                trashed: n,
+                ..Default::default()
+            };
+            assert_eq!(
+                archive_undo_toast_text(&trashed(1), &one),
+                "تم نقل Archive.zip إلى سلة المهملات"
+            );
+            let two = [p("/d/a"), p("/d/b")];
+            assert_eq!(
+                archive_undo_toast_text(&trashed(2), &two),
+                "تم نقل عنصرين إلى سلة المهملات"
+            );
+            let kept = CopyUndoOutcome {
+                kept_changed: vec![p("/d/Photos")],
+                ..Default::default()
+            };
+            assert_eq!(
+                archive_undo_toast_text(&kept, &[]),
+                "أُبقي Photos: تغيّر بعد إنشائه"
+            );
+            let mixed = CopyUndoOutcome {
+                trashed: 1,
+                kept_changed: vec![p("/d/x"), p("/d/y")],
+                gone: 1,
+                failed: vec![(p("/d/z"), "denied".into())],
+            };
+            assert_eq!(
+                archive_undo_toast_text(&mixed, &one),
+                "تم نقل Archive.zip إلى سلة المهملات؛ \
+                 تم إبقاء عنصرين: تغيّرا بعد إنشائهما؛ \
+                 لم يُعثر على عنصر واحد بعد الآن؛ \
+                 تعذّرت معالجة عنصر واحد: denied"
+            );
+            assert_eq!(
+                archive_undo_toast_text(
+                    &CopyUndoOutcome {
+                        gone: 1,
+                        ..Default::default()
+                    },
+                    &[]
+                ),
+                "لم يبقَ شيء لإزالته"
+            );
+        });
+    }
+
+    #[test]
+    fn a_kept_clause_starts_with_a_capital_only_when_it_comes_first() {
+        // Two items kept after one went to the Trash: the clause follows
+        // another, so it starts in lower case.
+        let one = [p("/d/Archive.zip")];
+        let mixed = CopyUndoOutcome {
+            trashed: 1,
+            kept_changed: vec![p("/d/x"), p("/d/y")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_undo_toast_text(&mixed, &one),
+            "Moved Archive.zip to the Trash; kept 2 items: changed since they were made"
+        );
+        let first = CopyUndoOutcome {
+            kept_changed: vec![p("/d/x"), p("/d/y")],
+            ..Default::default()
+        };
+        assert_eq!(
+            archive_undo_toast_text(&first, &[]),
+            "Kept 2 items: changed since they were made"
         );
     }
 

@@ -1,13 +1,14 @@
 // The Archive action's two windows: a small progress pill that never takes
 // the keyboard, and the password prompt, which does.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { TextButton } from "controls.slint";
 
 // Progress of a long extraction or compression: a frameless, always-on-top
 // pill in the toast's style, with the job's title, a thin bar and Cancel.
 export component ArchiveProgress inherits Window {
-    title: "Vento archive progress";
+    default-font-family: Theme.font-family;
+    title: @tr("Vento archive progress");
     no-frame: true;
     always-on-top: true;
     background: transparent;
@@ -28,22 +29,23 @@ export component ArchiveProgress inherits Window {
         border-color: #ffffff26;
 
         HorizontalLayout {
-            padding-left: 14px;
-            padding-right: 10px;
+            padding-left: Theme.rtl ? 10px : 14px;
+            padding-right: Theme.rtl ? 14px : 10px;
             padding-top: 4px;
             padding-bottom: 4px;
             spacing: 10px;
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 2 : 0;
                 alignment: center;
                 spacing: 8px;
                 horizontal-stretch: 1;
 
-                Text {
+                LineText {
+                    horizontal-alignment: Theme.rtl ? right : left;
                     text: root.heading;
                     color: white;
                     font-size: 13px;
-                    overflow: elide;
                 }
 
                 // The bar: a faint track with the fraction done in orange.
@@ -55,8 +57,9 @@ export component ArchiveProgress inherits Window {
                     accessible-label: root.heading;
                     accessible-value: round(root.fraction * 100) + "%";
 
+                    // Filled from the start of the line.
                     Rectangle {
-                        x: 0;
+                        x: Theme.rtl ? parent.width - self.width : 0px;
                         width: parent.width * clamp(root.fraction, 0, 1);
                         height: parent.height;
                         border-radius: 2px;
@@ -66,6 +69,7 @@ export component ArchiveProgress inherits Window {
             }
 
             Rectangle {
+                layout-order: Theme.rtl ? 1 : 0;
                 width: 60px;
 
                 Rectangle {
@@ -74,11 +78,11 @@ export component ArchiveProgress inherits Window {
                     border-radius: 8px;
                     background: cancel-touch.pressed ? #ffffff40 : (cancel-touch.has-hover ? #ffffff33 : #ffffff1f);
                     accessible-role: button;
-                    accessible-label: "Cancel";
+                    accessible-label: @tr("Cancel");
                     accessible-action-default => { root.cancel-clicked(); }
 
                     Text {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         color: white;
                         font-size: 13px;
                         font-weight: 600;
@@ -106,7 +110,7 @@ component ExtractButton inherits Rectangle {
         : (self.enabled && touch.has-hover ? #ff7d38 : Theme.accent);
     opacity: self.enabled ? 1 : 0.4;
     accessible-role: button;
-    accessible-label: "Extract";
+    accessible-label: @tr("Extract");
     accessible-enabled: self.enabled;
     accessible-action-default => {
         if (self.enabled) {
@@ -119,7 +123,8 @@ component ExtractButton inherits Rectangle {
         padding-right: 16px;
 
         Text {
-            text: "Extract";
+            horizontal-alignment: Theme.rtl ? right : left;
+            text: @tr("Extract");
             font-size: 13px;
             font-weight: 600;
             color: white;
@@ -138,10 +143,11 @@ component ExtractButton inherits Rectangle {
 // and Escape cancels. It follows the system light or dark appearance
 // through `Theme`.
 export component PasswordPrompt inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    title: "Vento archive password";
+    title: @tr("Vento archive password");
     default-font-size: 13px;
 
     // e.g. "\"Photos.zip\" is protected".
@@ -194,6 +200,7 @@ export component PasswordPrompt inherits Window {
                     spacing: 8px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 2 : 0;
                         alignment: center;
 
                         Image {
@@ -204,13 +211,14 @@ export component PasswordPrompt inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.heading;
                         font-size: 13px;
                         font-weight: 600;
                         color: Theme.text;
                         vertical-alignment: center;
-                        overflow: elide;
                         horizontal-stretch: 1;
                     }
                 }
@@ -245,6 +253,7 @@ export component PasswordPrompt inherits Window {
                             width: max(parent.width - self.text-cursor-width, self.preferred-width);
                             height: 100%;
                             vertical-alignment: center;
+                            horizontal-alignment: Theme.rtl ? right : left;
                             input-type: InputType.password;
                             text <=> root.password;
                             color: Theme.text;
@@ -252,8 +261,8 @@ export component PasswordPrompt inherits Window {
                             selection-background-color: Theme.accent-soft;
                             selection-foreground-color: Theme.text;
                             single-line: true;
-                            accessible-label: "Password";
-                            accessible-placeholder-text: "Password";
+                            accessible-label: @tr("Password");
+                            accessible-placeholder-text: @tr("Password");
                             cursor-position-changed(cursor-position) => {
                                 if cursor-position.x + self.computed-x < 0px {
                                     self.computed-x = -cursor-position.x;
@@ -275,7 +284,8 @@ export component PasswordPrompt inherits Window {
                         width: parent.width - 16px;
                         height: parent.height;
                         visible: root.password == "";
-                        text: "Password";
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: @tr("Password");
                         color: Theme.muted;
                         font-size: 13px;
                         vertical-alignment: center;
@@ -284,7 +294,8 @@ export component PasswordPrompt inherits Window {
 
                 // Always takes its line, so the window does not jump.
                 Text {
-                    text: root.wrong ? "Wrong password" : "";
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: root.wrong ? @tr("Wrong password") : "";
                     font-size: 12px;
                     color: Theme.danger;
                     height: 16px;
@@ -292,17 +303,19 @@ export component PasswordPrompt inherits Window {
                 }
 
                 HorizontalLayout {
-                    alignment: end;
+                    alignment: Theme.rtl ? start : end;
                     spacing: 8px;
 
                     TextButton {
-                        label: "Cancel";
+                        layout-order: Theme.rtl ? 2 : 0;
+                        label: @tr("Cancel");
                         height: 28px;
                         width: 64px;
                         clicked => { root.cancel(); }
                     }
 
                     ExtractButton {
+                        layout-order: Theme.rtl ? 1 : 0;
                         enabled: root.password != "";
                         clicked => { root.submit(); }
                     }

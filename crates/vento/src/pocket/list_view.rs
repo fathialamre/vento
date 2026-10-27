@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use log::debug;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use vento_core::i18n::tr;
 use vento_core::pocket::Pocket;
 use vento_core::pocket_kind::{PocketKind, kind_of};
 use vento_core::pocket_zone::Presence;
@@ -303,7 +304,7 @@ impl PocketController {
         self.list.filter.set(filter);
         let count = |n: usize| i32::try_from(n).unwrap_or(i32::MAX);
         let all = PocketChip {
-            label: "All".into(),
+            label: tr("All").into(),
             count: count(items.len()),
         };
         let chips = iter::once(all)

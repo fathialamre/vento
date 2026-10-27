@@ -19,6 +19,7 @@ use slint::winit_030::winit::event::{ElementState, WindowEvent};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, ModelRc, Timer, VecModel};
 use vento_core::geometry::{Point, Rect};
+use vento_core::i18n::tr;
 use vento_core::info::{Facts, Subject, ViewContext, subject_of, view};
 use vento_core::sizes::{self, CountOptions, Progress, Tally, count};
 use vento_platform::Platform;
@@ -36,6 +37,16 @@ const WIDTH: f64 = 300.0;
 /// Size of the item's Finder icon, in points (the platform multiplies by the
 /// backing scale; it is shown at 32 pt).
 const ICON_PT: u32 = 32;
+
+/// The reveal button's text: the file manager is Finder on a Mac and Files
+/// elsewhere.
+fn reveal_label() -> String {
+    if cfg!(target_os = "macos") {
+        tr("Show in Finder")
+    } else {
+        tr("Show in Files")
+    }
+}
 
 thread_local! {
     /// The controller, for progress sent from the counting thread. Set by
@@ -65,6 +76,8 @@ pub struct InfoController {
     /// Stops the running count.
     cancel: RefCell<Option<Arc<AtomicBool>>>,
     shown: RefCell<Option<Shown>>,
+    /// The latest count, to show again in another language.
+    latest: RefCell<Progress>,
     /// The window height it was last placed with.
     placed_height: Cell<f64>,
     open: Cell<bool>,
@@ -84,13 +97,29 @@ impl InfoController {
             generation: Cell::new(0),
             cancel: RefCell::new(None),
             shown: RefCell::new(None),
+            latest: RefCell::new(Progress::default()),
             placed_height: Cell::new(0.0),
             open: Cell::new(false),
             before_open: RefCell::new(None),
             this: this.clone(),
         });
         MAIN_INFO.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
+        appearance::follow_language(Rc::downgrade(&controller), |info| info.relanguage());
         controller
+    }
+
+    /// Writes the open window's text again after a language change: its
+    /// labels, dates, sizes and counts are made in Rust. A closed window
+    /// is filled at its next open.
+    fn relanguage(&self) {
+        if !self.is_open() {
+            return;
+        }
+        if let Some(window) = self.window.borrow().as_ref() {
+            window.set_reveal_label(reveal_label().into());
+        }
+        let latest = self.latest.borrow().clone();
+        self.show_progress(&latest);
     }
 
     /// Runs before each open; main sets it to close the Quick panel.
@@ -108,11 +137,11 @@ impl InfoController {
         if paths.is_empty() {
             self.close();
             let text = if several {
-                "Info: items not found"
+                tr("Info: items not found")
             } else {
-                "Info: item not found"
+                tr("Info: item not found")
             };
-            self.toaster.show(text, None, at);
+            self.toaster.show(&text, None, at);
             return;
         }
         if let Some(before_open) = self.before_open.borrow().as_ref() {
@@ -124,6 +153,7 @@ impl InfoController {
 
         let subject = subject_of(&paths, &vento_platform::is_package);
         let window = self.window();
+        window.set_reveal_label(reveal_label().into());
         match paths.as_slice() {
             [only] => {
                 let icon = self
@@ -225,7 +255,7 @@ impl InfoController {
         window.set_details(ModelRc::from(self.details.clone()));
         window.set_biggest(ModelRc::from(self.biggest.clone()));
         self.connect(&window);
-        appearance::apply(&window.global::<Theme>());
+        appearance::follow(&window, appearance::Look::Full);
         *self.window.borrow_mut() = Some(window.clone_strong());
         window
     }
@@ -322,7 +352,7 @@ impl InfoController {
             let at = self.shown.borrow().as_ref().map(|s| s.at);
             self.close();
             if let Some(at) = at {
-                self.toaster.show("Info: cannot count", None, at);
+                self.toaster.show(&tr("Info: cannot count"), None, at);
             }
         }
     }
@@ -344,6 +374,7 @@ impl InfoController {
     /// Fills the window from the count so far and places it under the drop
     /// point again when its height changed.
     fn show_progress(&self, progress: &Progress) {
+        self.latest.borrow_mut().clone_from(progress);
         let shown = self.shown.borrow();
         let Some(shown) = shown.as_ref() else { return };
         let Some(window) = self.window.borrow().as_ref().map(|w| w.clone_strong()) else {

@@ -1,6 +1,7 @@
 //! What an archive job shares with its caller: progress, errors and the
 //! result of a finished compress.
 
+use std::fmt;
 use std::io::{self, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -8,6 +9,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::fileops::Fingerprint;
+use crate::i18n::errors::io_reason;
+use crate::i18n::{fill, tr};
 
 /// Message carried by the `io::Error` that stops a write after Cancel.
 pub(crate) const CANCELLED: &str = "cancelled";
@@ -16,36 +19,64 @@ pub(crate) const CANCELLED: &str = "cancelled";
 /// quickly even when the inner writer is slow.
 const CHUNK: usize = 1024 * 1024;
 
-/// Why an archive job failed.
-#[derive(thiserror::Error, Debug)]
+/// Why an archive job failed. The texts in the `String` fields come from
+/// outside libraries and describe archive internals; they stay English.
+#[derive(Debug)]
 pub enum ArchiveError {
     /// An underlying filesystem call failed.
-    #[error("{0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     /// The destination volume has too little free space.
-    #[error("not enough disk space")]
     NotEnoughSpace,
     /// An entry would be written outside the destination folder.
-    #[error("unsafe path in archive: {0}")]
     UnsafeEntry(String),
     /// The archive is corrupt or cut short.
-    #[error("damaged archive: {0}")]
     Damaged(String),
     /// The archive uses a feature vento cannot read.
-    #[error("unsupported archive: {0}")]
     Unsupported(String),
     /// There is nothing to extract or compress.
-    #[error("archive is empty")]
     Empty,
     /// The archive is encrypted and no password was given.
-    #[error("password needed")]
     NeedPassword,
     /// The given password does not open the archive.
-    #[error("wrong password")]
     WrongPassword,
     /// The user cancelled the job.
-    #[error("cancelled")]
     Cancelled,
+}
+
+impl fmt::Display for ArchiveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let detail = |template: String, detail: &str| fill(&template, &[("detail", detail)]);
+        match self {
+            ArchiveError::Io(e) => f.write_str(&io_reason(e)),
+            ArchiveError::NotEnoughSpace => f.write_str(&tr("not enough disk space")),
+            ArchiveError::UnsafeEntry(d) => {
+                f.write_str(&detail(tr("unsafe path in archive: {detail}"), d))
+            }
+            ArchiveError::Damaged(d) => f.write_str(&detail(tr("damaged archive: {detail}"), d)),
+            ArchiveError::Unsupported(d) => {
+                f.write_str(&detail(tr("unsupported archive: {detail}"), d))
+            }
+            ArchiveError::Empty => f.write_str(&tr("archive is empty")),
+            ArchiveError::NeedPassword => f.write_str(&tr("password needed")),
+            ArchiveError::WrongPassword => f.write_str(&tr("wrong password")),
+            ArchiveError::Cancelled => f.write_str(&tr("cancelled")),
+        }
+    }
+}
+
+impl std::error::Error for ArchiveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ArchiveError::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<io::Error> for ArchiveError {
+    fn from(e: io::Error) -> Self {
+        ArchiveError::Io(e)
+    }
 }
 
 impl ArchiveError {
@@ -272,5 +303,57 @@ mod tests {
     fn other_io_errors_stay_io() {
         let error = io::Error::other("disk on fire");
         assert!(matches!(ArchiveError::from_io(error), ArchiveError::Io(_)));
+    }
+
+    #[test]
+    fn errors_read_in_english_and_arabic() {
+        use crate::i18n::with_language;
+        let all = || {
+            vec![
+                ArchiveError::Io(io::Error::from(io::ErrorKind::PermissionDenied)),
+                ArchiveError::NotEnoughSpace,
+                ArchiveError::UnsafeEntry("../x".into()),
+                ArchiveError::Damaged("crc".into()),
+                ArchiveError::Unsupported("rar5".into()),
+                ArchiveError::Empty,
+                ArchiveError::NeedPassword,
+                ArchiveError::WrongPassword,
+                ArchiveError::Cancelled,
+            ]
+        };
+        let texts = |errors: Vec<ArchiveError>| -> Vec<String> {
+            errors.iter().map(ToString::to_string).collect()
+        };
+        assert_eq!(
+            texts(all()),
+            [
+                "permission denied",
+                "not enough disk space",
+                "unsafe path in archive: ../x",
+                "damaged archive: crc",
+                "unsupported archive: rar5",
+                "archive is empty",
+                "password needed",
+                "wrong password",
+                "cancelled",
+            ]
+        );
+        // The detail after the colon is the library's own and stays as it is.
+        with_language("ar", || {
+            assert_eq!(
+                texts(all()),
+                [
+                    "لا توجد صلاحية",
+                    "لا توجد مساحة كافية على القرص",
+                    "مسار غير آمن في الأرشيف: ../x",
+                    "الأرشيف تالف: crc",
+                    "أرشيف غير مدعوم: rar5",
+                    "الأرشيف فارغ",
+                    "يحتاج كلمة سر",
+                    "كلمة السر خاطئة",
+                    "أُلغي",
+                ]
+            );
+        });
     }
 }

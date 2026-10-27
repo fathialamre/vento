@@ -27,10 +27,12 @@ use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
 use vento_core::geometry::{Layout, Rect, screen_for};
+use vento_core::i18n::errors::io_reason;
+use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
     Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketLayout,
-    Settings, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
+    Settings, SettingsError, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
@@ -72,7 +74,8 @@ const LICENSES_URL: &str = "https://github.com/fathialamre/vento#license";
 /// Size of the Finder icons in the Move page, in points.
 const FOLDER_ICON_PX: u32 = 16;
 
-/// Why a recorded shortcut was refused.
+/// Why a recorded shortcut was refused, as the English text that
+/// [`refusal_text`] translates.
 const NOT_A_SHORTCUT: &str = "Use a modifier with a letter or digit";
 const RESERVED_SHORTCUT: &str = "macOS uses this shortcut";
 const UNUSABLE_SHORTCUT: &str = "This shortcut can't be used";
@@ -91,18 +94,26 @@ pub enum Page {
 }
 
 impl Page {
-    /// The page's name, in the sidebar and over the page. The window picks
-    /// the page's body by it (matches `settings_window.slint`).
-    fn label(self) -> &'static str {
+    /// The page's number in the order above. The window picks the page's
+    /// body by it (matches `settings_window.slint`), so a page's name can
+    /// change with the language.
+    fn id(self) -> i32 {
+        self as i32
+    }
+
+    /// The page's name, in the sidebar and over the page, in the interface
+    /// language. Shown only: the page is told apart by [`Page::id`].
+    fn label(self) -> String {
         match self {
-            Self::General => "General",
-            Self::Wheel => "Wheel",
-            Self::Move => "Move",
-            Self::Pocket => "Pocket",
-            Self::Clipboard => "Clipboard",
-            Self::CopyFromScreen => "Copy from screen",
-            Self::KeepAwake => "Keep Awake",
-            Self::About => "About",
+            Self::General => tr("General"),
+            Self::Wheel => tr("Wheel"),
+            // The wheel's action "Move" is a verb: "نقل"; the page is "النقل".
+            Self::Move => trc("page", "Move"),
+            Self::Pocket => tr("Pocket"),
+            Self::Clipboard => tr("Clipboard"),
+            Self::CopyFromScreen => tr("Copy from screen"),
+            Self::KeepAwake => tr("Keep Awake"),
+            Self::About => tr("About"),
         }
     }
 
@@ -181,7 +192,18 @@ impl ShortcutFor {
         }
     }
 
-    /// Why a recorded shortcut equal to this one is refused.
+    /// Where the shortcut's refusal is kept in
+    /// [`SettingsWindowController::refusals`].
+    fn index(self) -> usize {
+        match self {
+            Self::Pocket => 0,
+            Self::Clipboard => 1,
+            Self::ScreenText => 2,
+        }
+    }
+
+    /// Why a recorded shortcut equal to this one is refused: the English
+    /// text, which [`refusal_text`] translates.
     fn in_use(self) -> &'static str {
         match self {
             Self::Pocket => "The Pocket uses this shortcut",
@@ -217,6 +239,10 @@ pub struct SettingsWindowController {
     on_clear_history: Box<dyn Fn()>,
     /// The shortcut the recording field is for.
     recording: Cell<ShortcutFor>,
+    /// Why each shortcut was last refused (indexed by [`ShortcutFor::index`]),
+    /// as the English text, so the line under the field can be written again
+    /// in another language.
+    refusals: [Cell<Option<&'static str>>; 3],
     /// The home folder, shown as `~` in folder places.
     home: Option<PathBuf>,
     /// The Wheel page's action rows.
@@ -270,6 +296,7 @@ impl SettingsWindowController {
             try_shortcut,
             on_clear_history,
             recording: Cell::new(ShortcutFor::Pocket),
+            refusals: [Cell::new(None), Cell::new(None), Cell::new(None)],
             home: std::env::var_os("HOME").map(PathBuf::from),
             actions: Rc::new(VecModel::default()),
             pinned: Rc::new(VecModel::default()),
@@ -322,7 +349,7 @@ impl SettingsWindowController {
             let window = SettingsWindow::new().expect("cannot create the settings window");
             // A Mac-window page rather than the panel's tint.
             window.global::<Theme>().set_clean(true);
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             window.set_actions(ModelRc::from(self.actions.clone()));
             window.set_pinned(ModelRc::from(self.pinned.clone()));
             window.set_recent(ModelRc::from(self.recent_rows.clone()));
@@ -339,6 +366,7 @@ impl SettingsWindowController {
                 .map(|&page| PageItem {
                     icon: page.icon(&window),
                     label: page.label().into(),
+                    id: page.id(),
                 })
                 .collect();
             window.set_pages(ModelRc::new(VecModel::from(items)));
@@ -405,6 +433,13 @@ impl SettingsWindowController {
             if let (Some(controller), Some(appearance)) = (this.upgrade(), choice(&APPEARANCES, i))
             {
                 controller.apply(|s| s.appearance = appearance);
+            }
+        });
+        let this = self.this.clone();
+        window.on_language_chosen(move |i| {
+            if let Some(controller) = this.upgrade() {
+                let setting = language_setting(i);
+                controller.apply(|s| s.language = setting.clone());
             }
         });
         let this = self.this.clone();
@@ -725,9 +760,16 @@ impl SettingsWindowController {
             |change| self.hub.update(change),
         );
         let error = match outcome {
-            ShortcutOutcome::Applied => SharedString::new(),
-            ShortcutOutcome::Refused(reason) => reason.into(),
+            ShortcutOutcome::Applied => {
+                self.refusals[target.index()].set(None);
+                SharedString::new()
+            }
+            ShortcutOutcome::Refused(reason) => {
+                self.refusals[target.index()].set(Some(reason));
+                refusal_text(reason).into()
+            }
             ShortcutOutcome::NotSaved(e) => {
+                self.refusals[target.index()].set(None);
                 window.set_notice(save_error_text(&e).into());
                 SharedString::new()
             }
@@ -771,6 +813,11 @@ impl SettingsWindowController {
         let settings = self.hub.current();
         appearance::apply(&window.global::<Theme>());
         show_title_bar(&window);
+        self.show_page_names(&window);
+        self.show_refusals(&window);
+        let names: Vec<SharedString> = language_names().into_iter().map(Into::into).collect();
+        window.set_language_names(ModelRc::from(names.as_slice()));
+        window.set_language(language_index(&settings.language));
         window.set_appearance(choice_index(&APPEARANCES, settings.appearance));
         window.set_theme(choice_index(&ThemeName::ALL, settings.theme));
         let icons = window.global::<Icons>();
@@ -794,7 +841,7 @@ impl SettingsWindowController {
         window.set_terminal(i32::try_from(terminal).unwrap_or(0));
         self.show_folders(&window, &settings);
         let hold = settings.move_hold_ms;
-        window.set_hold(format!("{hold} ms").into());
+        window.set_hold(hold_text(hold).into());
         window.set_hold_can_decrease(hold > MIN_MOVE_HOLD_MS);
         window.set_hold_can_increase(hold < MAX_MOVE_HOLD_MS);
         let symbols = |spec: &str| shortcut_text(spec).unwrap_or_else(|| spec.to_owned());
@@ -806,6 +853,40 @@ impl SettingsWindowController {
         window.set_awake_screen_off(settings.keep_awake_screen_off);
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+    }
+
+    /// Writes the sidebar's page names again in the language now in use.
+    fn show_page_names(&self, window: &SettingsWindow) {
+        let model = window.get_pages();
+        for (i, page) in pages(self.screen_text_supported).into_iter().enumerate() {
+            let label = page.label();
+            if let Some(mut item) = model.row_data(i)
+                && item.label != label.as_str()
+            {
+                item.label = label.into();
+                model.set_row_data(i, item);
+            }
+        }
+    }
+
+    /// Writes the reasons shown under the shortcut fields again in the
+    /// language now in use. A field the window has cleared (it does, as a
+    /// recording starts) stays clear.
+    fn show_refusals(&self, window: &SettingsWindow) {
+        let texts =
+            |shown: SharedString, target: ShortcutFor| match self.refusals[target.index()].get() {
+                Some(reason) if !shown.is_empty() => SharedString::from(refusal_text(reason)),
+                _ => shown,
+            };
+        window.set_shortcut_error(texts(window.get_shortcut_error(), ShortcutFor::Pocket));
+        window.set_clip_shortcut_error(texts(
+            window.get_clip_shortcut_error(),
+            ShortcutFor::Clipboard,
+        ));
+        window.set_screen_shortcut_error(texts(
+            window.get_screen_shortcut_error(),
+            ShortcutFor::ScreenText,
+        ));
     }
 
     /// Lists the pinned folders (a missing one too, dimmed, so it can be
@@ -897,6 +978,9 @@ impl SettingsWindowController {
         self.hub.refresh_from_disk();
         self.show_notice();
         if !was_open {
+            for refusal in &self.refusals {
+                refusal.set(None);
+            }
             window.set_shortcut_error(SharedString::new());
             window.set_clip_shortcut_error(SharedString::new());
             window.set_screen_shortcut_error(SharedString::new());
@@ -1074,22 +1158,60 @@ fn centred_on(screen: &Rect, w: f64, h: f64) -> (f64, f64) {
 }
 
 /// The notice for a settings file that could not be loaded, given why: a
-/// parse error (`"line 3: expected ="`) or a read error.
-pub(crate) fn notice_text(error: &str) -> String {
-    if error.starts_with("line ") {
-        format!(
-            "Your settings file has an error on {error}; changing a setting here will replace it"
-        )
-    } else {
-        format!(
-            "Your settings file can't be read ({error}); changing a setting here will replace it"
-        )
+/// parse error names its line, a read error says why in Vento's own words
+/// for the common kinds.
+pub(crate) fn notice_text(error: &SettingsError) -> String {
+    match error {
+        SettingsError::Parse {
+            line: Some(line),
+            message,
+        } => fill(
+            &tr(
+                "Your settings file has an error on line {line}: {message}; changing a setting here will replace it",
+            ),
+            &[("line", &line.to_string()), ("message", message)],
+        ),
+        SettingsError::Parse {
+            line: None,
+            message,
+        } => unreadable_notice(message),
+        SettingsError::Read(e) => unreadable_notice(&io_reason(e)),
     }
+}
+
+/// The notice for a settings file that can't be read, for `why`.
+fn unreadable_notice(why: &str) -> String {
+    fill(
+        &tr("Your settings file can't be read ({error}); changing a setting here will replace it"),
+        &[("error", why)],
+    )
 }
 
 /// The notice for a change that could not be saved.
 fn save_error_text(error: &io::Error) -> String {
-    format!("Couldn't save settings: {error}")
+    fill(
+        &tr("Couldn't save settings: {error}"),
+        &[("error", &io_reason(error))],
+    )
+}
+
+/// The Move page's hold delay, in the interface language: `"400 ms"`.
+fn hold_text(ms: u32) -> String {
+    fill(&tr("{ms} ms"), &[("ms", &ms.to_string())])
+}
+
+/// The text shown under a shortcut field for the refusal `reason` (one of
+/// the English texts a refusal carries), in the interface language.
+fn refusal_text(reason: &str) -> String {
+    match reason {
+        NOT_A_SHORTCUT => tr("Use a modifier with a letter or digit"),
+        RESERVED_SHORTCUT => tr("macOS uses this shortcut"),
+        UNUSABLE_SHORTCUT => tr("This shortcut can't be used"),
+        "The Pocket uses this shortcut" => tr("The Pocket uses this shortcut"),
+        "The Clipboard uses this shortcut" => tr("The Clipboard uses this shortcut"),
+        "Copy from screen uses this shortcut" => tr("Copy from screen uses this shortcut"),
+        other => other.to_owned(),
+    }
 }
 
 /// The choice at index `i` of a segmented control; `None` out of range.
@@ -1097,6 +1219,34 @@ fn choice<T: Copy>(choices: &[T], i: i32) -> Option<T> {
     usize::try_from(i)
         .ok()
         .and_then(|i| choices.get(i).copied())
+}
+
+/// The Language drop-down's items: Automatic, then each language under its
+/// own name, whatever the language in use.
+fn language_names() -> Vec<String> {
+    std::iter::once(tr("Automatic (system language)"))
+        .chain(LANGUAGES.iter().map(|l| l.name.to_owned()))
+        .collect()
+}
+
+/// The `language` setting for the drop-down's item `i`: "auto" for the
+/// first, then the code of each language. An item out of range is "auto".
+fn language_setting(i: i32) -> String {
+    usize::try_from(i)
+        .ok()
+        .and_then(|i| i.checked_sub(1))
+        .and_then(|i| LANGUAGES.get(i))
+        .map_or("auto", |l| l.code)
+        .to_owned()
+}
+
+/// The drop-down's item for the `language` setting `setting`. A value that
+/// names no language acts as Automatic, so it shows as that.
+fn language_index(setting: &str) -> i32 {
+    lookup(setting)
+        .and_then(|l| LANGUAGES.iter().position(|each| each == l))
+        .and_then(|i| i32::try_from(i + 1).ok())
+        .unwrap_or(0)
 }
 
 /// Where `value` is among a segmented control's choices (0 if it is not).
@@ -1340,6 +1490,26 @@ fn apply_shortcut(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_language_picker_maps_to_the_setting_and_back() {
+        // Automatic first, then each language in the order Vento lists them.
+        assert_eq!(language_names().len(), LANGUAGES.len() + 1);
+        assert_eq!(&language_names()[1..], ["English", "العربية"]);
+        assert_eq!(language_setting(0), "auto");
+        assert_eq!(language_setting(1), "en");
+        assert_eq!(language_setting(2), "ar");
+        assert_eq!(language_setting(3), "auto");
+        assert_eq!(language_setting(-1), "auto");
+        for (setting, index) in [("auto", 0), ("en", 1), ("ar", 2), ("AR", 2), ("ar-LY", 2)] {
+            assert_eq!(language_index(setting), index, "{setting}");
+        }
+        // A value Vento has no language for acts as Automatic.
+        assert_eq!(language_index("xx"), 0);
+        for i in 0..=LANGUAGES.len() as i32 {
+            assert_eq!(language_index(&language_setting(i)), i);
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -1733,19 +1903,121 @@ mod tests {
     #[test]
     fn save_error_is_worded_for_the_notice() {
         let e = io::Error::from(io::ErrorKind::PermissionDenied);
-        assert_eq!(save_error_text(&e), format!("Couldn't save settings: {e}"));
+        assert_eq!(
+            save_error_text(&e),
+            "Couldn't save settings: permission denied"
+        );
+        // Without wording of its own, a kind shows the text of the error.
+        let other = io::Error::other("wrong format");
+        assert_eq!(
+            save_error_text(&other),
+            "Couldn't save settings: wrong format"
+        );
+    }
+
+    fn parse_error(line: Option<usize>, message: &str) -> SettingsError {
+        SettingsError::Parse {
+            line,
+            message: message.into(),
+        }
+    }
+
+    fn read_error(kind: io::ErrorKind) -> SettingsError {
+        SettingsError::Read(io::Error::from(kind))
     }
 
     #[test]
     fn notice_names_the_error() {
         assert_eq!(
-            notice_text("line 3: expected ="),
+            notice_text(&parse_error(Some(3), "expected =")),
             "Your settings file has an error on line 3: expected =; changing a setting here will replace it"
         );
         assert_eq!(
-            notice_text("Permission denied (os error 13)"),
-            "Your settings file can't be read (Permission denied (os error 13)); changing a setting here will replace it"
+            notice_text(&parse_error(None, "unexpected end")),
+            "Your settings file can't be read (unexpected end); changing a setting here will replace it"
         );
+        assert_eq!(
+            notice_text(&read_error(io::ErrorKind::PermissionDenied)),
+            "Your settings file can't be read (permission denied); changing a setting here will replace it"
+        );
+    }
+
+    #[test]
+    fn a_notice_is_worded_when_it_is_shown() {
+        // The error is kept as it happened and worded at each showing, so the
+        // same error follows the language.
+        let error = read_error(io::ErrorKind::PermissionDenied);
+        let english = notice_text(&error);
+        let arabic = vento_core::i18n::with_language("ar", || notice_text(&error));
+        assert_ne!(english, arabic);
+        assert_eq!(notice_text(&error), english);
+    }
+
+    #[test]
+    fn notices_and_refusals_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(
+                notice_text(&parse_error(Some(3), "expected =")),
+                "في ملف الإعدادات خطأ في السطر 3: expected =؛ تغيير أي إعداد هنا سيستبدله"
+            );
+            assert_eq!(
+                notice_text(&read_error(io::ErrorKind::PermissionDenied)),
+                "تعذّرت قراءة ملف الإعدادات (لا توجد صلاحية)؛ تغيير أي إعداد هنا سيستبدله"
+            );
+            let e = io::Error::from(io::ErrorKind::PermissionDenied);
+            assert_eq!(save_error_text(&e), "تعذّر حفظ الإعدادات: لا توجد صلاحية");
+            assert_eq!(hold_text(400), "400 م.ث");
+            assert_eq!(
+                refusal_text(NOT_A_SHORTCUT),
+                "استخدم مفتاح تعديل مع حرف أو رقم"
+            );
+        });
+        assert_eq!(hold_text(400), "400 ms");
+    }
+
+    #[test]
+    fn every_refusal_has_a_translation() {
+        let refusals = [
+            NOT_A_SHORTCUT,
+            RESERVED_SHORTCUT,
+            UNUSABLE_SHORTCUT,
+            ShortcutFor::Pocket.in_use(),
+            ShortcutFor::Clipboard.in_use(),
+            ShortcutFor::ScreenText.in_use(),
+        ];
+        for reason in refusals {
+            assert_eq!(refusal_text(reason), reason, "English is the text itself");
+            vento_core::i18n::with_language("ar", || {
+                assert_ne!(refusal_text(reason), reason, "{reason} has no Arabic");
+            });
+        }
+    }
+
+    #[test]
+    fn page_names_read_in_arabic_and_the_move_page_differs_from_the_action() {
+        vento_core::i18n::with_language("ar", || {
+            let names: Vec<_> = pages(true).into_iter().map(Page::label).collect();
+            assert_eq!(
+                names,
+                [
+                    "عام",
+                    "العجلة",
+                    "النقل",
+                    "الجيب",
+                    "الحافظة",
+                    "النسخ من الشاشة",
+                    // No tanween: a bold title's line box cuts the mark off.
+                    "إبقاء الجهاز مستيقظا",
+                    "حول"
+                ]
+            );
+            assert_ne!(
+                Page::Move.label(),
+                vento_core::actions::ActionId::Move.label()
+            );
+        });
+        assert_eq!(Page::Move.label(), "Move");
+        assert_eq!(Page::CopyFromScreen.label(), "Copy from screen");
     }
 
     #[test]
@@ -1766,6 +2038,20 @@ mod tests {
         );
         assert!(!pages(false).contains(&CopyFromScreen));
         assert_eq!(pages(false).len(), 7);
+    }
+
+    #[test]
+    fn pages_have_ids_in_the_order_of_the_enum() {
+        use Page::*;
+        let all = pages(true);
+        let ids: Vec<i32> = all.iter().map(|p| p.id()).collect();
+        assert_eq!(ids, (0..8).collect::<Vec<_>>());
+        assert_eq!(General.id(), 0);
+        assert_eq!(CopyFromScreen.id(), 5);
+        assert_eq!(About.id(), 7);
+        // A page left out does not shift the ids of the others.
+        let ids: Vec<i32> = pages(false).iter().map(|p| p.id()).collect();
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7]);
     }
 
     #[test]

@@ -13,6 +13,7 @@ use raw_window_handle::HasWindowHandle;
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Timer, TimerMode};
 use vento_core::archive::{Progress, Zeroizing};
 use vento_core::geometry::Point;
+use vento_core::i18n::{fill, tr};
 use vento_platform::Platform;
 
 use crate::appearance;
@@ -37,19 +38,42 @@ fn fraction(done: u64, total: u64) -> f32 {
     (done as f64 / total as f64).min(1.0) as f32
 }
 
+/// What the progress window says the job is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verb {
+    Compressing,
+    Extracting,
+    Converting,
+}
+
+impl Verb {
+    /// The verb alone, for before the first item is known.
+    fn name(self) -> String {
+        match self {
+            Verb::Compressing => tr("Compressing"),
+            Verb::Extracting => tr("Extracting"),
+            Verb::Converting => tr("Converting"),
+        }
+    }
+}
+
 /// The progress window's line: `Extracting Photos.zip…`, or just
 /// `Extracting…` before the first item is known.
-fn progress_title(verb: &str, current: &str) -> String {
+fn progress_title(verb: Verb, current: &str) -> String {
     if current.is_empty() {
-        format!("{verb}…")
-    } else {
-        format!("{verb} {current}…")
+        return format!("{}…", verb.name());
     }
+    let template = match verb {
+        Verb::Compressing => tr("Compressing {name}…"),
+        Verb::Extracting => tr("Extracting {name}…"),
+        Verb::Converting => tr("Converting {name}…"),
+    };
+    fill(&template, &[("name", current)])
 }
 
 /// The password window's line for the archive called `name`.
 fn prompt_title(name: &str) -> String {
-    format!("\"{name}\" is protected")
+    fill(&tr("\"{name}\" is protected"), &[("name", name)])
 }
 
 /// Keeps `window` from ever becoming the key window; true once it worked.
@@ -84,7 +108,7 @@ pub struct ProgressView {
     /// Refreshes the window; runs only while it is shown.
     tick: Timer,
     progress: RefCell<Option<Arc<Progress>>>,
-    verb: RefCell<String>,
+    verb: Cell<Verb>,
     at: Cell<Point>,
     shown: Cell<bool>,
     /// The window has been made non-key (it needs the native window, which
@@ -103,7 +127,7 @@ impl ProgressView {
             delay: Timer::default(),
             tick: Timer::default(),
             progress: RefCell::new(None),
-            verb: RefCell::new(String::new()),
+            verb: Cell::new(Verb::Extracting),
             at: Cell::new(Point { x: 0.0, y: 0.0 }),
             shown: Cell::new(false),
             non_key: Cell::new(false),
@@ -117,7 +141,7 @@ impl ProgressView {
     fn window(&self) -> ArchiveProgress {
         self.window.get_or_create(|| {
             let window = ArchiveProgress::new().expect("cannot create the progress window");
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             // A new native window: it has yet to be made non-key.
             self.non_key.set(false);
             let this = self.this.clone();
@@ -132,15 +156,14 @@ impl ProgressView {
         })
     }
 
-    /// Starts following `progress`; `verb` is `Extracting` or
-    /// `Compressing`. The window appears 24 px under `at` after 500 ms, and
+    /// Starts following `progress`; `verb` says what the job does. The window appears 24 px under `at` after 500 ms, and
     /// not at all if [`ProgressView::close`] comes first. Cancel calls
     /// `progress.cancel()`. Tracking while another job is tracked closes
     /// that one first.
-    pub fn track(&self, progress: Arc<Progress>, verb: &str, at: Point) {
+    pub fn track(&self, progress: Arc<Progress>, verb: Verb, at: Point) {
         self.close();
         *self.progress.borrow_mut() = Some(progress);
-        *self.verb.borrow_mut() = verb.to_owned();
+        self.verb.set(verb);
         self.at.set(at);
         let this = self.this.clone();
         self.delay
@@ -230,7 +253,7 @@ impl ProgressView {
             return;
         };
         window.set_fraction(fraction(snapshot.done, snapshot.total));
-        let title = progress_title(&self.verb.borrow(), &snapshot.current);
+        let title = progress_title(self.verb.get(), &snapshot.current);
         window.set_heading(title.into());
     }
 }
@@ -247,18 +270,35 @@ pub struct PasswordView {
     window: LazyWindow<PasswordPrompt>,
     answer: RefCell<Option<Answer>>,
     open: Cell<bool>,
+    /// The name of the archive asked about, to write the line again in
+    /// another language.
+    archive_name: RefCell<String>,
 }
 
 impl PasswordView {
     /// Creates the view; its window comes with the first question.
     pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
-        Rc::new_cyclic(|this| Self {
+        let view = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             platform,
             window: LazyWindow::new(),
             answer: RefCell::new(None),
             open: Cell::new(false),
-        })
+            archive_name: RefCell::new(String::new()),
+        });
+        appearance::follow_language(Rc::downgrade(&view), PasswordView::relanguage);
+        view
+    }
+
+    /// Writes the open window's line again after a language change; the
+    /// rest of its text is the window's own.
+    fn relanguage(&self) {
+        if !self.open.get() {
+            return;
+        }
+        if let Some(window) = self.window.get() {
+            window.set_heading(prompt_title(&self.archive_name.borrow()).into());
+        }
     }
 
     /// The password window, created and connected if there is none.
@@ -268,7 +308,7 @@ impl PasswordView {
     fn window(&self) -> PasswordPrompt {
         self.window.get_or_create(|| {
             let window = PasswordPrompt::new().expect("cannot create the password window");
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             let this = self.this.clone();
             window.on_submit(move || {
                 if let Some(view) = this.upgrade() {
@@ -306,6 +346,7 @@ impl PasswordView {
         *self.answer.borrow_mut() = Some(answer);
         let window = self.window();
         appearance::apply(&window.global::<Theme>());
+        archive_name.clone_into(&mut self.archive_name.borrow_mut());
         window.set_heading(prompt_title(archive_name).into());
         window.set_wrong(wrong);
         window.set_password("".into());
@@ -401,10 +442,40 @@ mod tests {
     #[test]
     fn progress_title_uses_verb_and_name() {
         assert_eq!(
-            progress_title("Extracting", "Photos.zip"),
+            progress_title(Verb::Extracting, "Photos.zip"),
             "Extracting Photos.zip…"
         );
-        assert_eq!(progress_title("Compressing", ""), "Compressing…");
+        assert_eq!(
+            progress_title(Verb::Compressing, "a.txt"),
+            "Compressing a.txt…"
+        );
+        assert_eq!(
+            progress_title(Verb::Converting, "a.png"),
+            "Converting a.png…"
+        );
+        assert_eq!(progress_title(Verb::Compressing, ""), "Compressing…");
+        assert_eq!(progress_title(Verb::Converting, ""), "Converting…");
+    }
+
+    #[test]
+    fn progress_and_password_lines_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(
+                progress_title(Verb::Extracting, "Photos.zip"),
+                "جارٍ فك ضغط Photos.zip…"
+            );
+            assert_eq!(progress_title(Verb::Compressing, "a.txt"), "جارٍ ضغط a.txt…");
+            assert_eq!(
+                progress_title(Verb::Converting, "a.png"),
+                "جارٍ تحويل a.png…"
+            );
+            assert_eq!(progress_title(Verb::Compressing, ""), "جارٍ الضغط…");
+            // Starts with the right-to-left mark: the name comes first.
+            assert_eq!(
+                prompt_title("Photos.zip"),
+                "\u{200f}«Photos.zip» محمي بكلمة سر"
+            );
+        });
     }
 
     #[test]

@@ -18,7 +18,7 @@ pub(super) fn copy_text(text: &str) -> Result<(), PlatformError> {
     if ok {
         Ok(())
     } else {
-        Err(PlatformError::Failed("clipboard rejected the text".into()))
+        Err(PlatformError::ClipboardRejectedText)
     }
 }
 
@@ -32,7 +32,7 @@ pub(super) fn copy_files(paths: &[PathBuf]) -> Result<(), PlatformError> {
     if pasteboard.writeObjects(&NSArray::from_retained_slice(&urls)) {
         Ok(())
     } else {
-        Err(PlatformError::Failed("clipboard rejected the files".into()))
+        Err(PlatformError::ClipboardRejectedFiles)
     }
 }
 

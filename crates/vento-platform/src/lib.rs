@@ -21,7 +21,7 @@ mod macos;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod webp;
 #[cfg(target_os = "macos")]
-pub use macos::{MacPlatform, MacScreenText};
+pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -184,8 +184,122 @@ pub enum MenuEntry {
 pub enum PlatformError {
     #[error("{0}")]
     Failed(String),
+    /// The app with this id or name is not installed. Worded when shown, in
+    /// the interface language.
+    #[error("{}", not_installed(.0))]
+    NotInstalled(String),
+    /// No terminal app is installed. Worded when shown, in the interface
+    /// language.
+    #[error("{}", no_terminal())]
+    NoTerminal,
+    /// The items give no folder to open (the Terminal action). Worded when
+    /// shown, in the interface language.
+    #[error("{}", no_folder())]
+    NoFolder,
+    /// No app opened these items (their names, joined). Worded when shown,
+    /// in the interface language.
+    #[error("{}", no_app_opened(.0))]
+    NoAppOpened(Vec<String>),
+    /// This app is no longer where it was (its name). Worded when shown, in
+    /// the interface language.
+    #[error("{}", app_gone(.0))]
+    AppGone(String),
+    /// The clipboard took no text. Worded when shown, in the interface
+    /// language.
+    #[error("{}", vento_core::i18n::tr("clipboard rejected the text"))]
+    ClipboardRejectedText,
+    /// The clipboard took no files. Worded when shown, in the interface
+    /// language.
+    #[error("{}", vento_core::i18n::tr("clipboard rejected the files"))]
+    ClipboardRejectedFiles,
+    /// A program could not be started. Worded when shown, in the interface
+    /// language.
+    #[error("{}", could_not_run(.program, .error))]
+    CouldNotRun {
+        program: String,
+        error: std::io::Error,
+    },
+    /// A program that was started ended with a failure: `code` is its exit
+    /// code, `None` when a signal stopped it. Worded when shown, in the
+    /// interface language.
+    #[error("{}", program_failed(.program, *.code))]
+    ProgramFailed { program: String, code: Option<i32> },
+    /// Waiting for a program that was started failed. Worded when shown, in
+    /// the interface language.
+    #[error("{}", program_unwaited(.program, .error))]
+    ProgramUnwaited {
+        program: String,
+        error: std::io::Error,
+    },
     #[error("unsupported on this platform")]
     Unsupported,
+}
+
+/// "no app opened `names`", in the interface language.
+fn no_app_opened(names: &[String]) -> String {
+    use vento_core::i18n::{fill, tr};
+    fill(
+        &tr("no app opened {names}"),
+        &[("names", &names.join(&tr(", ")))],
+    )
+}
+
+/// "`app` is no longer there", in the interface language.
+fn app_gone(app: &str) -> String {
+    use vento_core::i18n::{fill, tr};
+    fill(&tr("{app} is no longer there"), &[("app", app)])
+}
+
+/// "could not run `program`: why", in the interface language.
+fn could_not_run(program: &str, error: &std::io::Error) -> String {
+    use vento_core::i18n::{errors::io_reason, fill, tr};
+    fill(
+        &tr("could not run {program}: {reason}"),
+        &[("program", program), ("reason", &io_reason(error))],
+    )
+}
+
+/// How a program that failed ended, in the interface language.
+fn program_failed(program: &str, code: Option<i32>) -> String {
+    use vento_core::i18n::{fill, tr};
+    match code {
+        Some(code) => fill(
+            &tr("{program} exited with code {code}"),
+            &[("program", program), ("code", &code.to_string())],
+        ),
+        None => fill(
+            &tr("{program} was stopped by a signal"),
+            &[("program", program)],
+        ),
+    }
+}
+
+/// "`program`: why", for a program that could not be waited for, in the
+/// interface language.
+fn program_unwaited(program: &str, error: &std::io::Error) -> String {
+    use vento_core::i18n::{errors::io_reason, fill, tr};
+    fill(
+        &tr("{program}: {reason}"),
+        &[("program", program), ("reason", &io_reason(error))],
+    )
+}
+
+/// "`app` is not installed", in the interface language.
+fn not_installed(app: &str) -> String {
+    vento_core::i18n::fill(
+        &vento_core::i18n::tr("{app} is not installed"),
+        &[("app", app)],
+    )
+}
+
+/// "no terminal is installed", in the interface language.
+fn no_terminal() -> String {
+    vento_core::i18n::tr("no terminal is installed")
+}
+
+/// "no folder to open", in the interface language.
+fn no_folder() -> String {
+    vento_core::i18n::tr("no folder to open")
 }
 
 /// Everything vento needs from the operating system.
@@ -237,7 +351,7 @@ pub trait Platform {
         &self,
         terminal: Option<&str>,
         dir: &Path,
-        on_error: Box<dyn Fn(String) + Send>,
+        on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError>;
     /// Show a modal folder picker, optionally starting in `start`.
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf>;
@@ -367,7 +481,7 @@ pub trait Platform {
         &self,
         paths: &[PathBuf],
         app: &Path,
-        on_error: Box<dyn Fn(String) + Send>,
+        on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError>;
     /// Show `paths` in Finder, selected. Nothing happens where
     /// unsupported. Main thread only.
@@ -668,5 +782,109 @@ mod tests {
         // Green weighs most: a bright green is light, a bright blue dark.
         assert!(!menus([0, 0xc0, 0, 0xff]).is_dark());
         assert!(menus([0, 0, 0xff, 0xff]).is_dark());
+    }
+
+    #[test]
+    fn a_missing_terminal_is_worded_when_it_is_shown() {
+        use vento_core::i18n::with_language;
+        let app = PlatformError::NotInstalled("org.gnome.Terminal".into());
+        let none = PlatformError::NoTerminal;
+        assert_eq!(app.to_string(), "org.gnome.Terminal is not installed");
+        assert_eq!(none.to_string(), "no terminal is installed");
+        with_language("ar", || {
+            // The right-to-left mark first: the name starts the line.
+            assert_eq!(app.to_string(), "\u{200f}org.gnome.Terminal غير مثبّت");
+            assert_eq!(none.to_string(), "لا توجد طرفية مثبّتة");
+        });
+        // The same error read again in English: a log line stays English.
+        let toast = with_language("ar", || app.to_string());
+        assert_ne!(toast, with_language("en", || app.to_string()));
+    }
+
+    #[test]
+    fn no_folder_to_open_is_worded_when_it_is_shown() {
+        use vento_core::i18n::with_language;
+        let error = PlatformError::NoFolder;
+        assert_eq!(error.to_string(), "no folder to open");
+        // Made in Arabic, read again in English for the log line.
+        with_language("ar", || assert_eq!(error.to_string(), "لا يوجد مجلد لفتحه"));
+        assert_eq!(
+            with_language("en", || error.to_string()),
+            "no folder to open"
+        );
+    }
+
+    #[test]
+    fn the_sentences_of_a_failed_open_are_worded_when_shown() {
+        use vento_core::i18n::with_language;
+        let names = PlatformError::NoAppOpened(vec!["a.xyz".into(), "b.xyz".into()]);
+        let gone = PlatformError::AppGone("Notes".into());
+        assert_eq!(names.to_string(), "no app opened a.xyz, b.xyz");
+        assert_eq!(gone.to_string(), "Notes is no longer there");
+        with_language("ar", || {
+            assert_eq!(names.to_string(), "لا يوجد تطبيق يفتح a.xyz، b.xyz");
+            // The right-to-left mark first: the name starts the line.
+            assert_eq!(gone.to_string(), "\u{200f}Notes لم يعد موجوداً");
+        });
+        // Made in Arabic, read again in English for the log line.
+        assert_eq!(
+            with_language("ar", || with_language("en", || gone.to_string())),
+            "Notes is no longer there"
+        );
+    }
+
+    #[test]
+    fn a_clipboard_that_rejects_is_worded_when_shown() {
+        use vento_core::i18n::with_language;
+        let text = PlatformError::ClipboardRejectedText;
+        let files = PlatformError::ClipboardRejectedFiles;
+        assert_eq!(text.to_string(), "clipboard rejected the text");
+        assert_eq!(files.to_string(), "clipboard rejected the files");
+        with_language("ar", || {
+            assert_eq!(text.to_string(), "رفضت الحافظة النص");
+            assert_eq!(files.to_string(), "رفضت الحافظة الملفات");
+        });
+    }
+
+    #[test]
+    fn a_terminal_that_fails_is_worded_when_shown() {
+        use std::io::{Error, ErrorKind};
+        use vento_core::i18n::with_language;
+        let run = PlatformError::CouldNotRun {
+            program: "/usr/bin/term".into(),
+            error: Error::from(ErrorKind::NotFound),
+        };
+        let exited = PlatformError::ProgramFailed {
+            program: "/usr/bin/term".into(),
+            code: Some(2),
+        };
+        let signalled = PlatformError::ProgramFailed {
+            program: "/usr/bin/term".into(),
+            code: None,
+        };
+        let waited = PlatformError::ProgramUnwaited {
+            program: "/usr/bin/term".into(),
+            error: Error::from(ErrorKind::PermissionDenied),
+        };
+        assert_eq!(run.to_string(), "could not run /usr/bin/term: not found");
+        assert_eq!(exited.to_string(), "/usr/bin/term exited with code 2");
+        assert_eq!(
+            signalled.to_string(),
+            "/usr/bin/term was stopped by a signal"
+        );
+        assert_eq!(waited.to_string(), "/usr/bin/term: permission denied");
+        with_language("ar", || {
+            assert_eq!(run.to_string(), "تعذّر تشغيل /usr/bin/term: غير موجود");
+            assert_eq!(
+                exited.to_string(),
+                "\u{200f}/usr/bin/term انتهى برمز الخروج 2"
+            );
+            assert_eq!(signalled.to_string(), "\u{200f}/usr/bin/term أوقفته إشارة");
+            assert_eq!(waited.to_string(), "\u{200f}/usr/bin/term: لا توجد صلاحية");
+        });
+        assert_eq!(
+            with_language("ar", || with_language("en", || run.to_string())),
+            "could not run /usr/bin/term: not found"
+        );
     }
 }

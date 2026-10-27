@@ -2,7 +2,7 @@
 // shows and the callbacks they ask for changes through. The window
 // (`settings_window.slint`) lays them out and passes the settings in.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
     PanelIcons, SectionHeading, Separator, Switch, SwitchRow, Segmented, MenuField, LayoutCard,
@@ -29,6 +29,7 @@ export component Notice inherits Rectangle {
         spacing: 8px;
 
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: start;
 
             Image {
@@ -40,6 +41,8 @@ export component Notice inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.text;
             font-size: 12px;
             color: Theme.text;
@@ -88,11 +91,12 @@ component ActionList inherits Rectangle {
         accessible-label: row.label;
 
         HorizontalLayout {
-            padding-left: 2px;
-            padding-right: 6px;
+            padding-left: Theme.rtl ? 6px : 2px;
+            padding-right: Theme.rtl ? 2px : 6px;
             spacing: 8px;
 
             DragGrip {
+                layout-order: Theme.rtl ? 4 : 0;
                 index: i;
                 row-h: root.row-h;
                 lo: root.drag-lo;
@@ -104,6 +108,7 @@ component ActionList inherits Rectangle {
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 3 : 0;
                 alignment: center;
 
                 Image {
@@ -115,6 +120,8 @@ component ActionList inherits Rectangle {
             }
 
             Text {
+                layout-order: Theme.rtl ? 2 : 0;
+                horizontal-alignment: Theme.rtl ? right : left;
                 text: row.label;
                 font-size: 13px;
                 color: row.shown ? Theme.text : Theme.muted;
@@ -123,6 +130,7 @@ component ActionList inherits Rectangle {
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
                 alignment: center;
 
                 Switch {
@@ -147,26 +155,28 @@ export component WheelPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Layout";
+        text: @tr("Layout");
     }
 
     HorizontalLayout {
         spacing: 8px;
 
         LayoutCard {
+            layout-order: Theme.rtl ? 2 : 0;
             preferred-width: 100px;
             horizontal-stretch: 1;
             icon: PanelIcons.wheel;
-            label: "Honeycomb";
+            label: @tr("Honeycomb");
             chosen: root.wheel-layout == 0;
             clicked => { root.layout-chosen(0); }
         }
 
         LayoutCard {
+            layout-order: Theme.rtl ? 1 : 0;
             preferred-width: 100px;
             horizontal-stretch: 1;
             icon: PanelIcons.petals;
-            label: "Petals";
+            label: @tr("Petals");
             chosen: root.wheel-layout == 1;
             clicked => { root.layout-chosen(1); }
         }
@@ -175,7 +185,7 @@ export component WheelPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Actions";
+        text: @tr("Actions");
     }
 
     ActionList {
@@ -194,6 +204,7 @@ component FolderLabel inherits HorizontalLayout {
     spacing: 8px;
 
     VerticalLayout {
+        layout-order: Theme.rtl ? 3 : 0;
         alignment: center;
 
         if root.folder.has-icon: Image {
@@ -214,23 +225,25 @@ component FolderLabel inherits HorizontalLayout {
     // The name keeps to its own width, up to half the narrowest page (the
     // window's least width leaves the page 340 px); where it is takes the
     // rest.
-    Text {
+    LineText {
+        layout-order: Theme.rtl ? 2 : 0;
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.folder.name;
         font-size: 13px;
         color: root.folder.missing ? Theme.muted : Theme.text;
         vertical-alignment: center;
         horizontal-stretch: 0;
         max-width: 170px;
-        overflow: elide;
     }
 
-    Text {
-        text: root.folder.missing ? "Missing" : root.folder.place;
+    LineText {
+        layout-order: Theme.rtl ? 1 : 0;
+        horizontal-alignment: Theme.rtl ? right : left;
+        text: root.folder.missing ? @tr("Missing") : root.folder.place;
         font-size: 11px;
         color: Theme.muted;
         vertical-alignment: center;
         horizontal-stretch: 1;
-        overflow: elide;
     }
 }
 
@@ -268,6 +281,7 @@ component PinnedList inherits Rectangle {
             spacing: 8px;
 
             DragGrip {
+                layout-order: Theme.rtl ? 3 : 0;
                 index: i;
                 row-h: root.row-h;
                 lo: 0;
@@ -279,16 +293,18 @@ component PinnedList inherits Rectangle {
             }
 
             FolderLabel {
+                layout-order: Theme.rtl ? 2 : 0;
                 folder: row;
                 horizontal-stretch: 1;
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
                 alignment: center;
 
                 IconButton {
                     icon: Icons.remove;
-                    label: "Unpin " + row.name;
+                    label: @tr("Unpin {}", row.name);
                     clicked => { root.unpinned(i); }
                 }
             }
@@ -298,6 +314,7 @@ component PinnedList inherits Rectangle {
 
 // What a list with no rows shows instead.
 component EmptyLine inherits Text {
+    horizontal-alignment: Theme.rtl ? right : left;
     height: 30px;
     font-size: 12px;
     color: Theme.muted;
@@ -325,13 +342,15 @@ export component MovePage inherits VerticalLayout {
 
     HorizontalLayout {
         SectionHeading {
-            text: "Pinned";
+            layout-order: Theme.rtl ? 2 : 0;
+            text: @tr("Pinned");
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
         TextButton {
-            label: root.pinned-full ? "Up to 7 folders" : "Add folder";
+            layout-order: Theme.rtl ? 1 : 0;
+            label: root.pinned-full ? @tr("Up to 7 folders") : @tr("Add folder");
             icon: PanelIcons.add;
             has-icon: !root.pinned-full;
             enabled: !root.pinned-full;
@@ -340,7 +359,7 @@ export component MovePage inherits VerticalLayout {
     }
 
     if root.pinned.length == 0: EmptyLine {
-        text: "No pinned folders";
+        text: @tr("No pinned folders");
     }
 
     if root.pinned.length > 0: PinnedList {
@@ -353,20 +372,22 @@ export component MovePage inherits VerticalLayout {
 
     HorizontalLayout {
         SectionHeading {
-            text: "Recent";
+            layout-order: Theme.rtl ? 2 : 0;
+            text: @tr("Recent");
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
         TextButton {
-            label: "Clear";
+            layout-order: Theme.rtl ? 1 : 0;
+            label: @tr("Clear");
             enabled: root.has-history;
             clicked => { root.recent-cleared(); }
         }
     }
 
     if root.recent.length == 0: EmptyLine {
-        text: "No recent folders";
+        text: @tr("No recent folders");
     }
 
     if root.recent.length > 0: VerticalLayout {
@@ -381,16 +402,18 @@ export component MovePage inherits VerticalLayout {
                 spacing: 8px;
 
                 FolderLabel {
+                    layout-order: Theme.rtl ? 2 : 0;
                     folder: row;
                     horizontal-stretch: 1;
                 }
 
                 VerticalLayout {
+                    layout-order: Theme.rtl ? 1 : 0;
                     alignment: center;
 
                     IconButton {
                         icon: Icons.pin;
-                        label: "Pin " + row.name;
+                        label: @tr("Pin {}", row.name);
                         enabled: root.can-pin;
                         clicked => { root.recent-pinned(i); }
                     }
@@ -405,7 +428,9 @@ export component MovePage inherits VerticalLayout {
         spacing: 8px;
 
         Text {
-            text: "Hold on Move";
+            layout-order: Theme.rtl ? 2 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
+            text: @tr("Hold on Move");
             font-size: 13px;
             color: Theme.text;
             vertical-alignment: center;
@@ -414,9 +439,10 @@ export component MovePage inherits VerticalLayout {
 
         // At its own width beside the label, however wide the page.
         Stepper {
+            layout-order: Theme.rtl ? 1 : 0;
             horizontal-stretch: 0;
             text: root.hold;
-            label: "Hold on Move";
+            label: @tr("Hold on Move");
             can-decrease: root.hold-can-decrease;
             can-increase: root.hold-can-increase;
             decrease => { root.hold-stepped(-1); }
@@ -444,12 +470,12 @@ export component PocketPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Shortcut";
+        text: @tr("Shortcut");
     }
 
     ShortcutField {
         text: root.shortcut;
-        label: "Pocket shortcut";
+        label: @tr("Pocket shortcut");
         recording <=> root.recording;
         started => {
             root.shortcut-error = "";
@@ -459,6 +485,7 @@ export component PocketPage inherits VerticalLayout {
     }
 
     if root.shortcut-error != "": Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.shortcut-error;
         font-size: 12px;
         color: Theme.danger;
@@ -468,13 +495,13 @@ export component PocketPage inherits VerticalLayout {
     Separator { }
 
     SwitchRow {
-        label: "Remove after drag-out";
+        label: @tr("Remove after drag-out");
         on: root.remove-after-drop;
         toggled(on) => { root.remove-after-drop-toggled(on); }
     }
 
     SwitchRow {
-        label: "Keep a copy";
+        label: @tr("Keep a copy");
         on: root.keep-copies;
         toggled(on) => { root.keep-copies-toggled(on); }
     }
@@ -482,11 +509,11 @@ export component PocketPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "When it holds more than 8 items";
+        text: @tr("When it holds more than 8 items");
     }
 
     Segmented {
-        items: ["List", "Scroll", "Stacks"];
+        items: [@tr("List"), @tr("Scroll"), @tr("Stacks")];
         current: root.pocket-layout;
         chosen(i) => { root.pocket-layout-chosen(i); }
     }
@@ -509,7 +536,7 @@ export component ClipboardPage inherits VerticalLayout {
     spacing: 8px;
 
     SwitchRow {
-        label: "Clipboard history";
+        label: @tr("Clipboard history");
         on: root.history;
         toggled(on) => { root.history-toggled(on); }
     }
@@ -517,12 +544,12 @@ export component ClipboardPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Shortcut";
+        text: @tr("Shortcut");
     }
 
     ShortcutField {
         text: root.shortcut;
-        label: "Clipboard shortcut";
+        label: @tr("Clipboard shortcut");
         enabled: root.history;
         recording <=> root.recording;
         started => {
@@ -533,6 +560,7 @@ export component ClipboardPage inherits VerticalLayout {
     }
 
     if root.shortcut-error != "": Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.shortcut-error;
         font-size: 12px;
         color: Theme.danger;
@@ -542,16 +570,19 @@ export component ClipboardPage inherits VerticalLayout {
     Separator { }
 
     HorizontalLayout {
-        alignment: start;
+        alignment: Theme.rtl ? end : start;
 
         TextButton {
-            label: "Clear history";
+            label: @tr("Clear history");
             clicked => { root.history-cleared(); }
         }
     }
 }
 
 export component GeneralPage inherits VerticalLayout {
+    // The languages by name, "Automatic" first, and the one in use.
+    in property <[string]> language-names;
+    in property <int> language;
     // 0 System, 1 Light, 2 Dark.
     in property <int> appearance;
     // The themes by name, and the one in use.
@@ -567,6 +598,7 @@ export component GeneralPage inherits VerticalLayout {
     in property <int> terminal;
     // 0 Plain, 1 Shell-quoted.
     in property <int> path-format;
+    callback language-chosen(int);
     callback appearance-chosen(int);
     callback theme-chosen(int);
     callback trigger-chosen(int);
@@ -577,21 +609,34 @@ export component GeneralPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Appearance";
+        text: @tr("Language");
+    }
+
+    MenuField {
+        label: @tr("Language");
+        items: root.language-names;
+        current: root.language;
+        chosen(i) => { root.language-chosen(i); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: @tr("Appearance");
     }
 
     Segmented {
-        items: ["System", "Light", "Dark"];
+        items: [@tr("System"), @tr("Light"), @tr("Dark")];
         current: root.appearance;
         chosen(i) => { root.appearance-chosen(i); }
     }
 
     SectionHeading {
-        text: "Theme";
+        text: @tr("Theme");
     }
 
     MenuField {
-        label: "Theme";
+        label: @tr("Theme");
         items: root.theme-names;
         current: root.theme;
         chosen(i) => { root.theme-chosen(i); }
@@ -600,7 +645,7 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Trigger";
+        text: @tr("Trigger");
     }
 
     Segmented {
@@ -610,7 +655,7 @@ export component GeneralPage inherits VerticalLayout {
     }
 
     SwitchRow {
-        label: "Shake to open";
+        label: @tr("Shake to open");
         on: root.shake-to-open;
         toggled(on) => { root.shake-to-open-toggled(on); }
     }
@@ -618,11 +663,11 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Terminal";
+        text: @tr("Terminal");
     }
 
     MenuField {
-        label: "Terminal";
+        label: @tr("Terminal");
         items: root.terminals;
         current: root.terminal;
         chosen(i) => { root.terminal-chosen(i); }
@@ -631,11 +676,11 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Copy path";
+        text: @tr("Copy path");
     }
 
     Segmented {
-        items: ["Plain", "Shell-quoted"];
+        items: [@tr("Plain"), @tr("Shell-quoted")];
         current: root.path-format;
         chosen(i) => { root.path-format-chosen(i); }
     }
@@ -654,12 +699,12 @@ export component CopyFromScreenPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Shortcut";
+        text: @tr("Shortcut");
     }
 
     ShortcutField {
         text: root.shortcut;
-        label: "Copy from screen shortcut";
+        label: @tr("Copy from screen shortcut");
         recording <=> root.recording;
         started => {
             root.shortcut-error = "";
@@ -669,6 +714,7 @@ export component CopyFromScreenPage inherits VerticalLayout {
     }
 
     if root.shortcut-error != "": Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.shortcut-error;
         font-size: 12px;
         color: Theme.danger;
@@ -684,7 +730,7 @@ export component KeepAwakePage inherits VerticalLayout {
     spacing: 8px;
 
     SwitchRow {
-        label: "Let the screen turn off";
+        label: @tr("Let the screen turn off");
         on: root.screen-off;
         toggled(on) => { root.screen-off-toggled(on); }
     }
@@ -700,6 +746,7 @@ export component AboutPage inherits VerticalLayout {
     spacing: 8px;
 
     Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: "Vento";
         font-size: 15px;
         font-weight: 600;
@@ -707,7 +754,8 @@ export component AboutPage inherits VerticalLayout {
     }
 
     Text {
-        text: "Version " + root.version;
+        horizontal-alignment: Theme.rtl ? right : left;
+        text: @tr("Version {}", root.version);
         font-size: 12px;
         color: Theme.muted;
     }
@@ -715,10 +763,10 @@ export component AboutPage inherits VerticalLayout {
     Separator { }
 
     HorizontalLayout {
-        alignment: start;
+        alignment: Theme.rtl ? end : start;
 
         TextButton {
-            label: "Open settings file";
+            label: @tr("Open settings file");
             clicked => { root.open-settings-file(); }
         }
     }
@@ -726,17 +774,18 @@ export component AboutPage inherits VerticalLayout {
     Separator { }
 
     Text {
-        text: "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.";
+        horizontal-alignment: Theme.rtl ? right : left;
+        text: @tr("GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.");
         font-size: 12px;
         color: Theme.muted;
         wrap: word-wrap;
     }
 
     HorizontalLayout {
-        alignment: start;
+        alignment: Theme.rtl ? end : start;
 
         TextButton {
-            label: "View licenses";
+            label: @tr("View licenses");
             clicked => { root.open-licenses(); }
         }
     }

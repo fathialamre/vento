@@ -414,7 +414,10 @@ impl Write for EntryWriter {
             Err(error) => {
                 // The decoder's own error type cannot carry ours, so the real
                 // reason is kept for the ticket.
-                let copy = io::Error::new(error.kind(), error.to_string());
+                let copy = match error.raw_os_error() {
+                    Some(code) => io::Error::from_raw_os_error(code),
+                    None => io::Error::new(error.kind(), error.to_string()),
+                };
                 self.state.fail(ArchiveError::from_io(copy));
                 Err(error)
             }

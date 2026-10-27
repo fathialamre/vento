@@ -10,18 +10,13 @@ use vento_core::archive::Progress;
 use vento_core::convert::{ConvertError, ConvertOutcome, ImageCodec, ImageFormat, convert_batch};
 use vento_core::fileops::CopyRecord;
 use vento_core::geometry::Point;
+use vento_core::i18n::errors::clauses;
+use vento_core::i18n::{fill, tr, trn};
 use vento_platform::{probe_image, write_image};
 
-use super::archive::{CANCELLED_TEXT, copy_quarantine, show_progress};
-use super::{Executor, LastOp, name_or_count, sentence};
-
-/// The progress window's verb.
-const CONVERTING: &str = "Converting";
-
-/// `"1 image"` / `"3 images"`.
-fn images(n: usize) -> String {
-    format!("{n} {}", if n == 1 { "image" } else { "images" })
-}
+use super::archive::{cancelled_text, copy_quarantine, failed_with_reason, show_progress};
+use super::{Executor, LastOp, action_error_text, in_english, only_name};
+use crate::archive_ui::Verb;
 
 /// Toast text for a finished Convert job. Nothing made and nothing failed
 /// means the job was cancelled, every image already was in the format, or
@@ -39,43 +34,82 @@ pub(super) fn convert_toast_text(outcome: &ConvertOutcome) -> String {
     if made == 0 {
         if failed > 0 {
             let names: Vec<&Path> = outcome.failed.iter().map(|(p, _)| p.as_path()).collect();
-            parts.push(format!(
-                "couldn't convert {}: {reason}",
-                name_or_count(&names, images)
-            ));
+            parts.push(match only_name(&names) {
+                Some(name) => fill(
+                    &tr("Couldn't convert {name}: {reason}"),
+                    &[("name", &name), ("reason", &reason)],
+                ),
+                None => fill(
+                    &trn(
+                        "Couldn't convert {n} image: {reason}",
+                        "Couldn't convert {n} images: {reason}",
+                        names.len() as u64,
+                    ),
+                    &[("reason", &reason)],
+                ),
+            });
         } else if outcome.cancelled {
-            return CANCELLED_TEXT.into();
+            return cancelled_text();
         } else if outcome.already > 0 {
-            return format!("Nothing to convert: already {format}");
+            return fill(
+                &tr("Nothing to convert: already {format}"),
+                &[("format", format)],
+            );
         } else {
-            return "Couldn't convert: no images".into();
+            return action_error_text(ActionId::Convert, &tr("no images"));
         }
     } else {
         if made == outcome.total {
             let names: Vec<&Path> = outcome.made.iter().map(|m| m.source.as_path()).collect();
-            parts.push(format!(
-                "converted {} to {format}",
-                name_or_count(&names, images)
-            ));
+            parts.push(match only_name(&names) {
+                Some(name) => fill(
+                    &tr("Converted {name} to {format}"),
+                    &[("name", &name), ("format", format)],
+                ),
+                None => fill(
+                    &trn(
+                        "Converted {n} image to {format}",
+                        "Converted {n} images to {format}",
+                        names.len() as u64,
+                    ),
+                    &[("format", format)],
+                ),
+            });
         } else {
-            parts.push(format!("converted {made} of {} to {format}", outcome.total));
+            parts.push(fill(
+                &tr("Converted {made} of {total} to {format}"),
+                &[
+                    ("made", &made.to_string()),
+                    ("total", &outcome.total.to_string()),
+                    ("format", format),
+                ],
+            ));
         }
         if outcome.already > 0 {
-            parts.push(format!("{} already {format}", outcome.already));
+            parts.push(fill(
+                &trn(
+                    "{n} already {format}",
+                    "{n} already {format}",
+                    outcome.already as u64,
+                ),
+                &[("format", format)],
+            ));
         }
         if outcome.not_images > 0 {
-            let n = outcome.not_images;
-            let noun = if n == 1 { "not an image" } else { "not images" };
-            parts.push(format!("{n} {noun}"));
+            parts.push(trn(
+                "{n} not an image",
+                "{n} not images",
+                outcome.not_images as u64,
+            ));
         }
         if failed > 0 {
-            parts.push(format!("{failed} failed: {reason}"));
+            parts.push(failed_with_reason(failed, &reason));
         }
     }
     if outcome.cancelled {
-        parts.push("cancelled".into());
+        parts.push(tr("cancelled"));
     }
-    sentence(&parts)
+    clauses(&parts)
 }
 
 /// The real image codec: ImageIO through the platform crate.
@@ -99,7 +133,7 @@ fn convert_job(
     progress: &Arc<Progress>,
     at: Point,
 ) -> ConvertOutcome {
-    show_progress(progress, CONVERTING, at);
+    show_progress(progress, Verb::Converting, at);
     convert_batch(paths, format, &SystemCodec, progress, &copy_quarantine())
 }
 
@@ -123,10 +157,14 @@ impl Executor {
 
     fn convert_finished(&self, outcome: ConvertOutcome, at: Point) {
         for (path, error) in &outcome.failed {
-            warn!("cannot convert {}: {error}", path.display());
+            warn!(
+                "cannot convert {}: {}",
+                path.display(),
+                in_english(|| error.to_string())
+            );
         }
         let text = convert_toast_text(&outcome);
-        info!("convert: {text}");
+        info!("convert: {}", in_english(|| convert_toast_text(&outcome)));
         let Some(dest) = outcome
             .made
             .first()
@@ -294,5 +332,52 @@ mod tests {
         let mut o = outcome(2, Vec::new());
         o.not_images = 2;
         assert_eq!(convert_toast_text(&o), "Couldn't convert: no images");
+    }
+
+    #[test]
+    fn toasts_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            let one = outcome(1, vec![made("/d/photo.png")]);
+            assert_eq!(convert_toast_text(&one), "تم تحويل photo.png إلى JPEG");
+            assert_eq!(
+                convert_toast_text(&outcome(2, many(2))),
+                "تم تحويل صورتين إلى JPEG"
+            );
+            assert_eq!(
+                convert_toast_text(&outcome(11, many(11))),
+                "تم تحويل 11 صورة إلى JPEG"
+            );
+            let mut o = outcome(5, many(2));
+            o.already = 1;
+            o.not_images = 1;
+            o.failed = vec![denied("/d/x.png")];
+            o.cancelled = true;
+            assert_eq!(
+                convert_toast_text(&o),
+                "تم تحويل 2 من 5 إلى JPEG؛ \
+                 لا حاجة إلى تحويل عنصر واحد (بصيغة JPEG أصلاً)؛ \
+                 تم تخطي عنصر واحد ليس صورة؛ \
+                 تعذّرت معالجة عنصر واحد: permission denied؛ \
+                 أُلغي"
+            );
+            let mut o = outcome(1, Vec::new());
+            o.failed = vec![denied("/d/photo.png")];
+            assert_eq!(
+                convert_toast_text(&o),
+                "تعذّر تحويل photo.png: permission denied"
+            );
+            let mut o = outcome(3, Vec::new());
+            o.failed = vec![denied("/d/a.png"), denied("/d/b.png"), denied("/d/c.png")];
+            assert_eq!(
+                convert_toast_text(&o),
+                "تعذّر تحويل 3 صور: permission denied"
+            );
+            let mut o = outcome(2, Vec::new());
+            o.already = 2;
+            assert_eq!(convert_toast_text(&o), "لا يوجد ما يُحوَّل: الصيغة JPEG أصلاً");
+            let mut o = outcome(2, Vec::new());
+            o.not_images = 2;
+            assert_eq!(convert_toast_text(&o), "تعذّر التحويل: لا توجد صور");
+        });
     }
 }

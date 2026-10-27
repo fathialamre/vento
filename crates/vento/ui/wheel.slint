@@ -2,6 +2,8 @@
 // draws one cell per action around the dragged file, and the destination
 // ring around Move or Copy to.
 
+import { LineText, Theme } from "theme.slint";
+
 export enum WheelLayout { honeycomb, petals }
 
 // Cell positions are offsets from the wheel centre (the window centre), so
@@ -37,6 +39,9 @@ export global Icons {
     out property <image> trash: @image-url("icons/trash.svg");
     out property <image> drop: @image-url("icons/download.svg");
     out property <image> undo: @image-url("icons/arrow-back-up.svg");
+    // `undo` and `back` mirrored, for a right-to-left language.
+    out property <image> undo-rtl: @image-url("icons/arrow-forward-up.svg");
+    out property <image> back-rtl: @image-url("icons/chevron-right.svg");
     out property <image> copy-to: @image-url("icons/copy-plus.svg");
     out property <image> pin: @image-url("icons/pin.svg");
     out property <image> archive: @image-url("icons/file-zip.svg");
@@ -54,6 +59,7 @@ export global Icons {
 }
 
 export component Wheel inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
@@ -234,7 +240,7 @@ export component Wheel inherits Window {
             y: stack-top;
         }
 
-        Text {
+        LineText {
             text: dest.line1;
             x: 4px;
             y: stack-top + icon-size + 2px;
@@ -243,12 +249,11 @@ export component Wheel inherits Window {
             color: white;
             font-size: type-size;
             font-weight: 600;
-            overflow: elide;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
 
-        if dest.line2 != "": Text {
+        if dest.line2 != "": LineText {
             text: dest.line2;
             x: 4px;
             y: stack-top + icon-size + 2px + line-height;
@@ -257,7 +262,6 @@ export component Wheel inherits Window {
             color: dest.line2-dim ? #ffffff8c : white;
             font-size: type-size;
             font-weight: dest.line2-dim ? 400 : 600;
-            overflow: elide;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -359,22 +363,20 @@ export component Wheel inherits Window {
                         font-size: 12px;
                         horizontal-stretch: 0;
                     }
-                    Text {
+                    LineText {
                         text: root.dest-name;
                         color: white;
                         font-size: 12px;
                         font-weight: 600;
-                        overflow: elide;
                         horizontal-stretch: 1;
                     }
                 }
 
                 // Formats have no path; the line would still reserve its height.
-                if root.dest-path != "": Text {
+                if root.dest-path != "": LineText {
                     text: root.dest-path;
                     color: #ffffff8c;
                     font-size: 10px;
-                    overflow: elide;
                 }
             }
         }

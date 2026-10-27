@@ -249,7 +249,7 @@ impl Platform for LinuxPlatform {
         &self,
         terminal: Option<&str>,
         dir: &Path,
-        on_error: Box<dyn Fn(String) + Send>,
+        on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
         terminal::open(terminal, dir, on_error)
     }
@@ -416,7 +416,7 @@ impl Platform for LinuxPlatform {
         &self,
         paths: &[PathBuf],
         app: &Path,
-        _on_error: Box<dyn Fn(String) + Send>,
+        _on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
         apps::open_with(paths, app)
     }

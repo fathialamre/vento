@@ -1,13 +1,15 @@
 // The Settings window: an ordinary titled window with a sidebar of pages on
-// the left, one per feature, and the chosen page on the right under its
-// name. It follows the Appearance setting through `Theme`.
+// the left (the right in a right-to-left language), one per feature, and
+// the chosen page beside it under its name. It follows the Appearance setting through `Theme`.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
-// One row of the sidebar.
-export struct PageItem { icon: image, label: string }
+// One row of the sidebar. `id` names the page whatever its label says:
+// 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Clipboard, 5 Copy from screen,
+// 6 Keep Awake, 7 About (the order of `Page` in `settings_window/mod.rs`).
+export struct PageItem { icon: image, label: string, id: int }
 
 // A sidebar row: the page's icon and name, on the accent's faint tint while
 // it is the page shown.
@@ -32,6 +34,7 @@ component SidebarRow inherits Rectangle {
 
         // A fixed-size image sits at the top of a row; centre it on the label.
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: center;
 
             Image {
@@ -42,12 +45,13 @@ component SidebarRow inherits Rectangle {
             }
         }
 
-        Text {
+        LineText {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             color: root.chosen ? Theme.accent : Theme.text;
             vertical-alignment: center;
-            overflow: elide;
         }
     }
 
@@ -57,7 +61,8 @@ component SidebarRow inherits Rectangle {
 }
 
 export component SettingsWindow inherits Window {
-    title: "Vento Settings";
+    default-font-family: Theme.font-family;
+    title: @tr("Vento Settings");
     default-font-size: 13px;
     preferred-width: 680px;
     preferred-height: 520px;
@@ -66,7 +71,7 @@ export component SettingsWindow inherits Window {
     background: Theme.bg;
 
     // The sidebar's rows, in order, and the one shown (an index into them).
-    // The page shown is found by its name, so a page left out (Copy from
+    // The page shown is found by its id, so a page left out (Copy from
     // screen, where unsupported) moves the rows after it up.
     in property <[PageItem]> pages;
     in-out property <int> page;
@@ -74,6 +79,9 @@ export component SettingsWindow inherits Window {
     in property <string> notice;
 
     // The settings in effect, as the controls show them.
+    // The languages by name, "Automatic" first, and the one in use.
+    in property <[string]> language-names;
+    in property <int> language;
     // 0 System, 1 Light, 2 Dark.
     in property <int> appearance;
     // The themes by name, and the one in use.
@@ -136,6 +144,7 @@ export component SettingsWindow inherits Window {
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
+    callback language-chosen(int);
     callback appearance-chosen(int);
     callback theme-chosen(int);
     callback layout-chosen(int);
@@ -176,8 +185,10 @@ export component SettingsWindow inherits Window {
     // button does. While a shortcut field records, Esc only cancels that.
     callback close-requested();
 
-    // The name of the page shown, which picks its body.
+    // The name of the page shown (display only) and its id, which picks its
+    // body.
     property <string> label: root.pages[root.page].label;
+    property <int> page-id: root.page < root.pages.length ? root.pages[root.page].id : -1;
 
     forward-focus: keys;
 
@@ -220,6 +231,7 @@ export component SettingsWindow inherits Window {
 
         HorizontalLayout {
             Rectangle {
+                layout-order: Theme.rtl ? 2 : 0;
                 width: 180px;
                 background: Theme.card;
 
@@ -238,13 +250,14 @@ export component SettingsWindow inherits Window {
 
                 // The hairline between the sidebar and the page.
                 Rectangle {
-                    x: parent.width - 1px;
+                    x: Theme.rtl ? 0px : parent.width - 1px;
                     width: 1px;
                     background: Theme.separator;
                 }
             }
 
             flick := Flickable {
+                layout-order: Theme.rtl ? 1 : 0;
                 horizontal-stretch: 1;
                 content-width: self.width;
                 content-height: max(self.height, body.preferred-height);
@@ -257,6 +270,7 @@ export component SettingsWindow inherits Window {
                     alignment: start;
 
                     Text {
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.label;
                         font-size: 18px;
                         font-weight: 600;
@@ -267,7 +281,10 @@ export component SettingsWindow inherits Window {
                         text: root.notice;
                     }
 
-                    if root.label == "General": GeneralPage {
+                    if root.page-id == 0: GeneralPage {
+                        language-names: root.language-names;
+                        language: root.language;
+                        language-chosen(i) => { root.language-chosen(i); }
                         appearance: root.appearance;
                         theme-names: root.theme-names;
                         theme: root.theme;
@@ -284,7 +301,7 @@ export component SettingsWindow inherits Window {
                         terminal-chosen(i) => { root.terminal-chosen(i); }
                         path-format-chosen(i) => { root.path-format-chosen(i); }
                     }
-                    if root.label == "Wheel": WheelPage {
+                    if root.page-id == 1: WheelPage {
                         wheel-layout: root.wheel-layout;
                         actions: root.actions;
                         shown-actions: root.shown-actions;
@@ -292,7 +309,7 @@ export component SettingsWindow inherits Window {
                         action-toggled(i, on) => { root.action-toggled(i, on); }
                         action-moved(from, to) => { root.action-moved(from, to); }
                     }
-                    if root.label == "Move": MovePage {
+                    if root.page-id == 2: MovePage {
                         pinned: root.pinned;
                         pinned-full: root.pinned-full;
                         recent: root.recent;
@@ -308,7 +325,7 @@ export component SettingsWindow inherits Window {
                         recent-cleared => { root.recent-cleared(); }
                         hold-stepped(step) => { root.hold-stepped(step); }
                     }
-                    if root.label == "Pocket": PocketPage {
+                    if root.page-id == 3: PocketPage {
                         shortcut: root.shortcut;
                         shortcut-error <=> root.shortcut-error;
                         recording <=> root.shortcut-recording;
@@ -321,7 +338,7 @@ export component SettingsWindow inherits Window {
                         keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
                         pocket-layout-chosen(i) => { root.pocket-layout-chosen(i); }
                     }
-                    if root.label == "Clipboard": ClipboardPage {
+                    if root.page-id == 4: ClipboardPage {
                         history: root.clip-history;
                         shortcut: root.clip-shortcut;
                         shortcut-error <=> root.clip-shortcut-error;
@@ -331,18 +348,18 @@ export component SettingsWindow inherits Window {
                         recording-cancelled => { root.stop-recording(); }
                         history-cleared => { root.clip-history-cleared(); }
                     }
-                    if root.label == "Copy from screen" && root.screen-text-supported: CopyFromScreenPage {
+                    if root.page-id == 5 && root.screen-text-supported: CopyFromScreenPage {
                         shortcut: root.screen-shortcut;
                         shortcut-error <=> root.screen-shortcut-error;
                         recording <=> root.screen-shortcut-recording;
                         recording-started => { root.screen-shortcut-recording-started(); }
                         recording-cancelled => { root.stop-recording(); }
                     }
-                    if root.label == "Keep Awake": KeepAwakePage {
+                    if root.page-id == 6: KeepAwakePage {
                         screen-off: root.awake-screen-off;
                         screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
                     }
-                    if root.label == "About": AboutPage {
+                    if root.page-id == 7: AboutPage {
                         version: root.version;
                         open-settings-file => { root.open-settings-file(); }
                         open-licenses => { root.open-licenses(); }

@@ -113,6 +113,10 @@ pub struct Settings {
     pub pocket_keep_copies: bool,
     /// How the Pocket lays its items out once it holds more than eight.
     pub pocket_layout: PocketLayout,
+    /// The language of the interface: the code of one of the languages
+    /// Vento has (`"en"`, the default, or `"ar"`), or `"auto"` to follow the
+    /// system's. Any other value means English; see `i18n::resolve`.
+    pub language: String,
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].
     pub pocket_shortcut: String,
@@ -195,6 +199,7 @@ impl Default for Settings {
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
             pocket_layout: PocketLayout::List,
+            language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
@@ -224,6 +229,7 @@ struct RawSettings {
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
     pocket_layout: PocketLayout,
+    language: String,
     pocket_shortcut: String,
     clipboard_history: bool,
     clipboard_shortcut: String,
@@ -255,6 +261,7 @@ impl From<&Settings> for RawSettings {
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
             pocket_layout: s.pocket_layout,
+            language: s.language.clone(),
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
@@ -329,6 +336,7 @@ impl From<RawSettings> for Settings {
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
             pocket_layout: raw.pocket_layout,
+            language: raw.language,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
             clipboard_shortcut: raw.clipboard_shortcut,
@@ -518,6 +526,26 @@ pub fn parse_shortcut(s: &str) -> Option<(Modifiers, char)> {
     Some((modifiers, key.to_ascii_lowercase()))
 }
 
+/// Why a shortcut could not be registered.
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+pub enum ShortcutError {
+    /// The spec is not a shortcut. Worded when shown, in the interface
+    /// language.
+    #[error("{}", invalid_shortcut(.0))]
+    Invalid(String),
+    /// The system refused the key, in its own (English) words.
+    #[error("{0}")]
+    Refused(String),
+}
+
+/// `invalid shortcut "spec"`, in the interface language.
+fn invalid_shortcut(spec: &str) -> String {
+    crate::i18n::fill(
+        &crate::i18n::tr("invalid shortcut \"{spec}\""),
+        &[("spec", spec)],
+    )
+}
+
 /// Whether macOS keeps `spec` for itself: Cmd alone (quit, hide, copy and
 /// the like), Cmd+Shift+3/4/5 (screenshots), or Shift alone (typing a capital
 /// letter). A spec that does not parse is not reserved; it is simply invalid.
@@ -584,6 +612,24 @@ pub fn settings_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_invalid_shortcut_is_worded_when_it_is_shown() {
+        use crate::i18n::with_language;
+        let error = ShortcutError::Invalid("p".into());
+        assert_eq!(error.to_string(), "invalid shortcut \"p\"");
+        with_language("ar", || {
+            assert_eq!(error.to_string(), "اختصار غير صالح \"p\"");
+        });
+        // Made while the language was Arabic, read in English for a log line.
+        assert_eq!(
+            with_language("en", || error.to_string()),
+            "invalid shortcut \"p\""
+        );
+        // The system's own words are shown as they are.
+        let refused = ShortcutError::Refused("in use".into());
+        assert_eq!(with_language("ar", || refused.to_string()), "in use");
+    }
 
     #[test]
     fn default_settings() {
@@ -762,6 +808,30 @@ mod tests {
             Settings::try_load(&old).unwrap().pocket_layout,
             PocketLayout::List
         );
+    }
+
+    #[test]
+    fn the_language_is_english_unless_saved_otherwise() {
+        assert_eq!(Settings::default().language, "en");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            language: "ar".to_owned(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("language = \"ar\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+        let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(Settings::try_load(&old).unwrap().language, "en");
+        // A value Vento does not know loads as it is; `i18n::resolve`
+        // treats it as English.
+        let (_dir, odd) = write_temp("language = \"xx\"\n");
+        assert_eq!(Settings::try_load(&odd).unwrap().language, "xx");
     }
 
     #[test]

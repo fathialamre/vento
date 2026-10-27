@@ -11,6 +11,7 @@ use ksni::{Icon, MenuItem, ToolTip, Tray};
 use log::warn;
 use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
+use vento_core::i18n::tr;
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
@@ -175,9 +176,9 @@ impl Tray for VentoTray {
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
-        let item = |label: &str, enabled: bool, action: Action| {
+        let item = |label: String, enabled: bool, action: Action| {
             MenuItem::Standard(StandardItem {
-                label: label.into(),
+                label,
                 enabled,
                 activate: Box::new(move |_: &mut Self| send(action)),
                 ..Default::default()
@@ -187,18 +188,18 @@ impl Tray for VentoTray {
         let mut menu = Vec::new();
         if self.copy_from_screen {
             menu.push(item(
-                "Copy from screen",
+                tr("Copy from screen"),
                 !self.paused,
                 Action::CopyFromScreen,
             ));
         }
         menu.extend([
             item(
-                "Open clipboard history",
+                tr("Open clipboard history"),
                 !self.paused && self.clip_history,
                 Action::OpenClipboard,
             ),
-            item("Open the Pocket", !self.paused, Action::OpenPocket),
+            item(tr("Open the Pocket"), !self.paused, Action::OpenPocket),
             MenuItem::Separator,
             item(
                 keep_awake_menu_text(self.keep_awake_on),
@@ -207,7 +208,7 @@ impl Tray for VentoTray {
             ),
             item(undo_menu_text(self.undo), self.undo.is_some(), Action::Undo),
             MenuItem::Checkmark(CheckmarkItem {
-                label: "Pause Vento".into(),
+                label: tr("Pause Vento"),
                 checked: self.paused,
                 activate: Box::new(|tray: &mut Self| {
                     tray.paused = !tray.paused;
@@ -216,10 +217,10 @@ impl Tray for VentoTray {
                 ..Default::default()
             }),
             MenuItem::Separator,
-            item("Settings…", true, Action::OpenSettings),
-            item("Open settings file", true, Action::OpenSettingsFile),
+            item(tr("Settings…"), true, Action::OpenSettings),
+            item(tr("Open settings file"), true, Action::OpenSettingsFile),
             MenuItem::Separator,
-            item("Quit Vento", true, Action::Quit),
+            item(tr("Quit Vento"), true, Action::Quit),
         ]);
         menu
     }
@@ -227,7 +228,19 @@ impl Tray for VentoTray {
 
 /// Keeps the tray alive; dropping it removes the icon.
 pub struct TrayHandle {
-    _handle: Option<ksni::blocking::Handle<VentoTray>>,
+    handle: Option<ksni::blocking::Handle<VentoTray>>,
+}
+
+impl TrayHandle {
+    /// Writes the menu's text again in the language now in use: call after
+    /// the language changes. An update with nothing changed makes ksni build
+    /// the menu again through `menu()`, which translates it, and send the
+    /// host the items whose text differs.
+    pub fn retext(&self) {
+        if let Some(handle) = &self.handle {
+            handle.update(|_| {});
+        }
+    }
 }
 
 /// What the tray needs to act on clicks; the same as on macOS.
@@ -289,7 +302,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         Ok(handle) => handle,
         Err(e) => {
             warn!("no tray icon: {e}");
-            return TrayHandle { _handle: None };
+            return TrayHandle { handle: None };
         }
     };
 
@@ -368,7 +381,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     });
 
     TrayHandle {
-        _handle: Some(handle),
+        handle: Some(handle),
     }
 }
 

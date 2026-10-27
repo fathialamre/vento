@@ -46,6 +46,8 @@ use slint::{
 };
 use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
+use vento_core::i18n::errors::io_reason;
+use vento_core::i18n::{fill, tr, with_language};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::{PocketLayout, Settings};
@@ -54,13 +56,14 @@ use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
 };
 
+use crate::appearance;
 use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
 
 #[cfg(target_os = "linux")]
 use crate::drag;
-use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
+use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
 use geometry::{Frames, cell_cap, frames, hits, hover_event, interactive_rect, island_inputs};
@@ -100,13 +103,21 @@ thread_local! {
     static MAIN_POCKET: RefCell<Weak<PocketController>> = const { RefCell::new(Weak::new()) };
 }
 
-/// Shows a launch that failed after Open With returned (`reason`, from any
+/// What a right-click menu action that failed was doing, for its toast.
+#[derive(Debug, Clone, Copy)]
+enum MenuFailure {
+    Open,
+    Copy,
+}
+
+/// Shows a launch that failed after Open With returned (`error`, from any
 /// thread) in the Pocket's toast, on the main thread.
-fn toast_late_open_error(reason: String) {
+fn toast_late_open_error(error: PlatformError) {
     let delivered = slint::invoke_from_event_loop(move || {
         if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
-            c.toast
-                .show(&format!("Couldn't open: {reason}"), None, c.toast_at());
+            let reason = error.to_string();
+            let text = fill(&tr("Couldn't open: {reason}"), &[("reason", &reason)]);
+            c.toast.show(&text, None, c.toast_at());
         }
     });
     if let Err(e) = delivered {
@@ -302,6 +313,8 @@ impl PocketController {
         let pocket = Pocket::load(&path);
         info!("pocket loaded: {} items", pocket.items().len());
         let window = PocketIsland::new().expect("cannot create the pocket window");
+        // The island keeps its own dark look; it takes the direction.
+        appearance::follow(&window, appearance::Look::Direction);
         let cells = Rc::new(VecModel::default());
         window.set_cells(ModelRc::from(cells.clone()));
         let ghosts = Rc::new(VecModel::default());
@@ -609,26 +622,39 @@ impl PocketController {
     /// Remove) or to `paths` (the files of those still there).
     fn run_menu_action(&self, action: MenuAction, targets: &[u64], paths: &[PathBuf]) {
         let result = match action {
-            MenuAction::Open => self.platform.open_paths(paths).map_err(|e| ("open", e)),
+            MenuAction::Open => self
+                .platform
+                .open_paths(paths)
+                .map_err(|e| (MenuFailure::Open, e)),
             MenuAction::OpenWith(app) => self
                 .platform
                 .open_with(paths, &app, Box::new(toast_late_open_error))
-                .map_err(|e| ("open", e)),
+                .map_err(|e| (MenuFailure::Open, e)),
             MenuAction::Reveal => {
                 self.platform.reveal_in_finder(paths);
                 Ok(())
             }
-            MenuAction::Copy => self.platform.copy_files(paths).map_err(|e| ("copy", e)),
+            MenuAction::Copy => self
+                .platform
+                .copy_files(paths)
+                .map_err(|e| (MenuFailure::Copy, e)),
             // As the cell's x does, for one item or many.
             MenuAction::Remove => {
                 self.remove_items(targets, UNDO_WINDOW, true);
                 Ok(())
             }
         };
-        if let Err((verb, e)) = result {
-            warn!("pocket menu: cannot {verb}: {e}");
-            self.toast
-                .show(&format!("Couldn't {verb}: {e}"), None, self.toast_at());
+        if let Err((failure, e)) = result {
+            warn!(
+                "pocket menu: {failure:?} failed: {}",
+                with_language("en", || e.to_string())
+            );
+            let template = match failure {
+                MenuFailure::Open => tr("Couldn't open: {reason}"),
+                MenuFailure::Copy => tr("Couldn't copy: {reason}"),
+            };
+            let text = fill(&template, &[("reason", &e.to_string())]);
+            self.toast.show(&text, None, self.toast_at());
         }
     }
 
@@ -646,8 +672,11 @@ impl PocketController {
         let Some(first) = paths.first() else {
             self.latch.ended();
             info!("drag out: nothing left to drag");
-            self.toast
-                .show("Those items are no longer there", None, self.toast_at());
+            self.toast.show(
+                &tr("Those items are no longer there"),
+                None,
+                self.toast_at(),
+            );
             return;
         };
         let icon = self
@@ -1347,7 +1376,8 @@ impl PocketController {
                     controller.end_copies(&done);
                     match result {
                         Ok((entries, errors)) => controller.finish_add(entries, &errors),
-                        Err(_) => controller.finish_add(Vec::new(), &["internal error".into()]),
+                        Err(_) => controller
+                            .finish_add(Vec::new(), &[Failure::new(|| tr("internal error"))]),
                     }
                 });
                 if let Err(e) = delivered {
@@ -1356,7 +1386,13 @@ impl PocketController {
             });
         if let Err(e) = spawned {
             self.end_copies(&paths);
-            self.finish_add(Vec::new(), &[format!("cannot start copying: {e}")]);
+            let failure = Failure::new(|| {
+                fill(
+                    &tr("cannot start copying: {reason}"),
+                    &[("reason", &io_reason(&e))],
+                )
+            });
+            self.finish_add(Vec::new(), &[failure]);
         }
     }
 
@@ -1373,7 +1409,7 @@ impl PocketController {
     /// Adds stored files to the Pocket, saves and refreshes, and toasts the
     /// first error. A kept copy of a file the Pocket now holds anyway (it
     /// came in another way while copying) is removed: vento made it.
-    fn finish_add(&self, entries: Vec<Entry>, errors: &[String]) {
+    fn finish_add(&self, entries: Vec<Entry>, errors: &[Failure]) {
         let now_unix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
@@ -1403,13 +1439,14 @@ impl PocketController {
             self.save();
             self.refresh();
         }
-        if let Some(reason) = errors.first() {
-            warn!("cannot add to the pocket: {}", errors.join("; "));
-            self.toast.show(
-                &format!("Couldn't add to Pocket: {reason}"),
-                None,
-                self.toast_at(),
+        if let Some(first) = errors.first() {
+            let logged: Vec<&str> = errors.iter().map(|f| f.logged.as_str()).collect();
+            warn!("cannot add to the pocket: {}", logged.join("; "));
+            let text = fill(
+                &tr("Couldn't add to Pocket: {reason}"),
+                &[("reason", &first.shown)],
             );
+            self.toast.show(&text, None, self.toast_at());
         }
     }
 
@@ -1464,6 +1501,16 @@ impl PocketController {
         if !self.close_pocket_list() {
             self.refresh();
         }
+    }
+
+    /// Writes the texts Rust pushes into the island again after a language
+    /// change: the kind names of the stacks, the filter chips of the list
+    /// and the clipboard history's labels and ages. Only what is in sight
+    /// is made, as for any refresh.
+    pub fn apply_language(&self) {
+        self.refresh_stacks();
+        self.refresh_list();
+        self.refresh_clip();
     }
 
     /// Empties the clipboard history at once, with no Undo (the settings'
@@ -1596,11 +1643,11 @@ impl PocketController {
     fn save(&self) {
         if let Err(e) = self.pocket.borrow().save(&self.path) {
             warn!("cannot save the pocket to {}: {e}", self.path.display());
-            self.toast.show(
-                &format!("Couldn't save the Pocket: {e}"),
-                None,
-                self.toast_at(),
+            let text = fill(
+                &tr("Couldn't save the Pocket: {error}"),
+                &[("error", &io_reason(&e))],
             );
+            self.toast.show(&text, None, self.toast_at());
         }
     }
 

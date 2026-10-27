@@ -6167,6 +6167,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sys-locale",
  "tempfile",
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",

@@ -3,6 +3,8 @@
 
 use std::path::Path;
 
+use crate::i18n::tr;
+
 /// The kind of a Pocket item. Folders are told apart by the filesystem, every
 /// other kind by the extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,16 +31,17 @@ impl PocketKind {
         Self::Other,
     ];
 
-    /// The name the Pocket shows for the kind's group.
-    pub fn label(self) -> &'static str {
+    /// The name the Pocket shows for the kind's group, in the interface
+    /// language.
+    pub fn label(self) -> String {
         match self {
-            Self::Image => "Images",
-            Self::Video => "Video",
-            Self::Audio => "Audio",
-            Self::Document => "Documents",
-            Self::Archive => "Archives",
-            Self::Folder => "Folders",
-            Self::Other => "Other",
+            Self::Image => tr("Images"),
+            Self::Video => tr("Video"),
+            Self::Audio => tr("Audio"),
+            Self::Document => tr("Documents"),
+            Self::Archive => tr("Archives"),
+            Self::Folder => tr("Folders"),
+            Self::Other => tr("Other"),
         }
     }
 }
@@ -101,5 +104,36 @@ mod tests {
         assert_eq!(kind_of(Path::new("/a/project"), true), PocketKind::Folder);
         assert_eq!(kind_of(Path::new("/a/Makefile"), false), PocketKind::Other);
         assert_eq!(kind_of(Path::new("/a/thing.xyz"), false), PocketKind::Other);
+    }
+
+    #[test]
+    fn kind_names_are_translated() {
+        let names = |code| {
+            crate::i18n::with_language(code, || PocketKind::ALL.map(PocketKind::label).to_vec())
+        };
+        assert_eq!(
+            names("en"),
+            [
+                "Images",
+                "Video",
+                "Audio",
+                "Documents",
+                "Archives",
+                "Folders",
+                "Other"
+            ]
+        );
+        assert_eq!(
+            names("ar"),
+            [
+                "صور",
+                "فيديو",
+                "صوت",
+                "مستندات",
+                "أرشيفات",
+                "مجلدات",
+                "أخرى"
+            ]
+        );
     }
 }

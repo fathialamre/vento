@@ -23,6 +23,7 @@ use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Model, Timer, VecModel};
 use vento_core::awake::{Chip, TIMED_CHIPS, default_until};
 use vento_core::geometry::{Point, Rect, screen_for};
+use vento_core::i18n::{tr, trn};
 use vento_platform::Platform;
 
 use crate::appearance::{self, show_menu_colors};
@@ -126,9 +127,13 @@ impl PanelController {
         // and show the shortcuts and the history setting as saved. With no
         // window there is nothing to update.
         let this = Rc::downgrade(&panel);
-        panel.hub.on_change(Box::new(move |_, _| {
+        panel.hub.on_change(Box::new(move |old, new| {
             if let Some(panel) = this.upgrade() {
                 panel.show_settings();
+                // The first hub listener has switched the language by now.
+                if old.language != new.language {
+                    panel.show_texts();
+                }
             }
         }));
         // A move finishing or an undo starting while the panel is open.
@@ -157,7 +162,7 @@ impl PanelController {
             let window = QuickPanel::new().expect("cannot create the quick panel");
             // The same white (or black) page as the Settings window.
             window.global::<Theme>().set_clean(true);
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             window.set_screen_text_supported(self.screen_text_supported);
             window.set_paused(self.paused.get());
             // A new native window: AppKit has yet to be told to keep it.
@@ -295,6 +300,23 @@ impl PanelController {
         if let Some(pocket) = self.pocket.upgrade() {
             pocket.open_view(view);
         }
+    }
+
+    /// Writes the text Rust makes for an open panel again, in the language
+    /// now in use: the Pocket count, the Undo row and the Keep Awake status.
+    fn show_texts(&self) {
+        self.show_pocket_count();
+        self.show_undo();
+        self.show_awake();
+    }
+
+    /// Shows how many items the Pocket holds on its tile.
+    fn show_pocket_count(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
+        let count = self.pocket.upgrade().map_or(0, |p| p.item_count());
+        window.set_pocket_count(pocket_count_text(count).into());
     }
 
     /// Shows what Undo would undo now, or hides the Undo row.
@@ -436,8 +458,7 @@ impl PanelController {
         self.hub.refresh_from_disk();
         self.show_settings();
         show_menu_colors(&*self.platform, &window.global::<Theme>());
-        let count = self.pocket.upgrade().map_or(0, |p| p.item_count());
-        window.set_pocket_count(pocket_count_text(count).into());
+        self.show_pocket_count();
         self.show_undo();
         self.show_awake();
         let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
@@ -571,9 +592,12 @@ impl PanelController {
 /// What the Pocket tile says about the Pocket holding `n` items.
 pub fn pocket_count_text(n: usize) -> String {
     match n {
-        0 => "Empty".into(),
-        1 => "1 item".into(),
-        n => format!("{n} items"),
+        0 => tr("Empty"),
+        n => trn(
+            "{n} item",
+            "{n} items",
+            u64::try_from(n).unwrap_or(u64::MAX),
+        ),
     }
 }
 
@@ -789,6 +813,21 @@ mod tests {
         assert_eq!(pocket_count_text(0), "Empty");
         assert_eq!(pocket_count_text(1), "1 item");
         assert_eq!(pocket_count_text(3), "3 items");
+    }
+
+    #[test]
+    fn pocket_tile_counts_in_arabic_with_the_plural_form_of_each_count() {
+        vento_core::i18n::with_language("ar", || {
+            let text = pocket_count_text;
+            assert_eq!(text(0), "فارغ");
+            assert_eq!(text(1), "عنصر واحد");
+            assert_eq!(text(2), "عنصران");
+            assert_eq!(text(3), "3 عناصر");
+            assert_eq!(text(10), "10 عناصر");
+            assert_eq!(text(11), "11 عنصراً");
+            assert_eq!(text(99), "99 عنصراً");
+            assert_eq!(text(100), "100 عنصر");
+        });
     }
 
     #[test]

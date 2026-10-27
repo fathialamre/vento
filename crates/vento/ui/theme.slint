@@ -11,6 +11,13 @@
 
 import { Palette } from "std-widgets.slint";
 
+// The font Arabic is shown in (SIL Open Font License, see
+// fonts/LICENSE-ibm-plex), one file per weight the windows use.
+import "fonts/IBMPlexSansArabic-Regular.ttf";
+import "fonts/IBMPlexSansArabic-Medium.ttf";
+import "fonts/IBMPlexSansArabic-SemiBold.ttf";
+import "fonts/IBMPlexSansArabic-Bold.ttf";
+
 // One theme's colours in one look (light or dark), as the Quick panel and
 // the Settings window use them.
 struct ThemeColors {
@@ -29,6 +36,10 @@ struct ThemeColors {
 }
 
 export global Theme {
+    // Whether a line of text reads right to left on its own, from its first
+    // strong letter (Rust answers, for every window): for `LineText`.
+    pure callback text-is-rtl(string) -> bool;
+
     in property <bool> system-colors: false;
     in property <bool> system-dark;
     in property <color> system-bg;
@@ -44,6 +55,12 @@ export global Theme {
     // The Theme setting, as `ThemeName::ALL` lists it: 0 Vento, 1 GitHub,
     // 2 Catppuccin, 3 Rosé Pine, 4 Tokyo Night, 5 Gruvbox, 6 Nord.
     in property <int> palette: 0;
+    // Whether the interface language is written right to left (set by
+    // `appearance::apply` from `i18n::current`).
+    in property <bool> rtl: false;
+    // The interface language's font family; empty for the system's own font
+    // (set with `rtl`).
+    in property <string> font-family: "";
 
     property <[ThemeColors]> lights: [
         { bg: #ffffff, card: #f5f5f7, surface: #f0f0f2, selected: #ffffff, text: #1d1d1f, muted: #6e6e73, line: #e5e5ea, accent: #ff6a1a },
@@ -102,4 +119,74 @@ export global Theme {
     out property <color> switch-off: root.use-system ? root.tint(0.22) : root.dark ? #4a4a50 : #c9c9ce;
     out property <color> danger: root.dark ? #ff7b72 : #d93a2f;
     out property <color> accent: root.use-clean ? root.pal.accent : #ff6a1a;
+}
+
+// One line of text that may hold a name in any script, cut where it meets
+// its width with an ellipsis. Slint 1.18 elides only a left-to-right line
+// well: a line that reads right to left (an Arabic file name, or Arabic
+// text) is drawn past its box with no ellipsis, over whatever lies beside
+// it. Such a line, when it is too wide, is clipped instead (which keeps its
+// start, at the right, in sight) and ends in an ellipsis at the left. Any
+// other line is an ordinary eliding Text.
+export component LineText {
+    in property <string> text;
+    in property <length> font-size;
+    in property <int> font-weight;
+    in property <brush> color;
+    in property <TextHorizontalAlignment> horizontal-alignment;
+    in property <TextVerticalAlignment> vertical-alignment;
+    in property <TextWrap> wrap;
+
+    // The line reads right to left and is wider than its box.
+    property <bool> cut: Theme.text-is-rtl(root.text) && whole.preferred-width > root.width;
+
+    // As a Text with `overflow: elide` would ask of a layout.
+    min-width: min(whole.preferred-width, dots.preferred-width);
+    preferred-width: whole.preferred-width;
+    min-height: whole.preferred-height;
+    preferred-height: whole.preferred-height;
+
+    // The whole line, measured only.
+    whole := Text {
+        visible: false;
+        accessible-role: none;
+        text: root.text;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+    }
+
+    // Where the line's top lies in the box, by the vertical alignment.
+    property <length> line-top: root.vertical-alignment == TextVerticalAlignment.top ? 0px
+        : root.vertical-alignment == TextVerticalAlignment.bottom ? root.height - whole.preferred-height
+        : (root.height - whole.preferred-height) / 2;
+
+    // A clipped line is clipped to its own box: that box reaches a little
+    // above and below the line, so the marks over and under Arabic letters
+    // stay whole, and the line stays where it was.
+    Text {
+        x: root.cut ? dots.preferred-width : 0px;
+        y: root.cut ? root.line-top - 4px : 0px;
+        width: root.width - self.x;
+        height: root.cut ? whole.preferred-height + 8px : root.height;
+        text: root.text;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        color: root.color;
+        horizontal-alignment: root.horizontal-alignment;
+        vertical-alignment: root.cut ? TextVerticalAlignment.center : root.vertical-alignment;
+        wrap: root.wrap;
+        overflow: root.cut ? TextOverflow.clip : TextOverflow.elide;
+    }
+
+    dots := Text {
+        visible: root.cut;
+        accessible-role: none;
+        x: 0px;
+        height: root.height;
+        text: "…";
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        color: root.color;
+        vertical-alignment: root.vertical-alignment;
+    }
 }

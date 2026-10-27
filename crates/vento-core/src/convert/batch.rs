@@ -1,31 +1,58 @@
 //! Converting a batch of images, each into a new file next to its original.
 
 use std::ffi::OsString;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::archive::{Made, Partial, Progress, claim_partial_file};
 use crate::fileops::{Fingerprint, place_partial};
+use crate::i18n::errors::io_reason;
+use crate::i18n::tr;
 
 use super::ImageFormat;
 
-/// Why one image was not converted.
-#[derive(thiserror::Error, Debug)]
+/// Why one image was not converted. The texts in the `String` fields come
+/// from the system's image code and stay English.
+#[derive(Debug)]
 pub enum ConvertError {
     /// The file cannot be decoded as an image.
-    #[error("not an image")]
     NotAnImage,
     /// The image is readable but this conversion is not supported.
-    #[error("{0}")]
     Unsupported(String),
-    #[error("{0}")]
-    Io(#[from] io::Error),
+    /// A filesystem call failed.
+    Io(io::Error),
     /// The encoder failed.
-    #[error("{0}")]
     Encode(String),
-    #[error("cancelled")]
+    /// The user cancelled the job.
     Cancelled,
+}
+
+impl fmt::Display for ConvertError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConvertError::NotAnImage => f.write_str(&tr("not an image")),
+            ConvertError::Unsupported(detail) | ConvertError::Encode(detail) => f.write_str(detail),
+            ConvertError::Io(e) => f.write_str(&io_reason(e)),
+            ConvertError::Cancelled => f.write_str(&tr("cancelled")),
+        }
+    }
+}
+
+impl std::error::Error for ConvertError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ConvertError::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<io::Error> for ConvertError {
+    fn from(e: io::Error) -> Self {
+        ConvertError::Io(e)
+    }
 }
 
 /// Reads and writes images; the real one lives with the platform code.
@@ -550,5 +577,36 @@ mod tests {
             output_name(Path::new("a.HEIC"), ImageFormat::Tiff),
             OsString::from("a.tiff")
         );
+    }
+
+    #[test]
+    fn errors_read_in_english_and_arabic() {
+        use crate::i18n::with_language;
+        let all = || {
+            vec![
+                ConvertError::NotAnImage,
+                ConvertError::Unsupported("no alpha".into()),
+                ConvertError::Io(io::Error::from(io::ErrorKind::NotFound)),
+                ConvertError::Encode("bad frame".into()),
+                ConvertError::Cancelled,
+            ]
+        };
+        let texts = || -> Vec<String> { all().iter().map(ToString::to_string).collect() };
+        assert_eq!(
+            texts(),
+            [
+                "not an image",
+                "no alpha",
+                "not found",
+                "bad frame",
+                "cancelled"
+            ]
+        );
+        with_language("ar", || {
+            assert_eq!(
+                texts(),
+                ["ليست صورة", "no alpha", "غير موجود", "bad frame", "أُلغي"]
+            );
+        });
     }
 }

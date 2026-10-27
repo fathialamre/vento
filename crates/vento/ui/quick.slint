@@ -5,7 +5,7 @@
 // follows the Appearance setting through `Theme`. The settings themselves
 // are in the Settings window (`settings_window.slint`).
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import { Notice } from "settings_pages.slint";
 import { AwakeChips, PanelIcons, PanelOutline, Separator, TextButton } from "controls.slint";
@@ -45,7 +45,7 @@ component ActionTile inherits Rectangle {
         spacing: 2px;
 
         HorizontalLayout {
-            alignment: start;
+            alignment: Theme.rtl ? end : start;
             padding-bottom: 4px;
 
             Image {
@@ -56,24 +56,45 @@ component ActionTile inherits Rectangle {
             }
         }
 
-        Text {
+        LineText {
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             font-weight: 600;
             color: Theme.text;
-            overflow: elide;
         }
 
         // Room for two lines whatever it says, so the tiles keep their
         // height as Keep Awake starts, counts down and stops.
-        Text {
+        Rectangle {
             height: 30px;
-            text: root.detail;
-            font-size: 12px;
-            color: Theme.muted;
-            wrap: word-wrap;
-            overflow: elide;
-            vertical-alignment: top;
+
+            // Slint 1.18 drops the first line of right-to-left text that it
+            // wraps and elides at the top, and clipping at the top cuts the
+            // marks above an Arabic first line (عنصراً). In a right-to-left
+            // language the text is clipped instead, in a box that reaches a
+            // little above the first line and ends at the last one. That
+            // box can be taller than the two lines the slot has room for,
+            // so the slot's own box (the 4px above it and the slot itself)
+            // clips it: a third line is cut there, not drawn past the tile.
+            Rectangle {
+                y: Theme.rtl ? -4px : 0px;
+                width: parent.width;
+                height: Theme.rtl ? parent.height + 4px : parent.height;
+                clip: Theme.rtl;
+
+                Text {
+                    width: parent.width;
+                    height: Theme.rtl ? self.preferred-height + 4px : parent.height;
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: root.detail;
+                    font-size: 12px;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                    overflow: Theme.rtl ? TextOverflow.clip : TextOverflow.elide;
+                    vertical-alignment: Theme.rtl ? TextVerticalAlignment.bottom : TextVerticalAlignment.top;
+                }
+            }
         }
     }
 
@@ -99,12 +120,13 @@ component FooterItem inherits Rectangle {
     accessible-action-default => { self.clicked(); }
 
     HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 8px;
+        padding-left: Theme.rtl ? 8px : 6px;
+        padding-right: Theme.rtl ? 6px : 8px;
         spacing: 6px;
 
         // A fixed-size image sits at the top of a row; centre it on the label.
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: center;
 
             Image {
@@ -116,6 +138,8 @@ component FooterItem inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             color: root.tint;
@@ -136,7 +160,7 @@ component DoneButton inherits Rectangle {
     border-radius: 8px;
     background: touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent);
     accessible-role: button;
-    accessible-label: "Done";
+    accessible-label: @tr("Done");
     accessible-action-default => { self.clicked(); }
 
     HorizontalLayout {
@@ -144,7 +168,8 @@ component DoneButton inherits Rectangle {
         padding-right: 18px;
 
         Text {
-            text: "Done";
+            horizontal-alignment: Theme.rtl ? right : left;
+            text: @tr("Done");
             font-size: 13px;
             font-weight: 600;
             color: white;
@@ -158,6 +183,7 @@ component DoneButton inherits Rectangle {
 }
 
 export component QuickPanel inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
@@ -273,6 +299,7 @@ export component QuickPanel inherits Window {
                     spacing: 8px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 3 : 0;
                         alignment: center;
 
                         Rectangle {
@@ -284,7 +311,9 @@ export component QuickPanel inherits Window {
                     }
 
                     Text {
-                        text: root.paused ? "Vento is paused" : "Vento is on";
+                        layout-order: Theme.rtl ? 2 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: root.paused ? @tr("Vento is paused") : @tr("Vento is on");
                         font-size: 13px;
                         font-weight: 600;
                         color: Theme.text;
@@ -293,10 +322,11 @@ export component QuickPanel inherits Window {
                     }
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 1 : 0;
                         alignment: center;
 
                         TextButton {
-                            label: root.paused ? "Resume" : "Pause";
+                            label: root.paused ? @tr("Resume") : @tr("Pause");
                             icon: root.paused ? PanelIcons.resume : PanelIcons.pause;
                             has-icon: true;
                             clicked => { root.pause-clicked(); }
@@ -304,14 +334,16 @@ export component QuickPanel inherits Window {
                     }
                 }
 
+                // The columns swap in a right-to-left language, so the first
+                // tile is at the top right.
                 GridLayout {
                     spacing: 10px;
 
                     if root.screen-text-supported: ActionTile {
                         row: 0;
-                        col: 0;
+                        col: Theme.rtl ? 1 : 0;
                         icon: PanelIcons.scan-text;
-                        label: "Copy text";
+                        label: @tr("Copy text");
                         detail: root.screen-text-shortcut;
                         enabled: !root.paused;
                         clicked => { root.copy-from-screen-clicked(); }
@@ -319,19 +351,19 @@ export component QuickPanel inherits Window {
 
                     ActionTile {
                         row: 0;
-                        col: root.shift;
+                        col: Theme.rtl ? 1 - root.shift : root.shift;
                         icon: Icons.clipboard;
-                        label: "Clipboard";
-                        detail: root.clip-history ? root.clip-shortcut : "Off";
+                        label: @tr("Clipboard");
+                        detail: root.clip-history ? root.clip-shortcut : @tr("Off");
                         enabled: root.clip-history && !root.paused;
                         clicked => { root.clipboard-clicked(); }
                     }
 
                     ActionTile {
                         row: root.shift;
-                        col: 1 - root.shift;
+                        col: Theme.rtl ? root.shift : 1 - root.shift;
                         icon: Icons.pocket;
-                        label: "Pocket";
+                        label: @tr("Pocket");
                         detail: root.pocket-count;
                         enabled: !root.paused;
                         clicked => { root.pocket-clicked(); }
@@ -339,9 +371,9 @@ export component QuickPanel inherits Window {
 
                     ActionTile {
                         row: 1;
-                        col: root.shift;
+                        col: Theme.rtl ? 1 - root.shift : root.shift;
                         icon: PanelIcons.awake;
-                        label: "Keep Awake";
+                        label: @tr("Keep Awake");
                         detail: root.awake-status;
                         active: root.awake-on;
                         clicked => { root.awake-tile-clicked(); }
@@ -365,6 +397,7 @@ export component QuickPanel inherits Window {
                             spacing: 6px;
 
                             VerticalLayout {
+                                layout-order: Theme.rtl ? 2 : 0;
                                 alignment: center;
 
                                 Image {
@@ -376,7 +409,9 @@ export component QuickPanel inherits Window {
                             }
 
                             Text {
-                                text: "Keep Awake";
+                                layout-order: Theme.rtl ? 1 : 0;
+                                horizontal-alignment: Theme.rtl ? right : left;
+                                text: @tr("Keep Awake");
                                 font-size: 13px;
                                 font-weight: 600;
                                 color: Theme.text;
@@ -400,30 +435,33 @@ export component QuickPanel inherits Window {
                     spacing: 8px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 3 : 0;
                         alignment: center;
 
                         Image {
-                            source: Icons.undo;
+                            source: Theme.rtl ? Icons.undo-rtl : Icons.undo;
                             width: 14px;
                             height: 14px;
                             colorize: Theme.muted;
                         }
                     }
 
-                    Text {
+                    LineText {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.undo-text;
                         font-size: 12px;
                         color: Theme.text;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
-                        overflow: elide;
                     }
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 1 : 0;
                         alignment: center;
 
                         TextButton {
-                            label: "Undo";
+                            label: @tr("Undo");
                             clicked => { root.undo-clicked(); }
                         }
                     }
@@ -433,22 +471,26 @@ export component QuickPanel inherits Window {
 
                 HorizontalLayout {
                     FooterItem {
+                        layout-order: Theme.rtl ? 4 : 0;
                         icon: PanelIcons.general;
-                        label: "Settings…";
+                        label: @tr("Settings…");
                         clicked => { root.settings-clicked(); }
                     }
 
                     FooterItem {
+                        layout-order: Theme.rtl ? 3 : 0;
                         icon: PanelIcons.quit;
-                        label: "Quit";
+                        label: @tr("Quit");
                         clicked => { root.quit-clicked(); }
                     }
 
                     Rectangle {
+                        layout-order: Theme.rtl ? 2 : 0;
                         horizontal-stretch: 1;
                     }
 
                     DoneButton {
+                        layout-order: Theme.rtl ? 1 : 0;
                         clicked => { root.close-requested(); }
                     }
                 }

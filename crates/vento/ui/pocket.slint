@@ -1,8 +1,11 @@
 // The Pocket island: a black, frameless window at the top centre of the
 // screen. The window always has the expanded size; the collapsed wings (or
 // the pill on screens without a notch) are drawn inside it, and everything
-// outside the drawn shape is transparent.
+// outside the drawn shape is transparent. In a right-to-left language
+// everything inside the island is mirrored (the island itself stays where
+// it is on the screen); its colours stay its own, whatever the theme.
 
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 
 export struct PocketCell { name: string, icon: image, missing: bool, selected: bool }
@@ -96,7 +99,7 @@ component DashedBox inherits Rectangle {
 }
 
 // Undo after a removal or a clear, with the time left (`left`, 1 to 0) as
-// a ring and `secs` below it; `compact`, a smaller ring at the right with
+// a ring and `secs` below it; `compact`, a smaller ring at the end with
 // `secs` before it.
 component UndoRing inherits Rectangle {
     in property <float> left;
@@ -112,7 +115,7 @@ component UndoRing inherits Rectangle {
     height: root.compact ? root.ring-d : 68px;
 
     ring := Rectangle {
-        x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
+        x: !root.compact ? (parent.width - self.width) / 2 : (Theme.rtl ? 0px : parent.width - self.width);
         y: 0px;
         width: root.ring-d;
         height: root.ring-d;
@@ -152,7 +155,7 @@ component UndoRing inherits Rectangle {
         }
 
         Image {
-            source: Icons.undo;
+            source: Theme.rtl ? Icons.undo-rtl : Icons.undo;
             colorize: root.accent;
             width: root.compact ? 14px : 22px;
             height: self.width;
@@ -162,14 +165,14 @@ component UndoRing inherits Rectangle {
     }
 
     Text {
-        x: 0px;
+        x: root.compact && Theme.rtl ? ring.width + 5px : 0px;
         y: root.compact ? 0px : 50px;
-        width: root.compact ? ring.x - 5px : parent.width;
+        width: root.compact ? parent.width - ring.width - 5px : parent.width;
         height: root.compact ? root.ring-d : 16px;
-        text: "Undo \{root.secs}s";
+        text: @tr("Undo {}s", root.secs);
         color: undo-touch.has-hover ? white : #ffffffb0;
         font-size: 11px;
-        horizontal-alignment: root.compact ? right : center;
+        horizontal-alignment: !root.compact ? center : (Theme.rtl ? TextHorizontalAlignment.left : right);
         vertical-alignment: center;
     }
 
@@ -207,6 +210,7 @@ component SwitchButton inherits Rectangle {
         spacing: 6px;
 
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: center;
 
             Image {
@@ -218,6 +222,8 @@ component SwitchButton inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.count;
             color: root.current ? #ffffffb8 : #ffffff70;
             font-size: 12px;
@@ -330,7 +336,7 @@ component FilterButton inherits Rectangle {
     border-radius: 12px;
     background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
     accessible-role: button;
-    accessible-label: "\{root.label} \{root.count}";
+    accessible-label: @tr("{} {n}" | "{} {n}" % root.count, root.label);
     accessible-action-default => {
         root.clicked();
     }
@@ -341,6 +347,7 @@ component FilterButton inherits Rectangle {
         spacing: 5px;
 
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: center;
 
             Image {
@@ -352,6 +359,8 @@ component FilterButton inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.count;
             color: root.current ? white : #ffffff80;
             font-size: 11px;
@@ -367,28 +376,70 @@ component FilterButton inherits Rectangle {
     }
 }
 
+// A Flickable that scrolls sideways, its content laid out from the start of
+// the line within `span`: from the left, or from the right in a
+// right-to-left language. It opens at the content's start (`start-x`), and
+// `to-start` goes back there. In a right-to-left language content that
+// grows grows at the left of `span`, so the view moves with it and what is
+// in view stays still, as it does when content grows at the right of a
+// left-to-right row. The view is a plain value, not a binding: the
+// Flickable itself writes it when a trackpad scrolls it.
+component SideFlickable inherits Flickable {
+    // The width the content is laid out in: the Flickable's, or the
+    // content's when it is wider.
+    out property <length> span: max(self.width, self.content-width);
+    // The view at the content's start.
+    out property <length> start-x: Theme.rtl ? min(0px, self.width - self.content-width) : 0px;
+    // `span` as the view last followed it.
+    property <length> seen-span;
+    property <bool> rtl: Theme.rtl;
+
+    public function to-start() {
+        self.seen-span = self.span;
+        self.content-x = self.start-x;
+    }
+
+    init => {
+        self.to-start();
+    }
+    changed rtl => {
+        self.to-start();
+    }
+    changed span => {
+        if (self.rtl) {
+            // Content narrower than the view would make the lower bound
+            // positive: the view never goes right of 0.
+            self.content-x = min(0px, max(self.width - self.content-width,
+                min(0px, self.content-x - (self.span - self.seen-span))));
+        }
+        self.seen-span = self.span;
+    }
+}
+
 // A row of chips (its children), scrolling sideways when they don't fit, by
-// trackpad or by a mouse wheel's vertical scroll.
+// trackpad or by a mouse wheel's vertical scroll. The chips start at the
+// start of the line: in a right-to-left language at the right, scrolled to
+// the right end, and give each a `layout-order` that reverses them.
 component ChipRow inherits Rectangle {
-    flick := Flickable {
+    flick := SideFlickable {
         width: root.width;
         height: root.height;
         interactive: false;
         content-width: chips-layout.preferred-width;
 
         TouchArea {
-            width: max(flick.width, chips-layout.preferred-width);
+            width: flick.span;
             height: flick.height;
             scroll-event(e) => {
                 if e.delta-x == 0 && e.delta-y != 0 && flick.content-width > flick.width {
-                    flick.content-x = max(flick.width - flick.content-width, min(0px, flick.content-x + e.delta-y));
+                    flick.content-x = max(flick.width - flick.content-width, min(0px, flick.content-x + (Theme.rtl ? -e.delta-y : e.delta-y)));
                     return accept;
                 }
                 return reject;
             }
 
             chips-layout := HorizontalLayout {
-                alignment: start;
+                alignment: Theme.rtl ? end : start;
                 spacing: 4px;
 
                 @children
@@ -406,7 +457,7 @@ component ClearButton inherits Rectangle {
     border-radius: self.width / 2;
     background: touch.has-hover ? #2c2c32 : #1d1d21;
     accessible-role: button;
-    accessible-label: "Clear";
+    accessible-label: @tr("Clear");
     accessible-action-default => {
         root.clicked();
     }
@@ -450,7 +501,7 @@ component ClipList inherits Rectangle {
     property <length> row-h: 36px;
     property <length> head-h: 24px;
     // The filters' names, in the order of `counts`, for VoiceOver.
-    property <[string]> filter-names: ["All", "Pinned", "Text", "Links", "Images", "Files"];
+    property <[string]> filter-names: [@tr("All"), @tr("Pinned"), @tr("Text"), @tr("Links"), @tr("Images"), @tr("Files")];
 
     ChipRow {
         x: root.pad;
@@ -459,6 +510,7 @@ component ClipList inherits Rectangle {
         height: root.head-h;
 
         for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
+            layout-order: Theme.rtl ? -i : 0;
             icon: f;
             label: root.filter-names[i];
             count: root.counts[i];
@@ -497,7 +549,7 @@ component ClipList inherits Rectangle {
                     opacity: row.missing ? 0.4 : 1.0;
 
                     Rectangle {
-                        x: 4px;
+                        x: Theme.rtl ? parent.width - self.width - 4px : 4px;
                         y: (parent.height - self.height) / 2;
                         width: 28px;
                         height: 28px;
@@ -523,24 +575,26 @@ component ClipList inherits Rectangle {
                         }
                     }
 
-                    Text {
-                        x: 42px;
-                        width: parent.width - self.x - (touch.has-hover ? actions.width + 12px : row.pinned ? 70px : 50px);
+                    LineText {
+                        // Room left at the end for the age (and pin), or the buttons.
+                        property <length> end-room: touch.has-hover ? actions.width + 12px : row.pinned ? 70px : 50px;
+                        x: Theme.rtl ? self.end-room : 42px;
+                        width: parent.width - 42px - self.end-room;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: row.label;
                         color: #e6e6e6;
                         font-size: 13px;
-                        overflow: elide;
                         wrap: no-wrap;
                         vertical-alignment: center;
                     }
 
                     if !touch.has-hover: Text {
-                        x: parent.width - self.width - 8px;
+                        x: Theme.rtl ? 8px : parent.width - self.width - 8px;
                         width: 36px;
                         text: row.age;
                         color: #ffffff70;
                         font-size: 11px;
-                        horizontal-alignment: right;
+                        horizontal-alignment: Theme.rtl ? left : right;
                         vertical-alignment: center;
                     }
 
@@ -551,7 +605,7 @@ component ClipList inherits Rectangle {
                         colorize: root.accent;
                         width: 13px;
                         height: 13px;
-                        x: parent.width - 8px - 36px - 6px - self.width;
+                        x: Theme.rtl ? 8px + 36px + 6px : parent.width - 8px - 36px - 6px - self.width;
                         y: (parent.height - self.height) / 2;
                     }
                 }
@@ -559,7 +613,7 @@ component ClipList inherits Rectangle {
                 // Children of the row's TouchArea, so hovering them keeps the
                 // row hovered, and they take the press before it does.
                 actions := Rectangle {
-                    x: parent.width - self.width - 6px;
+                    x: Theme.rtl ? 6px : parent.width - self.width - 6px;
                     y: (parent.height - self.height) / 2;
                     width: row.missing ? 54px : 84px;
                     height: 24px;
@@ -568,7 +622,7 @@ component ClipList inherits Rectangle {
                     // Pins the entry (kept until removed by hand) or unpins
                     // it; filled with the accent while pinned.
                     Rectangle {
-                        x: 0px;
+                        x: Theme.rtl ? parent.width - self.width : 0px;
                         width: 24px;
                         height: 24px;
                         border-radius: 12px;
@@ -594,13 +648,13 @@ component ClipList inherits Rectangle {
 
                     // Adds the entry to the Pocket.
                     if !row.missing: Rectangle {
-                        x: 30px;
+                        x: Theme.rtl ? parent.width - self.width - 30px : 30px;
                         width: 24px;
                         height: 24px;
                         border-radius: 12px;
                         background: pocket-touch.has-hover ? #55555c : #3a3a40;
                         accessible-role: button;
-                        accessible-label: "Add to Pocket";
+                        accessible-label: @tr("Add to Pocket");
 
                         Image {
                             source: Icons.pocket;
@@ -619,7 +673,7 @@ component ClipList inherits Rectangle {
                     }
 
                     Rectangle {
-                        x: parent.width - self.width;
+                        x: Theme.rtl ? 0px : parent.width - self.width;
                         width: 24px;
                         height: 24px;
                         border-radius: 12px;
@@ -647,7 +701,7 @@ component ClipList inherits Rectangle {
 
     // A scrollbar in the gap beside the list, once the rows overflow it.
     if list.content-height > list.height: ListScrollbar {
-        x: list.x + list.width + 3px;
+        x: Theme.rtl ? list.x - 3px - self.width : list.x + list.width + 3px;
         y: list.y;
         height: list.height;
         content-h: list.content-height;
@@ -660,8 +714,8 @@ component ClipList inherits Rectangle {
         width: list.width;
         height: list.height;
         text: root.filter == 0
-            ? "Copy something and it shows up here"
-            : root.filter == 1 ? "Pin a copy to keep it here" : "Nothing of this kind yet";
+            ? @tr("Copy something and it shows up here")
+            : root.filter == 1 ? @tr("Pin a copy to keep it here") : @tr("Nothing of this kind yet");
         color: #ffffff66;
         font-size: 13px;
         font-weight: 600;
@@ -672,7 +726,7 @@ component ClipList inherits Rectangle {
 
 // The Pocket's column beside its items: "Drag all" with the item count and
 // Clear below it, or, after a removal or a clear, Undo with the time left.
-// `compact`, the same side by side and smaller, at the right of the bottom
+// `compact`, the same side by side and smaller, at the end of the bottom
 // bar.
 component PocketSide inherits Rectangle {
     in property <bool> compact;
@@ -695,7 +749,8 @@ component PocketSide inherits Rectangle {
 
     if root.count > 0 && !root.undo-active: Rectangle {
         Rectangle {
-            x: root.compact ? parent.width - root.clear-d - 6px - self.width : (parent.width - self.width) / 2;
+            x: !root.compact ? (parent.width - self.width) / 2
+                : (Theme.rtl ? root.clear-d + 6px : parent.width - root.clear-d - 6px - self.width);
             y: 0px;
             width: root.compact ? 28px : 42px;
             height: self.width;
@@ -714,7 +769,8 @@ component PocketSide inherits Rectangle {
             Rectangle {
                 width: root.count > 99 ? self.height + 10px : root.count > 9 ? self.height + 6px : self.height;
                 height: root.compact ? 14px : 18px;
-                x: parent.width - self.width + (root.compact ? 3px : 4px);
+                // The count, on the button's top corner at the end.
+                x: Theme.rtl ? -(root.compact ? 3px : 4px) : parent.width - self.width + (root.compact ? 3px : 4px);
                 y: root.compact ? -3px : -4px;
                 border-radius: self.height / 2;
                 background: white;
@@ -747,7 +803,7 @@ component PocketSide inherits Rectangle {
         }
 
         ClearButton {
-            x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
+            x: !root.compact ? (parent.width - self.width) / 2 : (Theme.rtl ? 0px : parent.width - self.width);
             y: root.compact ? 0px : 50px;
             width: root.clear-d;
             icon-size: root.compact ? 14px : 16px;
@@ -781,7 +837,7 @@ component KindChip inherits Rectangle {
     border-radius: 12px;
     background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
     accessible-role: button;
-    accessible-label: "\{root.label} \{root.count}";
+    accessible-label: @tr("{} {n}" | "{} {n}" % root.count, root.label);
     accessible-action-default => {
         root.clicked();
     }
@@ -792,6 +848,8 @@ component KindChip inherits Rectangle {
         spacing: 5px;
 
         Text {
+            layout-order: Theme.rtl ? 2 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             color: root.current ? white : #ffffffc0;
             font-size: 11px;
@@ -800,6 +858,8 @@ component KindChip inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.count;
             color: root.current ? #ffffffc0 : #ffffff70;
             font-size: 11px;
@@ -853,31 +913,32 @@ component PocketList inherits Rectangle {
 
     // Back to the cells.
     back-button := Rectangle {
-        x: root.pad;
+        x: Theme.rtl ? list.x + list.width - self.width : root.pad;
         y: 8px;
         width: 74px;
         height: root.head-h;
         border-radius: 12px;
         background: back-touch.has-hover ? #2c2c32 : root.item-fill;
         accessible-role: button;
-        accessible-label: "Back to Pocket";
+        accessible-label: @tr("Back to Pocket");
         accessible-action-default => {
             root.back();
         }
 
         Image {
-            source: Icons.back;
+            source: Theme.rtl ? Icons.back-rtl : Icons.back;
             colorize: back-touch.has-hover ? white : #ffffffc0;
             width: 14px;
             height: 14px;
-            x: 7px;
+            x: Theme.rtl ? parent.width - self.width - 7px : 7px;
             y: (parent.height - self.height) / 2;
         }
 
         Text {
-            x: 23px;
-            width: parent.width - self.x - 8px;
-            text: "Pocket";
+            x: Theme.rtl ? 8px : 23px;
+            width: parent.width - 23px - 8px;
+            horizontal-alignment: Theme.rtl ? right : left;
+            text: @tr("Pocket");
             color: back-touch.has-hover ? white : #ffffffc0;
             font-size: 11px;
             font-weight: 600;
@@ -893,12 +954,13 @@ component PocketList inherits Rectangle {
 
     // The chips, scrolling sideways when they don't fit.
     ChipRow {
-        x: back-button.x + back-button.width + 6px;
+        x: Theme.rtl ? list.x : back-button.x + back-button.width + 6px;
         y: 8px;
         width: list.width - back-button.width - 6px;
         height: root.head-h;
 
         for chip[i] in root.chips: KindChip {
+            layout-order: Theme.rtl ? -i : 0;
             label: chip.label;
             count: chip.count;
             current: root.filter == i;
@@ -909,7 +971,7 @@ component PocketList inherits Rectangle {
     }
 
     list := Flickable {
-        x: root.pad;
+        x: Theme.rtl ? parent.width - root.pad - self.width : root.pad;
         y: 8px + root.head-h + 6px;
         width: parent.width - 2 * root.pad - (root.side ? root.side-w + 10px : 0px);
         height: parent.height - self.y - 8px;
@@ -948,7 +1010,7 @@ component PocketList inherits Rectangle {
 
                     if !row.missing: Image {
                         source: row.icon;
-                        x: 6px;
+                        x: Theme.rtl ? parent.width - self.width - 6px : 6px;
                         y: (parent.height - self.height) / 2;
                         width: 24px;
                         height: 24px;
@@ -957,19 +1019,21 @@ component PocketList inherits Rectangle {
                     if row.missing: Image {
                         source: row.icon;
                         colorize: white;
-                        x: 6px;
+                        x: Theme.rtl ? parent.width - self.width - 6px : 6px;
                         y: (parent.height - self.height) / 2;
                         width: 24px;
                         height: 24px;
                     }
 
-                    Text {
-                        x: 40px;
-                        width: parent.width - self.x - (touch.has-hover ? 40px : 12px);
+                    LineText {
+                        // Room left at the end, for the x on hover.
+                        property <length> end-room: touch.has-hover ? 40px : 12px;
+                        x: Theme.rtl ? self.end-room : 40px;
+                        width: parent.width - 40px - self.end-room;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: row.name;
                         color: #e6e6e6;
                         font-size: 13px;
-                        overflow: elide;
                         wrap: no-wrap;
                         vertical-alignment: center;
                     }
@@ -978,7 +1042,7 @@ component PocketList inherits Rectangle {
                 if row.missing: Image {
                     source: Icons.missing;
                     colorize: #ffcc33;
-                    x: 20px;
+                    x: Theme.rtl ? parent.width - self.width - 20px : 20px;
                     y: parent.height / 2;
                     width: 12px;
                     height: 12px;
@@ -987,14 +1051,14 @@ component PocketList inherits Rectangle {
                 // A child of the row's TouchArea, so hovering it keeps the
                 // row hovered, and it takes the press before the row does.
                 if touch.has-hover: Rectangle {
-                    x: parent.width - self.width - 6px;
+                    x: Theme.rtl ? 6px : parent.width - self.width - 6px;
                     y: (parent.height - self.height) / 2;
                     width: 24px;
                     height: 24px;
                     border-radius: 12px;
                     background: remove-touch.has-hover ? #55555c : #3a3a40;
                     accessible-role: button;
-                    accessible-label: "Remove";
+                    accessible-label: @tr("Remove");
                     accessible-action-default => {
                         root.remove(row.id);
                     }
@@ -1020,7 +1084,7 @@ component PocketList inherits Rectangle {
 
     // A scrollbar in the gap beside the list, once the rows overflow it.
     if list.content-height > list.height: ListScrollbar {
-        x: list.x + list.width + 3px;
+        x: Theme.rtl ? list.x - 3px - self.width : list.x + list.width + 3px;
         y: list.y;
         height: list.height;
         content-h: list.content-height;
@@ -1029,7 +1093,7 @@ component PocketList inherits Rectangle {
 
     // "Drag all" and Clear at the foot of the column.
     if root.side: PocketSide {
-        x: parent.width - root.pad - root.side-w;
+        x: Theme.rtl ? root.pad : parent.width - root.pad - root.side-w;
         y: parent.height - self.height - 8px;
         count: root.count;
         undo-active: root.undo-active;
@@ -1054,6 +1118,7 @@ component PocketList inherits Rectangle {
 }
 
 export component PocketIsland inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
@@ -1193,7 +1258,8 @@ export component PocketIsland inherits Window {
         border-bottom-left-radius: root.expanded ? 18px : (root.notch-style ? 10px : 14px);
         border-bottom-right-radius: self.border-bottom-left-radius;
 
-        // Collapsed: the stack icon on the left, the item count on the right;
+        // Collapsed: the stack icon on the left, the item count on the right
+        // (the other way round in a right-to-left language);
         // with an empty Pocket but some history, the clipboard icon alone;
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
         if !root.expanded: Rectangle {
@@ -1204,22 +1270,24 @@ export component PocketIsland inherits Window {
             }
 
             Image {
-                source: root.undo-active ? Icons.undo : root.clip-wing ? Icons.clipboard : Icons.pocket;
+                property <length> ltr-x: root.notch-style ? (root.wing - self.width) / 2
+                    : root.clip-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
+                source: !root.undo-active ? (root.clip-wing ? Icons.clipboard : Icons.pocket)
+                    : (Theme.rtl ? Icons.undo-rtl : Icons.undo);
                 colorize: root.undo-active ? root.accent : white;
                 width: 16px;
                 height: 16px;
-                x: root.notch-style ? (root.wing - self.width) / 2
-                    : root.clip-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
+                x: Theme.rtl ? parent.width - self.width - self.ltr-x : self.ltr-x;
                 y: (parent.height - self.height) / 2;
             }
 
             if root.undo-active || !root.clip-wing: Text {
-                text: root.undo-active ? "Undo" : root.count;
+                text: root.undo-active ? @tr("Undo") : root.count;
                 color: root.undo-active ? root.accent : white;
                 font-size: root.undo-active ? 11px : 13px;
                 font-weight: 600;
                 width: root.notch-style ? root.wing : 40px;
-                x: parent.width - self.width - (root.notch-style ? 0px : 4px);
+                x: Theme.rtl ? (root.notch-style ? 0px : 4px) : parent.width - self.width - (root.notch-style ? 0px : 4px);
                 height: parent.height;
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -1240,7 +1308,7 @@ export component PocketIsland inherits Window {
                 width: parent.width;
                 height: 112px;
 
-                row := Flickable {
+                row := SideFlickable {
                     // Under Scroll, a full Pocket's strip of every item (or of
                     // a clear's faded items while its Undo is offered, as long
                     // as nothing new came in: those are shown only in an empty
@@ -1252,7 +1320,8 @@ export component PocketIsland inherits Window {
                     // anyway.
                     property <bool> full-scroll: root.layout == 1 && root.count > 8;
 
-                    x: root.pad;
+
+                    x: Theme.rtl ? root.pad + root.side-room : root.pad;
                     y: 16px;
                     width: parent.width - 2 * root.pad - root.side-room;
                     height: 80px;
@@ -1263,7 +1332,7 @@ export component PocketIsland inherits Window {
                         + (root.count > root.cells.length && root.layout == 0 ? 48px : 0px);
 
                     changed full-scroll => {
-                        self.content-x = 0;
+                        self.to-start();
                     }
 
                     // Behind the cells, so it gets the wheel events they let
@@ -1275,7 +1344,7 @@ export component PocketIsland inherits Window {
                         height: row.height;
                         scroll-event(e) => {
                             if e.delta-x == 0 && e.delta-y != 0 && row.content-width > row.width {
-                                row.content-x = max(row.width - row.content-width, min(0px, row.content-x + e.delta-y));
+                                row.content-x = max(row.width - row.content-width, min(0px, row.content-x + (Theme.rtl ? -e.delta-y : e.delta-y)));
                                 return accept;
                             }
                             return reject;
@@ -1287,7 +1356,7 @@ export component PocketIsland inherits Window {
                         opacity: 0.35;
 
                         for ghost[i] in root.ghosts: Rectangle {
-                            x: i * root.cell-step;
+                            x: Theme.rtl ? row.span - i * root.cell-step - self.width : i * root.cell-step;
                             width: 64px;
                             height: 80px;
                             border-radius: 12px;
@@ -1301,7 +1370,7 @@ export component PocketIsland inherits Window {
                                 height: 40px;
                             }
 
-                            Text {
+                            LineText {
                                 text: ghost.name;
                                 x: 4px;
                                 y: 54px;
@@ -1309,7 +1378,6 @@ export component PocketIsland inherits Window {
                                 height: 18px;
                                 color: white;
                                 font-size: 11px;
-                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -1317,7 +1385,7 @@ export component PocketIsland inherits Window {
                     }
 
                     for cell[i] in root.cells: Rectangle {
-                        x: i * root.cell-step;
+                        x: Theme.rtl ? row.span - i * root.cell-step - self.width : i * root.cell-step;
                         width: 64px;
                         height: 80px;
                         border-radius: 12px;
@@ -1345,7 +1413,7 @@ export component PocketIsland inherits Window {
                                 height: 40px;
                             }
 
-                            Text {
+                            LineText {
                                 text: cell.name;
                                 x: 4px;
                                 y: 54px;
@@ -1353,7 +1421,6 @@ export component PocketIsland inherits Window {
                                 height: 18px;
                                 color: white;
                                 font-size: 11px;
-                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -1362,7 +1429,7 @@ export component PocketIsland inherits Window {
                         if cell.missing: Image {
                             source: Icons.missing;
                             colorize: #ffcc33;
-                            x: 40px;
+                            x: Theme.rtl ? parent.width - self.width - 40px : 40px;
                             y: 32px;
                             width: 16px;
                             height: 16px;
@@ -1391,7 +1458,7 @@ export component PocketIsland inherits Window {
 
                             // A child of the cell's TouchArea, so hovering it keeps the cell hovered.
                             if touch.has-hover: Rectangle {
-                                x: parent.width - self.width - 2px;
+                                x: Theme.rtl ? 2px : parent.width - self.width - 2px;
                                 y: 2px;
                                 width: 18px;
                                 height: 18px;
@@ -1433,11 +1500,11 @@ export component PocketIsland inherits Window {
                     // The Stacks layout: one stack per kind, a pile of
                     // cards with the kind's icon, name and count.
                     for stack[i] in root.stacks: Rectangle {
-                        x: i * root.cell-step;
+                        x: Theme.rtl ? row.span - i * root.cell-step - self.width : i * root.cell-step;
                         width: 64px;
                         height: 80px;
                         accessible-role: button;
-                        accessible-label: "\{stack.label} \{stack.count}";
+                        accessible-label: @tr("{} {n}" | "{} {n}" % stack.count, stack.label);
                         accessible-action-default => {
                             root.stack-pressed(stack.kind);
                             root.stack-released(stack.kind);
@@ -1478,7 +1545,7 @@ export component PocketIsland inherits Window {
                                 height: 28px;
                             }
 
-                            Text {
+                            LineText {
                                 text: stack.label;
                                 x: 4px;
                                 y: 47px;
@@ -1486,7 +1553,6 @@ export component PocketIsland inherits Window {
                                 height: 18px;
                                 color: white;
                                 font-size: 11px;
-                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -1494,7 +1560,7 @@ export component PocketIsland inherits Window {
 
                         // How many items the stack holds.
                         Rectangle {
-                            x: parent.width - self.width - 2px;
+                            x: Theme.rtl ? 2px : parent.width - self.width - 2px;
                             y: 9px;
                             width: max(18px, badge-text.preferred-width + 10px);
                             height: 18px;
@@ -1532,13 +1598,13 @@ export component PocketIsland inherits Window {
 
                     // The List layout: "All N" opens the list of every item.
                     if root.count > root.cells.length && root.layout == 0: Rectangle {
-                        x: root.cells.length * root.cell-step;
+                        x: Theme.rtl ? row.span - root.cells.length * root.cell-step - self.width : root.cells.length * root.cell-step;
                         width: 44px;
                         height: 80px;
                         border-radius: 12px;
                         background: list-touch.has-hover ? #2c2c32 : root.item-fill;
                         accessible-role: button;
-                        accessible-label: "All \{root.count}";
+                        accessible-label: @tr("All {n}" | "All {n}" % root.count);
                         accessible-action-default => {
                             root.list-open();
                         }
@@ -1548,7 +1614,7 @@ export component PocketIsland inherits Window {
                             spacing: 1px;
 
                             Text {
-                                text: "All";
+                                text: @tr("All");
                                 color: list-touch.has-hover ? white : #ffffff90;
                                 font-size: 11px;
                                 font-weight: 600;
@@ -1607,7 +1673,7 @@ export component PocketIsland inherits Window {
                 }
 
                 if !root.show-switch: PocketSide {
-                    x: parent.width - root.pad - root.side-w;
+                    x: Theme.rtl ? root.pad : parent.width - root.pad - root.side-w;
                     y: 16px;
                     count: root.count;
                     undo-active: root.pocket-undo;
@@ -1652,7 +1718,7 @@ export component PocketIsland inherits Window {
                     Text {
                         y: parent.height / 2 + 4px;
                         height: 18px;
-                        text: "Drop to add";
+                        text: @tr("Drop to add");
                         color: root.hint ? root.accent : #ffffff66;
                         font-size: 13px;
                         font-weight: 600;
@@ -1738,7 +1804,7 @@ export component PocketIsland inherits Window {
             }
 
             // Under either view: the two buttons switching between them, and
-            // at the right, the shown view's controls: the Pocket's column
+            // at the end, the shown view's controls: the Pocket's column
             // ("Drag all" and Clear, or Undo), or the Clipboard's Clear (or
             // Undo).
             if root.show-switch: Rectangle {
@@ -1756,15 +1822,17 @@ export component PocketIsland inherits Window {
                 }
 
                 HorizontalLayout {
-                    alignment: start;
+                    alignment: Theme.rtl ? end : start;
                     spacing: 6px;
-                    padding-left: root.pad;
+                    padding-left: Theme.rtl ? 0px : root.pad;
+                    padding-right: Theme.rtl ? root.pad : 0px;
                     padding-top: 4px;
                     padding-bottom: 8px;
 
                     SwitchButton {
+                        layout-order: Theme.rtl ? 2 : 0;
                         icon: Icons.clipboard;
-                        label: "Clipboard";
+                        label: @tr("Clipboard");
                         count: root.clip-count;
                         current: root.view == 1;
                         clicked => {
@@ -1773,8 +1841,9 @@ export component PocketIsland inherits Window {
                     }
 
                     SwitchButton {
+                        layout-order: Theme.rtl ? 1 : 0;
                         icon: Icons.pocket;
-                        label: "Pocket";
+                        label: @tr("Pocket");
                         count: root.count;
                         // The Pocket list is part of the Pocket.
                         current: root.view != 1;
@@ -1785,7 +1854,7 @@ export component PocketIsland inherits Window {
                 }
 
                 if root.view != 1: PocketSide {
-                    x: parent.width - root.pad - self.width;
+                    x: Theme.rtl ? root.pad : parent.width - root.pad - self.width;
                     y: 4px;
                     compact: true;
                     count: root.count;
@@ -1812,7 +1881,7 @@ export component PocketIsland inherits Window {
                 // Clear empties everything but pinned entries, whatever the
                 // filter.
                 if root.view == 1 && root.clip-filter-counts[0] > root.clip-filter-counts[1] && !root.clip-undo: ClearButton {
-                    x: parent.width - root.pad - self.width;
+                    x: Theme.rtl ? root.pad : parent.width - root.pad - self.width;
                     y: 4px;
                     width: 28px;
                     clicked => {
@@ -1821,7 +1890,7 @@ export component PocketIsland inherits Window {
                 }
 
                 if root.view == 1 && root.clip-undo: UndoRing {
-                    x: parent.width - root.pad - self.width;
+                    x: Theme.rtl ? root.pad : parent.width - root.pad - self.width;
                     y: 4px;
                     width: 80px;
                     compact: true;

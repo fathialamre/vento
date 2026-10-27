@@ -4,7 +4,7 @@
 // details, and for a folder the biggest things inside as bars. It follows the
 // system light or dark appearance through `Theme`.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import { SectionHeading, Separator, TextButton } from "controls.slint";
 
@@ -23,7 +23,7 @@ component DoneButton inherits Rectangle {
     border-radius: 7px;
     background: touch.pressed ? #cc5414 : (touch.has-hover ? #ff8040 : Theme.accent);
     accessible-role: button;
-    accessible-label: "Done";
+    accessible-label: @tr("Done");
     accessible-action-default => { self.clicked(); }
 
     HorizontalLayout {
@@ -31,7 +31,8 @@ component DoneButton inherits Rectangle {
         padding-right: 16px;
 
         Text {
-            text: "Done";
+            horizontal-alignment: Theme.rtl ? right : left;
+            text: @tr("Done");
             font-size: 12px;
             font-weight: 600;
             color: white;
@@ -44,8 +45,8 @@ component DoneButton inherits Rectangle {
     }
 }
 
-// One of the biggest things: the name on the left, the size on the right and
-// a thin bar under them filled to the share.
+// One of the biggest things: the name at the start, the size at the end and
+// a thin bar under them filled to the share from the start.
 component BarRow inherits VerticalLayout {
     in property <string> name;
     in property <string> size;
@@ -56,19 +57,21 @@ component BarRow inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
 
-        Text {
+        LineText {
+            layout-order: Theme.rtl ? 2 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.name;
             font-size: 12px;
             color: Theme.text;
-            overflow: elide;
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
             text: root.size;
             font-size: 12px;
             font-weight: 700;
             color: Theme.text;
-            horizontal-alignment: right;
+            horizontal-alignment: Theme.rtl ? left : right;
         }
     }
 
@@ -78,7 +81,7 @@ component BarRow inherits VerticalLayout {
         background: Theme.surface;
 
         Rectangle {
-            x: 0px;
+            x: Theme.rtl ? parent.width - self.width : 0px;
             width: max(0, min(1, root.share)) * track.width;
             height: parent.height;
             border-radius: parent.border-radius;
@@ -88,10 +91,11 @@ component BarRow inherits VerticalLayout {
 }
 
 export component InfoWindow inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    title: root.item-name != "" ? root.item-name : "Vento info";
+    title: root.item-name != "" ? root.item-name : @tr("Vento info");
     default-font-size: 13px;
 
     // The item's Finder icon, shown when `has-icon` (otherwise the stack
@@ -114,7 +118,11 @@ export component InfoWindow inherits Window {
     // The folder holds nothing: "Empty folder" shows in place of the card.
     in property <bool> empty-folder;
 
-    // "Show in Finder": vento reveals the items, then closes the window.
+    // The reveal button's text, "Show in Finder" or "Show in Files"
+    // (vento chooses by platform and language).
+    in property <string> reveal-label;
+
+    // The reveal button: vento reveals the items, then closes the window.
     callback reveal-clicked();
     // Done or Esc.
     callback close-requested();
@@ -150,6 +158,7 @@ export component InfoWindow inherits Window {
                     spacing: 10px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 3 : 0;
                         alignment: center;
 
                         Image {
@@ -160,21 +169,23 @@ export component InfoWindow inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.item-name;
                         font-size: 14px;
                         font-weight: 600;
                         color: Theme.text;
-                        overflow: elide;
                         vertical-alignment: center;
                     }
 
                     Text {
+                        layout-order: Theme.rtl ? 1 : 0;
                         text: root.size;
                         font-size: 14px;
                         font-weight: 700;
                         color: Theme.text;
-                        horizontal-alignment: right;
+                        horizontal-alignment: Theme.rtl ? left : right;
                         vertical-alignment: center;
                     }
                 }
@@ -183,6 +194,7 @@ export component InfoWindow inherits Window {
                     spacing: 6px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 2 : 0;
                         alignment: center;
 
                         Rectangle {
@@ -193,11 +205,12 @@ export component InfoWindow inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.status;
                         font-size: 12px;
                         color: Theme.muted;
-                        overflow: elide;
                     }
                 }
 
@@ -223,22 +236,25 @@ export component InfoWindow inherits Window {
                                 spacing: 12px;
 
                                 Text {
+                                    layout-order: Theme.rtl ? 2 : 0;
+                                    horizontal-alignment: Theme.rtl ? right : left;
                                     text: detail.label;
                                     font-size: 12px;
                                     color: Theme.muted;
                                 }
 
-                                Text {
+                                LineText {
+                                    layout-order: Theme.rtl ? 1 : 0;
                                     text: detail.value;
                                     font-size: 12px;
                                     color: Theme.text;
-                                    horizontal-alignment: right;
-                                    overflow: elide;
+                                    horizontal-alignment: Theme.rtl ? left : right;
                                 }
                             }
                         }
 
                         if root.note != "": Text {
+                            horizontal-alignment: Theme.rtl ? right : left;
                             text: root.note;
                             font-size: 11px;
                             color: Theme.muted;
@@ -258,7 +274,7 @@ export component InfoWindow inherits Window {
                         padding: 12px;
                         spacing: 8px;
 
-                        SectionHeading { text: "Biggest inside"; }
+                        SectionHeading { text: @tr("Biggest inside"); }
 
                         for bar in root.biggest: BarRow {
                             name: bar.name;
@@ -269,22 +285,25 @@ export component InfoWindow inherits Window {
                 }
 
                 if root.empty-folder: Text {
-                    text: "Empty folder";
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: @tr("Empty folder");
                     font-size: 12px;
                     color: Theme.muted;
                 }
 
                 // The footer.
                 HorizontalLayout {
-                    alignment: end;
+                    alignment: Theme.rtl ? start : end;
                     spacing: 8px;
 
                     TextButton {
-                        label: "Show in Finder";
+                        layout-order: Theme.rtl ? 2 : 0;
+                        label: root.reveal-label;
                         clicked => { root.reveal-clicked(); }
                     }
 
                     DoneButton {
+                        layout-order: Theme.rtl ? 1 : 0;
                         clicked => { root.close-requested(); }
                     }
                 }

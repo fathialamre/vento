@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use vento_core::i18n::{fill, tr};
 use vento_platform::{AppInfo, MenuEntry};
 
 /// What a chosen menu entry does to the menu's targets.
@@ -59,9 +60,13 @@ const FIRST_APP: u32 = 100;
 
 /// The file manager's name in "Show in …".
 #[cfg(not(target_os = "linux"))]
-const REVEAL_TITLE: &str = "Show in Finder";
+fn reveal_title() -> String {
+    tr("Show in Finder")
+}
 #[cfg(target_os = "linux")]
-const REVEAL_TITLE: &str = "Show in Files";
+fn reveal_title() -> String {
+    tr("Show in Files")
+}
 
 /// A cell's context menu: its entries, and the action behind each id.
 pub(super) struct ItemMenu {
@@ -101,7 +106,11 @@ impl ItemMenu {
             paths.push(app.path.clone());
         };
         for app in &defaults {
-            push(app, format!("{} (default)", app.name), &mut children);
+            push(
+                app,
+                fill(&tr("{app} (default)"), &[("app", &app.name)]),
+                &mut children,
+            );
         }
         if !defaults.is_empty() && !others.is_empty() {
             children.push(MenuEntry::Separator);
@@ -116,16 +125,16 @@ impl ItemMenu {
             icon: None,
         };
         let entries = vec![
-            item(OPEN, "Open", any),
+            item(OPEN, &tr("Open"), any),
             MenuEntry::Submenu {
-                title: "Open With".into(),
+                title: tr("Open With"),
                 enabled: any && !paths.is_empty(),
                 children,
             },
-            item(REVEAL, REVEAL_TITLE, any),
+            item(REVEAL, &reveal_title(), any),
             MenuEntry::Separator,
-            item(COPY, "Copy", any),
-            item(REMOVE, "Remove from Pocket", true),
+            item(COPY, &tr("Copy"), any),
+            item(REMOVE, &tr("Remove from Pocket"), true),
         ];
         Self {
             entries,
@@ -234,7 +243,7 @@ mod tests {
             vec![
                 ("Open".into(), true),
                 ("Open With >".into(), true),
-                (REVEAL_TITLE.into(), true),
+                (reveal_title(), true),
                 ("-".into(), false),
                 ("Copy".into(), true),
                 ("Remove from Pocket".into(), true),
@@ -304,7 +313,7 @@ mod tests {
             vec![
                 ("Open".into(), false),
                 ("Open With >".into(), false),
-                (REVEAL_TITLE.into(), false),
+                (reveal_title(), false),
                 ("-".into(), false),
                 ("Copy".into(), false),
                 ("Remove from Pocket".into(), true),
@@ -329,7 +338,7 @@ mod tests {
         let e = &menu.entries;
         assert_eq!(menu.action(id_of(e, "Open")), Some(MenuAction::Open));
         assert_eq!(
-            menu.action(id_of(e, REVEAL_TITLE)),
+            menu.action(id_of(e, &reveal_title())),
             Some(MenuAction::Reveal)
         );
         assert_eq!(menu.action(id_of(e, "Copy")), Some(MenuAction::Copy));

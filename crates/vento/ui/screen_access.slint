@@ -21,6 +21,7 @@ component DefaultButton inherits Rectangle {
         padding-right: 16px;
 
         Text {
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             font-weight: 600;
@@ -38,10 +39,11 @@ component DefaultButton inherits Rectangle {
 // Settings and Escape cancels. Its height follows its text; it follows the
 // system light or dark appearance through `Theme`.
 export component ScreenAccess inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    title: "Vento Screen Recording";
+    title: @tr("Vento Screen Recording");
     default-font-size: 13px;
 
     callback open-settings();
@@ -86,6 +88,7 @@ export component ScreenAccess inherits Window {
                     spacing: 8px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 2 : 0;
                         alignment: center;
 
                         Image {
@@ -97,7 +100,9 @@ export component ScreenAccess inherits Window {
                     }
 
                     Text {
-                        text: "Copy from screen needs Screen Recording";
+                        layout-order: Theme.rtl ? 1 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: @tr("Copy from screen needs Screen Recording");
                         font-size: 13px;
                         font-weight: 600;
                         color: Theme.text;
@@ -108,33 +113,37 @@ export component ScreenAccess inherits Window {
                 }
 
                 Text {
-                    text: "To read text on your screen, Vento needs Screen Recording. It only looks at the area you select.";
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: @tr("To read text on your screen, Vento needs Screen Recording. It only looks at the area you select.");
                     font-size: 13px;
                     color: Theme.text;
                     wrap: word-wrap;
                 }
 
                 Text {
-                    text: "After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again.";
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: @tr("After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again.");
                     font-size: 12px;
                     color: Theme.muted;
                     wrap: word-wrap;
                 }
 
                 HorizontalLayout {
-                    alignment: end;
+                    alignment: Theme.rtl ? start : end;
                     spacing: 8px;
                     padding-top: 4px;
 
                     TextButton {
-                        label: "Cancel";
+                        layout-order: Theme.rtl ? 2 : 0;
+                        label: @tr("Cancel");
                         height: 28px;
                         width: 64px;
                         clicked => { root.cancel(); }
                     }
 
                     DefaultButton {
-                        label: "Open Settings";
+                        layout-order: Theme.rtl ? 1 : 0;
+                        label: @tr("Open Settings");
                         clicked => { root.open-settings(); }
                     }
                 }

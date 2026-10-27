@@ -166,7 +166,7 @@ impl Platform for StubPlatform {
         &self,
         _terminal: Option<&str>,
         _dir: &Path,
-        _on_error: Box<dyn Fn(String) + Send>,
+        _on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
         Err(PlatformError::Unsupported)
     }
@@ -250,7 +250,7 @@ impl Platform for StubPlatform {
         &self,
         _paths: &[PathBuf],
         _app: &Path,
-        _on_error: Box<dyn Fn(String) + Send>,
+        _on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
         Err(PlatformError::Unsupported)
     }

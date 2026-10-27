@@ -11,7 +11,7 @@ use std::sync::{Once, OnceLock};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use log::{debug, warn};
-use vento_core::settings::parse_shortcut;
+use vento_core::settings::{ShortcutError, parse_shortcut};
 
 thread_local! {
     /// What each registered hot key does, by hot key id; lives on the main
@@ -71,14 +71,15 @@ impl Drop for HotkeyHandle {
 }
 
 /// The hot key for a spec such as `"ctrl+alt+p"`; see [`parse_shortcut`].
-fn to_hotkey(spec: &str) -> Result<HotKey, String> {
-    let (m, key) = parse_shortcut(spec).ok_or_else(|| format!("invalid shortcut \"{spec}\""))?;
+fn to_hotkey(spec: &str) -> Result<HotKey, ShortcutError> {
+    let invalid = || ShortcutError::Invalid(spec.to_owned());
+    let (m, key) = parse_shortcut(spec).ok_or_else(invalid)?;
     let mut mods = Modifiers::empty();
     mods.set(Modifiers::CONTROL, m.ctrl);
     mods.set(Modifiers::ALT, m.alt);
     mods.set(Modifiers::SHIFT, m.shift);
     mods.set(Modifiers::META, m.meta);
-    let code = key_code(key).ok_or_else(|| format!("invalid shortcut \"{spec}\""))?;
+    let code = key_code(key).ok_or_else(invalid)?;
     Ok(HotKey::new(Some(mods), code))
 }
 
@@ -143,10 +144,12 @@ pub fn install_hotkey(
     spec: &str,
     _description: &str,
     on_press: Box<dyn Fn()>,
-) -> Result<HotkeyHandle, String> {
+) -> Result<HotkeyHandle, ShortcutError> {
     let hotkey = to_hotkey(spec)?;
-    let manager = manager()?;
-    manager.register(hotkey).map_err(|e| e.to_string())?;
+    let manager = manager().map_err(ShortcutError::Refused)?;
+    manager
+        .register(hotkey)
+        .map_err(|e| ShortcutError::Refused(e.to_string()))?;
     let id = hotkey.id();
     remember(id, Rc::from(on_press));
     // Hot key events may arrive on any thread: forward only the (Send) id to
@@ -193,7 +196,14 @@ mod tests {
 
     #[test]
     fn bad_specs_say_why() {
-        assert_eq!(to_hotkey("p").unwrap_err(), "invalid shortcut \"p\"");
+        assert_eq!(
+            to_hotkey("p").unwrap_err(),
+            ShortcutError::Invalid("p".into())
+        );
+        assert_eq!(
+            to_hotkey("p").unwrap_err().to_string(),
+            "invalid shortcut \"p\""
+        );
         assert!(to_hotkey("ctrl+alt+").is_err());
         assert!(to_hotkey("hyper+p").is_err());
     }
