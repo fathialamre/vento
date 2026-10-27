@@ -164,7 +164,7 @@ impl Platform for MacPlatform {
         &self,
         terminal: Option<&str>,
         dir: &Path,
-        on_error: Box<dyn Fn(String) + Send>,
+        on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
         terminal::open(terminal, dir, on_error)
     }
@@ -349,7 +349,7 @@ impl Platform for MacPlatform {
         &self,
         paths: &[PathBuf],
         app: &Path,
-        on_error: Box<dyn Fn(String) + Send>,
+        on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
         if MainThreadMarker::new().is_none() {
             log::warn!("open_with called off the main thread; ignored");

@@ -68,10 +68,7 @@ pub(super) fn open_paths(paths: &[PathBuf]) -> Result<(), PlatformError> {
     if failed.is_empty() {
         Ok(())
     } else {
-        Err(PlatformError::Failed(format!(
-            "no app opened {}",
-            failed.join(", ")
-        )))
+        Err(PlatformError::NoAppOpened(failed))
     }
 }
 
@@ -80,24 +77,24 @@ pub(super) fn open_paths(paths: &[PathBuf]) -> Result<(), PlatformError> {
 pub(super) fn open_with(
     paths: &[PathBuf],
     app: &Path,
-    on_error: Box<dyn Fn(String) + Send>,
+    on_error: Box<dyn Fn(PlatformError) + Send>,
 ) -> Result<(), PlatformError> {
     if paths.is_empty() {
         return Ok(());
     }
     let urls = file_urls(paths)?;
     if std::fs::metadata(app).is_err() {
-        return Err(PlatformError::Failed(format!(
-            "{} is no longer there",
-            display_name(app)
-        )));
+        return Err(PlatformError::AppGone(display_name(app)));
     }
     let app_url = file_url(app)?;
     launch(
         &urls,
         &app_url,
         Box::new(move |reason| {
-            log::warn!("cannot open with the chosen app: {reason}");
+            log::warn!(
+                "cannot open with the chosen app: {}",
+                vento_core::i18n::with_language("en", || reason.to_string())
+            );
             on_error(reason);
         }),
     );
@@ -110,7 +107,7 @@ pub(super) fn open_with(
 pub(super) fn launch(
     urls: &[Retained<NSURL>],
     app_url: &NSURL,
-    on_error: Box<dyn Fn(String) + Send>,
+    on_error: Box<dyn Fn(PlatformError) + Send>,
 ) {
     let configuration = NSWorkspaceOpenConfiguration::configuration();
     // Called on another thread: the mutex makes the handler shareable.
@@ -126,7 +123,7 @@ pub(super) fn launch(
                 };
                 let reason = error.localizedDescription().to_string();
                 let f = on_error.lock().unwrap_or_else(PoisonError::into_inner);
-                f(reason);
+                f(PlatformError::Failed(reason));
             }));
             if reported.is_err() {
                 log::error!("open completion handler panicked");

@@ -1019,7 +1019,7 @@ mod tests {
             &self,
             _: Option<&str>,
             _: &Path,
-            _: Box<dyn Fn(String) + Send>,
+            _: Box<dyn Fn(PlatformError) + Send>,
         ) -> Result<(), PlatformError> {
             unreachable!()
         }
@@ -1087,7 +1087,7 @@ mod tests {
             &self,
             _: &[PathBuf],
             _: &Path,
-            _: Box<dyn Fn(String) + Send>,
+            _: Box<dyn Fn(PlatformError) + Send>,
         ) -> Result<(), PlatformError> {
             unreachable!()
         }

@@ -110,11 +110,12 @@ enum MenuFailure {
     Copy,
 }
 
-/// Shows a launch that failed after Open With returned (`reason`, from any
+/// Shows a launch that failed after Open With returned (`error`, from any
 /// thread) in the Pocket's toast, on the main thread.
-fn toast_late_open_error(reason: String) {
+fn toast_late_open_error(error: PlatformError) {
     let delivered = slint::invoke_from_event_loop(move || {
         if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
+            let reason = error.to_string();
             let text = fill(&tr("Couldn't open: {reason}"), &[("reason", &reason)]);
             c.toast.show(&text, None, c.toast_at());
         }

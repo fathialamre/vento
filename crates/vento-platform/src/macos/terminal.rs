@@ -50,7 +50,7 @@ fn resolve<'a>(installed: &'a [TerminalApp], requested: Option<&str>) -> &'a str
 pub(super) fn open(
     terminal: Option<&str>,
     dir: &Path,
-    on_error: Box<dyn Fn(String) + Send>,
+    on_error: Box<dyn Fn(PlatformError) + Send>,
 ) -> Result<(), PlatformError> {
     let terminals = installed();
     let id = resolve(&terminals, terminal);

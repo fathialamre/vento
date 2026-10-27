@@ -180,22 +180,31 @@ fn detached<'a>(cmd: &'a mut Command, dir: &Path) -> &'a mut Command {
 pub(super) fn open(
     terminal: Option<&str>,
     dir: &Path,
-    on_error: Box<dyn Fn(String) + Send>,
+    on_error: Box<dyn Fn(PlatformError) + Send>,
 ) -> Result<(), PlatformError> {
     let apps = installed();
     let id = resolve(&apps, terminal).ok_or(PlatformError::NoTerminal)?;
     let app = DesktopAppInfo::new(id).ok_or_else(|| PlatformError::NotInstalled(id.to_owned()))?;
     let program = app.executable();
+    let name = program.display().to_string();
     let mut child = detached(Command::new(&program).args(workdir_args(id, dir)), dir)
         .spawn()
-        .map_err(|e| PlatformError::Failed(format!("could not run {}: {e}", program.display())))?;
+        .map_err(|error| PlatformError::CouldNotRun {
+            program: name.clone(),
+            error,
+        })?;
     // Reap it, so a launcher that hands off to a running instance and quits
     // leaves no zombie behind.
-    let name = program.display().to_string();
     std::thread::spawn(move || match child.wait() {
-        Ok(status) if !status.success() => on_error(format!("{name} {status}")),
+        Ok(status) if !status.success() => on_error(PlatformError::ProgramFailed {
+            program: name,
+            code: status.code(),
+        }),
         Ok(_) => {}
-        Err(e) => on_error(format!("{name}: {e}")),
+        Err(error) => on_error(PlatformError::ProgramUnwaited {
+            program: name,
+            error,
+        }),
     });
     Ok(())
 }

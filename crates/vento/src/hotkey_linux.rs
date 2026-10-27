@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use log::warn;
+use vento_core::settings::ShortcutError;
 use vento_platform::GlobalShortcut;
 
 thread_local! {
@@ -40,7 +41,7 @@ pub fn install_hotkey(
     spec: &str,
     description: &str,
     on_press: Box<dyn Fn()>,
-) -> Result<HotkeyHandle, String> {
+) -> Result<HotkeyHandle, ShortcutError> {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     // Presses arrive on the portal's thread: hand only the (Send) id to the

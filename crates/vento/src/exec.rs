@@ -507,9 +507,17 @@ impl Executor {
                     Some(dir) => self.platform.open_terminal(
                         terminal.as_deref(),
                         dir,
-                        Box::new(move |reason| {
+                        Box::new(move |error| {
                             let shown = on_main(move |executor| {
-                                executor.toast_error(ActionId::Terminal, &reason, at);
+                                // Worded here, so the toast follows the
+                                // language now and the log stays English.
+                                let logged = in_english(|| error.to_string());
+                                executor.toast_error_as(
+                                    ActionId::Terminal,
+                                    &error.to_string(),
+                                    &logged,
+                                    at,
+                                );
                             });
                             if let Err(e) = shown {
                                 warn!("cannot report a failed terminal launch: {e}");
@@ -913,13 +921,9 @@ impl Executor {
         }
     }
 
-    fn toast_error(&self, action: ActionId, reason: &str, at: Point) {
-        self.toast_error_as(action, reason, reason, at);
-    }
-
-    /// Toasts `reason` and logs `logged`, the same reason in English (a
+    /// Toasts `reason` and logs `logged`, the same reason in English (for a
     /// reason that is English whatever the language, such as one from an
-    /// outside library, goes through `toast_error`, which logs it as it is).
+    /// outside library, both are the same text).
     fn toast_error_as(&self, action: ActionId, reason: &str, logged: &str, at: Point) {
         warn!("{action:?} failed: {logged}");
         self.toast

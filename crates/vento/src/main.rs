@@ -191,12 +191,18 @@ fn main() -> Result<(), slint::PlatformError> {
             hub.clone(),
             recent.clone(),
             supported,
+            // The window only logs why a key could not be registered, so the
+            // reason is worded in English.
             Box::new(move |which, spec| match which {
-                settings_window::ShortcutFor::Pocket => pocket_slot.register(spec),
-                settings_window::ShortcutFor::Clipboard => clip_slot.register(spec),
+                settings_window::ShortcutFor::Pocket => {
+                    pocket_slot.register(spec).map_err(in_english_text)
+                }
+                settings_window::ShortcutFor::Clipboard => {
+                    clip_slot.register(spec).map_err(in_english_text)
+                }
                 settings_window::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
                     || Err("Copy from screen needs macOS 14 or later".into()),
-                    |slot| slot.register(spec),
+                    |slot| slot.register(spec).map_err(in_english_text),
                 ),
             }),
             Box::new(move || {
@@ -302,9 +308,16 @@ fn main() -> Result<(), slint::PlatformError> {
         let platform = platform.clone();
         move |slot: &ShortcutSlot, name: &str, shown: String, spec: &str| {
             if let Err(reason) = slot.register(spec) {
-                log::warn!("{name} shortcut {spec:?} unavailable: {reason}");
+                log::warn!(
+                    "{name} shortcut {spec:?} unavailable: {}",
+                    in_english_text(reason.clone())
+                );
                 let at = platform.sample_input().cursor;
-                toaster.show(&shortcut_unavailable_text(&shown, &reason), None, at);
+                toaster.show(
+                    &shortcut_unavailable_text(&shown, &reason.to_string()),
+                    None,
+                    at,
+                );
             }
         }
     };
@@ -432,6 +445,12 @@ fn shortcut_unavailable_text(name: &str, reason: &str) -> String {
     )
 }
 
+/// Why a shortcut failed, in English: for log lines.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn in_english_text(error: vento_core::settings::ShortcutError) -> String {
+    vento_core::i18n::with_language("en", || error.to_string())
+}
+
 /// One global shortcut and what it does: holds the key registered for it,
 /// if any.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -459,7 +478,7 @@ impl ShortcutSlot {
     /// Registers `spec` in place of the key this slot holds. Registering the
     /// spec already registered does nothing, so a shortcut the panel has
     /// registered is not registered a second time when its change is saved.
-    fn register(&self, spec: &str) -> Result<(), String> {
+    fn register(&self, spec: &str) -> Result<(), vento_core::settings::ShortcutError> {
         if self
             .held
             .borrow()
@@ -550,6 +569,23 @@ mod tests {
                 "اختصار النسخ من الشاشة غير متاح: in use"
             );
         });
+    }
+
+    #[test]
+    fn an_invalid_shortcut_is_toasted_in_the_language_and_logged_in_english() {
+        use vento_core::settings::ShortcutError;
+        let error = ShortcutError::Invalid("p".into());
+        with_language("ar", || {
+            assert_eq!(
+                shortcut_unavailable_text(&tr("Pocket"), &error.to_string()),
+                "اختصار الجيب غير متاح: اختصار غير صالح \"p\""
+            );
+            assert_eq!(in_english_text(error.clone()), "invalid shortcut \"p\"");
+        });
+        assert_eq!(
+            shortcut_unavailable_text("Pocket", &error.to_string()),
+            "Pocket shortcut unavailable: invalid shortcut \"p\""
+        );
     }
 
     #[test]

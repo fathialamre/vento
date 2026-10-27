@@ -27,11 +27,12 @@ use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
 use vento_core::geometry::{Layout, Rect, screen_for};
+use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
     Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketLayout,
-    Settings, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
+    Settings, SettingsError, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
@@ -1157,39 +1158,40 @@ fn centred_on(screen: &Rect, w: f64, h: f64) -> (f64, f64) {
 }
 
 /// The notice for a settings file that could not be loaded, given why: a
-/// parse error (`"line 3: expected ="`) or a read error.
-pub(crate) fn notice_text(error: &str) -> String {
-    match parse_error(error) {
-        Some((line, message)) => fill(
+/// parse error names its line, a read error says why in Vento's own words
+/// for the common kinds.
+pub(crate) fn notice_text(error: &SettingsError) -> String {
+    match error {
+        SettingsError::Parse {
+            line: Some(line),
+            message,
+        } => fill(
             &tr(
                 "Your settings file has an error on line {line}: {message}; changing a setting here will replace it",
             ),
-            &[("line", line), ("message", message)],
+            &[("line", &line.to_string()), ("message", message)],
         ),
-        None => fill(
-            &tr(
-                "Your settings file can't be read ({error}); changing a setting here will replace it",
-            ),
-            &[("error", error)],
-        ),
+        SettingsError::Parse {
+            line: None,
+            message,
+        } => unreadable_notice(message),
+        SettingsError::Read(e) => unreadable_notice(&io_reason(e)),
     }
 }
 
-/// The line and the message of a settings parse error as
-/// `SettingsError` words it, `"line 3: expected ="`; `None` for any other
-/// reason, such as a read error.
-fn parse_error(error: &str) -> Option<(&str, &str)> {
-    let (line, message) = error.strip_prefix("line ")?.split_once(": ")?;
-    line.bytes()
-        .all(|b| b.is_ascii_digit())
-        .then_some((line, message))
+/// The notice for a settings file that can't be read, for `why`.
+fn unreadable_notice(why: &str) -> String {
+    fill(
+        &tr("Your settings file can't be read ({error}); changing a setting here will replace it"),
+        &[("error", why)],
+    )
 }
 
 /// The notice for a change that could not be saved.
 fn save_error_text(error: &io::Error) -> String {
     fill(
         &tr("Couldn't save settings: {error}"),
-        &[("error", &error.to_string())],
+        &[("error", &io_reason(error))],
     )
 }
 
@@ -1901,34 +1903,69 @@ mod tests {
     #[test]
     fn save_error_is_worded_for_the_notice() {
         let e = io::Error::from(io::ErrorKind::PermissionDenied);
-        assert_eq!(save_error_text(&e), format!("Couldn't save settings: {e}"));
+        assert_eq!(
+            save_error_text(&e),
+            "Couldn't save settings: permission denied"
+        );
+        // Without wording of its own, a kind shows the text of the error.
+        let other = io::Error::other("wrong format");
+        assert_eq!(
+            save_error_text(&other),
+            "Couldn't save settings: wrong format"
+        );
+    }
+
+    fn parse_error(line: Option<usize>, message: &str) -> SettingsError {
+        SettingsError::Parse {
+            line,
+            message: message.into(),
+        }
+    }
+
+    fn read_error(kind: io::ErrorKind) -> SettingsError {
+        SettingsError::Read(io::Error::from(kind))
     }
 
     #[test]
     fn notice_names_the_error() {
         assert_eq!(
-            notice_text("line 3: expected ="),
+            notice_text(&parse_error(Some(3), "expected =")),
             "Your settings file has an error on line 3: expected =; changing a setting here will replace it"
         );
         assert_eq!(
-            notice_text("Permission denied (os error 13)"),
-            "Your settings file can't be read (Permission denied (os error 13)); changing a setting here will replace it"
+            notice_text(&parse_error(None, "unexpected end")),
+            "Your settings file can't be read (unexpected end); changing a setting here will replace it"
         );
+        assert_eq!(
+            notice_text(&read_error(io::ErrorKind::PermissionDenied)),
+            "Your settings file can't be read (permission denied); changing a setting here will replace it"
+        );
+    }
+
+    #[test]
+    fn a_notice_is_worded_when_it_is_shown() {
+        // The error is kept as it happened and worded at each showing, so the
+        // same error follows the language.
+        let error = read_error(io::ErrorKind::PermissionDenied);
+        let english = notice_text(&error);
+        let arabic = vento_core::i18n::with_language("ar", || notice_text(&error));
+        assert_ne!(english, arabic);
+        assert_eq!(notice_text(&error), english);
     }
 
     #[test]
     fn notices_and_refusals_read_in_arabic() {
         vento_core::i18n::with_language("ar", || {
             assert_eq!(
-                notice_text("line 3: expected ="),
+                notice_text(&parse_error(Some(3), "expected =")),
                 "في ملف الإعدادات خطأ في السطر 3: expected =؛ تغيير أي إعداد هنا سيستبدله"
             );
             assert_eq!(
-                notice_text("Permission denied (os error 13)"),
-                "تعذّرت قراءة ملف الإعدادات (Permission denied (os error 13))؛ تغيير أي إعداد هنا سيستبدله"
+                notice_text(&read_error(io::ErrorKind::PermissionDenied)),
+                "تعذّرت قراءة ملف الإعدادات (لا توجد صلاحية)؛ تغيير أي إعداد هنا سيستبدله"
             );
             let e = io::Error::from(io::ErrorKind::PermissionDenied);
-            assert_eq!(save_error_text(&e), format!("تعذّر حفظ الإعدادات: {e}"));
+            assert_eq!(save_error_text(&e), "تعذّر حفظ الإعدادات: لا توجد صلاحية");
             assert_eq!(hold_text(400), "400 م.ث");
             assert_eq!(
                 refusal_text(NOT_A_SHORTCUT),

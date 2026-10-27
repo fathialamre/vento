@@ -526,6 +526,26 @@ pub fn parse_shortcut(s: &str) -> Option<(Modifiers, char)> {
     Some((modifiers, key.to_ascii_lowercase()))
 }
 
+/// Why a shortcut could not be registered.
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+pub enum ShortcutError {
+    /// The spec is not a shortcut. Worded when shown, in the interface
+    /// language.
+    #[error("{}", invalid_shortcut(.0))]
+    Invalid(String),
+    /// The system refused the key, in its own (English) words.
+    #[error("{0}")]
+    Refused(String),
+}
+
+/// `invalid shortcut "spec"`, in the interface language.
+fn invalid_shortcut(spec: &str) -> String {
+    crate::i18n::fill(
+        &crate::i18n::tr("invalid shortcut \"{spec}\""),
+        &[("spec", spec)],
+    )
+}
+
 /// Whether macOS keeps `spec` for itself: Cmd alone (quit, hide, copy and
 /// the like), Cmd+Shift+3/4/5 (screenshots), or Shift alone (typing a capital
 /// letter). A spec that does not parse is not reserved; it is simply invalid.
@@ -592,6 +612,24 @@ pub fn settings_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_invalid_shortcut_is_worded_when_it_is_shown() {
+        use crate::i18n::with_language;
+        let error = ShortcutError::Invalid("p".into());
+        assert_eq!(error.to_string(), "invalid shortcut \"p\"");
+        with_language("ar", || {
+            assert_eq!(error.to_string(), "اختصار غير صالح \"p\"");
+        });
+        // Made while the language was Arabic, read in English for a log line.
+        assert_eq!(
+            with_language("en", || error.to_string()),
+            "invalid shortcut \"p\""
+        );
+        // The system's own words are shown as they are.
+        let refused = ShortcutError::Refused("in use".into());
+        assert_eq!(with_language("ar", || refused.to_string()), "in use");
+    }
 
     #[test]
     fn default_settings() {

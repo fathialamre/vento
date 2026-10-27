@@ -412,6 +412,16 @@ msgstr[1] ""
     }
 
     #[test]
+    fn every_language_but_english_has_a_catalog() {
+        // A language added to `LANGUAGES` without an arm in `catalog()`
+        // would read English whatever its `.po` says.
+        for language in LANGUAGES.iter().filter(|l| l.code != "en") {
+            let word = with_language(language.code, || tr("Language"));
+            assert_ne!(word, "Language", "{} has no catalog", language.code);
+        }
+    }
+
+    #[test]
     fn fill_replaces_named_placeholders() {
         assert_eq!(
             fill("Moved {n} to {dest}", &[("n", "3"), ("dest", "Photos")]),
