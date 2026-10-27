@@ -28,6 +28,8 @@ objc2-foundation = { version = "0.3", features = [
     "NSNotification",
     "NSBundle",
     "NSProcessInfo",
+    # The PDF backend hands PDFKit a source's bytes without copying them.
+    "block2",
 ] }
 objc2-app-kit = { version = "0.3", features = [
     "NSEvent",
@@ -65,6 +67,9 @@ objc2-core-graphics = { version = "0.3", features = [
     "CGColorSpace",
     "CGContext",
     "CGBitmapContext",
+    # The PDF tests draw their fixture documents.
+    "CGPDFContext",
+    "CGDataConsumer",
 ] }
 # Holds on to the CGImage a screen capture hands back, and carries the
 # Convert action's file URLs and image properties.
@@ -102,6 +107,14 @@ objc2-image-io = { version = "0.3", features = [
     "CGImageSource",
     "CGImageDestination",
     "CGImageProperties",
+] }
+# Opens, writes and draws PDF pages for the PDF action.
+objc2-pdf-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "PDFDocument",
+    "PDFPage",
+    "objc2-core-graphics",
+    "objc2-app-kit",
 ] }
 # Encodes WebP for the Convert action; ImageIO reads WebP but can't write it.
 # Builds the bundled C library with cc (no bindgen by default).

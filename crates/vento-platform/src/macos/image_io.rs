@@ -20,12 +20,12 @@ use objc2_core_graphics::{
 };
 use objc2_image_io::{
     CGImageDestination, CGImageSource, kCGImageDestinationLossyCompressionQuality,
-    kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelXDimension,
-    kCGImagePropertyExifPixelYDimension, kCGImagePropertyGPSDictionary,
-    kCGImagePropertyIPTCDictionary, kCGImagePropertyOrientation, kCGImagePropertyPixelHeight,
-    kCGImagePropertyPixelWidth, kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
-    kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceCreateThumbnailWithTransform,
-    kCGImageSourceThumbnailMaxPixelSize,
+    kCGImagePropertyDPIHeight, kCGImagePropertyDPIWidth, kCGImagePropertyExifDictionary,
+    kCGImagePropertyExifPixelXDimension, kCGImagePropertyExifPixelYDimension,
+    kCGImagePropertyGPSDictionary, kCGImagePropertyIPTCDictionary, kCGImagePropertyOrientation,
+    kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth, kCGImagePropertyTIFFDictionary,
+    kCGImagePropertyTIFFOrientation, kCGImageSourceCreateThumbnailFromImageAlways,
+    kCGImageSourceCreateThumbnailWithTransform, kCGImageSourceThumbnailMaxPixelSize,
 };
 use vento_core::convert::{ConvertError, ImageFormat};
 
@@ -64,36 +64,75 @@ pub(crate) fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result
 
 fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError> {
     if format == ImageFormat::Heic && !heic_encoder_works() {
-        return Err(ConvertError::Unsupported(
-            "HEIC is not supported on this Mac".into(),
-        ));
+        return Err(heic_unsupported());
     }
     let source = open_source(src)?;
     // SAFETY: `source` is a valid image source; no options.
     let source_props = unsafe { source.properties_at_index(0, None) }
         // SAFETY: ImageIO property dictionaries have string keys.
         .map(|props| unsafe { CFRetained::cast_unchecked::<Properties>(props) });
-    let mut image = upright_first_frame(&source, source_props.as_deref())?;
-    if format == ImageFormat::Webp {
-        return write_webp(&image, source_props.as_deref(), dst);
+    let image = upright_first_frame(&source, source_props.as_deref())?;
+    encode_with(&image, source_props.as_deref(), dst, format, None)
+}
+
+/// Writes `image` into `dst` as `format`, without metadata; `dpi`, when
+/// given, is recorded as the image's resolution. `dst` may or may not exist;
+/// its contents are replaced. JPEG goes on white, as Convert's does. The
+/// caller drains the autorelease pool.
+pub(crate) fn encode(
+    image: &CGImage,
+    dst: &Path,
+    format: ImageFormat,
+    dpi: Option<u32>,
+) -> Result<(), ConvertError> {
+    if format == ImageFormat::Heic && !heic_encoder_works() {
+        return Err(heic_unsupported());
     }
-    image = match format {
+    encode_with(image, None, dst, format, dpi)
+}
+
+fn heic_unsupported() -> ConvertError {
+    ConvertError::Unsupported("HEIC is not supported on this Mac".into())
+}
+
+/// [`encode`], carrying over `source`'s metadata (the image's own, when it
+/// came from a file).
+fn encode_with(
+    image: &CGImage,
+    source: Option<&Properties>,
+    dst: &Path,
+    format: ImageFormat,
+    dpi: Option<u32>,
+) -> Result<(), ConvertError> {
+    if format == ImageFormat::Webp {
+        return write_webp(image, source, dst);
+    }
+    let redrawn = match format {
         // JPEG keeps no transparency: lay the picture on white.
-        ImageFormat::Jpeg if has_alpha(&image) => redraw(&image, Background::White, false)?,
+        ImageFormat::Jpeg if has_alpha(image) => Some(redraw(image, Background::White, false)?),
         // GIF and BMP carry no colour profile: match the pixels to sRGB.
-        ImageFormat::Bmp => redraw(&image, Background::White, true)?,
-        ImageFormat::Gif => redraw(&image, Background::Clear, true)?,
-        _ => image,
+        ImageFormat::Bmp => Some(redraw(image, Background::White, true)?),
+        ImageFormat::Gif => Some(redraw(image, Background::Clear, true)?),
+        _ => None,
     };
-    let size = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
-    let props = destination_properties(source_props.as_deref(), format, size);
+    let image = redrawn.as_deref().unwrap_or(image);
+    let size = (CGImage::width(Some(image)), CGImage::height(Some(image)));
+    let props = destination_properties(source, format, size);
+    if let Some(dpi) = dpi {
+        let dpi = CFNumber::new_i64(i64::from(dpi));
+        // SAFETY: the keys are ImageIO's own statics.
+        unsafe {
+            props.set(kCGImagePropertyDPIWidth, &dpi);
+            props.set(kCGImagePropertyDPIHeight, &dpi);
+        }
+    }
     let failed = || ConvertError::Encode(format!("couldn't write {}", format.name()));
     let uti = CFString::from_static_str(type_of_format(format));
     let url = CFURL::from_file_path(dst).ok_or_else(failed)?;
     // SAFETY: valid URL and type; no options.
     let dest = unsafe { CGImageDestination::with_url(&url, &uti, 1, None) }.ok_or_else(failed)?;
     // SAFETY: `props` holds ImageIO property keys and plist values.
-    unsafe { dest.add_image(&image, Some(props.as_opaque())) };
+    unsafe { dest.add_image(image, Some(props.as_opaque())) };
     // SAFETY: exactly one image was added, as declared.
     if unsafe { dest.finalize() } {
         Ok(())
@@ -440,7 +479,7 @@ fn format_of_type(uti: &str) -> Option<ImageFormat> {
 
 /// Builds test images with ImageIO itself, so no binary fixtures are kept.
 #[cfg(test)]
-mod test_support {
+pub(super) mod test_support {
     use std::path::Path;
 
     use super::*;
@@ -568,7 +607,7 @@ mod test_support {
 
     /// The top-left pixel of the first frame drawn in sRGB, as 8-bit
     /// premultiplied RGBA.
-    pub(super) fn corner_pixel(path: &Path) -> [u8; 4] {
+    pub(in crate::macos) fn corner_pixel(path: &Path) -> [u8; 4] {
         corner_pixel_in(path, unsafe { kCGColorSpaceSRGB })
     }
 

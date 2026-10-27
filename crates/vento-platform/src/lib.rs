@@ -22,6 +22,10 @@ mod macos;
 mod webp;
 #[cfg(target_os = "macos")]
 pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
+#[cfg(target_os = "macos")]
+pub use macos::{PdfRenderer, SystemPdf};
+#[cfg(not(target_os = "macos"))]
+pub use stub::{PdfRenderer, SystemPdf};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -718,6 +722,20 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::write_image(src, dst, format)
+    }
+}
+
+/// Asks the user for PDF files with the system's open panel, starting in
+/// `start`; several can be chosen. Empty when cancelled. Main thread only.
+/// Always empty where unsupported.
+pub fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::pick_pdfs(start)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::pick_pdfs(start)
     }
 }
 
