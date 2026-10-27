@@ -419,6 +419,13 @@ pub trait Platform {
     /// when the system ends it (log out, shut down). Replaces any earlier
     /// `f`.
     fn on_terminate(&self, f: Box<dyn Fn()>);
+    /// Run `f` instead of quitting when the user quits from the app menu
+    /// (⌘Q on macOS), so vento's own quit can ask about unsaved edits. The
+    /// system ending vento (log out, shut down) is not held back. Replaces
+    /// any earlier `f`. Main thread, once the event loop exists.
+    fn on_quit_request(&self, f: Box<dyn Fn()>) {
+        let _ = f;
+    }
     /// Run `f` when vento is launched again while it runs (the app grid,
     /// a second start at login). Main thread only.
     fn on_reopen(&self, f: Box<dyn Fn()>) {

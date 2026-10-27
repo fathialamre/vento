@@ -313,6 +313,16 @@ fn main() -> Result<(), slint::PlatformError> {
             pocket.flush_pending();
         }
     }));
+    // Quit from the app menu (⌘Q in a vento window) goes the tray's way:
+    // PDF windows with unsaved edits ask first.
+    {
+        let (exec, pdf) = (Rc::downgrade(&executor), Rc::downgrade(&pdf));
+        platform.on_quit_request(Box::new(move || {
+            if let (Some(exec), Some(pdf)) = (exec.upgrade(), pdf.upgrade()) {
+                quit::quit(&exec, &pdf);
+            }
+        }));
+    }
     // Launched again while running: the Settings window.
     let reopened = Rc::downgrade(&settings);
     platform.on_reopen(Box::new(move || {

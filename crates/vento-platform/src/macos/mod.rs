@@ -35,6 +35,7 @@ mod overlay;
 mod patch;
 mod pdf;
 mod quarantine;
+mod quit;
 mod screen_text;
 mod screens;
 mod select;
@@ -240,6 +241,10 @@ impl Platform for MacPlatform {
 
     fn on_terminate(&self, f: Box<dyn Fn()>) {
         notify::on_terminate(f);
+    }
+
+    fn on_quit_request(&self, f: Box<dyn Fn()>) {
+        quit::on_quit_request(f);
     }
 
     fn activate_app(&self) {

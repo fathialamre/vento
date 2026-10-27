@@ -28,6 +28,9 @@ objc2-foundation = { version = "0.3", features = [
     "NSNotification",
     "NSBundle",
     "NSProcessInfo",
+    # Quit from the app menu tells a logout's quit from the user's.
+    "NSAppleEventManager",
+    "NSAppleEventDescriptor",
     # The PDF backend hands PDFKit a source's bytes without copying them.
     "block2",
 ] }

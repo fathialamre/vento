@@ -1,4 +1,5 @@
-//! Quitting vento from the tray menu or the Quick panel: with PDF windows
+//! Quitting vento from the tray menu, the Quick panel or the app menu (⌘Q
+//! in a vento window, through `Platform::on_quit_request`): with PDF windows
 //! that have unsaved page-list edits open, each asks its question first and
 //! a Cancel keeps vento running.
 
