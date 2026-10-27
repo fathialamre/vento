@@ -111,7 +111,7 @@ files, like the wheel itself; turn it off with **Shake to open** in the
 ## The actions
 
 The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
-**Copy to, Archive, Convert** and **Info** are off until you switch them on in
+**Copy to, Archive, Convert, Info** and **PDF** are off until you switch them on in
 the **Wheel** page of the Settings window, where you can also change the order.
 
 ### Pocket
@@ -190,6 +190,29 @@ Vento reads the picture itself, not the file name, so a `.png` that is really a
 JPEG still works. Photos stay upright, colours are kept, and transparent areas
 become white when you pick JPEG or BMP. Vento never overwrites a file (you get
 `photo (2).jpg` instead), and **Undo** moves what it made to the Trash.
+
+### PDF *(off at first)*
+
+Works on PDF files, on macOS only for now. Drag one or more PDFs, rest on
+**PDF** and let go: a window opens that shows every page. The cell is dimmed
+when nothing you are dragging is a PDF.
+
+In the window you can put several files together in one (drop more PDFs on it
+or use **＋ Add PDF**), delete pages, drag pages into a new order and rotate
+them. Nothing is written until you ask:
+
+- **Save as new PDF** (⌘S) writes the pages as they now stand.
+- **Extract** writes only the pages you selected.
+- **Split…** cuts the file into several: every page, every N pages, or at the
+  places you click between pages.
+- **To images** turns pages into PNG or JPEG pictures, at **Print** (300 DPI) or
+  **Screen** (150 DPI) quality.
+
+Every result is a new file next to the original, which is never changed, and
+Vento never overwrites a file (you get `report (edited).pdf`, then
+`report (edited) (2).pdf`). Closing a window with changes asks whether to save
+them. **Undo**, on the notice or from the menu bar icon, moves what was written to
+the Trash. A PDF that is locked with a password is skipped.
 
 ### Copy path
 
