@@ -117,7 +117,7 @@ impl ProgressView {
     fn window(&self) -> ArchiveProgress {
         self.window.get_or_create(|| {
             let window = ArchiveProgress::new().expect("cannot create the progress window");
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             // A new native window: it has yet to be made non-key.
             self.non_key.set(false);
             let this = self.this.clone();
@@ -268,7 +268,7 @@ impl PasswordView {
     fn window(&self) -> PasswordPrompt {
         self.window.get_or_create(|| {
             let window = PasswordPrompt::new().expect("cannot create the password window");
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             let this = self.this.clone();
             window.on_submit(move || {
                 if let Some(view) = this.upgrade() {

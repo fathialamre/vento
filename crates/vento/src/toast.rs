@@ -12,6 +12,7 @@ use slint::{ComponentHandle, LogicalPosition, Timer, TimerMode};
 use vento_core::geometry::{Point, Rect, screen_for};
 use vento_platform::Platform;
 
+use crate::appearance;
 use crate::lazy_window::LazyWindow;
 use crate::ui::Toast;
 
@@ -84,6 +85,8 @@ impl Toaster {
     fn window(&self) -> Toast {
         self.window.get_or_create(|| {
             let window = Toast::new().expect("cannot create the toast window");
+            // The toast keeps its own colours; it takes the direction.
+            appearance::follow(&window, appearance::Look::Direction);
             // A new native window: it has yet to be made non-key.
             self.non_key.set(false);
             let this = self.this.clone();

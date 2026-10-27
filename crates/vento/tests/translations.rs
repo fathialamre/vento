@@ -1076,3 +1076,198 @@ fn finds_bare_text_in_slint() {
         ]
     );
 }
+
+// ---------------------------------------------------------------------------
+// Right to left
+
+/// The `.slint` files whose rows never mirror: the wheel and its ring are a
+/// gesture around the pointer, where an action is where it is.
+const LTR_FILES: &[&str] = &["wheel.slint"];
+
+/// `src` with its comments and the insides of its string literals blanked
+/// out (each kept byte becomes a space, newlines stay), so braces and words
+/// in them don't count as code and lines keep their numbers.
+fn code_only(src: &str) -> Vec<u8> {
+    let b = src.as_bytes();
+    let mut out = b.to_vec();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'/' && b.get(i + 1) == Some(&b'/') {
+            while i < b.len() && b[i] != b'\n' {
+                out[i] = b' ';
+                i += 1;
+            }
+        } else if b[i] == b'"' {
+            i += 1;
+            while i < b.len() && b[i] != b'"' {
+                if b[i] == b'\\' && i + 1 < b.len() {
+                    out[i] = b' ';
+                    i += 1;
+                }
+                if b[i] != b'\n' {
+                    out[i] = b' ';
+                }
+                i += 1;
+            }
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// The byte just past the `}` that closes the block opened at `open`.
+fn block_end(code: &[u8], open: usize) -> usize {
+    let mut depth = 0;
+    for (i, &c) in code.iter().enumerate().skip(open) {
+        match c {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    code.len()
+}
+
+/// The direct statements of the block opened at `open`: for each, its text
+/// before any `{` of its own, and where that `{` is.
+fn statements(code: &[u8], open: usize) -> Vec<(String, Option<usize>)> {
+    let end = block_end(code, open) - 1;
+    let mut out = Vec::new();
+    let mut start = open + 1;
+    let mut i = open + 1;
+    while i < end {
+        match code[i] {
+            b'{' => {
+                let head = String::from_utf8_lossy(&code[start..i]).trim().to_string();
+                out.push((head, Some(i)));
+                i = block_end(code, i);
+                start = i;
+            }
+            b';' => {
+                let head = String::from_utf8_lossy(&code[start..i]).trim().to_string();
+                out.push((head, None));
+                i += 1;
+                start = i;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// Whether a statement head opens a child element (`Text`, `id := Foo`,
+/// `if c: Foo`, `for x[i] in m: Foo`) rather than a callback body.
+fn is_child(head: &str) -> bool {
+    if head.contains("=>") {
+        return false;
+    }
+    let last = head
+        .rsplit(|c: char| c.is_whitespace() || c == ':')
+        .next()
+        .unwrap_or("");
+    last.starts_with(|c: char| c.is_ascii_uppercase())
+}
+
+/// Whether the element whose block opens at `open` sets a `layout-order`
+/// that depends on `Theme.rtl`.
+fn orders_by_direction(code: &[u8], open: usize) -> bool {
+    statements(code, open).iter().any(|(head, block)| {
+        block.is_none() && head.starts_with("layout-order") && head.contains("Theme.rtl")
+    })
+}
+
+/// The lines of `src` with a `HorizontalLayout` (an element or a component
+/// inheriting it) that has two or more children not all reordered by
+/// `Theme.rtl` through `layout-order`, unless the line says why the row
+/// stays left to right with `// ltr: <reason>`.
+fn unmirrored_rows(src: &str) -> Vec<usize> {
+    let code = code_only(src);
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out = Vec::new();
+    let word = b"HorizontalLayout";
+    let mut i = 0;
+    while let Some(at) = code[i..].windows(word.len()).position(|w| w == word) {
+        let at = i + at;
+        i = at + word.len();
+        let before = at.checked_sub(1).map(|j| code[j]);
+        let after = code.get(i).copied();
+        if before.is_some_and(is_ident_byte) || after.is_some_and(is_ident_byte) {
+            continue;
+        }
+        let line = code[..at].iter().filter(|&&c| c == b'\n').count();
+        let marked = lines[line]
+            .find("//")
+            .is_some_and(|c| lines[line][c + 2..].trim_start().starts_with("ltr:"));
+        let Some(open) = code[i..].iter().position(|&c| c == b'{').map(|p| i + p) else {
+            continue;
+        };
+        let children: Vec<usize> = statements(&code, open)
+            .into_iter()
+            .filter_map(|(head, block)| block.filter(|_| is_child(&head)))
+            .collect();
+        let mirrored =
+            children.len() < 2 || children.iter().all(|&c| orders_by_direction(&code, c));
+        if !mirrored && !marked {
+            out.push(line + 1);
+        }
+    }
+    out
+}
+
+#[test]
+fn rows_mirror() {
+    let mut files = Vec::new();
+    files_under(&repo_root().join("crates/vento/ui"), "slint", &mut files);
+    files.sort();
+    assert!(!files.is_empty(), "no .slint files found");
+    let mut problems = Vec::new();
+    for path in files {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if LTR_FILES.contains(&name.as_str()) {
+            continue;
+        }
+        let src = fs::read_to_string(&path).unwrap();
+        for line in unmirrored_rows(&src) {
+            problems.push(format!("{name}:{line}"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "a row must run right to left in a right-to-left language: give each of its children \
+         a `layout-order` that reverses them when `Theme.rtl`, or say why it stays left to \
+         right with `// ltr: <reason>`:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+#[test]
+fn finds_unmirrored_rows() {
+    let src = r#"
+        HorizontalLayout { Text { } Image { } }
+        HorizontalLayout { Text { } }
+        // A HorizontalLayout { A { } B { } } in a comment.
+        HorizontalLayout { // ltr: digits read left to right
+            Text { } Text { }
+        }
+        component Wide inherits HorizontalLayout {
+            in property <bool> on;
+            changed on => { debug("{"); }
+            if root.on: Text { layout-order: Theme.rtl ? 2 : 0; }
+            name := Text { text: "}"; layout-order: Theme.rtl ? 1 : 0; }
+        }
+        HorizontalLayout {
+            for x[i] in 3: Rectangle { layout-order: Theme.rtl ? -i : 0; }
+            Text { layout-order: 1; }
+        }
+        MyHorizontalLayoutish { A { } B { } }
+        HorizontalLayout { A { Inner { layout-order: Theme.rtl ? 1 : 0; } } B { } }
+    "#;
+    assert_eq!(unmirrored_rows(src), vec![2, 14, 19]);
+}

@@ -1,6 +1,6 @@
 // The Settings window: an ordinary titled window with a sidebar of pages on
-// the left, one per feature, and the chosen page on the right under its
-// name. It follows the Appearance setting through `Theme`.
+// the left (the right in a right-to-left language), one per feature, and
+// the chosen page beside it under its name. It follows the Appearance setting through `Theme`.
 
 import { Theme } from "theme.slint";
 import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
@@ -34,6 +34,7 @@ component SidebarRow inherits Rectangle {
 
         // A fixed-size image sits at the top of a row; centre it on the label.
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: center;
 
             Image {
@@ -45,6 +46,8 @@ component SidebarRow inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             color: root.chosen ? Theme.accent : Theme.text;
@@ -228,6 +231,7 @@ export component SettingsWindow inherits Window {
 
         HorizontalLayout {
             Rectangle {
+                layout-order: Theme.rtl ? 2 : 0;
                 width: 180px;
                 background: Theme.card;
 
@@ -246,13 +250,14 @@ export component SettingsWindow inherits Window {
 
                 // The hairline between the sidebar and the page.
                 Rectangle {
-                    x: parent.width - 1px;
+                    x: Theme.rtl ? 0px : parent.width - 1px;
                     width: 1px;
                     background: Theme.separator;
                 }
             }
 
             flick := Flickable {
+                layout-order: Theme.rtl ? 1 : 0;
                 horizontal-stretch: 1;
                 content-width: self.width;
                 content-height: max(self.height, body.preferred-height);
@@ -265,6 +270,7 @@ export component SettingsWindow inherits Window {
                     alignment: start;
 
                     Text {
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.label;
                         font-size: 18px;
                         font-weight: 600;

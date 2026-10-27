@@ -225,7 +225,7 @@ impl ScreenAccessView {
     fn window(&self) -> ScreenAccess {
         self.window.get_or_create(|| {
             let window = ScreenAccess::new().expect("cannot create the Screen Recording window");
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             let this = self.this.clone();
             window.on_open_settings(move || {
                 if let Some(view) = this.upgrade() {

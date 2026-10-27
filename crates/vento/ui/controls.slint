@@ -21,6 +21,7 @@ export global PanelIcons {
 
 // A small heading over a group of controls.
 export component SectionHeading inherits Text {
+    horizontal-alignment: Theme.rtl ? right : left;
     font-size: 11px;
     font-weight: 600;
     color: Theme.muted;
@@ -32,7 +33,8 @@ export component Separator inherits Rectangle {
 }
 
 // An on/off switch. It shows `on` as given and asks for the other state
-// when clicked; whoever uses it decides.
+// when clicked; whoever uses it decides. On is the knob at the end of the
+// line: the right, or the left in a right-to-left language.
 export component Switch inherits Rectangle {
     in property <bool> on;
     in property <string> label;
@@ -50,7 +52,7 @@ export component Switch inherits Rectangle {
     accessible-action-default => { self.toggled(!self.on); }
 
     Rectangle {
-        x: root.on ? root.width - self.width - 2px : 2px;
+        x: root.on != Theme.rtl ? root.width - self.width - 2px : 2px;
         y: (root.height - self.height) / 2;
         width: 11px;
         height: 11px;
@@ -71,7 +73,7 @@ export component Switch inherits Rectangle {
     }
 }
 
-// A setting's name on the left and its switch on the right.
+// A setting's name at the start of the line and its switch at the end.
 export component SwitchRow inherits HorizontalLayout {
     in property <string> label;
     in property <bool> on;
@@ -81,6 +83,8 @@ export component SwitchRow inherits HorizontalLayout {
     spacing: 8px;
 
     Text {
+        layout-order: Theme.rtl ? 2 : 0;
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.label;
         font-size: 13px;
         color: Theme.text;
@@ -89,6 +93,7 @@ export component SwitchRow inherits HorizontalLayout {
     }
 
     VerticalLayout {
+        layout-order: Theme.rtl ? 1 : 0;
         alignment: center;
 
         Switch {
@@ -100,7 +105,7 @@ export component SwitchRow inherits HorizontalLayout {
 }
 
 // A row-height segmented control: a rounded track with the chosen item
-// raised on a pill.
+// raised on a pill. The first item is at the start of the line.
 export component Segmented inherits Rectangle {
     in property <[string]> items;
     in property <int> current;
@@ -109,13 +114,18 @@ export component Segmented inherits Rectangle {
     property <length> pad: 2px;
     property <length> item-w: (self.width - 2 * self.pad) / max(1, self.items.length);
 
+    // Where item `i` sits, counted from the left.
+    pure function slot(i: int) -> int {
+        Theme.rtl ? root.items.length - 1 - i : i
+    }
+
     height: 28px;
     border-radius: 8px;
     background: Theme.surface;
     accessible-role: radio-group;
 
     Rectangle {
-        x: root.pad + root.current * root.item-w;
+        x: root.pad + root.slot(root.current) * root.item-w;
         y: root.pad;
         width: root.item-w;
         height: root.height - 2 * root.pad;
@@ -129,7 +139,7 @@ export component Segmented inherits Rectangle {
 
     for item[i] in root.items: Rectangle {
         property <bool> on: i == root.current;
-        x: root.pad + i * root.item-w;
+        x: root.pad + root.slot(i) * root.item-w;
         y: root.pad;
         width: root.item-w;
         height: root.height - 2 * root.pad;
@@ -180,6 +190,8 @@ export component MenuField inherits Rectangle {
         spacing: 6px;
 
         Text {
+            layout-order: Theme.rtl ? 2 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.valid ? root.items[root.current] : @tr("None found");
             font-size: 13px;
             color: root.valid ? Theme.text : Theme.muted;
@@ -190,6 +202,7 @@ export component MenuField inherits Rectangle {
 
         // A down chevron.
         VerticalLayout {
+            layout-order: Theme.rtl ? 1 : 0;
             alignment: center;
 
             Path {
@@ -237,11 +250,13 @@ export component MenuField inherits Rectangle {
                     accessible-action-default => { root.chosen(i); }
 
                     HorizontalLayout {
-                        padding-left: 6px;
+                        padding-left: Theme.rtl ? 0px : 6px;
+                        padding-right: Theme.rtl ? 6px : 0px;
                         spacing: 6px;
 
                         // A check mark on the chosen item.
                         VerticalLayout {
+                            layout-order: Theme.rtl ? 2 : 0;
                             alignment: center;
 
                             Path {
@@ -256,6 +271,8 @@ export component MenuField inherits Rectangle {
                         }
 
                         Text {
+                            layout-order: Theme.rtl ? 1 : 0;
+                            horizontal-alignment: Theme.rtl ? right : left;
                             text: item;
                             font-size: 13px;
                             color: Theme.text;
@@ -347,6 +364,7 @@ export component TextButton inherits Rectangle {
         spacing: 4px;
 
         if root.has-icon: VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: center;
 
             Image {
@@ -358,6 +376,8 @@ export component TextButton inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 12px;
             color: root.enabled ? Theme.text : Theme.muted;
@@ -471,7 +491,8 @@ component StepButton inherits Rectangle {
     }
 }
 
-// A value with a − button before it and a + button after it.
+// A value with a − button before it and a + button after it (the other
+// way round in a right-to-left language).
 export component Stepper inherits HorizontalLayout {
     in property <string> text;
     in property <string> label;
@@ -483,6 +504,7 @@ export component Stepper inherits HorizontalLayout {
     spacing: 4px;
 
     StepButton {
+        layout-order: Theme.rtl ? 3 : 0;
         plus: false;
         label: @tr("Less {}", root.label);
         enabled: root.can-decrease;
@@ -490,6 +512,7 @@ export component Stepper inherits HorizontalLayout {
     }
 
     Text {
+        layout-order: Theme.rtl ? 2 : 0;
         min-width: 56px;
         text: root.text;
         font-size: 13px;
@@ -501,6 +524,7 @@ export component Stepper inherits HorizontalLayout {
     }
 
     StepButton {
+        layout-order: Theme.rtl ? 1 : 0;
         plus: true;
         label: @tr("More {}", root.label);
         enabled: root.can-increase;
@@ -701,6 +725,7 @@ export component AwakeChips inherits VerticalLayout {
         spacing: 4px;
 
         for time[i] in root.times: Chip {
+            layout-order: Theme.rtl ? -i : 0;
             horizontal-stretch: 1;
             label: time;
             chosen: root.chip == i;
@@ -715,6 +740,7 @@ export component AwakeChips inherits VerticalLayout {
             spacing: 4px;
 
             Chip {
+                layout-order: Theme.rtl ? 3 : 0;
                 horizontal-stretch: 1;
                 label: @tr("Until stopped");
                 chosen: root.chip == 6;
@@ -722,6 +748,7 @@ export component AwakeChips inherits VerticalLayout {
             }
 
             Chip {
+                layout-order: Theme.rtl ? 2 : 0;
                 horizontal-stretch: 1;
                 label: @tr("Until…");
                 chosen: root.chip == 7;
@@ -735,6 +762,7 @@ export component AwakeChips inherits VerticalLayout {
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
                 alignment: center;
 
                 TextButton {
@@ -745,9 +773,9 @@ export component AwakeChips inherits VerticalLayout {
             }
         }
 
-        // Under "Until…", at the right edge of the row.
+        // Under "Until…", at the end of the row.
         until-popup := PopupWindow {
-            x: parent.width - self.width;
+            x: Theme.rtl ? 0px : parent.width - self.width;
             y: parent.height + 4px;
             width: 252px;
             height: 112px;
@@ -767,12 +795,13 @@ export component AwakeChips inherits VerticalLayout {
                     spacing: 8px;
 
                     Text {
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: @tr("Stay awake until");
                         font-size: 12px;
                         color: Theme.muted;
                     }
 
-                    HorizontalLayout {
+                    HorizontalLayout { // ltr: a time reads hours then minutes in every language
                         alignment: center;
                         spacing: 4px;
 
@@ -803,7 +832,7 @@ export component AwakeChips inherits VerticalLayout {
                     }
 
                     HorizontalLayout {
-                        alignment: end;
+                        alignment: Theme.rtl ? start : end;
 
                         TextButton {
                             label: @tr("Start");

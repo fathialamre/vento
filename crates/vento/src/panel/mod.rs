@@ -157,7 +157,7 @@ impl PanelController {
             let window = QuickPanel::new().expect("cannot create the quick panel");
             // The same white (or black) page as the Settings window.
             window.global::<Theme>().set_clean(true);
-            appearance::apply(&window.global::<Theme>());
+            appearance::follow(&window, appearance::Look::Full);
             window.set_screen_text_supported(self.screen_text_supported);
             window.set_paused(self.paused.get());
             // A new native window: AppKit has yet to be told to keep it.

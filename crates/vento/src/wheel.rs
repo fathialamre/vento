@@ -7,6 +7,7 @@ use std::rc::{Rc, Weak};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
+use crate::appearance;
 use crate::pocket::to_image;
 use crate::ui::{Icons, RingCell, Wheel, WheelCell, WheelLayout};
 use log::{debug, warn};
@@ -384,6 +385,9 @@ impl WheelController {
         on_drop: Box<dyn Fn(WheelDrop)>,
     ) -> Rc<Self> {
         let window = Wheel::new().expect("cannot create the wheel window");
+        // The wheel and its ring never mirror (a gesture around the
+        // pointer), but its `Theme` knows the direction like every window's.
+        appearance::follow(&window, appearance::Look::Direction);
         let geometry = WheelGeometry::new(settings.layout, settings.actions.len());
         let machine = TriggerMachine::new(settings.trigger).with_shake(settings.shake_to_open);
         let tracker = ring_tracker(&settings);

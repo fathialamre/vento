@@ -28,18 +28,20 @@ export component ArchiveProgress inherits Window {
         border-color: #ffffff26;
 
         HorizontalLayout {
-            padding-left: 14px;
-            padding-right: 10px;
+            padding-left: Theme.rtl ? 10px : 14px;
+            padding-right: Theme.rtl ? 14px : 10px;
             padding-top: 4px;
             padding-bottom: 4px;
             spacing: 10px;
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 2 : 0;
                 alignment: center;
                 spacing: 8px;
                 horizontal-stretch: 1;
 
                 Text {
+                    horizontal-alignment: Theme.rtl ? right : left;
                     text: root.heading;
                     color: white;
                     font-size: 13px;
@@ -55,8 +57,9 @@ export component ArchiveProgress inherits Window {
                     accessible-label: root.heading;
                     accessible-value: round(root.fraction * 100) + "%";
 
+                    // Filled from the start of the line.
                     Rectangle {
-                        x: 0;
+                        x: Theme.rtl ? parent.width - self.width : 0px;
                         width: parent.width * clamp(root.fraction, 0, 1);
                         height: parent.height;
                         border-radius: 2px;
@@ -66,6 +69,7 @@ export component ArchiveProgress inherits Window {
             }
 
             Rectangle {
+                layout-order: Theme.rtl ? 1 : 0;
                 width: 60px;
 
                 Rectangle {
@@ -119,6 +123,7 @@ component ExtractButton inherits Rectangle {
         padding-right: 16px;
 
         Text {
+            horizontal-alignment: Theme.rtl ? right : left;
             text: @tr("Extract");
             font-size: 13px;
             font-weight: 600;
@@ -194,6 +199,7 @@ export component PasswordPrompt inherits Window {
                     spacing: 8px;
 
                     VerticalLayout {
+                        layout-order: Theme.rtl ? 2 : 0;
                         alignment: center;
 
                         Image {
@@ -205,6 +211,8 @@ export component PasswordPrompt inherits Window {
                     }
 
                     Text {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: root.heading;
                         font-size: 13px;
                         font-weight: 600;
@@ -245,6 +253,7 @@ export component PasswordPrompt inherits Window {
                             width: max(parent.width - self.text-cursor-width, self.preferred-width);
                             height: 100%;
                             vertical-alignment: center;
+                            horizontal-alignment: Theme.rtl ? right : left;
                             input-type: InputType.password;
                             text <=> root.password;
                             color: Theme.text;
@@ -275,6 +284,7 @@ export component PasswordPrompt inherits Window {
                         width: parent.width - 16px;
                         height: parent.height;
                         visible: root.password == "";
+                        horizontal-alignment: Theme.rtl ? right : left;
                         text: @tr("Password");
                         color: Theme.muted;
                         font-size: 13px;
@@ -284,6 +294,7 @@ export component PasswordPrompt inherits Window {
 
                 // Always takes its line, so the window does not jump.
                 Text {
+                    horizontal-alignment: Theme.rtl ? right : left;
                     text: root.wrong ? @tr("Wrong password") : "";
                     font-size: 12px;
                     color: Theme.danger;
@@ -292,10 +303,11 @@ export component PasswordPrompt inherits Window {
                 }
 
                 HorizontalLayout {
-                    alignment: end;
+                    alignment: Theme.rtl ? start : end;
                     spacing: 8px;
 
                     TextButton {
+                        layout-order: Theme.rtl ? 2 : 0;
                         label: @tr("Cancel");
                         height: 28px;
                         width: 64px;
@@ -303,6 +315,7 @@ export component PasswordPrompt inherits Window {
                     }
 
                     ExtractButton {
+                        layout-order: Theme.rtl ? 1 : 0;
                         enabled: root.password != "";
                         clicked => { root.submit(); }
                     }

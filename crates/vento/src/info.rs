@@ -237,7 +237,7 @@ impl InfoController {
         window.set_details(ModelRc::from(self.details.clone()));
         window.set_biggest(ModelRc::from(self.biggest.clone()));
         self.connect(&window);
-        appearance::apply(&window.global::<Theme>());
+        appearance::follow(&window, appearance::Look::Full);
         *self.window.borrow_mut() = Some(window.clone_strong());
         window
     }

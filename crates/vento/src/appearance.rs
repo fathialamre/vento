@@ -6,20 +6,41 @@
 //! given to each one. `dark` itself is never written: it stays a binding in
 //! `theme.slint`, so System follows a system switch again after Light or
 //! Dark.
+//!
+//! The interface language's direction (`Theme.rtl`) is given the same way,
+//! to every window: each one [`follow`]s it from when it is made, and
+//! [`apply_language`] gives the new direction to every window that exists.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use slint::winit_030::winit::window::Theme as WindowTheme;
 use vento_core::i18n;
 use vento_core::settings::{Appearance, ThemeName};
 use vento_platform::Platform;
 
+use slint::ComponentHandle;
+
 use crate::ui::Theme;
+
+/// Gives a window's `Theme` what it follows again; false once the window is
+/// gone.
+type Follower = Box<dyn Fn() -> bool>;
 
 thread_local! {
     // All the UI runs on the main thread.
     static CURRENT: Cell<Appearance> = const { Cell::new(Appearance::System) };
     static CURRENT_THEME: Cell<ThemeName> = const { Cell::new(ThemeName::Vento) };
+    static FOLLOWERS: RefCell<Vec<Follower>> = const { RefCell::new(Vec::new()) };
+}
+
+/// What a window takes from [`follow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Look {
+    /// The Appearance and Theme settings and the direction ([`apply`]).
+    Full,
+    /// Only the direction ([`apply_direction`]): the window keeps its own
+    /// colours (the Pocket island, the wheel, the toast).
+    Direction,
 }
 
 /// Makes `a` the setting the windows get from [`apply`].
@@ -79,11 +100,53 @@ pub fn apply(theme: &Theme<'_>) {
     theme.set_rtl(i18n::current().rtl);
 }
 
+/// Gives a window's `Theme` the interface language's direction alone.
+pub fn apply_direction(theme: &Theme<'_>) {
+    theme.set_rtl(i18n::current().rtl);
+}
+
+/// Gives `window` its `look` now, and again after every language change
+/// for as long as the window exists (the registry keeps only a weak
+/// reference, so a dropped window is forgotten).
+pub fn follow<T>(window: &T, look: Look)
+where
+    T: ComponentHandle + 'static,
+    for<'a> Theme<'a>: slint::Global<'a, T>,
+{
+    let weak = window.as_weak();
+    let refresh = move || {
+        let Some(window) = weak.upgrade() else {
+            return false;
+        };
+        let theme = window.global::<Theme>();
+        match look {
+            Look::Full => apply(&theme),
+            Look::Direction => apply_direction(&theme),
+        }
+        true
+    };
+    refresh();
+    FOLLOWERS.with(|followers| followers.borrow_mut().push(Box::new(refresh)));
+}
+
+/// Gives every window that [`follow`]s its look again, and forgets the
+/// windows that are gone.
+fn refresh_followers() {
+    // Taken out while they run, so a window made meanwhile can still follow.
+    let followers = FOLLOWERS.with(|followers| std::mem::take(&mut *followers.borrow_mut()));
+    let mut kept: Vec<Follower> = followers.into_iter().filter(|refresh| refresh()).collect();
+    FOLLOWERS.with(|followers| {
+        let mut followers = followers.borrow_mut();
+        kept.append(&mut followers);
+        *followers = kept;
+    });
+}
+
 /// Makes `code` the language of the interface: the text Rust makes and the
 /// text in `.slint` files, from the bundled translations. Slint wants a
 /// component to exist before it can switch, so this comes after the first
-/// window is made. The windows then pick up the right-to-left flag through
-/// [`apply`].
+/// window is made. Every window that [`follow`]s the language then gets the
+/// new direction at once.
 pub fn apply_language(code: &str) {
     i18n::set_language(code);
     // English is the source text: no translation is selected for it.
@@ -91,6 +154,7 @@ pub fn apply_language(code: &str) {
     if let Err(e) = slint::select_bundled_translation(selected) {
         log::error!("cannot select the {code:?} translation: {e}");
     }
+    refresh_followers();
 }
 
 /// Matches the desktop's own menus where the platform gives their colours,
@@ -154,6 +218,31 @@ mod tests {
         }
         assert_eq!(theme_index(ThemeName::Vento), 0);
         assert_eq!(theme_index(ThemeName::Nord), 6);
+    }
+
+    #[test]
+    fn followers_run_again_until_their_window_is_gone() {
+        use std::rc::Rc;
+        let (kept, gone) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
+        let (k, g) = (kept.clone(), gone.clone());
+        FOLLOWERS.with(|followers| {
+            let mut followers = followers.borrow_mut();
+            followers.push(Box::new(move || {
+                k.set(k.get() + 1);
+                true
+            }));
+            followers.push(Box::new(move || {
+                g.set(g.get() + 1);
+                false
+            }));
+        });
+        refresh_followers();
+        refresh_followers();
+        assert_eq!(kept.get(), 2);
+        // Asked once, said its window is gone, and was forgotten.
+        assert_eq!(gone.get(), 1);
+        assert_eq!(FOLLOWERS.with(|followers| followers.borrow().len()), 1);
+        FOLLOWERS.with(|followers| followers.borrow_mut().clear());
     }
 
     #[test]

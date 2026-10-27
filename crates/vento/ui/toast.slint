@@ -1,5 +1,8 @@
 // The result toast: a small frameless, always-on-top pill with a message and
-// an optional "Undo" button.
+// an optional "Undo" button. In a right-to-left language the message is
+// on the right and Undo on the left.
+
+import { Theme } from "theme.slint";
 
 export component Toast inherits Window {
     no-frame: true;
@@ -20,13 +23,14 @@ export component Toast inherits Window {
         border-color: #ffffff26;
 
         HorizontalLayout {
-            padding-left: 14px;
+            padding-left: Theme.rtl ? 8px : 14px;
             padding-top: 4px;
             padding-bottom: 4px;
-            padding-right: 8px;
+            padding-right: Theme.rtl ? 14px : 8px;
             spacing: 8px;
 
             Text {
+                layout-order: Theme.rtl ? 2 : 0;
                 text: root.message;
                 color: white;
                 font-size: 13px;
@@ -35,10 +39,12 @@ export component Toast inherits Window {
                 wrap: word-wrap;
                 overflow: elide;
                 vertical-alignment: center;
+                horizontal-alignment: Theme.rtl ? right : left;
                 horizontal-stretch: 1;
             }
 
             if root.can-undo: Rectangle {
+                layout-order: Theme.rtl ? 1 : 0;
                 width: 56px;
                 // Shrink vertically so the hit area is a pill inside the toast.
                 property <bool> hovered: touch.has-hover;

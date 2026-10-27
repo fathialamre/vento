@@ -29,6 +29,7 @@ export component Notice inherits Rectangle {
         spacing: 8px;
 
         VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
             alignment: start;
 
             Image {
@@ -40,6 +41,8 @@ export component Notice inherits Rectangle {
         }
 
         Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: root.text;
             font-size: 12px;
             color: Theme.text;
@@ -88,11 +91,12 @@ component ActionList inherits Rectangle {
         accessible-label: row.label;
 
         HorizontalLayout {
-            padding-left: 2px;
-            padding-right: 6px;
+            padding-left: Theme.rtl ? 6px : 2px;
+            padding-right: Theme.rtl ? 2px : 6px;
             spacing: 8px;
 
             DragGrip {
+                layout-order: Theme.rtl ? 4 : 0;
                 index: i;
                 row-h: root.row-h;
                 lo: root.drag-lo;
@@ -104,6 +108,7 @@ component ActionList inherits Rectangle {
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 3 : 0;
                 alignment: center;
 
                 Image {
@@ -115,6 +120,8 @@ component ActionList inherits Rectangle {
             }
 
             Text {
+                layout-order: Theme.rtl ? 2 : 0;
+                horizontal-alignment: Theme.rtl ? right : left;
                 text: row.label;
                 font-size: 13px;
                 color: row.shown ? Theme.text : Theme.muted;
@@ -123,6 +130,7 @@ component ActionList inherits Rectangle {
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
                 alignment: center;
 
                 Switch {
@@ -154,6 +162,7 @@ export component WheelPage inherits VerticalLayout {
         spacing: 8px;
 
         LayoutCard {
+            layout-order: Theme.rtl ? 2 : 0;
             preferred-width: 100px;
             horizontal-stretch: 1;
             icon: PanelIcons.wheel;
@@ -163,6 +172,7 @@ export component WheelPage inherits VerticalLayout {
         }
 
         LayoutCard {
+            layout-order: Theme.rtl ? 1 : 0;
             preferred-width: 100px;
             horizontal-stretch: 1;
             icon: PanelIcons.petals;
@@ -194,6 +204,7 @@ component FolderLabel inherits HorizontalLayout {
     spacing: 8px;
 
     VerticalLayout {
+        layout-order: Theme.rtl ? 3 : 0;
         alignment: center;
 
         if root.folder.has-icon: Image {
@@ -215,6 +226,8 @@ component FolderLabel inherits HorizontalLayout {
     // window's least width leaves the page 340 px); where it is takes the
     // rest.
     Text {
+        layout-order: Theme.rtl ? 2 : 0;
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.folder.name;
         font-size: 13px;
         color: root.folder.missing ? Theme.muted : Theme.text;
@@ -225,6 +238,8 @@ component FolderLabel inherits HorizontalLayout {
     }
 
     Text {
+        layout-order: Theme.rtl ? 1 : 0;
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.folder.missing ? @tr("Missing") : root.folder.place;
         font-size: 11px;
         color: Theme.muted;
@@ -268,6 +283,7 @@ component PinnedList inherits Rectangle {
             spacing: 8px;
 
             DragGrip {
+                layout-order: Theme.rtl ? 3 : 0;
                 index: i;
                 row-h: root.row-h;
                 lo: 0;
@@ -279,11 +295,13 @@ component PinnedList inherits Rectangle {
             }
 
             FolderLabel {
+                layout-order: Theme.rtl ? 2 : 0;
                 folder: row;
                 horizontal-stretch: 1;
             }
 
             VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
                 alignment: center;
 
                 IconButton {
@@ -298,6 +316,7 @@ component PinnedList inherits Rectangle {
 
 // What a list with no rows shows instead.
 component EmptyLine inherits Text {
+    horizontal-alignment: Theme.rtl ? right : left;
     height: 30px;
     font-size: 12px;
     color: Theme.muted;
@@ -325,12 +344,14 @@ export component MovePage inherits VerticalLayout {
 
     HorizontalLayout {
         SectionHeading {
+            layout-order: Theme.rtl ? 2 : 0;
             text: @tr("Pinned");
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
         TextButton {
+            layout-order: Theme.rtl ? 1 : 0;
             label: root.pinned-full ? @tr("Up to 7 folders") : @tr("Add folder");
             icon: PanelIcons.add;
             has-icon: !root.pinned-full;
@@ -353,12 +374,14 @@ export component MovePage inherits VerticalLayout {
 
     HorizontalLayout {
         SectionHeading {
+            layout-order: Theme.rtl ? 2 : 0;
             text: @tr("Recent");
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
         TextButton {
+            layout-order: Theme.rtl ? 1 : 0;
             label: @tr("Clear");
             enabled: root.has-history;
             clicked => { root.recent-cleared(); }
@@ -381,11 +404,13 @@ export component MovePage inherits VerticalLayout {
                 spacing: 8px;
 
                 FolderLabel {
+                    layout-order: Theme.rtl ? 2 : 0;
                     folder: row;
                     horizontal-stretch: 1;
                 }
 
                 VerticalLayout {
+                    layout-order: Theme.rtl ? 1 : 0;
                     alignment: center;
 
                     IconButton {
@@ -405,6 +430,8 @@ export component MovePage inherits VerticalLayout {
         spacing: 8px;
 
         Text {
+            layout-order: Theme.rtl ? 2 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
             text: @tr("Hold on Move");
             font-size: 13px;
             color: Theme.text;
@@ -414,6 +441,7 @@ export component MovePage inherits VerticalLayout {
 
         // At its own width beside the label, however wide the page.
         Stepper {
+            layout-order: Theme.rtl ? 1 : 0;
             horizontal-stretch: 0;
             text: root.hold;
             label: @tr("Hold on Move");
@@ -459,6 +487,7 @@ export component PocketPage inherits VerticalLayout {
     }
 
     if root.shortcut-error != "": Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.shortcut-error;
         font-size: 12px;
         color: Theme.danger;
@@ -533,6 +562,7 @@ export component ClipboardPage inherits VerticalLayout {
     }
 
     if root.shortcut-error != "": Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.shortcut-error;
         font-size: 12px;
         color: Theme.danger;
@@ -542,7 +572,7 @@ export component ClipboardPage inherits VerticalLayout {
     Separator { }
 
     HorizontalLayout {
-        alignment: start;
+        alignment: Theme.rtl ? end : start;
 
         TextButton {
             label: @tr("Clear history");
@@ -686,6 +716,7 @@ export component CopyFromScreenPage inherits VerticalLayout {
     }
 
     if root.shortcut-error != "": Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: root.shortcut-error;
         font-size: 12px;
         color: Theme.danger;
@@ -717,6 +748,7 @@ export component AboutPage inherits VerticalLayout {
     spacing: 8px;
 
     Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: "Vento";
         font-size: 15px;
         font-weight: 600;
@@ -724,6 +756,7 @@ export component AboutPage inherits VerticalLayout {
     }
 
     Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: @tr("Version {}", root.version);
         font-size: 12px;
         color: Theme.muted;
@@ -732,7 +765,7 @@ export component AboutPage inherits VerticalLayout {
     Separator { }
 
     HorizontalLayout {
-        alignment: start;
+        alignment: Theme.rtl ? end : start;
 
         TextButton {
             label: @tr("Open settings file");
@@ -743,6 +776,7 @@ export component AboutPage inherits VerticalLayout {
     Separator { }
 
     Text {
+        horizontal-alignment: Theme.rtl ? right : left;
         text: @tr("GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.");
         font-size: 12px;
         color: Theme.muted;
@@ -750,7 +784,7 @@ export component AboutPage inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        alignment: start;
+        alignment: Theme.rtl ? end : start;
 
         TextButton {
             label: @tr("View licenses");

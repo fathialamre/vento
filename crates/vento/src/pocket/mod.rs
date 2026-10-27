@@ -54,6 +54,7 @@ use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
 };
 
+use crate::appearance;
 use crate::panel::set_rows;
 use crate::toast::Toaster;
 use crate::ui::{Icons, PocketCell, PocketIsland};
@@ -302,6 +303,8 @@ impl PocketController {
         let pocket = Pocket::load(&path);
         info!("pocket loaded: {} items", pocket.items().len());
         let window = PocketIsland::new().expect("cannot create the pocket window");
+        // The island keeps its own dark look; it takes the direction.
+        appearance::follow(&window, appearance::Look::Direction);
         let cells = Rc::new(VecModel::default());
         window.set_cells(ModelRc::from(cells.clone()));
         let ghosts = Rc::new(VecModel::default());
