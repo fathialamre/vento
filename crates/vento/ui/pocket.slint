@@ -96,48 +96,56 @@ component DashedBox inherits Rectangle {
 }
 
 // Undo after a removal or a clear, with the time left (`left`, 1 to 0) as
-// a ring and `secs` below it.
+// a ring and `secs` below it; `compact`, a smaller ring at the right with
+// `secs` before it.
 component UndoRing inherits Rectangle {
     in property <float> left;
     in property <int> secs;
+    in property <bool> compact;
     callback clicked();
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
+    property <length> ring-d: root.compact ? 28px : 46px;
+    property <length> stroke: root.compact ? 2px : 2.5px;
 
-    height: 68px;
+    height: root.compact ? root.ring-d : 68px;
 
     ring := Rectangle {
-        x: (parent.width - self.width) / 2;
+        x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
         y: 0px;
-        width: 46px;
-        height: 46px;
-        border-radius: 23px;
+        width: root.ring-d;
+        height: root.ring-d;
+        border-radius: root.ring-d / 2;
         background: undo-touch.has-hover ? root.item-fill : transparent;
-        border-width: 2.5px;
+        border-width: root.stroke;
         border-color: #ffffff22;
 
         property <float> left: min(max(root.left, 0.001), 0.999);
         property <angle> sweep: 360deg * self.left;
+        // The arc's centre and radius in points: along the middle of the
+        // border.
+        property <float> c: root.ring-d / 2px;
+        property <float> r: self.c - root.stroke / 2px;
 
         Path {
-            width: 46px;
-            height: 46px;
-            viewbox-width: 46;
-            viewbox-height: 46;
+            width: root.ring-d;
+            height: root.ring-d;
+            viewbox-width: root.ring-d / 1px;
+            viewbox-height: root.ring-d / 1px;
             stroke: root.accent;
-            stroke-width: 2.5px;
+            stroke-width: root.stroke;
 
             MoveTo {
-                x: 23;
-                y: 1.25;
+                x: ring.c;
+                y: ring.c - ring.r;
             }
 
             ArcTo {
-                x: 23 + 21.75 * Math.sin(ring.sweep);
-                y: 23 - 21.75 * Math.cos(ring.sweep);
-                radius-x: 21.75;
-                radius-y: 21.75;
+                x: ring.c + ring.r * Math.sin(ring.sweep);
+                y: ring.c - ring.r * Math.cos(ring.sweep);
+                radius-x: ring.r;
+                radius-y: ring.r;
                 large-arc: ring.left > 0.5;
                 sweep: true;
             }
@@ -146,20 +154,22 @@ component UndoRing inherits Rectangle {
         Image {
             source: Icons.undo;
             colorize: root.accent;
-            width: 22px;
-            height: 22px;
+            width: root.compact ? 14px : 22px;
+            height: self.width;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
         }
     }
 
     Text {
-        y: 50px;
-        height: 16px;
+        x: 0px;
+        y: root.compact ? 0px : 50px;
+        width: root.compact ? ring.x - 5px : parent.width;
+        height: root.compact ? root.ring-d : 16px;
         text: "Undo \{root.secs}s";
         color: undo-touch.has-hover ? white : #ffffffb0;
         font-size: 11px;
-        horizontal-alignment: center;
+        horizontal-alignment: root.compact ? right : center;
         vertical-alignment: center;
     }
 
@@ -629,7 +639,10 @@ component ClipList inherits Rectangle {
 
 // The Pocket's column beside its items: "Drag all" with the item count and
 // Clear below it, or, after a removal or a clear, Undo with the time left.
+// `compact`, the same side by side and smaller, at the right of the bottom
+// bar.
 component PocketSide inherits Rectangle {
+    in property <bool> compact;
     in property <int> count;
     in property <bool> undo-active;
     in property <float> undo-left;
@@ -643,40 +656,41 @@ component PocketSide inherits Rectangle {
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
+    property <length> clear-d: root.compact ? 28px : 30px;
 
-    width: 52px;
-    height: 80px;
+    width: root.compact ? 80px : 52px;
+    height: root.compact ? 28px : 80px;
 
     if root.count > 0 && !root.undo-active: Rectangle {
         Rectangle {
-            x: (parent.width - self.width) / 2;
+            x: root.compact ? parent.width - root.clear-d - 6px - self.width : (parent.width - self.width) / 2;
             y: 0px;
-            width: 42px;
-            height: 42px;
-            border-radius: 21px;
+            width: root.compact ? 28px : 42px;
+            height: self.width;
+            border-radius: self.width / 2;
             background: all-touch.pressed ? #e55a10 : root.accent;
 
             Image {
                 source: Icons.grab;
                 colorize: white;
-                width: 20px;
-                height: 20px;
+                width: root.compact ? 14px : 20px;
+                height: self.width;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
             }
 
             Rectangle {
-                width: root.count > 99 ? 28px : root.count > 9 ? 24px : 18px;
-                height: 18px;
-                x: parent.width - self.width + 4px;
-                y: -4px;
-                border-radius: 9px;
+                width: root.count > 99 ? self.height + 10px : root.count > 9 ? self.height + 6px : self.height;
+                height: root.compact ? 14px : 18px;
+                x: parent.width - self.width + (root.compact ? 3px : 4px);
+                y: root.compact ? -3px : -4px;
+                border-radius: self.height / 2;
                 background: white;
 
                 Text {
                     text: root.count > 99 ? "99+" : root.count;
                     color: black;
-                    font-size: 11px;
+                    font-size: root.compact ? 9px : 11px;
                     font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -701,18 +715,18 @@ component PocketSide inherits Rectangle {
         }
 
         Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: 50px;
-            width: 30px;
-            height: 30px;
-            border-radius: 15px;
+            x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
+            y: root.compact ? 0px : 50px;
+            width: root.clear-d;
+            height: root.clear-d;
+            border-radius: root.clear-d / 2;
             background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
 
             Image {
                 source: Icons.trash;
                 colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-                width: 16px;
-                height: 16px;
+                width: root.compact ? 14px : 16px;
+                height: self.width;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
             }
@@ -726,8 +740,9 @@ component PocketSide inherits Rectangle {
     }
 
     if root.undo-active: UndoRing {
-        y: 6px;
+        y: root.compact ? 0px : 6px;
         width: parent.width;
+        compact: root.compact;
         left: root.undo-left;
         secs: root.undo-secs;
         clicked => {
@@ -784,8 +799,10 @@ component KindChip inherits Rectangle {
 
 // The Pocket list: every item the Pocket holds, one row each in Pocket
 // order, with a back control and the filter chips above it and the Pocket's
-// column ("Drag all" and Clear, or Undo) beside it.
+// column ("Drag all" and Clear, or Undo) beside it unless the bottom bar
+// holds those (`side` off).
 component PocketList inherits Rectangle {
+    in property <bool> side: true;
     // The rows the chosen chip lists.
     in property <[PocketRow]> rows;
     // "All", then one chip per kind present; `filter` is the chosen one.
@@ -896,7 +913,7 @@ component PocketList inherits Rectangle {
     list := Flickable {
         x: root.pad;
         y: 8px + root.head-h + 6px;
-        width: parent.width - 2 * root.pad - root.side-w - 10px;
+        width: parent.width - 2 * root.pad - (root.side ? root.side-w + 10px : 0px);
         height: parent.height - self.y - 8px;
         // Presses belong to the rows; the list scrolls by wheel only.
         interactive: false;
@@ -1014,7 +1031,7 @@ component PocketList inherits Rectangle {
 
     // "Drag all" and Clear at the foot of the column, like the clipboard
     // list's Clear.
-    PocketSide {
+    if root.side: PocketSide {
         x: parent.width - root.pad - root.side-w;
         y: parent.height - self.height - 8px;
         count: root.count;
@@ -1153,6 +1170,9 @@ export component PocketIsland inherits Window {
     property <length> cell-step: 68px;
     property <length> pad: 14px;
     property <length> side-w: 52px;
+    // Room the Pocket's rows leave at the right for its column, which the
+    // bottom bar holds instead while it shows.
+    property <length> side-room: root.show-switch ? 0px : root.side-w + 10px;
 
     property <length> collapsed-w: root.notch-style ? root.notch-w + 2 * root.wing : 120px;
     property <length> collapsed-h: root.notch-style ? root.top-h : 28px;
@@ -1237,7 +1257,7 @@ export component PocketIsland inherits Window {
 
                     x: root.pad;
                     y: 16px;
-                    width: parent.width - 2 * root.pad - root.side-w - 10px;
+                    width: parent.width - 2 * root.pad - root.side-room;
                     height: 80px;
                     // Pointer drags belong to the cells; the row scrolls by wheel only.
                     interactive: false;
@@ -1589,7 +1609,7 @@ export component PocketIsland inherits Window {
                     }
                 }
 
-                PocketSide {
+                if !root.show-switch: PocketSide {
                     x: parent.width - root.pad - root.side-w;
                     y: 16px;
                     count: root.count;
@@ -1686,6 +1706,7 @@ export component PocketIsland inherits Window {
                 y: 0px;
                 width: parent.width;
                 height: 232px;
+                side: !root.show-switch;
                 rows: root.list-rows;
                 chips: root.list-chips;
                 filter: root.list-filter;
@@ -1728,7 +1749,8 @@ export component PocketIsland inherits Window {
                 }
             }
 
-            // Under either view: the two buttons switching between them.
+            // Under either view: the two buttons switching between them, and
+            // under the Pocket, its column's controls at the right.
             if root.show-switch: Rectangle {
                 x: 0px;
                 y: parent.height - self.height;
@@ -1769,6 +1791,31 @@ export component PocketIsland inherits Window {
                         clicked => {
                             root.view-chosen(0);
                         }
+                    }
+                }
+
+                if root.view != 1: PocketSide {
+                    x: parent.width - root.pad - self.width;
+                    y: 4px;
+                    compact: true;
+                    count: root.count;
+                    undo-active: root.pocket-undo;
+                    undo-left: root.undo-left;
+                    undo-secs: root.undo-secs;
+                    all-pressed => {
+                        root.all-pressed();
+                    }
+                    all-moved(dx, dy) => {
+                        root.all-moved(dx, dy);
+                    }
+                    all-released => {
+                        root.all-released();
+                    }
+                    clear => {
+                        root.clear();
+                    }
+                    undo => {
+                        root.undo();
                     }
                 }
             }

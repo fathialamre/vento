@@ -23,7 +23,7 @@ const EXPANDED_MIN_W: f64 = 420.0;
 const SCREEN_MARGIN: f64 = 20.0;
 /// The panel's layout, as `pocket.slint` draws it: side padding, one cell
 /// (or stack) per step, the "All N" tile, and the gap and column of "Drag
-/// all".
+/// all" (only without the bottom switch, whose bar holds it otherwise).
 const PAD: f64 = 14.0;
 const CELL_STEP: f64 = 68.0;
 const OVERFLOW_W: f64 = 48.0;
@@ -94,19 +94,22 @@ pub(super) struct Frames {
 
 /// The width the panel needs to show `count` items under `layout`: the
 /// first [`MAX_CELLS`] cells, the "All N" tile when there are more under
-/// List, and the "Drag all" column. Under Scroll there is no tile: the strip
-/// stays eight cells wide and the rest scroll into view. Under Stacks a full
-/// Pocket shows stacks instead (see [`strip_w`]).
-fn panel_w(count: usize, layout: PocketLayout) -> f64 {
+/// List, and the "Drag all" column unless the bottom switch shows (`switch`).
+/// Under Scroll there is no tile: the strip stays eight cells wide and the
+/// rest scroll into view. Under Stacks a full Pocket shows stacks instead (see
+/// [`strip_w`]).
+fn panel_w(count: usize, layout: PocketLayout, switch: bool) -> f64 {
     let tile = count > MAX_CELLS && layout == PocketLayout::List;
-    strip_w(count.min(MAX_CELLS), tile)
+    strip_w(count.min(MAX_CELLS), tile, switch)
 }
 
 /// The width of a panel showing `slots` cells or stacks, with the "All N"
-/// tile after them or not, and the "Drag all" column.
-fn strip_w(slots: usize, tile: bool) -> f64 {
+/// tile after them or not, and the "Drag all" column, which the bottom
+/// switch's bar takes in when it shows (`switch`).
+fn strip_w(slots: usize, tile: bool, switch: bool) -> f64 {
     let overflow = if tile { OVERFLOW_W } else { 0.0 };
-    PAD + slots as f64 * CELL_STEP + overflow + SIDE_GAP + SIDE_W + PAD
+    let side = if switch { 0.0 } else { SIDE_GAP + SIDE_W };
+    PAD + slots as f64 * CELL_STEP + overflow + side + PAD
 }
 
 /// The height the island takes at the top of the screen: the menu bar, or
@@ -128,7 +131,9 @@ pub(super) fn top_height(home: &IslandHome) -> f64 {
 /// view and as wide as the row it stands for (the cells and "All N", or the
 /// stacks), so the pointer that opened it stays over it, and so does the
 /// pointer on its back control as the island returns to that row: removing
-/// rows narrows it only as that row narrows.
+/// rows narrows it only as that row narrows. With the bottom switch, whose
+/// bar holds "Drag all" and Clear, each of these rows is that column
+/// narrower.
 pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
     let screen = home.screen;
     let top_h = top_height(home);
@@ -168,18 +173,18 @@ pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
     };
     let (fit, panel_h) = match panel {
         Panel::Pocket { switch, layout } => (
-            panel_w(count, layout),
+            panel_w(count, layout, switch),
             PANEL_H + if switch { SWITCH_H } else { 0.0 },
         ),
         Panel::Stacks { switch, stacks } => (
-            strip_w(stacks, false),
+            strip_w(stacks, false, switch),
             PANEL_H + if switch { SWITCH_H } else { 0.0 },
         ),
         Panel::Clipboard => (0.0, CLIP_PANEL_H + SWITCH_H),
         Panel::PocketList { switch, row } => (
             match row {
-                Row::Cells(layout) => panel_w(count, layout),
-                Row::Stacks(stacks) => strip_w(stacks, false),
+                Row::Cells(layout) => panel_w(count, layout, switch),
+                Row::Stacks(stacks) => strip_w(stacks, false, switch),
             },
             CLIP_PANEL_H + if switch { SWITCH_H } else { 0.0 },
         ),
@@ -516,7 +521,8 @@ mod tests {
         )
         .expanded;
         assert_eq!(with.h, 150.0 + 40.0);
-        assert_eq!(with.w, 566.0);
+        // Its bar takes in the "Drag all" column: 14 + 7 * 68 + 14.
+        assert_eq!(with.w, 504.0);
         // Under Stacks with eight or fewer items, the cells as in List.
         let few = Panel::Pocket {
             switch: false,
@@ -605,7 +611,26 @@ mod tests {
         )
         .expanded;
         assert_eq!(with.h, full.h + 40.0);
-        assert_eq!(with.w, full.w);
+        // Its bar takes in the "Drag all" column, as under the cells:
+        // 14 + 8 * 68 + 48 + 14.
+        assert_eq!(with.w, 620.0);
+        let pocket = Panel::Pocket {
+            switch: true,
+            layout: PocketLayout::List,
+        };
+        assert_eq!(with.w, frames(&home, 12, pocket).expanded.w);
+        // Opened from stacks with the switch: as wide as that stacks row.
+        let stacks = Panel::Stacks {
+            switch: true,
+            stacks: 7,
+        };
+        let row = Row::Stacks(7);
+        assert_eq!(
+            frames(&home, 12, Panel::PocketList { switch: true, row })
+                .expanded
+                .w,
+            frames(&home, 12, stacks).expanded.w
+        );
         // Capped by the screen like the other views.
         let mut small = plain(24.0);
         small.screen.w = 600.0;
@@ -635,6 +660,45 @@ mod tests {
         .expanded;
         assert_eq!(with.h, without.h + 40.0);
         assert_eq!(with.w, without.w);
+    }
+
+    #[test]
+    fn switch_bar_takes_in_the_drag_all_column() {
+        let home = notched(188.0, 38.0);
+        let w = |count, panel| frames(&home, count, panel).expanded.w;
+        let pocket = |switch, layout| Panel::Pocket { switch, layout };
+        let stacks = |switch| Panel::Stacks { switch, stacks: 7 };
+        let list = |switch| Panel::PocketList {
+            switch,
+            row: Row::Cells(PocketLayout::List),
+        };
+        // Every Pocket row is the column and its gap narrower with the bar.
+        for (count, off, on) in [
+            (
+                8,
+                pocket(false, PocketLayout::List),
+                pocket(true, PocketLayout::List),
+            ),
+            (
+                12,
+                pocket(false, PocketLayout::List),
+                pocket(true, PocketLayout::List),
+            ),
+            (
+                40,
+                pocket(false, PocketLayout::Scroll),
+                pocket(true, PocketLayout::Scroll),
+            ),
+            (12, stacks(false), stacks(true)),
+            (12, list(false), list(true)),
+        ] {
+            assert_eq!(w(count, on), w(count, off) - (SIDE_GAP + SIDE_W));
+        }
+        assert_eq!(w(8, pocket(true, PocketLayout::List)), 572.0);
+        // Never narrower than the minimum: five cells need 430 pt with the
+        // column, 368 pt without it.
+        assert_eq!(w(5, OFF), 430.0);
+        assert_eq!(w(5, pocket(true, PocketLayout::List)), 420.0);
     }
 
     #[test]
