@@ -3,7 +3,7 @@
 //! it to open its settings and goes. The request arrives on a thread of its
 //! own and waits for the main thread, which hands it on from
 //! [`asked_to_open`] on every input sample. The Vento extension asks the
-//! same way to open the Keep Awake tab when its cup is clicked
+//! same way to open the Quick panel when its cup is clicked
 //! ([`awake_indicator_clicked`]).
 
 use std::sync::Mutex;

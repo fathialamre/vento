@@ -336,7 +336,7 @@ pub struct Executor {
     /// Asks for the passwords an Archive job needs.
     password: Rc<PasswordView>,
     /// Told which undo is available whenever that changes.
-    on_undo_changed: RefCell<Option<UndoListener>>,
+    on_undo_changed: RefCell<Vec<UndoListener>>,
     this: Weak<Self>,
 }
 
@@ -363,7 +363,7 @@ impl Executor {
             running: RefCell::new(None),
             progress,
             password,
-            on_undo_changed: RefCell::new(None),
+            on_undo_changed: RefCell::new(Vec::new()),
             this: this.clone(),
         });
         MAIN_EXECUTOR.with(|slot| *slot.borrow_mut() = Rc::downgrade(&executor));
@@ -592,15 +592,17 @@ impl Executor {
         self.toast.show(&text, None, at);
     }
 
-    /// Registers `f`, called with `has_undo()` after a move or copy records
-    /// an undo and after an undo starts or finishes. Replaces any earlier callback.
+    /// Adds `f`, called with `has_undo()` after a move or copy records an
+    /// undo and after an undo starts or finishes. The tray's Undo item and
+    /// the Quick panel's Undo row each follow it.
     pub fn on_undo_changed(&self, f: UndoListener) {
-        *self.on_undo_changed.borrow_mut() = Some(f);
+        self.on_undo_changed.borrow_mut().push(f);
     }
 
     fn notify_undo_changed(&self) {
-        if let Some(f) = self.on_undo_changed.borrow().as_ref() {
-            f(self.has_undo());
+        let kind = self.has_undo();
+        for f in self.on_undo_changed.borrow().iter() {
+            f(kind);
         }
     }
 

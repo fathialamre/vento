@@ -13,6 +13,78 @@ use crate::geometry::{Layout, MAX_ACTIONS};
 use crate::paths::PathFormat;
 use crate::trigger::{Modifier, Modifiers};
 
+/// Whether the panels and windows use a light or dark look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Appearance {
+    /// Follow the light or dark look of the system.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// The colours of the Quick panel and the Settings window, each in a light
+/// and a dark version. The wheel, the Pocket and toasts keep their own look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeName {
+    /// White or black with neutral greys and Vento's orange.
+    #[default]
+    Vento,
+    Github,
+    Catppuccin,
+    RosePine,
+    TokyoNight,
+    Gruvbox,
+    Nord,
+}
+
+impl ThemeName {
+    /// Every theme, in the order the Settings window lists them.
+    pub const ALL: [Self; 7] = [
+        Self::Vento,
+        Self::Github,
+        Self::Catppuccin,
+        Self::RosePine,
+        Self::TokyoNight,
+        Self::Gruvbox,
+        Self::Nord,
+    ];
+
+    /// The name the Settings window shows.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Vento => "Vento",
+            Self::Github => "GitHub",
+            Self::Catppuccin => "Catppuccin",
+            Self::RosePine => "Rosé Pine",
+            Self::TokyoNight => "Tokyo Night",
+            Self::Gruvbox => "Gruvbox",
+            Self::Nord => "Nord",
+        }
+    }
+}
+
+/// How a full Pocket (more than eight items) lays its items out. With eight
+/// or fewer it looks the same in every layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PocketLayout {
+    /// The first eight items, with a button for the rest.
+    #[default]
+    List,
+    /// Every item, in a strip of cells that scrolls sideways.
+    Scroll,
+    /// The items grouped by kind, each group a stack to open.
+    Stacks,
+}
+
+impl PocketLayout {
+    /// Every layout, in the order the Settings window lists them.
+    pub const ALL: [Self; 3] = [Self::List, Self::Scroll, Self::Stacks];
+}
+
 /// User-configurable behaviour of the wheel.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -27,6 +99,11 @@ pub struct Settings {
     pub actions: Vec<ActionId>,
     /// Format used by the Copy path action.
     pub copy_path_format: PathFormat,
+    /// Light or dark look of the Quick panel and the Settings window. The
+    /// wheel, the Pocket and toasts stay dark either way.
+    pub appearance: Appearance,
+    /// Colours of the Quick panel and the Settings window.
+    pub theme: ThemeName,
     /// Bundle id of the terminal app to open; `None` (or an app that is not
     /// installed) means Terminal.app.
     pub terminal: Option<String>,
@@ -34,6 +111,8 @@ pub struct Settings {
     pub pocket_remove_after_drop: bool,
     /// Whether the Pocket keeps its own copy of each dropped-in file.
     pub pocket_keep_copies: bool,
+    /// How the Pocket lays its items out once it holds more than eight.
+    pub pocket_layout: PocketLayout,
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].
     pub pocket_shortcut: String,
@@ -110,9 +189,12 @@ impl Default for Settings {
             shake_to_open: true,
             actions: default_actions(),
             copy_path_format: PathFormat::Plain,
+            appearance: Appearance::System,
+            theme: ThemeName::Vento,
             terminal: None,
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
+            pocket_layout: PocketLayout::List,
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
@@ -136,9 +218,12 @@ struct RawSettings {
     shake_to_open: bool,
     actions: Vec<String>,
     copy_path_format: PathFormat,
+    appearance: Appearance,
+    theme: ThemeName,
     terminal: Option<String>,
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
+    pocket_layout: PocketLayout,
     pocket_shortcut: String,
     clipboard_history: bool,
     clipboard_shortcut: String,
@@ -164,9 +249,12 @@ impl From<&Settings> for RawSettings {
             shake_to_open: s.shake_to_open,
             actions: s.actions.iter().map(|a| a.key().to_owned()).collect(),
             copy_path_format: s.copy_path_format,
+            appearance: s.appearance,
+            theme: s.theme,
             terminal: s.terminal.clone(),
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
+            pocket_layout: s.pocket_layout,
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
@@ -235,9 +323,12 @@ impl From<RawSettings> for Settings {
             shake_to_open: raw.shake_to_open,
             actions,
             copy_path_format: raw.copy_path_format,
+            appearance: raw.appearance,
+            theme: raw.theme,
             terminal: raw.terminal,
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
+            pocket_layout: raw.pocket_layout,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
             clipboard_shortcut: raw.clipboard_shortcut,
@@ -610,6 +701,85 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn appearance_follows_the_system_unless_saved_otherwise() {
+        assert_eq!(Settings::default().appearance, Appearance::System);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            appearance: Appearance::Dark,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("appearance = \"dark\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn the_theme_is_vento_unless_saved_otherwise() {
+        assert_eq!(Settings::default().theme, ThemeName::Vento);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            theme: ThemeName::RosePine,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("theme = \"rose_pine\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+        let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(Settings::try_load(&old).unwrap().theme, ThemeName::Vento);
+    }
+
+    #[test]
+    fn the_pocket_lists_its_items_unless_saved_otherwise() {
+        assert_eq!(Settings::default().pocket_layout, PocketLayout::List);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            pocket_layout: PocketLayout::Stacks,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("pocket_layout = \"stacks\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+        let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(
+            Settings::try_load(&old).unwrap().pocket_layout,
+            PocketLayout::List
+        );
+    }
+
+    #[test]
+    fn old_file_without_appearance_follows_the_system() {
+        let (_dir, p) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(
+            Settings::try_load(&p).unwrap().appearance,
+            Appearance::System
+        );
+    }
+
+    #[test]
+    fn a_misspelt_appearance_rejects_the_file_like_any_other_choice() {
+        let (_dir, p) = write_temp("appearance = \"sepia\"\n");
+        assert!(matches!(
+            Settings::try_load(&p),
+            Err(SettingsError::Parse { line: Some(1), .. })
+        ));
     }
 
     #[test]

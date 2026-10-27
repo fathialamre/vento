@@ -1,0 +1,458 @@
+// The Quick panel: a solid, frameless window that hangs under the menu-bar
+// icon from a small arrow pointing at it. It says whether Vento is on, and
+// holds the quick actions (Copy text, Clipboard, Pocket, Keep Awake),
+// Keep Awake's times, Undo, and a footer with Settings…, Quit and Done. It
+// follows the Appearance setting through `Theme`. The settings themselves
+// are in the Settings window (`settings_window.slint`).
+
+import { Theme } from "theme.slint";
+import { Icons } from "wheel.slint";
+import { Notice } from "settings_pages.slint";
+import { AwakeChips, PanelIcons, PanelOutline, Separator, TextButton } from "controls.slint";
+
+// One quick action: its icon, its name and a line about it (a shortcut,
+// a count, until when). An active tile is outlined in the accent; a
+// disabled one is faded and ignores clicks.
+component ActionTile inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <string> detail;
+    in property <bool> enabled: true;
+    in property <bool> active;
+    callback clicked();
+
+    // The same preferred width for every tile, so the two columns split
+    // the row evenly whatever the details say.
+    preferred-width: 100px;
+    horizontal-stretch: 1;
+    border-radius: 12px;
+    background: self.enabled && touch.has-hover ? Theme.hover : Theme.card;
+    border-width: self.active ? 2px : 1px;
+    border-color: self.active ? Theme.accent : Theme.card-border;
+    opacity: self.enabled ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-description: self.detail;
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 2px;
+
+        HorizontalLayout {
+            alignment: start;
+            padding-bottom: 4px;
+
+            Image {
+                source: root.icon;
+                width: 20px;
+                height: 20px;
+                colorize: Theme.accent;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.text;
+            overflow: elide;
+        }
+
+        // Room for two lines whatever it says, so the tiles keep their
+        // height as Keep Awake starts, counts down and stops.
+        Text {
+            height: 30px;
+            text: root.detail;
+            font-size: 12px;
+            color: Theme.muted;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: top;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A quiet footer item: an icon and a word, highlighted on hover.
+component FooterItem inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    callback clicked();
+
+    property <color> tint: touch.has-hover ? Theme.text : Theme.muted;
+
+    height: 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.surface : transparent;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        spacing: 6px;
+
+        // A fixed-size image sits at the top of a row; centre it on the label.
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 16px;
+                height: 16px;
+                colorize: root.tint;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: root.tint;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// The one prominent button.
+component DoneButton inherits Rectangle {
+    callback clicked();
+
+    height: 28px;
+    border-radius: 8px;
+    background: touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent);
+    accessible-role: button;
+    accessible-label: "Done";
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+
+        Text {
+            text: "Done";
+            font-size: 13px;
+            font-weight: 600;
+            color: white;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component QuickPanel inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    title: "Vento";
+    default-font-size: 13px;
+
+    // vento is paused: the status row says so and offers Resume, and the
+    // Copy text, Clipboard and Pocket tiles are greyed out.
+    in property <bool> paused;
+    // Shown at the top when not empty.
+    in property <string> notice;
+    // Whether Copy from screen is available: the Copy text tile shows.
+    in property <bool> screen-text-supported;
+    // The Copy from screen and Clipboard shortcuts as the platform writes
+    // them, under the tiles' names.
+    in property <string> screen-text-shortcut;
+    in property <string> clip-shortcut;
+    // Whether the clipboard history is on; the Clipboard tile is greyed
+    // out and says "Off" while it is not.
+    in property <bool> clip-history;
+    // How many items the Pocket holds, as the Pocket tile says it.
+    in property <string> pocket-count;
+
+    // Keep Awake: the status line, whether anything is held, the running
+    // chip (see AwakeChips), and the time the Until… popup opens at.
+    in property <string> awake-status;
+    in property <bool> awake-on;
+    in property <int> awake-chip: -1;
+    in-out property <int> awake-until-hour;
+    in-out property <int> awake-until-minute;
+    // The Keep Awake tile: starts or stops it.
+    callback awake-tile-clicked();
+    callback awake-chip-clicked(int);
+    callback awake-until-started(int, int);
+    callback awake-stop-clicked();
+
+    // What Undo would undo ("Undo last move"); empty hides the Undo row.
+    in property <string> undo-text;
+    callback undo-clicked();
+
+    callback pause-clicked();
+    // Starts Copy from screen; shown where it is supported.
+    callback copy-from-screen-clicked();
+    // Open the island on the clipboard history or on the Pocket.
+    callback clipboard-clicked();
+    callback pocket-clicked();
+    // Opens the Settings window.
+    callback settings-clicked();
+    callback quit-clicked();
+    // Done or Esc.
+    callback close-requested();
+
+    // Where the arrow on the top edge points: its centre, from the left
+    // edge. vento sets it so the arrow points at the menu-bar icon.
+    in property <length> arrow-x: self.width / 2;
+
+    // Off while the panel is hidden; turned on right after it shows, so the
+    // panel fades in and drops into place instead of popping up.
+    in property <bool> revealed: true;
+    property <float> reveal: self.revealed ? 1 : 0;
+    animate reveal { duration: self.revealed ? 160ms : 0ms; easing: ease-out; }
+
+    // The arrow's height above the body, and the body's corner radius (the
+    // panel code relies on both, and on the arrow's width and blend).
+    property <length> arrow-h: 10px;
+    property <length> radius: 16px;
+
+    // The height the window takes: the arrow above the height the panel's
+    // content asks for.
+    out property <length> window-height: self.arrow-h + layout.preferred-height;
+
+    // Where the tiles after Copy text go: without it, they move up one
+    // place, so three tiles still fill the two columns from the top.
+    property <int> shift: self.screen-text-supported ? 1 : 0;
+
+    width: 340px;
+    height: self.window-height;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-requested();
+                return accept;
+            }
+            return reject;
+        }
+
+        PanelOutline {
+            y: (root.reveal - 1) * 6px;
+            opacity: root.reveal;
+            width: parent.width;
+            height: parent.height;
+            arrow-x: root.arrow-x;
+            arrow-h: root.arrow-h;
+            radius: root.radius;
+        }
+
+        Rectangle {
+            y: root.arrow-h + (root.reveal - 1) * 6px;
+            opacity: root.reveal;
+            height: parent.height - root.arrow-h;
+
+            layout := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+
+                if root.notice != "": Notice {
+                    text: root.notice;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 8px;
+                            height: 8px;
+                            border-radius: self.width / 2;
+                            background: root.paused ? Theme.muted : #1d9e75;
+                        }
+                    }
+
+                    Text {
+                        text: root.paused ? "Vento is paused" : "Vento is on";
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        TextButton {
+                            label: root.paused ? "Resume" : "Pause";
+                            icon: root.paused ? PanelIcons.resume : PanelIcons.pause;
+                            has-icon: true;
+                            clicked => { root.pause-clicked(); }
+                        }
+                    }
+                }
+
+                GridLayout {
+                    spacing: 10px;
+
+                    if root.screen-text-supported: ActionTile {
+                        row: 0;
+                        col: 0;
+                        icon: PanelIcons.scan-text;
+                        label: "Copy text";
+                        detail: root.screen-text-shortcut;
+                        enabled: !root.paused;
+                        clicked => { root.copy-from-screen-clicked(); }
+                    }
+
+                    ActionTile {
+                        row: 0;
+                        col: root.shift;
+                        icon: Icons.clipboard;
+                        label: "Clipboard";
+                        detail: root.clip-history ? root.clip-shortcut : "Off";
+                        enabled: root.clip-history && !root.paused;
+                        clicked => { root.clipboard-clicked(); }
+                    }
+
+                    ActionTile {
+                        row: root.shift;
+                        col: 1 - root.shift;
+                        icon: Icons.pocket;
+                        label: "Pocket";
+                        detail: root.pocket-count;
+                        enabled: !root.paused;
+                        clicked => { root.pocket-clicked(); }
+                    }
+
+                    ActionTile {
+                        row: 1;
+                        col: root.shift;
+                        icon: PanelIcons.awake;
+                        label: "Keep Awake";
+                        detail: root.awake-status;
+                        active: root.awake-on;
+                        clicked => { root.awake-tile-clicked(); }
+                    }
+                }
+
+                // Keep Awake's times in a card of their own under a title.
+                // Always shown, so the panel keeps its height as Keep Awake
+                // starts and stops.
+                Rectangle {
+                    border-radius: 12px;
+                    background: Theme.card;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            spacing: 6px;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Image {
+                                    source: PanelIcons.awake;
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: Theme.accent;
+                                }
+                            }
+
+                            Text {
+                                text: "Keep Awake";
+                                font-size: 13px;
+                                font-weight: 600;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        AwakeChips {
+                            on: root.awake-on;
+                            chip: root.awake-chip;
+                            until-hour <=> root.awake-until-hour;
+                            until-minute <=> root.awake-until-minute;
+                            chip-clicked(i) => { root.awake-chip-clicked(i); }
+                            until-started(hour, minute) => { root.awake-until-started(hour, minute); }
+                            stop-clicked => { root.awake-stop-clicked(); }
+                        }
+                    }
+                }
+
+                if root.undo-text != "": HorizontalLayout {
+                    spacing: 8px;
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        Image {
+                            source: Icons.undo;
+                            width: 14px;
+                            height: 14px;
+                            colorize: Theme.muted;
+                        }
+                    }
+
+                    Text {
+                        text: root.undo-text;
+                        font-size: 12px;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        TextButton {
+                            label: "Undo";
+                            clicked => { root.undo-clicked(); }
+                        }
+                    }
+                }
+
+                Separator { }
+
+                HorizontalLayout {
+                    FooterItem {
+                        icon: PanelIcons.general;
+                        label: "Settings…";
+                        clicked => { root.settings-clicked(); }
+                    }
+
+                    FooterItem {
+                        icon: PanelIcons.quit;
+                        label: "Quit";
+                        clicked => { root.quit-clicked(); }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    DoneButton {
+                        clicked => { root.close-requested(); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -11,6 +11,18 @@ export struct PocketCell { name: string, icon: image, missing: bool, selected: b
 // 3 image; `thumb` is an image's thumbnail, empty when it can't be shown.
 export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image, pinned: bool }
 
+// One item of the Pocket list, by item id; `icon` is the one its cell shows.
+export struct PocketRow { id: int, name: string, icon: image, missing: bool, selected: bool }
+
+// One filter chip of the Pocket list: "All" or a kind's name, and how many
+// items it lists.
+export struct PocketChip { label: string, count: int }
+
+// One stack of a full Pocket under the Stacks layout: its kind (by place in
+// the app's fixed kind order), the kind's name and icon, and how many items
+// it holds.
+export struct PocketStack { kind: int, label: string, icon: image, count: int }
+
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
 component DashedBox inherits Rectangle {
@@ -84,48 +96,56 @@ component DashedBox inherits Rectangle {
 }
 
 // Undo after a removal or a clear, with the time left (`left`, 1 to 0) as
-// a ring and `secs` below it.
+// a ring and `secs` below it; `compact`, a smaller ring at the right with
+// `secs` before it.
 component UndoRing inherits Rectangle {
     in property <float> left;
     in property <int> secs;
+    in property <bool> compact;
     callback clicked();
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
+    property <length> ring-d: root.compact ? 28px : 46px;
+    property <length> stroke: root.compact ? 2px : 2.5px;
 
-    height: 68px;
+    height: root.compact ? root.ring-d : 68px;
 
     ring := Rectangle {
-        x: (parent.width - self.width) / 2;
+        x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
         y: 0px;
-        width: 46px;
-        height: 46px;
-        border-radius: 23px;
+        width: root.ring-d;
+        height: root.ring-d;
+        border-radius: root.ring-d / 2;
         background: undo-touch.has-hover ? root.item-fill : transparent;
-        border-width: 2.5px;
+        border-width: root.stroke;
         border-color: #ffffff22;
 
         property <float> left: min(max(root.left, 0.001), 0.999);
         property <angle> sweep: 360deg * self.left;
+        // The arc's centre and radius in points: along the middle of the
+        // border.
+        property <float> c: root.ring-d / 2px;
+        property <float> r: self.c - root.stroke / 2px;
 
         Path {
-            width: 46px;
-            height: 46px;
-            viewbox-width: 46;
-            viewbox-height: 46;
+            width: root.ring-d;
+            height: root.ring-d;
+            viewbox-width: root.ring-d / 1px;
+            viewbox-height: root.ring-d / 1px;
             stroke: root.accent;
-            stroke-width: 2.5px;
+            stroke-width: root.stroke;
 
             MoveTo {
-                x: 23;
-                y: 1.25;
+                x: ring.c;
+                y: ring.c - ring.r;
             }
 
             ArcTo {
-                x: 23 + 21.75 * Math.sin(ring.sweep);
-                y: 23 - 21.75 * Math.cos(ring.sweep);
-                radius-x: 21.75;
-                radius-y: 21.75;
+                x: ring.c + ring.r * Math.sin(ring.sweep);
+                y: ring.c - ring.r * Math.cos(ring.sweep);
+                radius-x: ring.r;
+                radius-y: ring.r;
                 large-arc: ring.left > 0.5;
                 sweep: true;
             }
@@ -134,20 +154,22 @@ component UndoRing inherits Rectangle {
         Image {
             source: Icons.undo;
             colorize: root.accent;
-            width: 22px;
-            height: 22px;
+            width: root.compact ? 14px : 22px;
+            height: self.width;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
         }
     }
 
     Text {
-        y: 50px;
-        height: 16px;
+        x: 0px;
+        y: root.compact ? 0px : 50px;
+        width: root.compact ? ring.x - 5px : parent.width;
+        height: root.compact ? root.ring-d : 16px;
         text: "Undo \{root.secs}s";
         color: undo-touch.has-hover ? white : #ffffffb0;
         font-size: 11px;
-        horizontal-alignment: center;
+        horizontal-alignment: root.compact ? right : center;
         vertical-alignment: center;
     }
 
@@ -211,36 +233,131 @@ component SwitchButton inherits Rectangle {
     }
 }
 
-// One button of the Clipboard view's filter column: an icon and how many
-// rows the filter lists, filled with the accent while it is chosen.
+// A scrollbar for a list that overflows (its Flickable's `content-h` and
+// `offset`, as tall as the bar): the thumb shows how much is in view and
+// where, and can be dragged.
+component ListScrollbar inherits Rectangle {
+    in property <length> content-h;
+    in-out property <length> offset;
+
+    property <length> overflow: root.content-h - root.height;
+    property <length> thumb-h: max(24px, root.height * root.height / root.content-h);
+    property <length> travel: root.height - root.thumb-h;
+    property <length> drag-from;
+
+    width: 4px;
+
+    Rectangle {
+        y: root.overflow > 0 ? -root.offset / root.overflow * root.travel : 0;
+        width: parent.width;
+        height: root.thumb-h;
+        border-radius: 2px;
+        background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
+
+        thumb := TouchArea {
+            // A little wider than the thumb, so it is easy to grab.
+            x: -4px;
+            width: parent.width + 8px;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.drag-from = -root.offset;
+                }
+            }
+            moved => {
+                if self.pressed && root.travel > 0 {
+                    root.offset = -max(0px, min(root.overflow,
+                        root.drag-from + (self.mouse-y - self.pressed-y) * root.overflow / root.travel));
+                }
+            }
+        }
+    }
+}
+
+// The same bar lying under a strip that scrolls sideways (its Flickable's
+// `content-w` and `offset`, as wide as the bar). The offset is only read:
+// a drag reports where it wants the strip with `scrolled`, so the strip's
+// own position keeps no binding and its Flickable keeps it in bounds as
+// items come and go.
+component StripScrollbar inherits Rectangle {
+    in property <length> content-w;
+    in property <length> offset;
+    callback scrolled(length);
+
+    property <length> overflow: root.content-w - root.width;
+    property <length> thumb-w: max(24px, root.width * root.width / root.content-w);
+    property <length> travel: root.width - root.thumb-w;
+    property <length> drag-from;
+
+    height: 4px;
+
+    Rectangle {
+        x: root.overflow > 0 ? -root.offset / root.overflow * root.travel : 0;
+        width: root.thumb-w;
+        height: parent.height;
+        border-radius: 2px;
+        background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
+
+        thumb := TouchArea {
+            // A little taller than the thumb, so it is easy to grab.
+            y: -4px;
+            height: parent.height + 8px;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.drag-from = -root.offset;
+                }
+            }
+            moved => {
+                if self.pressed && root.travel > 0 {
+                    root.scrolled(-max(0px, min(root.overflow,
+                        root.drag-from + (self.mouse-x - self.pressed-x) * root.overflow / root.travel)));
+                }
+            }
+        }
+    }
+}
+
+// One filter of the Clipboard view: an icon and how many rows it lists,
+// filled with the accent while it is chosen. `label` names it for VoiceOver
+// only.
 component FilterButton inherits Rectangle {
     in property <image> icon;
+    in property <string> label;
     in property <int> count;
     in property <bool> current;
     callback clicked();
 
-    height: 22px;
-    border-radius: 11px;
+    height: 24px;
+    border-radius: 12px;
     background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
-
-    Image {
-        source: root.icon;
-        colorize: root.current ? white : #ffffffa8;
-        width: 12px;
-        height: 12px;
-        x: 9px;
-        y: (parent.height - self.height) / 2;
+    accessible-role: button;
+    accessible-label: "\{root.label} \{root.count}";
+    accessible-action-default => {
+        root.clicked();
     }
 
-    Text {
-        x: 24px;
-        width: parent.width - self.x - 8px;
-        text: root.count;
-        color: root.current ? white : #ffffff80;
-        font-size: 11px;
-        font-weight: 600;
-        horizontal-alignment: right;
-        vertical-alignment: center;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 5px;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                colorize: root.current ? white : #ffffffa8;
+                width: 12px;
+                height: 12px;
+            }
+        }
+
+        Text {
+            text: root.count;
+            color: root.current ? white : #ffffff80;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
     }
 
     touch := TouchArea {
@@ -250,8 +367,69 @@ component FilterButton inherits Rectangle {
     }
 }
 
-// The Clipboard view: the history as a list, pinned entries first, then
-// newest on top, with Clear (or Undo) beside it and the filters below that.
+// A row of chips (its children), scrolling sideways when they don't fit, by
+// trackpad or by a mouse wheel's vertical scroll.
+component ChipRow inherits Rectangle {
+    flick := Flickable {
+        width: root.width;
+        height: root.height;
+        interactive: false;
+        content-width: chips-layout.preferred-width;
+
+        TouchArea {
+            width: max(flick.width, chips-layout.preferred-width);
+            height: flick.height;
+            scroll-event(e) => {
+                if e.delta-x == 0 && e.delta-y != 0 && flick.content-width > flick.width {
+                    flick.content-x = max(flick.width - flick.content-width, min(0px, flick.content-x + e.delta-y));
+                    return accept;
+                }
+                return reject;
+            }
+
+            chips-layout := HorizontalLayout {
+                alignment: start;
+                spacing: 4px;
+
+                @children
+            }
+        }
+    }
+}
+
+// A round Clear button with a trash can, `width` across.
+component ClearButton inherits Rectangle {
+    in property <length> icon-size: 14px;
+    callback clicked();
+
+    height: self.width;
+    border-radius: self.width / 2;
+    background: touch.has-hover ? #2c2c32 : #1d1d21;
+    accessible-role: button;
+    accessible-label: "Clear";
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    Image {
+        source: Icons.trash;
+        colorize: touch.has-hover ? #ff7b72 : #ffffffa0;
+        width: root.icon-size;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The Clipboard view: the filters in a row on top, and under them the
+// history as a list, pinned entries first, then newest on top. Clear (or
+// Undo) is in the bottom bar under it.
 component ClipList inherits Rectangle {
     // The rows the chosen filter lists.
     in property <[ClipRow]> rows;
@@ -259,29 +437,43 @@ component ClipList inherits Rectangle {
     // 5 Files) and how many rows each lists; the first is the whole history.
     in property <int> filter;
     in property <[int]> counts;
-    in property <bool> undo-active;
-    in property <float> undo-left;
-    in property <int> undo-secs;
     // All by entry id.
     callback pressed(int);
     callback pocket(int);
     callback pin(int, bool);
     callback remove(int);
-    callback clear();
-    callback undo();
     callback filter-chosen(int);
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
     property <length> pad: 14px;
-    property <length> side-w: 52px;
     property <length> row-h: 36px;
+    property <length> head-h: 24px;
+    // The filters' names, in the order of `counts`, for VoiceOver.
+    property <[string]> filter-names: ["All", "Pinned", "Text", "Links", "Images", "Files"];
+
+    ChipRow {
+        x: root.pad;
+        y: 8px;
+        width: parent.width - 2 * root.pad;
+        height: root.head-h;
+
+        for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
+            icon: f;
+            label: root.filter-names[i];
+            count: root.counts[i];
+            current: root.filter == i;
+            clicked => {
+                root.filter-chosen(i);
+            }
+        }
+    }
 
     list := Flickable {
         x: root.pad;
-        y: 8px;
-        width: parent.width - 2 * root.pad - root.side-w - 10px;
-        height: parent.height - 16px;
+        y: 8px + root.head-h + 6px;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - self.y - 8px;
         // Presses belong to the rows; the list scrolls by wheel only.
         interactive: false;
         content-height: root.rows.length * root.row-h;
@@ -453,6 +645,15 @@ component ClipList inherits Rectangle {
         }
     }
 
+    // A scrollbar in the gap beside the list, once the rows overflow it.
+    if list.content-height > list.height: ListScrollbar {
+        x: list.x + list.width + 3px;
+        y: list.y;
+        height: list.height;
+        content-h: list.content-height;
+        offset <=> list.content-y;
+    }
+
     if root.rows.length == 0: Text {
         x: list.x;
         y: list.y;
@@ -467,27 +668,89 @@ component ClipList inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
+}
 
-    // At the foot of the column. Clear empties everything but pinned
-    // entries, whatever the filter.
-    if root.counts[0] > root.counts[1] && !root.undo-active: Rectangle {
-        x: parent.width - root.pad - root.side-w;
-        y: parent.height - 8px - self.height;
-        width: root.side-w;
-        height: 26px;
-        border-radius: 13px;
-        background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
+// The Pocket's column beside its items: "Drag all" with the item count and
+// Clear below it, or, after a removal or a clear, Undo with the time left.
+// `compact`, the same side by side and smaller, at the right of the bottom
+// bar.
+component PocketSide inherits Rectangle {
+    in property <bool> compact;
+    in property <int> count;
+    in property <bool> undo-active;
+    in property <float> undo-left;
+    in property <int> undo-secs;
+    // `all-moved` offsets are measured from the press point.
+    callback all-pressed();
+    callback all-moved(length, length);
+    callback all-released();
+    callback clear();
+    callback undo();
 
-        Text {
-            text: "Clear";
-            color: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-            font-size: 11px;
-            font-weight: 600;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+    property <color> accent: #ff6a1a;
+    property <length> clear-d: root.compact ? 28px : 30px;
+
+    width: root.compact ? 80px : 52px;
+    height: root.compact ? 28px : 80px;
+
+    if root.count > 0 && !root.undo-active: Rectangle {
+        Rectangle {
+            x: root.compact ? parent.width - root.clear-d - 6px - self.width : (parent.width - self.width) / 2;
+            y: 0px;
+            width: root.compact ? 28px : 42px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: all-touch.pressed ? #e55a10 : root.accent;
+
+            Image {
+                source: Icons.grab;
+                colorize: white;
+                width: root.compact ? 14px : 20px;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+
+            Rectangle {
+                width: root.count > 99 ? self.height + 10px : root.count > 9 ? self.height + 6px : self.height;
+                height: root.compact ? 14px : 18px;
+                x: parent.width - self.width + (root.compact ? 3px : 4px);
+                y: root.compact ? -3px : -4px;
+                border-radius: self.height / 2;
+                background: white;
+
+                Text {
+                    text: root.count > 99 ? "99+" : root.count;
+                    color: black;
+                    font-size: root.compact ? 9px : 11px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            all-touch := TouchArea {
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        root.all-pressed();
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.all-released();
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    }
+                }
+            }
         }
 
-        clear-touch := TouchArea {
+        ClearButton {
+            x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
+            y: root.compact ? 0px : 50px;
+            width: root.clear-d;
+            icon-size: root.compact ? 14px : 16px;
             clicked => {
                 root.clear();
             }
@@ -495,30 +758,297 @@ component ClipList inherits Rectangle {
     }
 
     if root.undo-active: UndoRing {
-        x: parent.width - root.pad - root.side-w;
-        y: parent.height - 8px - self.height;
-        width: root.side-w;
+        y: root.compact ? 0px : 6px;
+        width: parent.width;
+        compact: root.compact;
         left: root.undo-left;
         secs: root.undo-secs;
         clicked => {
             root.undo();
         }
     }
+}
 
-    // The filters, at the head of the column (above Clear or Undo).
-    VerticalLayout {
-        x: parent.width - root.pad - root.side-w;
+// One filter chip of the Pocket list: "All" or a kind's name, and how many
+// items it lists, filled with the accent while it is chosen.
+component KindChip inherits Rectangle {
+    in property <string> label;
+    in property <int> count;
+    in property <bool> current;
+    callback clicked();
+
+    height: 24px;
+    border-radius: 12px;
+    background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
+    accessible-role: button;
+    accessible-label: "\{root.label} \{root.count}";
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 5px;
+
+        Text {
+            text: root.label;
+            color: root.current ? white : #ffffffc0;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.count;
+            color: root.current ? #ffffffc0 : #ffffff70;
+            font-size: 11px;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The Pocket list: every item the Pocket holds, one row each in Pocket
+// order, with a back control and the filter chips above it and the Pocket's
+// column ("Drag all" and Clear, or Undo) beside it unless the bottom bar
+// holds those (`side` off).
+component PocketList inherits Rectangle {
+    in property <bool> side: true;
+    // The rows the chosen chip lists.
+    in property <[PocketRow]> rows;
+    // "All", then one chip per kind present; `filter` is the chosen one.
+    in property <[PocketChip]> chips;
+    in property <int> filter;
+    // Every item, for the column's "Drag all".
+    in property <int> count;
+    in property <bool> undo-active;
+    in property <float> undo-left;
+    in property <int> undo-secs;
+    // Rows by item id; `moved` offsets are measured from the press point.
+    callback pressed(int);
+    callback moved(int, length, length);
+    callback released(int);
+    callback remove(int);
+    callback filter-chosen(int);
+    callback back();
+    callback all-pressed();
+    callback all-moved(length, length);
+    callback all-released();
+    callback clear();
+    callback undo();
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+    property <length> pad: 14px;
+    property <length> side-w: 52px;
+    property <length> row-h: 36px;
+    property <length> head-h: 24px;
+
+    // Back to the cells.
+    back-button := Rectangle {
+        x: root.pad;
         y: 8px;
-        width: root.side-w;
-        spacing: 2px;
+        width: 74px;
+        height: root.head-h;
+        border-radius: 12px;
+        background: back-touch.has-hover ? #2c2c32 : root.item-fill;
+        accessible-role: button;
+        accessible-label: "Back to Pocket";
+        accessible-action-default => {
+            root.back();
+        }
 
-        for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
-            icon: f;
-            count: root.counts[i];
+        Image {
+            source: Icons.back;
+            colorize: back-touch.has-hover ? white : #ffffffc0;
+            width: 14px;
+            height: 14px;
+            x: 7px;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            x: 23px;
+            width: parent.width - self.x - 8px;
+            text: "Pocket";
+            color: back-touch.has-hover ? white : #ffffffc0;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        back-touch := TouchArea {
+            clicked => {
+                root.back();
+            }
+        }
+    }
+
+    // The chips, scrolling sideways when they don't fit.
+    ChipRow {
+        x: back-button.x + back-button.width + 6px;
+        y: 8px;
+        width: list.width - back-button.width - 6px;
+        height: root.head-h;
+
+        for chip[i] in root.chips: KindChip {
+            label: chip.label;
+            count: chip.count;
             current: root.filter == i;
             clicked => {
                 root.filter-chosen(i);
             }
+        }
+    }
+
+    list := Flickable {
+        x: root.pad;
+        y: 8px + root.head-h + 6px;
+        width: parent.width - 2 * root.pad - (root.side ? root.side-w + 10px : 0px);
+        height: parent.height - self.y - 8px;
+        // Presses belong to the rows; the list scrolls by wheel only.
+        interactive: false;
+        content-height: root.rows.length * root.row-h;
+
+        for row[i] in root.rows: Rectangle {
+            y: i * root.row-h;
+            height: root.row-h;
+            width: list.width;
+            border-radius: 10px;
+            background: row.selected ? #ff6a1a2e : touch.has-hover ? root.item-fill : transparent;
+            border-width: row.selected ? 1.5px : 0px;
+            border-color: root.accent;
+
+            touch := TouchArea {
+                // As a cell's: a press drags the item (or the selection it is
+                // part of) out, a click selects it.
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        root.pressed(row.id);
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.released(row.id);
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.moved(row.id, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    }
+                }
+
+                Rectangle {
+                    opacity: row.missing ? 0.4 : 1.0;
+
+                    if !row.missing: Image {
+                        source: row.icon;
+                        x: 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 24px;
+                        height: 24px;
+                    }
+
+                    if row.missing: Image {
+                        source: row.icon;
+                        colorize: white;
+                        x: 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 24px;
+                        height: 24px;
+                    }
+
+                    Text {
+                        x: 40px;
+                        width: parent.width - self.x - (touch.has-hover ? 40px : 12px);
+                        text: row.name;
+                        color: #e6e6e6;
+                        font-size: 13px;
+                        overflow: elide;
+                        wrap: no-wrap;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if row.missing: Image {
+                    source: Icons.missing;
+                    colorize: #ffcc33;
+                    x: 20px;
+                    y: parent.height / 2;
+                    width: 12px;
+                    height: 12px;
+                }
+
+                // A child of the row's TouchArea, so hovering it keeps the
+                // row hovered, and it takes the press before the row does.
+                if touch.has-hover: Rectangle {
+                    x: parent.width - self.width - 6px;
+                    y: (parent.height - self.height) / 2;
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 12px;
+                    background: remove-touch.has-hover ? #55555c : #3a3a40;
+                    accessible-role: button;
+                    accessible-label: "Remove";
+                    accessible-action-default => {
+                        root.remove(row.id);
+                    }
+
+                    Image {
+                        source: Icons.remove;
+                        colorize: white;
+                        width: 10px;
+                        height: 10px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    remove-touch := TouchArea {
+                        clicked => {
+                            root.remove(row.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // A scrollbar in the gap beside the list, once the rows overflow it.
+    if list.content-height > list.height: ListScrollbar {
+        x: list.x + list.width + 3px;
+        y: list.y;
+        height: list.height;
+        content-h: list.content-height;
+        offset <=> list.content-y;
+    }
+
+    // "Drag all" and Clear at the foot of the column.
+    if root.side: PocketSide {
+        x: parent.width - root.pad - root.side-w;
+        y: parent.height - self.height - 8px;
+        count: root.count;
+        undo-active: root.undo-active;
+        undo-left: root.undo-left;
+        undo-secs: root.undo-secs;
+        all-pressed => {
+            root.all-pressed();
+        }
+        all-moved(dx, dy) => {
+            root.all-moved(dx, dy);
+        }
+        all-released => {
+            root.all-released();
+        }
+        clear => {
+            root.clear();
+        }
+        undo => {
+            root.undo();
         }
     }
 }
@@ -537,9 +1067,17 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
-    // At most eight; `count` is the total, so the rest show as "+N".
+    // At most eight, but every item under the Scroll layout, and none while
+    // `stacks` stand in for them; `count` is the total, so the rest show as
+    // "All N" (opening the Pocket list) under the List layout.
     in property <[PocketCell]> cells;
     in property <int> count;
+    // Under the Stacks layout, a full Pocket's stacks, one per kind present;
+    // empty otherwise.
+    in property <[PocketStack]> stacks;
+    // How a Pocket of more than eight items is laid out: 0 List, 1 Scroll,
+    // 2 Stacks.
+    in property <int> layout;
     // A drag hovers over the island.
     in property <bool> hint;
     // The expanded width: wide enough for the cells shown (set by the app).
@@ -554,7 +1092,8 @@ export component PocketIsland inherits Window {
     in property <int> undo-kind;
     // What a clear took, shown faded while its Undo is offered.
     in property <[PocketCell]> ghosts;
-    // The view shown expanded: 0 the Pocket, 1 the Clipboard.
+    // The view shown expanded: 0 the Pocket, 1 the Clipboard, 2 the Pocket
+    // list.
     in property <int> view;
     // The clipboard history is on: the bar switching views is drawn under
     // either one.
@@ -566,6 +1105,11 @@ export component PocketIsland inherits Window {
     // 4 Images, 5 Files) and how many entries each lists.
     in property <int> clip-filter;
     in property <[int]> clip-filter-counts: [0, 0, 0, 0, 0, 0];
+    // The Pocket list's rows, its chips ("All", then each kind present) and
+    // the chosen chip.
+    in property <[PocketRow]> list-rows;
+    in property <[PocketChip]> list-chips;
+    in property <int> list-filter;
     // Height of what is drawn below the menu bar (set by the app).
     in property <length> panel-h: 112px;
     // Collapsed with an empty Pocket but some history: the wings show the
@@ -597,6 +1141,22 @@ export component PocketIsland inherits Window {
     callback clip-remove(int);
     callback clip-clear();
     callback clip-filter-chosen(int);
+    // "All N": shows the Pocket list.
+    callback list-open();
+    // The Pocket list, by item id: a row pressed, moved (from the press
+    // point) and released, its x; a chip chosen (0 All, then the kinds in
+    // the order shown); and its back control.
+    callback list-pressed(int);
+    callback list-moved(int, length, length);
+    callback list-released(int);
+    callback list-remove(int);
+    callback list-filter-chosen(int);
+    callback list-back();
+    // A stack, by its kind: pressed, moved (from the press point) and
+    // released, as a cell is; a click opens the Pocket list on its kind.
+    callback stack-pressed(int);
+    callback stack-moved(int, length, length);
+    callback stack-released(int);
 
     width: root.panel-w;
     height: root.top-h + root.panel-h;
@@ -607,6 +1167,9 @@ export component PocketIsland inherits Window {
     property <length> cell-step: 68px;
     property <length> pad: 14px;
     property <length> side-w: 52px;
+    // Room the Pocket's rows leave at the right for its column, which the
+    // bottom bar holds instead while it shows.
+    property <length> side-room: root.show-switch ? 0px : root.side-w + 10px;
 
     property <length> collapsed-w: root.notch-style ? root.notch-w + 2 * root.wing : 120px;
     property <length> collapsed-h: root.notch-style ? root.top-h : 28px;
@@ -678,14 +1241,46 @@ export component PocketIsland inherits Window {
                 height: 112px;
 
                 row := Flickable {
+                    // Under Scroll, a full Pocket's strip of every item (or of
+                    // a clear's faded items while its Undo is offered, as long
+                    // as nothing new came in: those are shown only in an empty
+                    // Pocket).
+                    property <bool> strip: root.layout == 1 && (root.count == 0 ? root.ghosts.length : root.count) > 8;
+                    // The strip starts at the first item whenever the Pocket
+                    // fills up or drops to eight or fewer (a clear included),
+                    // or the layout changes. A collapse starts the row afresh
+                    // anyway.
+                    property <bool> full-scroll: root.layout == 1 && root.count > 8;
+
                     x: root.pad;
                     y: 16px;
-                    width: parent.width - 2 * root.pad - root.side-w - 10px;
+                    width: parent.width - 2 * root.pad - root.side-room;
                     height: 80px;
                     // Pointer drags belong to the cells; the row scrolls by wheel only.
                     interactive: false;
-                    content-width: max(root.cells.length, root.ghosts.length) * root.cell-step
-                        + (root.count > root.cells.length ? 48px : 0px);
+                    content-width: root.stacks.length > 0 ? root.stacks.length * root.cell-step
+                        : max(root.cells.length, root.count == 0 ? root.ghosts.length : 0) * root.cell-step
+                        + (root.count > root.cells.length && root.layout == 0 ? 48px : 0px);
+
+                    changed full-scroll => {
+                        self.content-x = 0;
+                    }
+
+                    // Behind the cells, so it gets the wheel events they let
+                    // through: the strip also scrolls with a mouse wheel's
+                    // vertical scroll (a trackpad's sideways swipe already
+                    // scrolls it).
+                    if row.strip: TouchArea {
+                        width: max(row.width, row.content-width);
+                        height: row.height;
+                        scroll-event(e) => {
+                            if e.delta-x == 0 && e.delta-y != 0 && row.content-width > row.width {
+                                row.content-x = max(row.width - row.content-width, min(0px, row.content-x + e.delta-y));
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
 
                     // A clear's items, faded, until its Undo is gone.
                     if root.count == 0: Rectangle {
@@ -835,116 +1430,202 @@ export component PocketIsland inherits Window {
                         }
                     }
 
-                    if root.count > root.cells.length: Rectangle {
-                        x: root.cells.length * root.cell-step;
-                        width: 44px;
+                    // The Stacks layout: one stack per kind, a pile of
+                    // cards with the kind's icon, name and count.
+                    for stack[i] in root.stacks: Rectangle {
+                        x: i * root.cell-step;
+                        width: 64px;
                         height: 80px;
-                        border-radius: 12px;
-                        background: root.item-fill;
-
-                        Text {
-                            text: "+\{root.count - root.cells.length}";
-                            color: #ffffffb0;
-                            font-size: 13px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        accessible-role: button;
+                        accessible-label: "\{stack.label} \{stack.count}";
+                        accessible-action-default => {
+                            root.stack-pressed(stack.kind);
+                            root.stack-released(stack.kind);
                         }
-                    }
-                }
 
-                // "Drag all" with the item count, and Clear below it.
-                if root.count > 0 && !root.pocket-undo: Rectangle {
-                    x: parent.width - root.pad - root.side-w;
-                    y: 16px;
-                    width: root.side-w;
-                    height: 80px;
-
-                    Rectangle {
-                        x: (parent.width - self.width) / 2;
-                        y: 0px;
-                        width: 42px;
-                        height: 42px;
-                        border-radius: 21px;
-                        background: all-touch.pressed ? #e55a10 : root.accent;
-
-                        Image {
-                            source: Icons.grab;
-                            colorize: white;
-                            width: 20px;
+                        // The cards beneath, peeking out above.
+                        Rectangle {
+                            x: 10px;
+                            y: 0px;
+                            width: 44px;
                             height: 20px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
+                            border-radius: 8px;
+                            background: #2a2a30;
                         }
 
                         Rectangle {
-                            width: root.count > 99 ? 28px : root.count > 9 ? 24px : 18px;
-                            height: 18px;
-                            x: parent.width - self.width + 4px;
-                            y: -4px;
-                            border-radius: 9px;
-                            background: white;
+                            x: 5px;
+                            y: 3px;
+                            width: 54px;
+                            height: 20px;
+                            border-radius: 10px;
+                            background: #232328;
+                        }
+
+                        Rectangle {
+                            y: 7px;
+                            height: 73px;
+                            border-radius: 12px;
+                            background: stack-touch.has-hover ? #2c2c32 : root.item-fill;
+                            animate background { duration: 120ms; }
+
+                            Image {
+                                source: stack.icon;
+                                colorize: stack-touch.has-hover ? white : #ffffffd0;
+                                x: (parent.width - self.width) / 2;
+                                y: 12px;
+                                width: 28px;
+                                height: 28px;
+                            }
 
                             Text {
-                                text: root.count > 99 ? "99+" : root.count;
-                                color: black;
+                                text: stack.label;
+                                x: 4px;
+                                y: 47px;
+                                width: 56px;
+                                height: 18px;
+                                color: white;
                                 font-size: 11px;
-                                font-weight: 600;
+                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
                         }
 
-                        all-touch := TouchArea {
+                        // How many items the stack holds.
+                        Rectangle {
+                            x: parent.width - self.width - 2px;
+                            y: 9px;
+                            width: max(18px, badge-text.preferred-width + 10px);
+                            height: 18px;
+                            border-radius: 9px;
+                            background: root.accent;
+
+                            badge-text := Text {
+                                text: stack.count;
+                                color: white;
+                                font-size: 10px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        stack-touch := TouchArea {
+                            // As a cell's: a press drags the stack's items
+                            // out, a click opens the Pocket list on its kind.
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                    root.all-pressed();
+                                    root.stack-pressed(stack.kind);
                                 } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
                                     || e.kind == PointerEventKind.cancel {
-                                    root.all-released();
+                                    root.stack-released(stack.kind);
                                 }
                             }
                             moved => {
                                 if self.pressed {
-                                    root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                                    root.stack-moved(stack.kind, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
                                 }
                             }
                         }
                     }
 
-                    Rectangle {
-                        x: (parent.width - self.width) / 2;
-                        y: 50px;
-                        width: 30px;
-                        height: 30px;
-                        border-radius: 15px;
-                        background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
-
-                        Image {
-                            source: Icons.trash;
-                            colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-                            width: 16px;
-                            height: 16px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
+                    // The List layout: "All N" opens the list of every item.
+                    if root.count > root.cells.length && root.layout == 0: Rectangle {
+                        x: root.cells.length * root.cell-step;
+                        width: 44px;
+                        height: 80px;
+                        border-radius: 12px;
+                        background: list-touch.has-hover ? #2c2c32 : root.item-fill;
+                        accessible-role: button;
+                        accessible-label: "All \{root.count}";
+                        accessible-action-default => {
+                            root.list-open();
                         }
 
-                        clear-touch := TouchArea {
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+
+                            Text {
+                                text: "All";
+                                color: list-touch.has-hover ? white : #ffffff90;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: root.count;
+                                color: list-touch.has-hover ? white : #ffffffb0;
+                                font-size: 13px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        list-touch := TouchArea {
                             clicked => {
-                                root.clear();
+                                root.list-open();
                             }
                         }
                     }
                 }
 
-                // After a removal or a clear: Undo, with the time left as a ring.
-                if root.pocket-undo: UndoRing {
+                // The strip's edges fade into the island where more items
+                // lie beyond them.
+                if row.strip: Rectangle {
+                    x: row.x;
+                    y: row.y;
+                    width: 24px;
+                    height: row.height;
+                    background: @linear-gradient(90deg, #000000 0%, #00000000 100%);
+                    opacity: row.content-x < 0 ? 1 : 0;
+                    animate opacity { duration: 120ms; }
+                }
+
+                if row.strip: Rectangle {
+                    x: row.x + row.width - self.width;
+                    y: row.y;
+                    width: 24px;
+                    height: row.height;
+                    background: @linear-gradient(90deg, #00000000 0%, #000000 100%);
+                    opacity: row.content-x > row.width - row.content-width ? 1 : 0;
+                    animate opacity { duration: 120ms; }
+                }
+
+                // Under the strip: how much of it is in view, and where.
+                if row.strip && !root.hint: StripScrollbar {
+                    x: row.x;
+                    y: row.y + row.height + 5px;
+                    width: row.width;
+                    content-w: row.content-width;
+                    offset: row.content-x;
+                    scrolled(x) => {
+                        row.content-x = x;
+                    }
+                }
+
+                if !root.show-switch: PocketSide {
                     x: parent.width - root.pad - root.side-w;
-                    y: 22px;
-                    width: root.side-w;
-                    left: root.undo-left;
-                    secs: root.undo-secs;
-                    clicked => {
+                    y: 16px;
+                    count: root.count;
+                    undo-active: root.pocket-undo;
+                    undo-left: root.undo-left;
+                    undo-secs: root.undo-secs;
+                    all-pressed => {
+                        root.all-pressed();
+                    }
+                    all-moved(dx, dy) => {
+                        root.all-moved(dx, dy);
+                    }
+                    all-released => {
+                        root.all-released();
+                    }
+                    clear => {
+                        root.clear();
+                    }
+                    undo => {
                         root.undo();
                     }
                 }
@@ -990,9 +1671,6 @@ export component PocketIsland inherits Window {
                 rows: root.clip-rows;
                 filter: root.clip-filter;
                 counts: root.clip-filter-counts;
-                undo-active: root.clip-undo;
-                undo-left: root.undo-left;
-                undo-secs: root.undo-secs;
                 pressed(id) => {
                     root.clip-pressed(id);
                 }
@@ -1008,15 +1686,61 @@ export component PocketIsland inherits Window {
                 remove(id) => {
                     root.clip-remove(id);
                 }
+            }
+
+            // The Pocket list.
+            if root.view == 2: PocketList {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 232px;
+                side: !root.show-switch;
+                rows: root.list-rows;
+                chips: root.list-chips;
+                filter: root.list-filter;
+                count: root.count;
+                undo-active: root.pocket-undo;
+                undo-left: root.undo-left;
+                undo-secs: root.undo-secs;
+                pressed(id) => {
+                    root.list-pressed(id);
+                }
+                moved(id, dx, dy) => {
+                    root.list-moved(id, dx, dy);
+                }
+                released(id) => {
+                    root.list-released(id);
+                }
+                remove(id) => {
+                    root.list-remove(id);
+                }
+                filter-chosen(i) => {
+                    root.list-filter-chosen(i);
+                }
+                back => {
+                    root.list-back();
+                }
+                all-pressed => {
+                    root.all-pressed();
+                }
+                all-moved(dx, dy) => {
+                    root.all-moved(dx, dy);
+                }
+                all-released => {
+                    root.all-released();
+                }
                 clear => {
-                    root.clip-clear();
+                    root.clear();
                 }
                 undo => {
                     root.undo();
                 }
             }
 
-            // Under either view: the two buttons switching between them.
+            // Under either view: the two buttons switching between them, and
+            // at the right, the shown view's controls: the Pocket's column
+            // ("Drag all" and Clear, or Undo), or the Clipboard's Clear (or
+            // Undo).
             if root.show-switch: Rectangle {
                 x: 0px;
                 y: parent.height - self.height;
@@ -1052,10 +1776,59 @@ export component PocketIsland inherits Window {
                         icon: Icons.pocket;
                         label: "Pocket";
                         count: root.count;
-                        current: root.view == 0;
+                        // The Pocket list is part of the Pocket.
+                        current: root.view != 1;
                         clicked => {
                             root.view-chosen(0);
                         }
+                    }
+                }
+
+                if root.view != 1: PocketSide {
+                    x: parent.width - root.pad - self.width;
+                    y: 4px;
+                    compact: true;
+                    count: root.count;
+                    undo-active: root.pocket-undo;
+                    undo-left: root.undo-left;
+                    undo-secs: root.undo-secs;
+                    all-pressed => {
+                        root.all-pressed();
+                    }
+                    all-moved(dx, dy) => {
+                        root.all-moved(dx, dy);
+                    }
+                    all-released => {
+                        root.all-released();
+                    }
+                    clear => {
+                        root.clear();
+                    }
+                    undo => {
+                        root.undo();
+                    }
+                }
+
+                // Clear empties everything but pinned entries, whatever the
+                // filter.
+                if root.view == 1 && root.clip-filter-counts[0] > root.clip-filter-counts[1] && !root.clip-undo: ClearButton {
+                    x: parent.width - root.pad - self.width;
+                    y: 4px;
+                    width: 28px;
+                    clicked => {
+                        root.clip-clear();
+                    }
+                }
+
+                if root.view == 1 && root.clip-undo: UndoRing {
+                    x: parent.width - root.pad - self.width;
+                    y: 4px;
+                    width: 80px;
+                    compact: true;
+                    left: root.undo-left;
+                    secs: root.undo-secs;
+                    clicked => {
+                        root.undo();
                     }
                 }
             }

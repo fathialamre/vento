@@ -2,6 +2,8 @@
 //! are dragged from Finder and Ctrl is pressed.
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod appearance;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod archive_ui;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod awake;
@@ -24,6 +26,8 @@ mod pocket;
 mod screen_text;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod settings_hub;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod settings_window;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod toast;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -69,6 +73,12 @@ fn main() -> Result<(), slint::PlatformError> {
     if let Some(reason) = hub.load_error() {
         log::warn!("settings file not loaded, using the defaults: {reason}");
     }
+    appearance::set_current(hub.current().appearance);
+    appearance::set_current_theme(hub.current().theme);
+    hub.on_change(Box::new(|_old, new| {
+        appearance::set_current(new.appearance);
+        appearance::set_current_theme(new.theme);
+    }));
     // The copy the executor and the Pocket read; the wheel keeps its own
     // through its constructor and its hub listener.
     let shared = hub.shared();
@@ -120,8 +130,8 @@ fn main() -> Result<(), slint::PlatformError> {
     // shortcut on the history, and the Copy from screen shortcut starts
     // that. Each is registered at startup (the Clipboard one only while the
     // history is on, the Copy from screen one only on macOS 14 or later)
-    // and again whenever it changes, and tried by the panel when one is
-    // recorded.
+    // and again whenever it changes, and tried by the Settings window when
+    // one is recorded.
     let open_on = |view: pocket::View| -> Rc<dyn Fn()> {
         let pocket = Rc::downgrade(&pocket);
         Rc::new(move || {
@@ -162,20 +172,19 @@ fn main() -> Result<(), slint::PlatformError> {
             Rc::new(move || controller.start()),
         ))
     });
-    let panel = {
-        let pause = pause.clone();
+    let settings = {
         let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
         let screen_slot = screen_slot.clone();
         let clearer = Rc::downgrade(&pocket);
-        panel::PanelController::new(
+        settings_window::SettingsWindowController::new(
             platform.clone(),
             hub.clone(),
             recent.clone(),
             supported,
             Box::new(move |which, spec| match which {
-                panel::ShortcutFor::Pocket => pocket_slot.register(spec),
-                panel::ShortcutFor::Clipboard => clip_slot.register(spec),
-                panel::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
+                settings_window::ShortcutFor::Pocket => pocket_slot.register(spec),
+                settings_window::ShortcutFor::Clipboard => clip_slot.register(spec),
+                settings_window::ShortcutFor::ScreenText => screen_slot.as_ref().map_or_else(
                     || Err("Copy from screen needs macOS 14 or later".into()),
                     |slot| slot.register(spec),
                 ),
@@ -185,20 +194,58 @@ fn main() -> Result<(), slint::PlatformError> {
                     pocket.clear_clip_history();
                 }
             }),
+        )
+    };
+    let panel = {
+        let pause = pause.clone();
+        panel::PanelController::new(
+            platform.clone(),
+            hub.clone(),
+            Rc::downgrade(&pocket),
+            executor.clone(),
+            supported,
             Box::new(move |paused| pause.set(paused)),
         )
     };
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));
     }
+    {
+        let settings = Rc::downgrade(&settings);
+        panel.set_on_open_settings(Box::new(move || {
+            if let Some(settings) = settings.upgrade() {
+                settings.open();
+            }
+        }));
+    }
     // The Info window and the panel never show together: whichever opens
-    // closes the other, keeping the focus for itself.
+    // closes the other, keeping the focus for itself. The Settings window
+    // is an ordinary window and stays; turning to it closes both, and it
+    // leaves the focus with either when it closes.
     {
         let panel = Rc::downgrade(&panel);
         info.set_before_open(Box::new(move || {
             if let Some(panel) = panel.upgrade() {
                 panel.close_for_other_window();
             }
+        }));
+    }
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        settings.set_on_activated(Box::new(move || {
+            if let Some(panel) = panel.upgrade() {
+                panel.close_for_other_window();
+            }
+            if let Some(info) = info.upgrade() {
+                info.dismiss();
+            }
+        }));
+    }
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        settings.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
         }));
     }
     {
@@ -224,24 +271,13 @@ fn main() -> Result<(), slint::PlatformError> {
             pocket.flush_pending();
         }
     }));
-    // Launched again while running: the settings, under the island.
-    let reopened = Rc::downgrade(&panel);
-    let homes = Rc::downgrade(&platform);
+    // Launched again while running: the Settings window.
+    let reopened = Rc::downgrade(&settings);
     platform.on_reopen(Box::new(move || {
-        let (Some(panel), Some(platform)) = (reopened.upgrade(), homes.upgrade()) else {
-            return;
-        };
-        let Some(home) = platform.pocket_home() else {
-            return;
-        };
-        log::info!("launched again: opening the settings");
-        let icon = home.slot.unwrap_or(vento_core::geometry::Rect {
-            x: home.screen.x + home.screen.w / 2.0 - 16.0,
-            y: home.screen.y,
-            w: 32.0,
-            h: home.menu_bar_h,
-        });
-        panel.open_at(icon);
+        if let Some(settings) = reopened.upgrade() {
+            log::info!("launched again: opening the settings");
+            settings.open();
+        }
     }));
     let observer = pocket.clone();
     controller.set_sample_listener(Box::new(move |sample, dragging| {
@@ -302,6 +338,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             if let Some(pocket) = pocket.upgrade() {
                 pocket.apply_clip_settings(new);
+                pocket.apply_pocket_settings(new);
             }
         }));
     }
@@ -310,25 +347,29 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_handle = Rc::new(RefCell::new(None));
     let keep = tray_handle.clone();
     let tray_info = info.clone();
+    let tray_settings = settings.clone();
+    let (open_clipboard, open_pocket) = (
+        open_on(pocket::View::Clipboard),
+        open_on(pocket::View::Pocket),
+    );
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
         apply_clip_shortcut(&settings);
         apply_screen_shortcut(&settings);
-        let (awake_panel, awake_info) = (panel.clone(), tray_info.clone());
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
             platform,
             keep_awake: panel.keep_awake(),
-            on_open_keep_awake: Box::new(move |icon| {
-                awake_info.dismiss();
-                awake_panel.toggle_keep_awake_at(icon);
-            }),
             on_open_panel: Box::new(move |icon| {
                 tray_info.dismiss();
                 panel.toggle_at(icon);
             }),
+            on_open_clipboard: Box::new(move || open_clipboard()),
+            on_open_pocket: Box::new(move || open_pocket()),
+            on_open_settings: Box::new(move || tray_settings.open()),
             pause,
+            hub,
             on_copy_from_screen: screen_text
                 .map(|controller| Box::new(move || controller.start()) as Box<dyn Fn()>),
         }));

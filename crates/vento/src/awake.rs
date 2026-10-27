@@ -1,5 +1,5 @@
 //! Keep Awake: the running session, the platform hold that matches it and
-//! the timer that ends it. The settings panel shows it and hands it clicks.
+//! the timer that ends it. The Quick panel shows it and hands it clicks.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -18,6 +18,16 @@ use crate::settings_hub::SettingsHub;
 const IDLE_STATUS: &str = "Your Mac follows its usual energy settings";
 #[cfg(not(target_os = "macos"))]
 const IDLE_STATUS: &str = "Your computer follows its usual energy settings";
+
+/// The right-click menu's Keep Awake item: names what a click does, which
+/// is the opposite of what runs now.
+pub fn keep_awake_menu_text(on: bool) -> &'static str {
+    if on {
+        "Stop Keep Awake"
+    } else {
+        "Start Keep Awake"
+    }
+}
 
 /// Called after every change of the session or its status.
 type Listener = Box<dyn Fn()>;
@@ -186,5 +196,16 @@ impl KeepAwake {
         for listener in self.listeners.borrow().iter() {
             listener();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keep_awake_menu_item_says_what_a_click_does() {
+        assert_eq!(keep_awake_menu_text(false), "Start Keep Awake");
+        assert_eq!(keep_awake_menu_text(true), "Stop Keep Awake");
     }
 }

@@ -1,6 +1,5 @@
-// The settings panel's controls, shared by its tabs. All of them take
-// their colours from `Theme`, so they follow the system light or dark
-// appearance.
+// The controls of the Quick panel and the Settings window. All of them
+// take their colours from `Theme`, so they follow the Appearance setting.
 
 import { Theme } from "theme.slint";
 
@@ -100,8 +99,8 @@ export component SwitchRow inherits HorizontalLayout {
     }
 }
 
-// A row-height segmented control in the tab bar's style: a rounded track
-// with the chosen item raised on a pill.
+// A row-height segmented control: a rounded track with the chosen item
+// raised on a pill.
 export component Segmented inherits Rectangle {
     in property <[string]> items;
     in property <int> current;
@@ -372,9 +371,8 @@ export component TextButton inherits Rectangle {
     }
 }
 
-// A time choice of the Keep Awake tab, on `surface` like the other
-// fields, drawn chosen (the accent, faint, as the chosen tab) while its
-// time runs.
+// A Keep Awake time choice, on `surface` like the other fields, drawn
+// chosen (the accent, faint) while its time runs.
 export component Chip inherits Rectangle {
     in property <string> label;
     in property <bool> chosen;
@@ -672,4 +670,265 @@ export component DragGrip inherits Rectangle {
             }
         }
     }
+}
+
+// Keep Awake's choices: a row of times, then the two open-ended ones and
+// Stop. A chosen chip shows what runs; clicking another replaces it.
+export component AwakeChips inherits VerticalLayout {
+    // Whether anything is held: Stop is enabled only then.
+    in property <bool> on;
+    // The running chip: 0 to 5 the timed ones, 6 until stopped, 7 until a
+    // time; -1 none.
+    in property <int> chip;
+    // The time the Until popup shows, set by vento as the panel opens.
+    in-out property <int> until-hour;
+    in-out property <int> until-minute;
+    // A chip other than "Until…", or that one while it runs.
+    callback chip-clicked(int);
+    // The Until popup's Start.
+    callback until-started(int, int);
+    callback stop-clicked();
+
+    property <[string]> times: ["15 min", "30 min", "1 h", "2 h", "4 h", "8 h"];
+
+    function two-digits(n: int) -> string {
+        return (n < 10 ? "0" : "") + n;
+    }
+
+    spacing: 4px;
+
+    HorizontalLayout {
+        spacing: 4px;
+
+        for time[i] in root.times: Chip {
+            horizontal-stretch: 1;
+            label: time;
+            chosen: root.chip == i;
+            clicked => { root.chip-clicked(i); }
+        }
+    }
+
+    Rectangle {
+        height: 28px;
+
+        HorizontalLayout {
+            spacing: 4px;
+
+            Chip {
+                horizontal-stretch: 1;
+                label: "Until stopped";
+                chosen: root.chip == 6;
+                clicked => { root.chip-clicked(6); }
+            }
+
+            Chip {
+                horizontal-stretch: 1;
+                label: "Until…";
+                chosen: root.chip == 7;
+                clicked => {
+                    if (root.chip == 7) {
+                        root.chip-clicked(7);
+                    } else {
+                        until-popup.show();
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                TextButton {
+                    label: "Stop";
+                    enabled: root.on;
+                    clicked => { root.stop-clicked(); }
+                }
+            }
+        }
+
+        // Under "Until…", at the right edge of the row.
+        until-popup := PopupWindow {
+            x: parent.width - self.width;
+            y: parent.height + 4px;
+            width: 252px;
+            height: 112px;
+            close-policy: PopupClosePolicy.close-on-click-outside;
+
+            Rectangle {
+                background: Theme.selected;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.separator;
+                drop-shadow-blur: 8px;
+                drop-shadow-offset-y: 2px;
+                drop-shadow-color: #00000040;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Stay awake until";
+                        font-size: 12px;
+                        color: Theme.muted;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 4px;
+
+                        Stepper {
+                            text: root.two-digits(root.until-hour);
+                            label: "Hour";
+                            can-decrease: true;
+                            can-increase: true;
+                            decrease => { root.until-hour = Math.mod(root.until-hour + 23, 24); }
+                            increase => { root.until-hour = Math.mod(root.until-hour + 1, 24); }
+                        }
+
+                        Text {
+                            text: ":";
+                            font-size: 13px;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                        }
+
+                        Stepper {
+                            text: root.two-digits(root.until-minute);
+                            label: "Minute";
+                            can-decrease: true;
+                            can-increase: true;
+                            decrease => { root.until-minute = Math.mod(root.until-minute + 55, 60); }
+                            increase => { root.until-minute = Math.mod(root.until-minute + 5, 60); }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+
+                        TextButton {
+                            label: "Start";
+                            clicked => {
+                                root.until-started(root.until-hour, root.until-minute);
+                                until-popup.close();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The panel's shape, drawn as one outline so the arrow and the body share
+// a fill and a hairline with no seam: a rounded rectangle below `arrow-h`,
+// and on its top edge an arrow 20px wide whose centre is `arrow-x`, its tip
+// rounded and its base curving into the edge. The outline runs half a
+// pixel inside the element so the whole hairline is drawn.
+export component PanelOutline inherits Path {
+    in property <length> arrow-x;
+    in property <length> arrow-h;
+    in property <length> radius;
+
+    // In path units, which are logical pixels here (see the viewbox).
+    property <float> s: 0.5;
+    property <float> w: self.width / 1px - self.s;
+    property <float> h: self.height / 1px - self.s;
+    property <float> top: self.arrow-h / 1px + self.s;
+    property <float> r: self.radius / 1px;
+    property <float> ax: self.arrow-x / 1px;
+    // Half the arrow's base, how far its base curves into the edge, and
+    // where along each side (as a fraction from the tip) the tip's
+    // rounding starts.
+    property <float> half: 10;
+    property <float> blend: 3;
+    property <float> round: 0.25;
+    // The arrow's height in path units, from the top edge to the tip.
+    property <float> rise: self.top - self.s;
+
+    viewbox-x: 0;
+    viewbox-y: 0;
+    viewbox-width: self.width / 1px;
+    viewbox-height: self.height / 1px;
+    fill: Theme.bg;
+    stroke: Theme.border;
+    stroke-width: 1px;
+
+    MoveTo {
+        x: root.ax - root.half - root.blend;
+        y: root.top;
+    }
+    // Into the arrow's left side, tangent to the edge and to the side.
+    QuadraticTo {
+        control-x: root.ax - root.half;
+        control-y: root.top;
+        x: root.ax - root.half + root.blend;
+        y: root.top - root.rise * root.blend / root.half;
+    }
+    LineTo {
+        x: root.ax - root.half * root.round;
+        y: root.s + root.rise * root.round;
+    }
+    // The rounded tip: its apex lies 1.25 below `s`, and the panel code
+    // places the window by that (TIP_INSET).
+    QuadraticTo {
+        control-x: root.ax;
+        control-y: root.s;
+        x: root.ax + root.half * root.round;
+        y: root.s + root.rise * root.round;
+    }
+    LineTo {
+        x: root.ax + root.half - root.blend;
+        y: root.top - root.rise * root.blend / root.half;
+    }
+    QuadraticTo {
+        control-x: root.ax + root.half;
+        control-y: root.top;
+        x: root.ax + root.half + root.blend;
+        y: root.top;
+    }
+    LineTo {
+        x: root.w - root.r;
+        y: root.top;
+    }
+    ArcTo {
+        x: root.w;
+        y: root.top + root.r;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    LineTo {
+        x: root.w;
+        y: root.h - root.r;
+    }
+    ArcTo {
+        x: root.w - root.r;
+        y: root.h;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    LineTo {
+        x: root.s + root.r;
+        y: root.h;
+    }
+    ArcTo {
+        x: root.s;
+        y: root.h - root.r;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    LineTo {
+        x: root.s;
+        y: root.top + root.r;
+    }
+    ArcTo {
+        x: root.s + root.r;
+        y: root.top;
+        radius-x: root.r;
+        radius-y: root.r;
+        sweep: true;
+    }
+    Close { }
 }

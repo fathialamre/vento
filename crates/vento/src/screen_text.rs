@@ -15,8 +15,9 @@ use vento_core::geometry::{Point, Rect, screen_for};
 use vento_core::screen_text::{Selection, TextBox, assemble};
 use vento_platform::{Platform, PlatformError, ScreenText};
 
+use crate::appearance;
 use crate::lazy_window::LazyWindow;
-use crate::ui::ScreenAccess;
+use crate::ui::{ScreenAccess, Theme};
 
 /// What a read hands back: the text boxes found, or why there are none.
 pub type ReadResult = Result<Vec<TextBox>, PlatformError>;
@@ -224,6 +225,7 @@ impl ScreenAccessView {
     fn window(&self) -> ScreenAccess {
         self.window.get_or_create(|| {
             let window = ScreenAccess::new().expect("cannot create the Screen Recording window");
+            appearance::apply(&window.global::<Theme>());
             let this = self.this.clone();
             window.on_open_settings(move || {
                 if let Some(view) = this.upgrade() {
@@ -258,6 +260,7 @@ impl ScreenAccessView {
     /// brings vento forward, so the window takes the keys.
     pub fn show(&self) {
         let window = self.window();
+        appearance::apply(&window.global::<Theme>());
         let height = match f64::from(window.get_content_height()) {
             h if h > 0.0 => h,
             _ => ACCESS_HEIGHT,

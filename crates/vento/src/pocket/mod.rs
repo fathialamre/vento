@@ -12,15 +12,23 @@
 //!
 //! With the clipboard history on, the expanded island has a second view, the
 //! Clipboard ([`View`]), and a bar under either view to switch between them.
+//!
+//! A Pocket of more than eight items is laid out as the settings say
+//! ([`PocketLayout`]); under List, its "All N" button opens the Pocket list
+//! (`list_view`); under Scroll, every item is a cell in a strip that scrolls
+//! sideways; under Stacks, one stack per kind stands in for the cells
+//! (`stacks`).
 
 mod add;
 mod clip;
 mod clip_thumb;
 mod clip_view;
 mod geometry;
+mod list_view;
 mod menu;
 mod out;
 mod owned;
+mod stacks;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -40,7 +48,7 @@ use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
-use vento_core::settings::Settings;
+use vento_core::settings::{PocketLayout, Settings};
 use vento_core::trigger::InputSample;
 use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
@@ -55,13 +63,15 @@ use crate::drag;
 use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
-use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, interactive_rect, island_inputs};
+use geometry::{Frames, cell_cap, frames, hits, hover_event, interactive_rect, island_inputs};
+use list_view::{ListView, list_stays_open};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
-    ALL, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
+    Press, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
 };
 use owned::{PendingTrash, trash_kept, trash_owned};
+use stacks::{Stacks, shows_stacks};
 
 /// Icon size of a cell, in points.
 const ICON_PX: u32 = 40;
@@ -142,17 +152,33 @@ impl Undo {
     }
 }
 
-/// Cells for the first [`MAX_CELLS`] items; `icon` gets each item and
-/// whether its file is missing.
+/// The window's number for `layout`.
+fn layout_index(layout: PocketLayout) -> i32 {
+    match layout {
+        PocketLayout::List => 0,
+        PocketLayout::Scroll => 1,
+        PocketLayout::Stacks => 2,
+    }
+}
+
+/// Cells for the items `layout` shows as cells (see [`cell_cap`]; none
+/// while stacks stand in for them), in the Pocket's order so a cell's index
+/// is its item's; `icon` gets each item and whether its file is missing.
 fn build_cells(
     items: &[PocketItem],
+    layout: PocketLayout,
     missing: &[u64],
     selected: &[u64],
     mut icon: impl FnMut(&PocketItem, bool) -> Image,
 ) -> Vec<PocketCell> {
+    let cap = if shows_stacks(layout, items.len()) {
+        0
+    } else {
+        cell_cap(layout)
+    };
     items
         .iter()
-        .take(MAX_CELLS)
+        .take(cap)
         .map(|item| {
             let gone = missing.contains(&item.id);
             PocketCell {
@@ -227,7 +253,7 @@ pub struct PocketController {
     input_shape: Cell<Option<Option<Rect>>>,
     /// Ids of the selected items, toggled by clicking their cells.
     selected: RefCell<Vec<u64>>,
-    /// Presses on the cells and on "Drag all".
+    /// Presses on the cells, the stacks and "Drag all".
     latch: PressLatch,
     /// Items taken out whose files wait to go to the Trash.
     pending: PendingTrash,
@@ -252,6 +278,12 @@ pub struct PocketController {
     view: Cell<View>,
     /// The Clipboard view's rows.
     clip_view: ClipView,
+    /// How a Pocket of more than eight items is laid out.
+    layout: Cell<PocketLayout>,
+    /// The Pocket list, opened by "All N" or a stack.
+    list: ListView,
+    /// The stacks of a full Pocket under the Stacks layout.
+    stacks: Stacks,
     this: Weak<Self>,
 }
 
@@ -275,6 +307,10 @@ impl PocketController {
         let ghosts = Rc::new(VecModel::default());
         window.set_ghosts(ModelRc::from(ghosts.clone()));
         let clip_view = ClipView::new(&window);
+        let list = ListView::new(&window);
+        let stacks = Stacks::new(&window);
+        let layout = settings.borrow().pocket_layout;
+        window.set_layout(layout_index(layout));
         let home = platform.pocket_home();
         let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
         let controller = Rc::new_cyclic(|this| Self {
@@ -313,6 +349,9 @@ impl PocketController {
             clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
             view: Cell::new(View::Pocket),
             clip_view,
+            layout: Cell::new(layout),
+            list,
+            stacks,
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -320,6 +359,8 @@ impl PocketController {
         }
         controller.connect();
         controller.connect_clip();
+        controller.connect_list();
+        controller.connect_stacks();
         MAIN_POCKET.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
         controller
     }
@@ -350,7 +391,7 @@ impl PocketController {
         let c = with.clone();
         w.on_item_pressed(move |i| {
             if let (Some(c), Ok(i)) = (c(), u32::try_from(i)) {
-                c.latch.press(i);
+                c.latch.press(Press::Cell(i));
             }
         });
         let c = with.clone();
@@ -401,7 +442,7 @@ impl PocketController {
         let c = with.clone();
         w.on_all_pressed(move || {
             if let Some(c) = c() {
-                c.latch.press(ALL);
+                c.latch.press(Press::All);
             }
         });
         let c = with.clone();
@@ -445,30 +486,39 @@ impl PocketController {
         let Some(target) = self.latch.moved(dx, dy) else {
             return;
         };
-        let pressed = if target == ALL {
-            None
-        } else {
-            match self.id_at(target as usize) {
+        let pressed = match target {
+            Press::All => None,
+            Press::Stack(kind) => {
+                self.drag_stack(kind);
+                return;
+            }
+            Press::Cell(i) => match self.id_at(i as usize) {
                 Some(id) => Some(id),
                 None => {
                     self.latch.ended();
                     return;
                 }
-            }
+            },
         };
-        let ids = {
-            let pocket = self.pocket.borrow();
-            let all: Vec<u64> = pocket.items().iter().map(|i| i.id).collect();
-            drag_ids(pressed, &all, &self.selected.borrow(), &pocket.missing())
+        // A row's press, while the list is shown, drags only what it lists.
+        let ids = match pressed {
+            Some(id) if self.list_shown() => self.list_drag_ids(id),
+            _ => {
+                let pocket = self.pocket.borrow();
+                let all: Vec<u64> = pocket.items().iter().map(|i| i.id).collect();
+                drag_ids(pressed, &all, &self.selected.borrow(), &pocket.missing())
+            }
         };
         self.start_drag_out(ids);
     }
 
-    /// A press ended: a click on a cell toggles its selection.
+    /// A press ended: a click on a cell toggles its selection, one on a
+    /// stack opens the Pocket list on its kind.
     fn released(&self) {
         match self.latch.release() {
-            Some(target) if target != ALL => self.toggle_selected(target as usize),
-            _ => {}
+            Some(Press::Cell(i)) => self.toggle_selected(i as usize),
+            Some(Press::Stack(kind)) => self.stack_clicked(kind),
+            Some(Press::All) | None => {}
         }
     }
 
@@ -493,6 +543,7 @@ impl PocketController {
             cell.selected = on;
             self.cells.set_row_data(index, cell);
         }
+        self.list.set_selected(id, on);
     }
 
     /// The right-click menu on cell `index`, at window-local `at`: acts on
@@ -1053,6 +1104,12 @@ impl PocketController {
         if dragging && hits(&f, after, sample.cursor) && self.view.get() == View::Clipboard {
             self.set_view(View::Pocket);
         }
+        // One over the Pocket list (not the list's own drag out) goes back
+        // to the cells, which say what a drop does.
+        if dragging && !self.latch.running() && hits(&f, after, sample.cursor) && self.list_shown()
+        {
+            self.close_pocket_list();
+        }
         let f = self.island_frames().unwrap_or(f);
         self.window.set_bar_hover(
             home.slot.is_some()
@@ -1180,6 +1237,10 @@ impl PocketController {
         }
         if after == Presence::Expanded || before == Presence::Hidden {
             self.refresh();
+        }
+        // With eight items or fewer, the next opening shows the cells.
+        if !list_stays_open(after, self.item_count()) {
+            self.close_pocket_list();
         }
         self.window.set_expanded(after == Presence::Expanded);
         self.run_undo_timer();
@@ -1391,6 +1452,20 @@ impl PocketController {
         self.run_undo_timer();
     }
 
+    /// Follows the Pocket layout of `s`. A change lays the island out anew
+    /// at once, back on its cells.
+    pub fn apply_pocket_settings(&self, s: &Settings) {
+        let layout = s.pocket_layout;
+        if self.layout.replace(layout) == layout {
+            return;
+        }
+        debug!("pocket layout {layout:?}");
+        self.window.set_layout(layout_index(layout));
+        if !self.close_pocket_list() {
+            self.refresh();
+        }
+    }
+
     /// Empties the clipboard history at once, with no Undo (the settings'
     /// "Clear history"). An Undo of the history on offer is withdrawn too,
     /// its entries let go with the rest, and a history file set aside as
@@ -1412,6 +1487,11 @@ impl PocketController {
         }
     }
 
+    /// How many items the Pocket holds.
+    pub fn item_count(&self) -> usize {
+        self.pocket.borrow().items().len()
+    }
+
     /// Pushes the count into the window, and the clipboard history with it.
     /// The cells are rebuilt only while the island is expanded (a hidden or
     /// collapsed island shows none), so a copy made meanwhile costs no look
@@ -1420,7 +1500,9 @@ impl PocketController {
         if self.expanded() {
             self.refresh_cells();
         }
-        let count = self.pocket.borrow().items().len();
+        self.refresh_stacks();
+        self.refresh_list();
+        let count = self.item_count();
         self.window
             .set_count(i32::try_from(count).unwrap_or(i32::MAX));
         self.refresh_clip();
@@ -1438,27 +1520,44 @@ impl PocketController {
         let mut selected = self.selected.borrow_mut();
         selected.retain(|&id| pocket.get(id).is_some());
         let fallback = self.window.global::<Icons>().get_file();
-        let cells = build_cells(pocket.items(), &missing, &selected, |item, gone| {
-            if gone {
-                return fallback.clone();
-            }
-            if let Some(icon) = icons.get(&item.id) {
-                return icon.clone();
-            }
-            match self
-                .platform
-                .file_icon(&item.path, ICON_PX)
-                .as_ref()
-                .and_then(to_image)
-            {
-                Some(icon) => {
-                    icons.insert(item.id, icon.clone());
-                    icon
-                }
-                None => fallback.clone(),
-            }
-        });
+        let cells = build_cells(
+            pocket.items(),
+            self.layout.get(),
+            &missing,
+            &selected,
+            |item, gone| self.item_icon(&mut icons, item, gone, &fallback),
+        );
         set_rows(&self.cells, cells);
+    }
+
+    /// The icon a cell or a row shows for `item`: its Finder icon, converted
+    /// once and kept in `icons`, or `fallback` while its file is missing
+    /// (`gone`) or has no icon.
+    fn item_icon(
+        &self,
+        icons: &mut HashMap<u64, Image>,
+        item: &PocketItem,
+        gone: bool,
+        fallback: &Image,
+    ) -> Image {
+        if gone {
+            return fallback.clone();
+        }
+        if let Some(icon) = icons.get(&item.id) {
+            return icon.clone();
+        }
+        match self
+            .platform
+            .file_icon(&item.path, ICON_PX)
+            .as_ref()
+            .and_then(to_image)
+        {
+            Some(icon) => {
+                icons.insert(item.id, icon.clone());
+                icon
+            }
+            None => fallback.clone(),
+        }
     }
 
     /// The island is expanded.
@@ -1555,7 +1654,9 @@ mod tests {
         let items: Vec<PocketItem> = (0..11)
             .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
             .collect();
-        let cells = build_cells(&items, &[2], &[1], |_, _| slint::Image::default());
+        let cells = build_cells(&items, PocketLayout::List, &[2], &[1], |_, _| {
+            slint::Image::default()
+        });
         assert_eq!(cells.len(), 8);
         // The island shows "+{count - cells}".
         assert_eq!(items.len() - cells.len(), 3);
@@ -1565,6 +1666,45 @@ mod tests {
         assert!(!cells[1].missing);
         assert!(cells[1].selected);
         assert_eq!(cells.iter().filter(|c| c.selected).count(), 1);
+    }
+
+    #[test]
+    fn scroll_makes_a_cell_of_every_item() {
+        let items: Vec<PocketItem> = (0..12)
+            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
+            .collect();
+        let cells = |layout| build_cells(&items, layout, &[], &[11], |_, _| Image::default());
+        let all = cells(PocketLayout::Scroll);
+        assert_eq!(all.len(), 12);
+        // In the Pocket's order, so a cell's index is its item's.
+        assert_eq!(all[11].name, "file-11.txt");
+        assert!(all[11].selected);
+        assert_eq!(cells(PocketLayout::List).len(), 8);
+    }
+
+    #[test]
+    fn stacks_stand_in_for_the_cells_of_a_full_pocket() {
+        let items: Vec<PocketItem> = (0..12)
+            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
+            .collect();
+        let cells = |n| {
+            build_cells(&items[..n], PocketLayout::Stacks, &[], &[], |_, _| {
+                Image::default()
+            })
+        };
+        assert!(cells(12).is_empty());
+        assert!(cells(9).is_empty());
+        // Eight or fewer: every item is a cell, as in the other layouts.
+        assert_eq!(cells(8).len(), 8);
+        assert_eq!(cells(3)[2].name, "file-2.txt");
+    }
+
+    #[test]
+    fn each_layout_has_its_window_number() {
+        // As `pocket.slint` reads `layout`.
+        let numbers: Vec<i32> = PocketLayout::ALL.into_iter().map(layout_index).collect();
+        assert_eq!(numbers, [0, 1, 2]);
+        assert_eq!(layout_index(PocketLayout::List), 0);
     }
 
     #[test]

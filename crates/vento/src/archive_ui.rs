@@ -15,9 +15,10 @@ use vento_core::archive::{Progress, Zeroizing};
 use vento_core::geometry::Point;
 use vento_platform::Platform;
 
+use crate::appearance;
 use crate::lazy_window::LazyWindow;
 use crate::toast::position_below;
-use crate::ui::{ArchiveProgress, PasswordPrompt};
+use crate::ui::{ArchiveProgress, PasswordPrompt, Theme};
 
 /// A job shorter than this never shows its progress window.
 const PROGRESS_DELAY: Duration = Duration::from_millis(500);
@@ -116,6 +117,7 @@ impl ProgressView {
     fn window(&self) -> ArchiveProgress {
         self.window.get_or_create(|| {
             let window = ArchiveProgress::new().expect("cannot create the progress window");
+            appearance::apply(&window.global::<Theme>());
             // A new native window: it has yet to be made non-key.
             self.non_key.set(false);
             let this = self.this.clone();
@@ -191,6 +193,7 @@ impl ProgressView {
         let Some(window) = self.window.get() else {
             return;
         };
+        appearance::apply(&window.global::<Theme>());
         self.refresh();
         let (x, y) = position_below(self.at.get(), PROGRESS_SIZE, &self.platform.screens());
         window
@@ -265,6 +268,7 @@ impl PasswordView {
     fn window(&self) -> PasswordPrompt {
         self.window.get_or_create(|| {
             let window = PasswordPrompt::new().expect("cannot create the password window");
+            appearance::apply(&window.global::<Theme>());
             let this = self.this.clone();
             window.on_submit(move || {
                 if let Some(view) = this.upgrade() {
@@ -301,6 +305,7 @@ impl PasswordView {
         }
         *self.answer.borrow_mut() = Some(answer);
         let window = self.window();
+        appearance::apply(&window.global::<Theme>());
         window.set_heading(prompt_title(archive_name).into());
         window.set_wrong(wrong);
         window.set_password("".into());

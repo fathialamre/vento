@@ -4,9 +4,9 @@
 //! Slint gives every window that exists a native window and a renderer as
 //! soon as the event loop runs, and keeps both while the window is hidden;
 //! only dropping the window frees them. The windows that show now and then
-//! (the settings panel, the archive and Screen Recording windows) therefore
-//! exist only from their first use until they have been hidden for
-//! [`IDLE`]. The toast is made on first use too, but kept once made.
+//! (the Quick panel, the Settings window, the archive and Screen Recording
+//! windows) therefore exist only from their first use until they have been
+//! hidden for [`IDLE`]. The toast is made on first use too, but kept once made.
 //!
 //! Slint makes the native window of a new window at the end of the turn of
 //! the event loop it was created in, not when it is shown; a window that

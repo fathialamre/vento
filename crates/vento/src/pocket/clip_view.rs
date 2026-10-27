@@ -14,14 +14,14 @@ use vento_core::clip_history::ClipEntry;
 use crate::ui::{ClipRow, PocketIsland};
 
 use super::clip::{ClipKind, ClipRowData, now_unix};
-use super::geometry::Panel;
+use super::geometry::{Panel, Row};
 use super::{PocketController, Undo, View};
 
 /// How long the island stays open after a switch button, wherever the
 /// pointer is.
 const SWITCH_GRACE: Duration = Duration::from_secs(1);
 
-/// Which rows the Clipboard view lists, chosen in the column under Clear.
+/// Which rows the Clipboard view lists, chosen in the row above them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum ClipFilter {
     #[default]
@@ -33,7 +33,7 @@ pub(super) enum ClipFilter {
     Files,
 }
 
-/// The filters in the order the window's column shows them.
+/// The filters in the order the window's row shows them.
 const FILTERS: [ClipFilter; 6] = [
     ClipFilter::All,
     ClipFilter::Pinned,
@@ -52,7 +52,7 @@ impl ClipFilter {
             .copied()
     }
 
-    /// Its index in the window's column.
+    /// Its index in the window's row.
     fn index(self) -> i32 {
         FILTERS
             .iter()
@@ -141,7 +141,7 @@ impl ClipView {
 /// dropped at the end and the others rewritten only where they changed.
 /// Each row the window draws stays where it is, so the one under the
 /// pointer keeps its hover when a copy pushes a new entry in on top.
-fn set_rows_in_place<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+pub(super) fn set_rows_in_place<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     while model.row_count() > rows.len() {
         model.remove(model.row_count() - 1);
     }
@@ -286,6 +286,12 @@ impl PocketController {
     /// reached again.
     fn choose_view(&self, v: View) {
         self.set_view(v);
+        self.hold_open_briefly();
+    }
+
+    /// Keeps the island open a moment after a button that changed its
+    /// shape, wherever the pointer now is, so it can be reached again.
+    pub(super) fn hold_open_briefly(&self) {
         let until = Instant::now() + SWITCH_GRACE;
         if self.pin_until.get().is_none_or(|t| t < until) {
             self.pin_until.set(Some(until));
@@ -306,9 +312,11 @@ impl PocketController {
             // Its rows are made only while it is in sight.
             if v == View::Clipboard {
                 self.refresh_clip();
+            } else {
+                self.refresh_list();
             }
         }
-        self.window.set_view(view_index(self.shown_view()));
+        self.window.set_view(self.window_view());
         self.fit_panel();
         self.run_undo_timer();
     }
@@ -324,10 +332,24 @@ impl PocketController {
 
     /// What the expanded island holds below the menu bar.
     pub(super) fn panel(&self) -> Panel {
+        let switch = self.clip.enabled();
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
+            View::Pocket if self.list_shown() => Panel::PocketList {
+                switch,
+                row: if self.stacks_shown() {
+                    Row::Stacks(self.stacks.len())
+                } else {
+                    Row::Cells(self.layout.get())
+                },
+            },
+            View::Pocket if self.stacks_shown() => Panel::Stacks {
+                switch,
+                stacks: self.stacks.len(),
+            },
             View::Pocket => Panel::Pocket {
-                switch: self.clip.enabled(),
+                switch,
+                layout: self.layout.get(),
             },
         }
     }
@@ -347,7 +369,7 @@ impl PocketController {
         let w = &self.window;
         w.set_clip_count(i32::try_from(self.clip.len()).unwrap_or(i32::MAX));
         w.set_show_switch(on);
-        w.set_view(view_index(self.shown_view()));
+        w.set_view(self.window_view());
         w.set_clip_wing(on && !self.clip.is_empty() && self.pocket.borrow().is_empty());
     }
 }
@@ -398,7 +420,7 @@ mod tests {
         assert_eq!(admitted(ClipFilter::Links), [5]);
         assert_eq!(admitted(ClipFilter::Images), [4]);
         assert_eq!(admitted(ClipFilter::Files), [3]);
-        // In the order the window's filter column lists them.
+        // In the order the window's filter row lists them.
         assert_eq!(filter_counts(&rows), [5, 1, 2, 1, 1, 1]);
         for (i, f) in FILTERS.iter().enumerate() {
             assert_eq!(ClipFilter::from_index(i as i32), Some(*f));
