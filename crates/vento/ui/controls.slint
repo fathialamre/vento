@@ -1,7 +1,7 @@
 // The controls of the Quick panel and the Settings window. All of them
 // take their colours from `Theme`, so they follow the Appearance setting.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 
 // Tabler Icons (MIT, see icons/LICENSE-tabler), embedded at build time.
 export global PanelIcons {
@@ -189,7 +189,7 @@ export component MenuField inherits Rectangle {
         padding-right: 10px;
         spacing: 6px;
 
-        Text {
+        LineText {
             layout-order: Theme.rtl ? 2 : 0;
             horizontal-alignment: Theme.rtl ? right : left;
             text: root.valid ? root.items[root.current] : @tr("None found");
@@ -197,7 +197,6 @@ export component MenuField inherits Rectangle {
             color: root.valid ? Theme.text : Theme.muted;
             vertical-alignment: center;
             horizontal-stretch: 1;
-            overflow: elide;
         }
 
         // A down chevron.

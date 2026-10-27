@@ -222,6 +222,24 @@ fn template_for<'a>(
         .unwrap_or(if n == 1 { singular } else { plural })
 }
 
+/// Whether `text` reads right to left as a line of its own: its first
+/// strong letter is Hebrew, Arabic or another right-to-left script, or the
+/// right-to-left mark. A file name in Arabic does, whatever the interface
+/// language; digits, spaces and symbols decide nothing.
+pub fn starts_right_to_left(text: &str) -> bool {
+    for c in text.chars() {
+        let rtl = matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF)
+            || c == '\u{200F}';
+        if rtl {
+            return true;
+        }
+        if c.is_alphabetic() || c == '\u{200E}' {
+            return false;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,5 +417,18 @@ msgstr[1] ""
             fill("Moved {n} to {dest}", &[("n", "3"), ("dest", "Photos")]),
             "Moved 3 to Photos"
         );
+    }
+
+    #[test]
+    fn a_line_reads_right_to_left_from_its_first_strong_letter() {
+        assert!(starts_right_to_left("تقرير المبيعات.pdf"));
+        assert!(starts_right_to_left("2024 تقرير.pdf"));
+        assert!(starts_right_to_left("\u{200F}Vento يعمل"));
+        assert!(!starts_right_to_left("Vento يعمل"));
+        assert!(!starts_right_to_left("Report تقرير.pdf"));
+        assert!(!starts_right_to_left("Photo 1.png"));
+        assert!(!starts_right_to_left("~/Pictures"));
+        assert!(!starts_right_to_left("2024"));
+        assert!(!starts_right_to_left(""));
     }
 }

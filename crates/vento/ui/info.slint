@@ -4,7 +4,7 @@
 // details, and for a folder the biggest things inside as bars. It follows the
 // system light or dark appearance through `Theme`.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import { SectionHeading, Separator, TextButton } from "controls.slint";
 
@@ -57,13 +57,12 @@ component BarRow inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
 
-        Text {
+        LineText {
             layout-order: Theme.rtl ? 2 : 0;
             horizontal-alignment: Theme.rtl ? right : left;
             text: root.name;
             font-size: 12px;
             color: Theme.text;
-            overflow: elide;
         }
 
         Text {
@@ -169,14 +168,13 @@ export component InfoWindow inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
                         layout-order: Theme.rtl ? 2 : 0;
                         horizontal-alignment: Theme.rtl ? right : left;
                         text: root.item-name;
                         font-size: 14px;
                         font-weight: 600;
                         color: Theme.text;
-                        overflow: elide;
                         vertical-alignment: center;
                     }
 
@@ -206,13 +204,12 @@ export component InfoWindow inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
                         layout-order: Theme.rtl ? 1 : 0;
                         horizontal-alignment: Theme.rtl ? right : left;
                         text: root.status;
                         font-size: 12px;
                         color: Theme.muted;
-                        overflow: elide;
                     }
                 }
 
@@ -245,13 +242,12 @@ export component InfoWindow inherits Window {
                                     color: Theme.muted;
                                 }
 
-                                Text {
+                                LineText {
                                     layout-order: Theme.rtl ? 1 : 0;
                                     text: detail.value;
                                     font-size: 12px;
                                     color: Theme.text;
                                     horizontal-alignment: Theme.rtl ? left : right;
-                                    overflow: elide;
                                 }
                             }
                         }

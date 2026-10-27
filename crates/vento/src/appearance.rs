@@ -112,12 +112,17 @@ pub fn apply_direction(theme: &Theme<'_>) {
 
 /// Gives `window` its `look` now, and again after every language change
 /// for as long as the window exists (the registry keeps only a weak
-/// reference, so a dropped window is forgotten).
+/// reference, so a dropped window is forgotten). Also tells the window's
+/// `LineText`s which way a line of text reads.
 pub fn follow<T>(window: &T, look: Look)
 where
     T: ComponentHandle + 'static,
     for<'a> Theme<'a>: slint::Global<'a, T>,
 {
+    // `LineText` asks which way a line reads, to cut it where Slint can.
+    window
+        .global::<Theme>()
+        .on_text_is_rtl(|text| i18n::starts_right_to_left(&text));
     let weak = window.as_weak();
     let alive = {
         let weak = weak.clone();

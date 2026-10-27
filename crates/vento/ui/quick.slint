@@ -5,7 +5,7 @@
 // follows the Appearance setting through `Theme`. The settings themselves
 // are in the Settings window (`settings_window.slint`).
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import { Notice } from "settings_pages.slint";
 import { AwakeChips, PanelIcons, PanelOutline, Separator, TextButton } from "controls.slint";
@@ -56,13 +56,12 @@ component ActionTile inherits Rectangle {
             }
         }
 
-        Text {
+        LineText {
             horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             font-weight: 600;
             color: Theme.text;
-            overflow: elide;
         }
 
         // Room for two lines whatever it says, so the tiles keep their
@@ -437,7 +436,7 @@ export component QuickPanel inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
                         layout-order: Theme.rtl ? 2 : 0;
                         horizontal-alignment: Theme.rtl ? right : left;
                         text: root.undo-text;
@@ -445,7 +444,6 @@ export component QuickPanel inherits Window {
                         color: Theme.text;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
-                        overflow: elide;
                     }
 
                     VerticalLayout {

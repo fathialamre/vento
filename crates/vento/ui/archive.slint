@@ -1,7 +1,7 @@
 // The Archive action's two windows: a small progress pill that never takes
 // the keyboard, and the password prompt, which does.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { TextButton } from "controls.slint";
 
 // Progress of a long extraction or compression: a frameless, always-on-top
@@ -40,12 +40,11 @@ export component ArchiveProgress inherits Window {
                 spacing: 8px;
                 horizontal-stretch: 1;
 
-                Text {
+                LineText {
                     horizontal-alignment: Theme.rtl ? right : left;
                     text: root.heading;
                     color: white;
                     font-size: 13px;
-                    overflow: elide;
                 }
 
                 // The bar: a faint track with the fraction done in orange.
@@ -210,7 +209,7 @@ export component PasswordPrompt inherits Window {
                         }
                     }
 
-                    Text {
+                    LineText {
                         layout-order: Theme.rtl ? 1 : 0;
                         horizontal-alignment: Theme.rtl ? right : left;
                         text: root.heading;
@@ -218,7 +217,6 @@ export component PasswordPrompt inherits Window {
                         font-weight: 600;
                         color: Theme.text;
                         vertical-alignment: center;
-                        overflow: elide;
                         horizontal-stretch: 1;
                     }
                 }

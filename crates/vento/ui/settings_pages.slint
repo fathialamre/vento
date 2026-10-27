@@ -2,7 +2,7 @@
 // shows and the callbacks they ask for changes through. The window
 // (`settings_window.slint`) lays them out and passes the settings in.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
     PanelIcons, SectionHeading, Separator, Switch, SwitchRow, Segmented, MenuField, LayoutCard,
@@ -225,7 +225,7 @@ component FolderLabel inherits HorizontalLayout {
     // The name keeps to its own width, up to half the narrowest page (the
     // window's least width leaves the page 340 px); where it is takes the
     // rest.
-    Text {
+    LineText {
         layout-order: Theme.rtl ? 2 : 0;
         horizontal-alignment: Theme.rtl ? right : left;
         text: root.folder.name;
@@ -234,10 +234,9 @@ component FolderLabel inherits HorizontalLayout {
         vertical-alignment: center;
         horizontal-stretch: 0;
         max-width: 170px;
-        overflow: elide;
     }
 
-    Text {
+    LineText {
         layout-order: Theme.rtl ? 1 : 0;
         horizontal-alignment: Theme.rtl ? right : left;
         text: root.folder.missing ? @tr("Missing") : root.folder.place;
@@ -245,7 +244,6 @@ component FolderLabel inherits HorizontalLayout {
         color: Theme.muted;
         vertical-alignment: center;
         horizontal-stretch: 1;
-        overflow: elide;
     }
 }
 

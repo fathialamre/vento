@@ -2,7 +2,7 @@
 // the left (the right in a right-to-left language), one per feature, and
 // the chosen page beside it under its name. It follows the Appearance setting through `Theme`.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
@@ -45,14 +45,13 @@ component SidebarRow inherits Rectangle {
             }
         }
 
-        Text {
+        LineText {
             layout-order: Theme.rtl ? 1 : 0;
             horizontal-alignment: Theme.rtl ? right : left;
             text: root.label;
             font-size: 13px;
             color: root.chosen ? Theme.accent : Theme.text;
             vertical-alignment: center;
-            overflow: elide;
         }
     }
 

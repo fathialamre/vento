@@ -1281,6 +1281,82 @@ fn statements(code: &[u8], open: usize) -> Vec<(String, Option<usize>)> {
     out
 }
 
+/// The lines of `src` where a plain `Text` elides a single line itself:
+/// it must be a `LineText`, which cuts a right-to-left line where Slint
+/// can't (`theme.slint`). Text that wraps may elide (its last line).
+fn self_eliding_lines(src: &str) -> Vec<usize> {
+    let code = code_only(src);
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(at) = code[i..]
+        .windows(4)
+        .position(|w| w == b"Text")
+        .map(|p| p + i)
+    {
+        i = at + 4;
+        let before = at.checked_sub(1).map(|j| code[j]);
+        if before.is_some_and(|c| is_ident_byte(c) || c == b'.') {
+            continue;
+        }
+        let mut j = at + 4;
+        while j < code.len() && code[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if code.get(j) != Some(&b'{') {
+            continue;
+        }
+        let heads: Vec<String> = statements(&code, j)
+            .into_iter()
+            .filter(|(_, block)| block.is_none())
+            .map(|(head, _)| head.split_whitespace().collect::<Vec<_>>().join(" "))
+            .collect();
+        let elides = heads.iter().any(|h| h == "overflow: elide");
+        let wraps = heads
+            .iter()
+            .any(|h| h.starts_with("wrap:") && h.contains("word-wrap"));
+        if elides && !wraps {
+            out.push(src[..at].matches('\n').count() + 1);
+        }
+    }
+    out
+}
+
+#[test]
+fn single_lines_are_cut_by_line_text() {
+    let mut files = Vec::new();
+    files_under(&repo_root().join("crates/vento/ui"), "slint", &mut files);
+    let mut problems = Vec::new();
+    for path in files {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if name == "theme.slint" {
+            continue; // LineText itself
+        }
+        let src = fs::read_to_string(&path).unwrap();
+        for line in self_eliding_lines(&src) {
+            problems.push(format!("{name}:{line}"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "a single line that elides must be a LineText (a right-to-left line \
+         drawn by a plain Text runs out of its box):\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+#[test]
+fn finds_self_eliding_lines() {
+    let src = r#"
+        Text { text: root.a; overflow: elide; }
+        LineText { text: root.b; }
+        Text { text: root.c; wrap: word-wrap; overflow: elide; }
+        Text { text: root.d; overflow: clip; }
+        TextInput { text: root.e; }
+        Rectangle { Text { overflow: elide; } }
+    "#;
+    assert_eq!(self_eliding_lines(src), vec![2, 7]);
+}
+
 /// Whether a statement head opens a child element (`Text`, `id := Foo`,
 /// `if c: Foo`, `for x[i] in m: Foo`) rather than a callback body.
 fn is_child(head: &str) -> bool {

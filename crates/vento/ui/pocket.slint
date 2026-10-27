@@ -5,7 +5,7 @@
 // everything inside the island is mirrored (the island itself stays where
 // it is on the screen); its colours stay its own, whatever the theme.
 
-import { Theme } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 
 export struct PocketCell { name: string, icon: image, missing: bool, selected: bool }
@@ -573,7 +573,7 @@ component ClipList inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    LineText {
                         // Room left at the end for the age (and pin), or the buttons.
                         property <length> end-room: touch.has-hover ? actions.width + 12px : row.pinned ? 70px : 50px;
                         x: Theme.rtl ? self.end-room : 42px;
@@ -582,7 +582,6 @@ component ClipList inherits Rectangle {
                         text: row.label;
                         color: #e6e6e6;
                         font-size: 13px;
-                        overflow: elide;
                         wrap: no-wrap;
                         vertical-alignment: center;
                     }
@@ -1024,7 +1023,7 @@ component PocketList inherits Rectangle {
                         height: 24px;
                     }
 
-                    Text {
+                    LineText {
                         // Room left at the end, for the x on hover.
                         property <length> end-room: touch.has-hover ? 40px : 12px;
                         x: Theme.rtl ? self.end-room : 40px;
@@ -1033,7 +1032,6 @@ component PocketList inherits Rectangle {
                         text: row.name;
                         color: #e6e6e6;
                         font-size: 13px;
-                        overflow: elide;
                         wrap: no-wrap;
                         vertical-alignment: center;
                     }
@@ -1369,7 +1367,7 @@ export component PocketIsland inherits Window {
                                 height: 40px;
                             }
 
-                            Text {
+                            LineText {
                                 text: ghost.name;
                                 x: 4px;
                                 y: 54px;
@@ -1377,7 +1375,6 @@ export component PocketIsland inherits Window {
                                 height: 18px;
                                 color: white;
                                 font-size: 11px;
-                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -1413,7 +1410,7 @@ export component PocketIsland inherits Window {
                                 height: 40px;
                             }
 
-                            Text {
+                            LineText {
                                 text: cell.name;
                                 x: 4px;
                                 y: 54px;
@@ -1421,7 +1418,6 @@ export component PocketIsland inherits Window {
                                 height: 18px;
                                 color: white;
                                 font-size: 11px;
-                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -1546,7 +1542,7 @@ export component PocketIsland inherits Window {
                                 height: 28px;
                             }
 
-                            Text {
+                            LineText {
                                 text: stack.label;
                                 x: 4px;
                                 y: 47px;
@@ -1554,7 +1550,6 @@ export component PocketIsland inherits Window {
                                 height: 18px;
                                 color: white;
                                 font-size: 11px;
-                                overflow: elide;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
