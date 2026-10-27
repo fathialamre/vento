@@ -353,7 +353,20 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     // The menu-bar icon needs the running event loop, and lives as long as the app.
-    let tray_handle = Rc::new(RefCell::new(None));
+    let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
+    // The menu is texted when it is made; a language change writes it
+    // again. This listener comes after the first, which switches the
+    // language.
+    {
+        let tray = tray_handle.clone();
+        hub.on_change(Box::new(move |old, new| {
+            if old.language != new.language
+                && let Some(tray) = tray.borrow().as_ref()
+            {
+                tray.retext();
+            }
+        }));
+    }
     let keep = tray_handle.clone();
     let tray_info = info.clone();
     let tray_settings = settings.clone();

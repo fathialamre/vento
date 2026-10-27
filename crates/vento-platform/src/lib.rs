@@ -21,7 +21,7 @@ mod macos;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod webp;
 #[cfg(target_os = "macos")]
-pub use macos::{MacPlatform, MacScreenText};
+pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
 
 #[cfg(target_os = "linux")]
 mod linux;

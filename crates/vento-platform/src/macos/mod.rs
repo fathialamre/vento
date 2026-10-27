@@ -44,6 +44,7 @@ mod trash;
 pub(crate) use icons::file_icon_at;
 pub(crate) use image_io::{probe_image, write_image};
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
+pub use menu::set_ns_menu_direction;
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 pub use screen_text::MacScreenText;
 pub(crate) use screen_text::{read_screen_text, screen_text_languages};

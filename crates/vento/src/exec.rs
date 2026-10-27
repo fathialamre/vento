@@ -18,6 +18,7 @@ use vento_core::fileops::{
     move_items, undo, undo_copies,
 };
 use vento_core::geometry::Point;
+use vento_core::i18n::tr;
 use vento_core::paths::format_paths;
 use vento_core::settings::Settings;
 use vento_platform::Platform;
@@ -198,12 +199,12 @@ pub enum UndoKind {
 
 /// The tray's Undo item text: names what would be undone, and reads
 /// "move" when there is nothing to undo.
-pub fn undo_menu_text(kind: Option<UndoKind>) -> &'static str {
+pub fn undo_menu_text(kind: Option<UndoKind>) -> String {
     match kind {
-        Some(UndoKind::Copy) => "Undo last copy",
-        Some(UndoKind::Archive) => "Undo last archive",
-        Some(UndoKind::Convert) => "Undo last convert",
-        Some(UndoKind::Move) | None => "Undo last move",
+        Some(UndoKind::Copy) => tr("Undo last copy"),
+        Some(UndoKind::Archive) => tr("Undo last archive"),
+        Some(UndoKind::Convert) => tr("Undo last convert"),
+        Some(UndoKind::Move) | None => tr("Undo last move"),
     }
 }
 

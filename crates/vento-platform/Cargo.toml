@@ -50,6 +50,8 @@ objc2-app-kit = { version = "0.3", features = [
     "NSColor",
     "NSMenu",
     "NSMenuItem",
+    # A menu laid out right to left in Arabic.
+    "NSUserInterfaceLayout",
     # The Copy from screen overlay: its crosshair, the selection's border,
     # and the crosshair on screens whose panel is not key.
     "NSCursor",

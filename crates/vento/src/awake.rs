@@ -9,6 +9,7 @@ use jiff::tz::TimeZone;
 use log::{debug, warn};
 use slint::{Timer, TimerMode};
 use vento_core::awake::{Chip, Session};
+use vento_core::i18n::tr;
 use vento_platform::{AwakeHold, Platform};
 
 use crate::settings_hub::SettingsHub;
@@ -21,11 +22,11 @@ const IDLE_STATUS: &str = "Your computer follows its usual energy settings";
 
 /// The right-click menu's Keep Awake item: names what a click does, which
 /// is the opposite of what runs now.
-pub fn keep_awake_menu_text(on: bool) -> &'static str {
+pub fn keep_awake_menu_text(on: bool) -> String {
     if on {
-        "Stop Keep Awake"
+        tr("Stop Keep Awake")
     } else {
-        "Start Keep Awake"
+        tr("Start Keep Awake")
     }
 }
 
