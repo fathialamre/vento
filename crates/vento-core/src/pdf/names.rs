@@ -20,6 +20,14 @@ pub fn stem(file_name: &OsStr) -> OsString {
     }
 }
 
+/// Whether `path` is named like a PDF: the extension `pdf` in any ASCII case,
+/// nothing else. A name check only, with no file access, so the wheel can ask
+/// it for every dragged file within its opening budget.
+pub fn looks_like_pdf(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+}
+
 /// Zero-based page positions as 1-based range text: sorted, duplicates
 /// dropped, runs joined with an en dash and parts with ", " (`"1, 3–5"`).
 pub fn page_ranges(positions: &[usize]) -> String {
@@ -185,6 +193,17 @@ pub fn images_folder_name(anchor: &OsStr) -> OsString {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pdf_name_check() {
+        assert!(looks_like_pdf(Path::new("/d/a.PDF")));
+        assert!(looks_like_pdf(Path::new("/d/a.pdf")));
+        assert!(looks_like_pdf(Path::new("/d/تقرير.Pdf")));
+        assert!(!looks_like_pdf(Path::new("/d/a.pdf.zip")));
+        assert!(!looks_like_pdf(Path::new("/d/pdf")));
+        assert!(!looks_like_pdf(Path::new("/d/.pdf")));
+        assert!(!looks_like_pdf(Path::new("/d/a.pdfx")));
+    }
 
     #[test]
     fn stem_handles_case_and_dots() {

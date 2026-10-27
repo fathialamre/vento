@@ -9,7 +9,9 @@ export enum WheelLayout { honeycomb, petals }
 // Cell positions are offsets from the wheel centre (the window centre), so
 // the window can grow for the ring without moving the wheel.
 // `covered`: a ring cell sits on this cell while the ring is open.
-export struct WheelCell { x: length, y: length, r: length, label: string, icon: image, covered: bool }
+// `dimmed`: drawn at 40% and never hot-accent (the PDF cell with no PDF dragged);
+// a drop on it still works.
+export struct WheelCell { x: length, y: length, r: length, label: string, icon: image, covered: bool, dimmed: bool }
 
 // One folder (or image format) on the ring; `line2` is empty for a one-line
 // label. `tint`: the icon is a monochrome symbol, drawn white like the wheel's.
@@ -106,10 +108,12 @@ export component Wheel inherits Window {
     property <bool> ring-open: root.ring-source >= 0;
 
     for cell[i] in root.cells: Rectangle {
-        property <bool> hot: i == root.highlighted;
+        // Under the cursor; a dimmed cell still grows but never takes the accent.
+        property <bool> over: i == root.highlighted;
+        property <bool> hot: over && !cell.dimmed;
         // The action whose ring is open, drawn as the ring's source.
         property <bool> source: i == root.ring-source && !hot;
-        property <float> scale: hot ? 1.12 : 1.0;
+        property <float> scale: over ? 1.12 : 1.0;
         property <color> fill: hot ? root.accent : source ? root.source-fill : root.idle;
         property <color> edge: hot ? root.hot-border : source ? root.accent : root.border;
         property <length> edge-width: source ? 1.5px : 1px;
@@ -120,8 +124,9 @@ export component Wheel inherits Window {
         // ring cell are not drawn at all. The fade scales each colour's alpha:
         // `opacity` would draw every cell through a layer of its own.
         visible: !(root.ring-open && cell.covered);
-        property <float> fade: !root.ring-open || i == root.ring-source ? 1.0 : 0.2;
-        animate fade { duration: root.animate-hover ? 120ms : 0ms; easing: ease-out; }
+        property <float> ring-fade: !root.ring-open || i == root.ring-source ? 1.0 : 0.2;
+        property <float> fade: ring-fade * (cell.dimmed ? 0.4 : 1.0);
+        animate ring-fade { duration: root.animate-hover ? 120ms : 0ms; easing: ease-out; }
         property <color> faded-fill: fill.transparentize(1 - fade);
         property <color> faded-edge: edge.transparentize(1 - fade);
         property <color> faded-white: white.transparentize(1 - fade);

@@ -22,6 +22,8 @@ use vento_platform::Platform;
 use crate::awake::{KeepAwake, keep_awake_menu_text};
 use crate::exec::{Executor, undo_menu_text};
 use crate::pause::PauseSwitch;
+use crate::pdf::PdfController;
+use crate::quit;
 use crate::settings_hub::SettingsHub;
 
 /// The flame mark as a black template image, 36 px: an 18 pt glyph at 2x.
@@ -190,6 +192,8 @@ fn tray_icon_rgba(mark: &[u8]) -> Vec<u8> {
 /// What the tray needs to act on clicks.
 pub struct TrayDeps {
     pub exec: Rc<Executor>,
+    /// The PDF windows, which Quit asks about when they hold unsaved edits.
+    pub pdf: Rc<PdfController>,
     /// Places the icon on its screen.
     pub platform: Rc<dyn Platform>,
     /// Shows its cup beside the icon while it holds the Mac awake.
@@ -219,6 +223,7 @@ pub struct TrayDeps {
 pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let TrayDeps {
         exec,
+        pdf,
         platform,
         keep_awake,
         on_open_panel,
@@ -383,11 +388,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             } else if id == open_settings.id() {
                 open_settings_file(&*opener);
             } else if id == quit.id() {
-                // A job still running would leave its partial output behind.
-                exec.shutdown();
-                if let Err(e) = slint::quit_event_loop() {
-                    warn!("cannot quit: {e}");
-                }
+                quit::quit(&exec, &pdf);
             }
         }));
     });

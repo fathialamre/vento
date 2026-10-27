@@ -1345,7 +1345,6 @@ export component PdfWindow inherits Window {
                         PlainButton {
                             layout-order: Theme.rtl ? 2 : 0;
                             label: @tr("Discard");
-                            enabled: !root.busy;
                             clicked => { root.sheet-discard(); }
                         }
 
@@ -1353,7 +1352,6 @@ export component PdfWindow inherits Window {
                             // The middle one stays in the middle.
                             layout-order: Theme.rtl ? 1 : 1;
                             label: @tr("Cancel");
-                            enabled: !root.busy;
                             clicked => { root.sheet-cancel(); }
                         }
 

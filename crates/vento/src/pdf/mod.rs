@@ -171,7 +171,6 @@ impl PdfController {
     }
 
     /// How many open windows have page-list edits not saved yet.
-    #[allow(dead_code)] // Quitting asks about these (Task 11).
     pub fn edited_windows(&self) -> usize {
         self.views
             .borrow()
@@ -185,7 +184,6 @@ impl PdfController {
     /// forward with its question and the next one waits for the answer:
     /// Cancel on any stops there with `on_done(false)`; once every window
     /// has closed (saved or discarded), `on_done(true)`.
-    #[allow(dead_code)] // Quitting calls it (Task 11).
     pub fn close_all(&self, on_done: Box<dyn FnOnce(bool)>) {
         let views: Vec<Rc<PdfView>> = self
             .views

@@ -94,9 +94,7 @@ fn live_view(id: u64) -> Option<Rc<PdfView>> {
     VIEWS.with(|views| views.borrow().get(&id).and_then(Weak::upgrade))
 }
 
-/// Told whether a window closed (`true`) or stayed open after its
-/// closing question (`false`, Cancel).
-pub type Answered = Box<dyn FnOnce(bool)>;
+pub use super::logic::Answered;
 
 /// What a view needs from the app.
 pub struct ViewCtx {

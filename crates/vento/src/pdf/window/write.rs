@@ -23,8 +23,8 @@ use super::{Answered, PdfView, file_name};
 use crate::exec::{PdfDone, pdf_toast_text};
 use crate::pdf::logic::{
     cut_at, cut_footer, cut_marker, cut_summary, every_n_text, every_page_text, files_text,
-    format_key, image_options, images_texts, job_fraction, split_heading, split_n_range,
-    toggle_cut,
+    format_key, image_options, images_texts, job_fraction, replace_answer, sheet_save_allowed,
+    split_heading, split_n_range, toggle_cut,
 };
 use crate::ui::PdfCutMark;
 
@@ -82,6 +82,8 @@ pub(super) enum BannerAction {
 pub(super) struct Job {
     progress: Arc<Progress>,
     started: Instant,
+    /// The closing question's own Save, which Discard and Cancel stop.
+    closing: bool,
 }
 
 /// What happens once a write has ended.
@@ -126,7 +128,8 @@ impl PdfView {
         self.window.set_busy(busy);
         self.window
             .set_can_save(pages && !busy && !self.in_cut_mode() && !self.sheet.get());
-        self.window.set_sheet_can_save(pages && !busy);
+        self.window
+            .set_sheet_can_save(sheet_save_allowed(pages, busy));
     }
 
     /// The footer's text: cut mode's pieces, or the selection.
@@ -444,6 +447,7 @@ impl PdfView {
         *self.job.borrow_mut() = Some(Job {
             progress: progress.clone(),
             started: Instant::now(),
+            closing: after == After::SaveAndClose,
         });
         self.update_locks();
         let this = self.this.clone();
@@ -541,6 +545,13 @@ impl PdfView {
                         }
                     });
             }
+            After::SaveAndClose if !self.sheet.get() => {
+                // Cancel came too late to stop the write: the file is made,
+                // so the window is saved, but it stays open as asked.
+                self.pages.borrow_mut().mark_saved();
+                self.retext();
+                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
+            }
             After::SaveAndClose => {
                 self.pages.borrow_mut().mark_saved();
                 self.sheet.set(false);
@@ -581,17 +592,14 @@ impl PdfView {
         if !self.is_edited() || self.saved.get() {
             // `close_now` tells `answered`.
             if let Some(answered) = answered {
-                *self.answer.borrow_mut() = Some(answered);
+                replace_answer(&self.answer, answered);
             }
             self.close_now();
             return;
         }
         if let Some(answered) = answered {
             // An earlier asker (only quitting asks) gives way to this one.
-            let earlier = self.answer.borrow_mut().replace(answered);
-            if let Some(earlier) = earlier {
-                earlier(false);
-            }
+            replace_answer(&self.answer, answered);
         }
         if !self.sheet.get() {
             self.close_popover();
@@ -614,33 +622,47 @@ impl PdfView {
     /// The closing question's Save: closes once the new file is written; a
     /// failed or cancelled write keeps the window and the question.
     pub(super) fn sheet_save(&self) {
-        if !self.sheet.get() || !self.has_pages() || self.is_busy() {
+        if !self.sheet.get() || !sheet_save_allowed(self.has_pages(), self.is_busy()) {
             return;
         }
         self.start_job(PdfJob::Save, After::SaveAndClose);
     }
 
-    /// The closing question's Discard: closes without writing.
+    /// The closing question's Discard: closes without writing. A write that
+    /// runs for another reason (Extract, Split…) keeps going on its own; the
+    /// sheet's own Save is stopped.
     pub(super) fn sheet_discard(&self) {
-        if !self.sheet.get() || self.is_busy() {
+        if !self.sheet.get() {
             return;
         }
+        self.stop_closing_save();
         self.sheet.set(false);
         self.window.set_sheet_open(false);
         self.close_now();
     }
 
-    /// The closing question's Cancel: the window stays open.
+    /// The closing question's Cancel: the window stays open. It works while a
+    /// write runs; the sheet's own Save is stopped, any other write goes on.
     pub(super) fn sheet_cancel(&self) {
-        if !self.sheet.get() || self.is_busy() {
+        if !self.sheet.get() {
             return;
         }
+        self.stop_closing_save();
         self.sheet.set(false);
         self.window.set_sheet_open(false);
         self.update_locks();
         let answered = self.answer.borrow_mut().take();
         if let Some(answered) = answered {
             answered(false);
+        }
+    }
+
+    /// Stops the write that the closing question's Save started, if it runs.
+    fn stop_closing_save(&self) {
+        if let Some(job) = &*self.job.borrow()
+            && job.closing
+        {
+            job.progress.cancel();
         }
     }
 

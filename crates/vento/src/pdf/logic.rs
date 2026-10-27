@@ -3,6 +3,7 @@
 //! stands, and which pages stay selected after an undo. Nothing here
 //! touches Slint, so all of it is tested on its own.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use vento_core::i18n::{fill, tr, trn};
@@ -18,6 +19,29 @@ pub const DRAG_START: f32 = 4.0;
 pub const SCROLL_EDGE: f32 = 40.0;
 /// The fastest the grid scrolls while dragging, in points per frame.
 pub const SCROLL_MAX: f32 = 20.0;
+
+/// Who waits for the closing question's answer (quitting): told `true` once
+/// the window has closed, `false` on Cancel.
+pub type Answered = Box<dyn FnOnce(bool)>;
+
+/// Puts `new` in `slot` as the one to tell. An earlier waiter that has not
+/// been answered gives way: it hears `false` (the window did not close for
+/// it), so a quit that asked first never waits for ever. The earlier is
+/// called after the slot's borrow ends.
+pub fn replace_answer(slot: &RefCell<Option<Answered>>, new: Answered) {
+    let earlier = slot.borrow_mut().replace(new);
+    if let Some(earlier) = earlier {
+        earlier(false);
+    }
+}
+
+/// Whether the closing question's Save may be pressed: the window has pages
+/// to write and no write of its own runs (the sheet's own Save, or a write
+/// started before it came up). Discard and Cancel are never held back: a
+/// write that runs keeps going without the window, or is stopped by Cancel.
+pub fn sheet_save_allowed(has_pages: bool, busy: bool) -> bool {
+    has_pages && !busy
+}
 
 /// Arrow keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -502,6 +526,53 @@ pub fn job_fraction(done: u64, total: u64) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    fn noting(log: &Rc<RefCell<Vec<(u8, bool)>>>, id: u8) -> Answered {
+        let log = log.clone();
+        Box::new(move |answer| log.borrow_mut().push((id, answer)))
+    }
+
+    #[test]
+    fn a_new_waiter_tells_the_earlier_one_no() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let slot = RefCell::new(None);
+        replace_answer(&slot, noting(&log, 1));
+        assert!(log.borrow().is_empty(), "nobody to replace yet");
+        replace_answer(&slot, noting(&log, 2));
+        assert_eq!(*log.borrow(), [(1, false)]);
+        // The newer one is still waiting for the real answer.
+        let waiting = slot.borrow_mut().take().expect("the newer waiter");
+        waiting(true);
+        assert_eq!(*log.borrow(), [(1, false), (2, true)]);
+    }
+
+    #[test]
+    fn the_earlier_waiter_may_ask_again_while_told() {
+        // `earlier(false)` can start another quit that fills the slot at
+        // once: the slot must not be borrowed meanwhile.
+        let slot: Rc<RefCell<Option<Answered>>> = Rc::new(RefCell::new(None));
+        let told = Rc::new(Cell::new(false));
+        let (again, flag) = (slot.clone(), told.clone());
+        replace_answer(
+            &slot,
+            Box::new(move |_| {
+                replace_answer(&again, Box::new(|_| {}));
+                flag.set(true);
+            }),
+        );
+        replace_answer(&slot, Box::new(|_| {}));
+        assert!(told.get());
+        assert!(slot.borrow().is_some());
+    }
+
+    #[test]
+    fn the_sheets_save_waits_for_a_free_window_but_nothing_else_does() {
+        assert!(sheet_save_allowed(true, false));
+        assert!(!sheet_save_allowed(true, true), "a write already runs");
+        assert!(!sheet_save_allowed(false, false), "nothing to write");
+    }
     use vento_core::i18n::with_language;
 
     fn page(source: usize, page: usize, turns: u8) -> PageRef {

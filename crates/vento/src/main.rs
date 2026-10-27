@@ -25,6 +25,8 @@ mod pdf;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pocket;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod quit;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod screen_text;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod settings_hub;
@@ -229,6 +231,7 @@ fn main() -> Result<(), slint::PlatformError> {
             hub.clone(),
             Rc::downgrade(&pocket),
             executor.clone(),
+            pdf.clone(),
             supported,
             Box::new(move |paused| pause.set(paused)),
         )
@@ -418,6 +421,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let keep = tray_handle.clone();
     let tray_info = info.clone();
     let tray_settings = settings.clone();
+    let tray_pdf = pdf.clone();
     let (open_clipboard, open_pocket) = (
         open_on(pocket::View::Clipboard),
         open_on(pocket::View::Pocket),
@@ -429,6 +433,7 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_screen_shortcut(&settings);
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
+            pdf: tray_pdf,
             platform,
             keep_awake: panel.keep_awake(),
             on_open_panel: Box::new(move |icon| {
