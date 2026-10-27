@@ -611,6 +611,29 @@ fn placeholders(s: &str) -> BTreeSet<String> {
     out
 }
 
+/// Compares a translation's `{...}` tokens with the English text's. A plain
+/// entry must match exactly. In a plural entry a form may leave out `{n}`
+/// ("one file" needs no number), but must keep every other placeholder and
+/// must not add one the English lacks. Returns what is wrong, if anything.
+fn placeholder_problem(english: &str, translated: &str, plural: bool) -> Option<String> {
+    let want = placeholders(english);
+    let got = placeholders(translated);
+    if plural {
+        let missing: Vec<_> = want
+            .iter()
+            .filter(|p| p.as_str() != "{n}" && !got.contains(*p))
+            .collect();
+        let extra: Vec<_> = got.difference(&want).collect();
+        if missing.is_empty() && extra.is_empty() {
+            return None;
+        }
+        return Some(format!(
+            "missing {missing:?}, extra {extra:?}; the English has {want:?}"
+        ));
+    }
+    (got != want).then(|| format!("has {got:?}, the English has {want:?}"))
+}
+
 fn report(problems: Vec<String>, what: &str) {
     assert!(
         problems.is_empty(),
@@ -709,18 +732,14 @@ fn placeholders_survive_translation() {
             let Some(e) = cat.get(&t.ctx, &t.msgid) else {
                 continue; // reported by every_language_is_complete
             };
+            let plural = t.msgid_plural.is_some();
             let source = t.msgid_plural.as_deref().unwrap_or(&t.msgid);
-            let want = placeholders(source);
             for (i, f) in e.forms.iter().enumerate() {
                 if f.is_empty() {
                     continue; // reported by every_language_is_complete
                 }
-                let got = placeholders(f);
-                if got != want {
-                    problems.push(format!(
-                        "[{code}] {:?} form {i}: has {got:?}, the English has {want:?}",
-                        t.msgid
-                    ));
+                if let Some(why) = placeholder_problem(source, f, plural) {
+                    problems.push(format!("[{code}] {:?} form {i}: {why}", t.msgid));
                 }
             }
         }
@@ -808,4 +827,23 @@ fn writes_gettext_formatting() {
         placeholders("Moved {n} to {dest} {n}"),
         BTreeSet::from(["{n}".to_string(), "{dest}".to_string()])
     );
+}
+
+#[test]
+fn plural_forms_may_leave_out_the_count_only() {
+    let en = "Moved {n} items to {dest}";
+    // A form without {n} passes, and so does one with it.
+    assert_eq!(placeholder_problem(en, "نُقل عنصر إلى {dest}", true), None);
+    assert_eq!(
+        placeholder_problem(en, "نُقل {n} عنصرا إلى {dest}", true),
+        None
+    );
+    // A form missing {dest} fails.
+    assert!(placeholder_problem(en, "نُقل {n} عنصرا", true).is_some());
+    // A form with an extra or misspelled name fails.
+    assert!(placeholder_problem(en, "نُقل {n} عنصرا إلى {dst}", true).is_some());
+    assert!(placeholder_problem(en, "نُقل {n} عنصرا إلى {dest} {other}", true).is_some());
+    // Plain entries stay strict: {n} cannot be left out there.
+    assert!(placeholder_problem("Moved {n}", "نُقل", false).is_some());
+    assert_eq!(placeholder_problem("Moved {n}", "نُقل {n}", false), None);
 }
