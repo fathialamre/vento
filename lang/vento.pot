@@ -5,6 +5,10 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/vento-core/src/i18n/mod.rs:149
+#: crates/vento/src/settings_window/mod.rs:1116
+msgid "Automatic (system language)"
+msgstr ""
+
+#: crates/vento-core/src/i18n/mod.rs:183
 msgid "Language"
 msgstr ""

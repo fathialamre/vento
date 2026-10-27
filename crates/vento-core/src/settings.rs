@@ -113,6 +113,10 @@ pub struct Settings {
     pub pocket_keep_copies: bool,
     /// How the Pocket lays its items out once it holds more than eight.
     pub pocket_layout: PocketLayout,
+    /// The language of the interface: `"auto"` follows the system's, or the
+    /// code of one of the languages Vento has (`"en"`, `"ar"`). Any other
+    /// value acts as `"auto"`; see `i18n::resolve`.
+    pub language: String,
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].
     pub pocket_shortcut: String,
@@ -195,6 +199,7 @@ impl Default for Settings {
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
             pocket_layout: PocketLayout::List,
+            language: "auto".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
@@ -224,6 +229,7 @@ struct RawSettings {
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
     pocket_layout: PocketLayout,
+    language: String,
     pocket_shortcut: String,
     clipboard_history: bool,
     clipboard_shortcut: String,
@@ -255,6 +261,7 @@ impl From<&Settings> for RawSettings {
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
             pocket_layout: s.pocket_layout,
+            language: s.language.clone(),
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
@@ -329,6 +336,7 @@ impl From<RawSettings> for Settings {
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
             pocket_layout: raw.pocket_layout,
+            language: raw.language,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
             clipboard_shortcut: raw.clipboard_shortcut,
@@ -762,6 +770,30 @@ mod tests {
             Settings::try_load(&old).unwrap().pocket_layout,
             PocketLayout::List
         );
+    }
+
+    #[test]
+    fn the_language_follows_the_system_unless_saved_otherwise() {
+        assert_eq!(Settings::default().language, "auto");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            language: "ar".to_owned(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("language = \"ar\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+        let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(Settings::try_load(&old).unwrap().language, "auto");
+        // A value Vento does not know loads as it is; `i18n::resolve`
+        // treats it as Automatic.
+        let (_dir, odd) = write_temp("language = \"xx\"\n");
+        assert_eq!(Settings::try_load(&odd).unwrap().language, "xx");
     }
 
     #[test]

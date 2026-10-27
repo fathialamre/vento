@@ -552,6 +552,9 @@ export component ClipboardPage inherits VerticalLayout {
 }
 
 export component GeneralPage inherits VerticalLayout {
+    // The languages by name, "Automatic" first, and the one in use.
+    in property <[string]> language-names;
+    in property <int> language;
     // 0 System, 1 Light, 2 Dark.
     in property <int> appearance;
     // The themes by name, and the one in use.
@@ -567,6 +570,7 @@ export component GeneralPage inherits VerticalLayout {
     in property <int> terminal;
     // 0 Plain, 1 Shell-quoted.
     in property <int> path-format;
+    callback language-chosen(int);
     callback appearance-chosen(int);
     callback theme-chosen(int);
     callback trigger-chosen(int);
@@ -575,6 +579,19 @@ export component GeneralPage inherits VerticalLayout {
     callback path-format-chosen(int);
 
     spacing: 8px;
+
+    SectionHeading {
+        text: @tr("Language");
+    }
+
+    MenuField {
+        label: @tr("Language");
+        items: root.language-names;
+        current: root.language;
+        chosen(i) => { root.language-chosen(i); }
+    }
+
+    Separator { }
 
     SectionHeading {
         text: "Appearance";

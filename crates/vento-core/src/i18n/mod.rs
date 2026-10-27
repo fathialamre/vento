@@ -48,6 +48,40 @@ pub fn set_language(code: &str) {
     CURRENT.store(idx, Ordering::Relaxed);
 }
 
+/// The language the `language` setting asks for. `"auto"` takes the first
+/// of the `preferred` languages (the system's, best first) that Vento has;
+/// none means English. A code matches on its language part, so `"AR"` and
+/// `"ar-LY"` both mean Arabic. A value Vento has no language for is logged
+/// once and acts as `"auto"`.
+pub fn resolve(setting: &str, preferred: &[String]) -> &'static Language {
+    if setting != "auto" {
+        if let Some(language) = lookup(setting) {
+            return language;
+        }
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED
+            .call_once(|| log::warn!("unknown language {setting:?} in settings, using Automatic"));
+    }
+    preferred
+        .iter()
+        .find_map(|code| lookup(code))
+        .unwrap_or(&LANGUAGES[0])
+}
+
+/// The language whose code is the language part of `tag` (`"ar-LY"`,
+/// `"ar_LY.UTF-8"`, `"AR"`); `None` for `"auto"` or a language Vento lacks.
+pub fn lookup(tag: &str) -> Option<&'static Language> {
+    let end = tag.find(['-', '_', '@', '.']).unwrap_or(tag.len());
+    let part = tag[..end].to_ascii_lowercase();
+    LANGUAGES.iter().find(|l| l.code == part)
+}
+
+/// The system's preferred languages, best first, as the platform words
+/// them (`"ar-LY"` on macOS, `"ar_LY.UTF-8"` on Linux).
+pub fn system_languages() -> Vec<String> {
+    sys_locale::get_locales().collect()
+}
+
 /// The language in use.
 pub fn current() -> &'static Language {
     &LANGUAGES[CURRENT.load(Ordering::Relaxed).min(LANGUAGES.len() - 1)]
@@ -206,6 +240,28 @@ msgstr[1] ""
         assert_eq!(fill("a {x} b {y", &[("x", "1")]), "a 1 b {y");
         assert_eq!(fill("{n}", &[("n", "{n}")]), "{n}");
         assert_eq!(fill("{missing} and {}", &[]), "{missing} and {}");
+    }
+
+    #[test]
+    fn automatic_takes_the_first_preferred_language_vento_has() {
+        assert_eq!(
+            resolve("auto", &["fr-FR".into(), "ar-LY".into()]).code,
+            "ar"
+        );
+        assert_eq!(resolve("auto", &["fr-FR".into()]).code, "en");
+        assert_eq!(resolve("auto", &[]).code, "en");
+        assert_eq!(resolve("auto", &["ar_LY.UTF-8".into()]).code, "ar");
+        assert_eq!(resolve("auto", &["ar@tashkeel".into()]).code, "ar");
+    }
+
+    #[test]
+    fn a_saved_language_matches_loosely() {
+        assert_eq!(resolve("AR", &[]).code, "ar");
+        assert_eq!(resolve("ar-LY", &[]).code, "ar");
+        assert_eq!(resolve("en", &["ar".into()]).code, "en");
+        // A language Vento does not have acts as Automatic.
+        assert_eq!(resolve("xx", &["ar".into()]).code, "ar");
+        assert_eq!(resolve("xx", &[]).code, "en");
     }
 
     #[test]

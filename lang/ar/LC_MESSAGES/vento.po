@@ -7,6 +7,10 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
 
-#: crates/vento-core/src/i18n/mod.rs:149
+#: crates/vento/src/settings_window/mod.rs:1116
+msgid "Automatic (system language)"
+msgstr "تلقائي (لغة النظام)"
+
+#: crates/vento-core/src/i18n/mod.rs:183
 msgid "Language"
 msgstr "اللغة"

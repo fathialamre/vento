@@ -10,6 +10,7 @@
 use std::cell::Cell;
 
 use slint::winit_030::winit::window::Theme as WindowTheme;
+use vento_core::i18n;
 use vento_core::settings::{Appearance, ThemeName};
 use vento_platform::Platform;
 
@@ -75,6 +76,21 @@ pub fn title_bar_theme(a: Appearance, content_dark: bool) -> Option<WindowTheme>
 pub fn apply(theme: &Theme<'_>) {
     theme.set_appearance(index(current()));
     theme.set_palette(theme_index(CURRENT_THEME.with(Cell::get)));
+    theme.set_rtl(i18n::current().rtl);
+}
+
+/// Makes `code` the language of the interface: the text Rust makes and the
+/// text in `.slint` files, from the bundled translations. Slint wants a
+/// component to exist before it can switch, so this comes after the first
+/// window is made. The windows then pick up the right-to-left flag through
+/// [`apply`].
+pub fn apply_language(code: &str) {
+    i18n::set_language(code);
+    // English is the source text: no translation is selected for it.
+    let selected = if code == "en" { "" } else { code };
+    if let Err(e) = slint::select_bundled_translation(selected) {
+        log::error!("cannot select the {code:?} translation: {e}");
+    }
 }
 
 /// Matches the desktop's own menus where the platform gives their colours,

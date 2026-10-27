@@ -75,9 +75,15 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     appearance::set_current(hub.current().appearance);
     appearance::set_current_theme(hub.current().theme);
-    hub.on_change(Box::new(|_old, new| {
+    hub.on_change(Box::new(|old, new| {
         appearance::set_current(new.appearance);
         appearance::set_current_theme(new.theme);
+        // This listener comes first, so the windows' own listeners (the
+        // Settings window re-applies the look) see the new language. Any
+        // window exists by now, as `apply_language` needs.
+        if old.language != new.language {
+            appearance::apply_language(language_code(&new.language));
+        }
     }));
     // The copy the executor and the Pocket read; the wheel keeps its own
     // through its constructor and its hub listener.
@@ -96,6 +102,9 @@ fn main() -> Result<(), slint::PlatformError> {
         archive_ui::PasswordView::new(platform.clone()),
     );
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
+    // Slint can switch its translation only once a component exists: the
+    // Pocket's window is the first. Text made before this is English.
+    appearance::apply_language(language_code(&hub.current().language));
     let info = info::InfoController::new(platform.clone(), toaster.clone());
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
@@ -379,6 +388,13 @@ fn main() -> Result<(), slint::PlatformError> {
     info.dismiss();
     pocket.flush_pending();
     result
+}
+
+/// The code of the language the `language` setting asks for now: the
+/// system's preferred languages decide for "auto".
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn language_code(setting: &str) -> &'static str {
+    vento_core::i18n::resolve(setting, &vento_core::i18n::system_languages()).code
 }
 
 /// One global shortcut and what it does: holds the key registered for it,

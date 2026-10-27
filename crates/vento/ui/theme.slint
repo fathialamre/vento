@@ -44,6 +44,9 @@ export global Theme {
     // The Theme setting, as `ThemeName::ALL` lists it: 0 Vento, 1 GitHub,
     // 2 Catppuccin, 3 Rosé Pine, 4 Tokyo Night, 5 Gruvbox, 6 Nord.
     in property <int> palette: 0;
+    // Whether the interface language is written right to left (set by
+    // `appearance::apply` from `i18n::current`).
+    in property <bool> rtl: false;
 
     property <[ThemeColors]> lights: [
         { bg: #ffffff, card: #f5f5f7, surface: #f0f0f2, selected: #ffffff, text: #1d1d1f, muted: #6e6e73, line: #e5e5ea, accent: #ff6a1a },

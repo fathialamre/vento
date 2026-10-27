@@ -27,6 +27,7 @@ use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
 use vento_core::geometry::{Layout, Rect, screen_for};
+use vento_core::i18n::{LANGUAGES, lookup, tr};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
     Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketLayout,
@@ -408,6 +409,13 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
+        window.on_language_chosen(move |i| {
+            if let Some(controller) = this.upgrade() {
+                let setting = language_setting(i);
+                controller.apply(|s| s.language = setting.clone());
+            }
+        });
+        let this = self.this.clone();
         window.on_theme_chosen(move |i| {
             if let (Some(controller), Some(theme)) = (this.upgrade(), choice(&ThemeName::ALL, i)) {
                 controller.apply(|s| s.theme = theme);
@@ -771,6 +779,9 @@ impl SettingsWindowController {
         let settings = self.hub.current();
         appearance::apply(&window.global::<Theme>());
         show_title_bar(&window);
+        let names: Vec<SharedString> = language_names().into_iter().map(Into::into).collect();
+        window.set_language_names(ModelRc::from(names.as_slice()));
+        window.set_language(language_index(&settings.language));
         window.set_appearance(choice_index(&APPEARANCES, settings.appearance));
         window.set_theme(choice_index(&ThemeName::ALL, settings.theme));
         let icons = window.global::<Icons>();
@@ -1099,6 +1110,34 @@ fn choice<T: Copy>(choices: &[T], i: i32) -> Option<T> {
         .and_then(|i| choices.get(i).copied())
 }
 
+/// The Language drop-down's items: Automatic, then each language under its
+/// own name, whatever the language in use.
+fn language_names() -> Vec<String> {
+    std::iter::once(tr("Automatic (system language)"))
+        .chain(LANGUAGES.iter().map(|l| l.name.to_owned()))
+        .collect()
+}
+
+/// The `language` setting for the drop-down's item `i`: "auto" for the
+/// first, then the code of each language. An item out of range is "auto".
+fn language_setting(i: i32) -> String {
+    usize::try_from(i)
+        .ok()
+        .and_then(|i| i.checked_sub(1))
+        .and_then(|i| LANGUAGES.get(i))
+        .map_or("auto", |l| l.code)
+        .to_owned()
+}
+
+/// The drop-down's item for the `language` setting `setting`. A value that
+/// names no language acts as Automatic, so it shows as that.
+fn language_index(setting: &str) -> i32 {
+    lookup(setting)
+        .and_then(|l| LANGUAGES.iter().position(|each| each == l))
+        .and_then(|i| i32::try_from(i + 1).ok())
+        .unwrap_or(0)
+}
+
 /// Where `value` is among a segmented control's choices (0 if it is not).
 fn choice_index<T: PartialEq>(choices: &[T], value: T) -> i32 {
     choices
@@ -1340,6 +1379,26 @@ fn apply_shortcut(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_language_picker_maps_to_the_setting_and_back() {
+        // Automatic first, then each language in the order Vento lists them.
+        assert_eq!(language_names().len(), LANGUAGES.len() + 1);
+        assert_eq!(&language_names()[1..], ["English", "العربية"]);
+        assert_eq!(language_setting(0), "auto");
+        assert_eq!(language_setting(1), "en");
+        assert_eq!(language_setting(2), "ar");
+        assert_eq!(language_setting(3), "auto");
+        assert_eq!(language_setting(-1), "auto");
+        for (setting, index) in [("auto", 0), ("en", 1), ("ar", 2), ("AR", 2), ("ar-LY", 2)] {
+            assert_eq!(language_index(setting), index, "{setting}");
+        }
+        // A value Vento has no language for acts as Automatic.
+        assert_eq!(language_index("xx"), 0);
+        for i in 0..=LANGUAGES.len() as i32 {
+            assert_eq!(language_index(&language_setting(i)), i);
+        }
+    }
+
     use super::*;
 
     #[test]

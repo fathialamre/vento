@@ -74,6 +74,9 @@ export component SettingsWindow inherits Window {
     in property <string> notice;
 
     // The settings in effect, as the controls show them.
+    // The languages by name, "Automatic" first, and the one in use.
+    in property <[string]> language-names;
+    in property <int> language;
     // 0 System, 1 Light, 2 Dark.
     in property <int> appearance;
     // The themes by name, and the one in use.
@@ -136,6 +139,7 @@ export component SettingsWindow inherits Window {
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
+    callback language-chosen(int);
     callback appearance-chosen(int);
     callback theme-chosen(int);
     callback layout-chosen(int);
@@ -268,6 +272,9 @@ export component SettingsWindow inherits Window {
                     }
 
                     if root.label == "General": GeneralPage {
+                        language-names: root.language-names;
+                        language: root.language;
+                        language-chosen(i) => { root.language-chosen(i); }
                         appearance: root.appearance;
                         theme-names: root.theme-names;
                         theme: root.theme;
