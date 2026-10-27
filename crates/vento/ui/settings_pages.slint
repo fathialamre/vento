@@ -433,10 +433,13 @@ export component PocketPage inherits VerticalLayout {
     in-out property <bool> recording;
     in property <bool> remove-after-drop;
     in property <bool> keep-copies;
+    // 0 List, 1 Scroll, 2 Stacks.
+    in property <int> pocket-layout;
     callback recording-started();
     callback recording-cancelled();
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
+    callback pocket-layout-chosen(int);
 
     spacing: 8px;
 
@@ -474,6 +477,18 @@ export component PocketPage inherits VerticalLayout {
         label: "Keep a copy";
         on: root.keep-copies;
         toggled(on) => { root.keep-copies-toggled(on); }
+    }
+
+    Separator { }
+
+    SectionHeading {
+        text: "When it holds more than 8 items";
+    }
+
+    Segmented {
+        items: ["List", "Scroll", "Stacks"];
+        current: root.pocket-layout;
+        chosen(i) => { root.pocket-layout-chosen(i); }
     }
 }
 

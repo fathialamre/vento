@@ -93,6 +93,14 @@ pocket_remove_after_drop = false
 # only a reference to the original
 pocket_keep_copies = false
 
+# Pocket: how it lays its items out once it holds more than eight (with eight
+# or fewer it looks the same in every layout):
+#   "list"   - the first eight, with an "All N" button for the rest
+#   "scroll" - every item, in a list that scrolls
+#   "stacks" - the items grouped by kind (images, video, audio, documents,
+#              archives, folders, other), each group a stack you open
+pocket_layout = "list"
+
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
 # (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
 pocket_shortcut = "ctrl+alt+p"
