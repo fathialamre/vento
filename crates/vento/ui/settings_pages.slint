@@ -539,6 +539,9 @@ export component ClipboardPage inherits VerticalLayout {
 export component GeneralPage inherits VerticalLayout {
     // 0 System, 1 Light, 2 Dark.
     in property <int> appearance;
+    // The themes by name, and the one in use.
+    in property <[string]> theme-names;
+    in property <int> theme;
     // 0 Control, 1 Option, 2 Shift, 3 Command, called by `trigger-names`:
     // the Mac's names on a Mac, the platform's elsewhere.
     in property <[string]> trigger-names;
@@ -550,6 +553,7 @@ export component GeneralPage inherits VerticalLayout {
     // 0 Plain, 1 Shell-quoted.
     in property <int> path-format;
     callback appearance-chosen(int);
+    callback theme-chosen(int);
     callback trigger-chosen(int);
     callback shake-to-open-toggled(bool);
     callback terminal-chosen(int);
@@ -565,6 +569,17 @@ export component GeneralPage inherits VerticalLayout {
         items: ["System", "Light", "Dark"];
         current: root.appearance;
         chosen(i) => { root.appearance-chosen(i); }
+    }
+
+    SectionHeading {
+        text: "Theme";
+    }
+
+    MenuField {
+        label: "Theme";
+        items: root.theme-names;
+        current: root.theme;
+        chosen(i) => { root.theme-chosen(i); }
     }
 
     Separator { }

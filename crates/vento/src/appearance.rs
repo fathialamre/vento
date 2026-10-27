@@ -1,6 +1,6 @@
-//! The Appearance setting as the windows read it: set from the settings
-//! hub, applied to each window's `Theme` whenever the window is made or
-//! shown.
+//! The Appearance and Theme settings as the windows read them: set from
+//! the settings hub, applied to each window's `Theme` whenever the window is
+//! made or shown.
 //!
 //! Every Slint window has a `Theme` of its own, so the setting has to be
 //! given to each one. `dark` itself is never written: it stays a binding in
@@ -10,7 +10,7 @@
 use std::cell::Cell;
 
 use slint::winit_030::winit::window::Theme as WindowTheme;
-use vento_core::settings::Appearance;
+use vento_core::settings::{Appearance, ThemeName};
 use vento_platform::Platform;
 
 use crate::ui::Theme;
@@ -18,6 +18,7 @@ use crate::ui::Theme;
 thread_local! {
     // All the UI runs on the main thread.
     static CURRENT: Cell<Appearance> = const { Cell::new(Appearance::System) };
+    static CURRENT_THEME: Cell<ThemeName> = const { Cell::new(ThemeName::Vento) };
 }
 
 /// Makes `a` the setting the windows get from [`apply`].
@@ -28,6 +29,21 @@ pub fn set_current(a: Appearance) {
 /// The setting as last given to [`set_current`]; System until then.
 pub fn current() -> Appearance {
     CURRENT.with(Cell::get)
+}
+
+/// Makes `t` the theme the windows get from [`apply`].
+pub fn set_current_theme(t: ThemeName) {
+    CURRENT_THEME.with(|current| current.set(t));
+}
+
+/// The value of `Theme.palette` for `t`: its place in [`ThemeName::ALL`],
+/// the order of the colour lists in `theme.slint`.
+pub fn theme_index(t: ThemeName) -> i32 {
+    ThemeName::ALL
+        .iter()
+        .position(|&each| each == t)
+        .and_then(|i| i32::try_from(i).ok())
+        .unwrap_or(0)
 }
 
 /// The value of `Theme.appearance` for `a`: 0 System, 1 Light, 2 Dark.
@@ -54,9 +70,11 @@ pub fn title_bar_theme(a: Appearance, content_dark: bool) -> Option<WindowTheme>
     }
 }
 
-/// Gives a window's `Theme` the current setting.
+/// Gives a window's `Theme` the current settings. Only the windows that
+/// set `clean` (the Quick panel and the Settings window) show the theme.
 pub fn apply(theme: &Theme<'_>) {
     theme.set_appearance(index(current()));
+    theme.set_palette(theme_index(CURRENT_THEME.with(Cell::get)));
 }
 
 /// Matches the desktop's own menus where the platform gives their colours,
@@ -111,6 +129,15 @@ mod tests {
                 Some(WindowTheme::Light)
             );
         }
+    }
+
+    #[test]
+    fn theme_indices_follow_the_list_theme_slint_holds() {
+        for (i, t) in ThemeName::ALL.into_iter().enumerate() {
+            assert_eq!(theme_index(t), i32::try_from(i).unwrap());
+        }
+        assert_eq!(theme_index(ThemeName::Vento), 0);
+        assert_eq!(theme_index(ThemeName::Nord), 6);
     }
 
     #[test]

@@ -74,8 +74,10 @@ fn main() -> Result<(), slint::PlatformError> {
         log::warn!("settings file not loaded, using the defaults: {reason}");
     }
     appearance::set_current(hub.current().appearance);
+    appearance::set_current_theme(hub.current().theme);
     hub.on_change(Box::new(|_old, new| {
-        appearance::set_current(new.appearance)
+        appearance::set_current(new.appearance);
+        appearance::set_current_theme(new.theme);
     }));
     // The copy the executor and the Pocket read; the wheel keeps its own
     // through its constructor and its hub listener.

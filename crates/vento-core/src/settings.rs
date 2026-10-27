@@ -24,6 +24,48 @@ pub enum Appearance {
     Dark,
 }
 
+/// The colours of the Quick panel and the Settings window, each in a light
+/// and a dark version. The wheel, the Pocket and toasts keep their own look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeName {
+    /// White or black with neutral greys and Vento's orange.
+    #[default]
+    Vento,
+    Github,
+    Catppuccin,
+    RosePine,
+    TokyoNight,
+    Gruvbox,
+    Nord,
+}
+
+impl ThemeName {
+    /// Every theme, in the order the Settings window lists them.
+    pub const ALL: [Self; 7] = [
+        Self::Vento,
+        Self::Github,
+        Self::Catppuccin,
+        Self::RosePine,
+        Self::TokyoNight,
+        Self::Gruvbox,
+        Self::Nord,
+    ];
+
+    /// The name the Settings window shows.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Vento => "Vento",
+            Self::Github => "GitHub",
+            Self::Catppuccin => "Catppuccin",
+            Self::RosePine => "Rosé Pine",
+            Self::TokyoNight => "Tokyo Night",
+            Self::Gruvbox => "Gruvbox",
+            Self::Nord => "Nord",
+        }
+    }
+}
+
 /// User-configurable behaviour of the wheel.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -41,6 +83,8 @@ pub struct Settings {
     /// Light or dark look of the Quick panel and the Settings window. The
     /// wheel, the Pocket and toasts stay dark either way.
     pub appearance: Appearance,
+    /// Colours of the Quick panel and the Settings window.
+    pub theme: ThemeName,
     /// Bundle id of the terminal app to open; `None` (or an app that is not
     /// installed) means Terminal.app.
     pub terminal: Option<String>,
@@ -125,6 +169,7 @@ impl Default for Settings {
             actions: default_actions(),
             copy_path_format: PathFormat::Plain,
             appearance: Appearance::System,
+            theme: ThemeName::Vento,
             terminal: None,
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
@@ -152,6 +197,7 @@ struct RawSettings {
     actions: Vec<String>,
     copy_path_format: PathFormat,
     appearance: Appearance,
+    theme: ThemeName,
     terminal: Option<String>,
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
@@ -181,6 +227,7 @@ impl From<&Settings> for RawSettings {
             actions: s.actions.iter().map(|a| a.key().to_owned()).collect(),
             copy_path_format: s.copy_path_format,
             appearance: s.appearance,
+            theme: s.theme,
             terminal: s.terminal.clone(),
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
@@ -253,6 +300,7 @@ impl From<RawSettings> for Settings {
             actions,
             copy_path_format: raw.copy_path_format,
             appearance: raw.appearance,
+            theme: raw.theme,
             terminal: raw.terminal,
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
@@ -646,6 +694,26 @@ mod tests {
                 .contains("appearance = \"dark\"")
         );
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn the_theme_is_vento_unless_saved_otherwise() {
+        assert_eq!(Settings::default().theme, ThemeName::Vento);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            theme: ThemeName::RosePine,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("theme = \"rose_pine\"")
+        );
+        assert_eq!(Settings::load(&p), s);
+        let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
+        assert_eq!(Settings::try_load(&old).unwrap().theme, ThemeName::Vento);
     }
 
     #[test]

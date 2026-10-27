@@ -30,7 +30,7 @@ use vento_core::geometry::{Layout, Rect, screen_for};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
     Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, Settings,
-    is_reserved_shortcut, move_row, parse_shortcut,
+    ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
@@ -330,6 +330,9 @@ impl SettingsWindowController {
             let trigger_names: Vec<SharedString> = TRIGGER_NAMES.map(Into::into).into();
             window.set_trigger_names(ModelRc::from(trigger_names.as_slice()));
             window.set_version(env!("CARGO_PKG_VERSION").into());
+            let theme_names: Vec<SharedString> =
+                ThemeName::ALL.iter().map(|t| t.label().into()).collect();
+            window.set_theme_names(ModelRc::from(theme_names.as_slice()));
             let pages = pages(self.screen_text_supported);
             let items: Vec<PageItem> = pages
                 .iter()
@@ -402,6 +405,12 @@ impl SettingsWindowController {
             if let (Some(controller), Some(appearance)) = (this.upgrade(), choice(&APPEARANCES, i))
             {
                 controller.apply(|s| s.appearance = appearance);
+            }
+        });
+        let this = self.this.clone();
+        window.on_theme_chosen(move |i| {
+            if let (Some(controller), Some(theme)) = (this.upgrade(), choice(&ThemeName::ALL, i)) {
+                controller.apply(|s| s.theme = theme);
             }
         });
         let this = self.this.clone();
@@ -755,6 +764,7 @@ impl SettingsWindowController {
         appearance::apply(&window.global::<Theme>());
         show_title_bar(&window);
         window.set_appearance(choice_index(&APPEARANCES, settings.appearance));
+        window.set_theme(choice_index(&ThemeName::ALL, settings.theme));
         let icons = window.global::<Icons>();
         let rows: Vec<ActionRow> = settings
             .action_rows()

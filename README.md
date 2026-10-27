@@ -257,7 +257,7 @@ changes apply right away.
 
 | Page | What it holds |
 |---|---|
-| General | The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, and **Appearance**: follow the system, or always light or dark. |
+| General | The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
 | Wheel | Honeycomb or petals layout; which actions show and in what order. |
 | Move | Pinned and recent folders for the Move ring, and how long to hold. |
 | Pocket | The Pocket shortcut, and what happens after you drag items out. |
@@ -267,7 +267,7 @@ changes apply right away.
 | About | The version, a button that opens the settings file, and one that shows the licenses. |
 
 The wheel, the Pocket and the notices that offer Undo keep their dark look
-whichever Appearance you choose.
+whichever Appearance or Theme you choose.
 
 **Right-click** the icon for the same things as a menu: Copy from screen, the
 clipboard history, the Pocket, Keep Awake, undo the last move, copy or archive,

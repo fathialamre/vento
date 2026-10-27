@@ -1,6 +1,8 @@
 // The windows' colours, dark or light as the Appearance setting says: with
-// the system appearance (System), or always light or always dark. Orange is
-// the accent in all; the wheel and the Pocket keep their own dark look.
+// the system appearance (System), or always light or always dark. The Quick
+// panel and the Settings window take the Theme setting's colours and accent;
+// the other windows keep Vento's tint and orange, and the wheel and the
+// Pocket keep their own dark look.
 // Under System, where the platform gives the colours of the desktop's own
 // menus (GNOME Shell's theme), the panel takes its background, edge and
 // text from them, is dark when they are, and makes its other greys as the
@@ -8,6 +10,23 @@
 // Vento's own colours.
 
 import { Palette } from "std-widgets.slint";
+
+// One theme's colours in one look (light or dark), as the Quick panel and
+// the Settings window use them.
+struct ThemeColors {
+    bg: color,
+    // Tiles and the sidebar.
+    card: color,
+    // A control's track or a field at rest.
+    surface: color,
+    // The chosen item of a control, raised above `surface`.
+    selected: color,
+    text: color,
+    muted: color,
+    // Hairlines and card edges.
+    line: color,
+    accent: color,
+}
 
 export global Theme {
     in property <bool> system-colors: false;
@@ -22,41 +41,65 @@ export global Theme {
     // black) page with neutral greys, like a Mac window, instead of the
     // tint the other windows keep.
     in property <bool> clean: false;
+    // The Theme setting, as `ThemeName::ALL` lists it: 0 Vento, 1 GitHub,
+    // 2 Catppuccin, 3 Rosé Pine, 4 Tokyo Night, 5 Gruvbox, 6 Nord.
+    in property <int> palette: 0;
+
+    property <[ThemeColors]> lights: [
+        { bg: #ffffff, card: #f5f5f7, surface: #f0f0f2, selected: #ffffff, text: #1d1d1f, muted: #6e6e73, line: #e5e5ea, accent: #ff6a1a },
+        { bg: #ffffff, card: #f6f8fa, surface: #eef1f4, selected: #ffffff, text: #24292e, muted: #6a737d, line: #e1e4e8, accent: #0366d6 },
+        { bg: #eff1f5, card: #e6e9ef, surface: #dce0e8, selected: #ffffff, text: #4c4f69, muted: #6c6f85, line: #ccd0da, accent: #8839ef },
+        { bg: #faf4ed, card: #fffaf3, surface: #f2e9e1, selected: #fffaf3, text: #575279, muted: #797593, line: #dfdad9, accent: #907aa9 },
+        { bg: #e1e2e7, card: #d5d6db, surface: #c8cbd9, selected: #e9e9ed, text: #3760bf, muted: #6172b0, line: #c4c8da, accent: #2e7de9 },
+        { bg: #fbf1c7, card: #f2e5bc, surface: #ebdbb2, selected: #fbf1c7, text: #3c3836, muted: #665c54, line: #d5c4a1, accent: #427b58 },
+        { bg: #eceff4, card: #e5e9f0, surface: #d8dee9, selected: #eceff4, text: #2e3440, muted: #4c566a, line: #d8dee9, accent: #5e81ac },
+    ];
+    property <[ThemeColors]> darks: [
+        { bg: #000000, card: #1c1c1e, surface: #1c1c1e, selected: #3a3a3c, text: #f2f2f3, muted: #98989d, line: #2c2c2e, accent: #ff6a1a },
+        { bg: #24292e, card: #1f2428, surface: #2f363d, selected: #444d56, text: #e1e4e8, muted: #959da5, line: #1b1f23, accent: #58a6ff },
+        { bg: #1e1e2e, card: #181825, surface: #313244, selected: #45475a, text: #cdd6f4, muted: #a6adc8, line: #313244, accent: #cba6f7 },
+        { bg: #191724, card: #1f1d2e, surface: #26233a, selected: #403d52, text: #e0def4, muted: #908caa, line: #26233a, accent: #c4a7e7 },
+        { bg: #1a1b26, card: #16161e, surface: #292e42, selected: #3b4261, text: #c0caf5, muted: #787c99, line: #292e42, accent: #7aa2f7 },
+        { bg: #282828, card: #32302f, surface: #3c3836, selected: #504945, text: #ebdbb2, muted: #a89984, line: #3c3836, accent: #8ec07c },
+        { bg: #2e3440, card: #3b4252, surface: #434c5e, selected: #4c566a, text: #eceff4, muted: #9aa5b8, line: #3b4252, accent: #88c0d0 },
+    ];
 
     // Never written, so that System follows a system switch again after
     // Light or Dark.
     out property <bool> dark: root.appearance == 1 ? false : root.appearance == 2 ? true : (root.system-colors ? root.system-dark : Palette.color-scheme == ColorScheme.dark);
 
-    // The desktop's menu colours apply under System alone.
-    property <bool> use-system: root.system-colors && root.appearance == 0;
+    // The desktop's menu colours apply under System with the Vento theme
+    // alone: a chosen theme wins over them.
+    property <bool> use-system: root.system-colors && root.appearance == 0 && !(root.clean && root.palette != 0);
     property <bool> use-clean: root.clean && !root.use-system;
+    property <ThemeColors> pal: root.dark ? root.darks[root.palette] : root.lights[root.palette];
 
     // The system text at `amount` over the system background, opaque.
     pure function tint(amount: float) -> color {
         root.system-text.mix(root.system-bg, amount)
     }
 
-    out property <color> bg: root.use-system ? root.system-bg : root.use-clean ? (root.dark ? #000000 : #ffffff) : root.dark ? #1f1f22 : #f1f9fa;
+    out property <color> bg: root.use-system ? root.system-bg : root.use-clean ? root.pal.bg : root.dark ? #1f1f22 : #f1f9fa;
     // A field or button at rest, and a flat control under the pointer (the
     // shell's hover).
-    out property <color> surface: root.use-system ? root.tint(0.1) : root.use-clean ? (root.dark ? #1c1c1e : #f0f0f2) : root.dark ? #2b2b2f : #e2eaec;
+    out property <color> surface: root.use-system ? root.tint(0.1) : root.use-clean ? root.pal.surface : root.dark ? #2b2b2f : #e2eaec;
     // A field or button under the pointer (the shell's pressed).
-    out property <color> hover: root.use-system ? root.tint(0.15) : root.use-clean ? (root.dark ? #2c2c2e : #e8e8ed) : root.selected;
+    out property <color> hover: root.use-system ? root.tint(0.15) : root.use-clean ? (root.dark ? root.pal.surface.brighter(0.25) : root.pal.surface.darker(0.04)) : root.selected;
     // A raised card (a Quick panel tile, the Settings sidebar), a shade
     // lighter than `bg` with a hairline edge.
-    out property <color> card: root.use-system ? root.tint(0.05) : root.use-clean ? (root.dark ? #1c1c1e : #f5f5f7) : root.dark ? #2b2b2f : #f6fbfc;
-    out property <color> card-border: root.use-system ? root.tint(0.1) : root.use-clean ? (root.dark ? #2c2c2e : #e5e5ea) : root.dark ? #ffffff14 : #e4e9e9;
+    out property <color> card: root.use-system ? root.tint(0.05) : root.use-clean ? root.pal.card : root.dark ? #2b2b2f : #f6fbfc;
+    out property <color> card-border: root.use-system ? root.tint(0.1) : root.use-clean ? root.pal.line : root.dark ? #ffffff14 : #e4e9e9;
     // The chosen sidebar page or chip: the accent, faint.
-    out property <color> accent-soft: root.dark ? (root.use-clean ? #ff6a1a40 : #ff6a1a33) : #ff6a1a1f;
+    out property <color> accent-soft: root.use-clean ? root.accent.transparentize(root.dark ? 0.75 : 0.88) : root.dark ? #ff6a1a33 : #ff6a1a1f;
     // The chosen item of a segmented control, a dropdown's list, a row
     // being dragged: raised above `surface`.
-    out property <color> selected: root.use-system ? (root.system-dark ? root.tint(0.2) : root.system-bg) : root.use-clean ? (root.dark ? #3a3a3c : #ffffff) : root.dark ? #3a3a40 : #ffffff;
-    out property <color> text: root.use-system ? root.system-text : root.dark ? #f2f2f3 : #1d1d1f;
-    out property <color> muted: root.use-system ? root.tint(0.6) : root.use-clean ? (root.dark ? #98989d : #6e6e73) : root.dark ? #9a9aa2 : #6e6e73;
-    out property <color> separator: root.use-system ? root.tint(root.system-dark ? 0.1 : 0.15) : root.use-clean ? (root.dark ? #2c2c2e : #e5e5ea) : root.dark ? #ffffff14 : #0000000f;
+    out property <color> selected: root.use-system ? (root.system-dark ? root.tint(0.2) : root.system-bg) : root.use-clean ? root.pal.selected : root.dark ? #3a3a40 : #ffffff;
+    out property <color> text: root.use-system ? root.system-text : root.use-clean ? root.pal.text : root.dark ? #f2f2f3 : #1d1d1f;
+    out property <color> muted: root.use-system ? root.tint(0.6) : root.use-clean ? root.pal.muted : root.dark ? #9a9aa2 : #6e6e73;
+    out property <color> separator: root.use-system ? root.tint(root.system-dark ? 0.1 : 0.15) : root.use-clean ? root.pal.line : root.dark ? #ffffff14 : #0000000f;
     // The hairline around the panel and its arrow.
     out property <color> border: root.use-system ? root.system-border : root.dark ? #ffffff1f : #0000001a;
     out property <color> switch-off: root.use-system ? root.tint(0.22) : root.dark ? #4a4a50 : #c9c9ce;
     out property <color> danger: root.dark ? #ff7b72 : #d93a2f;
-    out property <color> accent: #ff6a1a;
+    out property <color> accent: root.use-clean ? root.pal.accent : #ff6a1a;
 }

@@ -76,6 +76,10 @@ copy_path_format = "plain"
 # the wheel, the Pocket and toasts stay dark either way
 appearance = "system"
 
+# Colours of the Quick panel and the Settings window: "vento", "github",
+# "catppuccin", "rose_pine", "tokyo_night", "gruvbox" or "nord"
+theme = "vento"
+
 # Bundle id of the terminal app to open; the default (and the fallback when
 # the app is not installed) is Terminal.app
 # terminal = "com.googlecode.iterm2"
