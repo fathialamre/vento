@@ -155,6 +155,8 @@ impl PanelController {
     fn window(&self) -> QuickPanel {
         self.window.get_or_create(|| {
             let window = QuickPanel::new().expect("cannot create the quick panel");
+            // The same white (or black) page as the Settings window.
+            window.global::<Theme>().set_clean(true);
             appearance::apply(&window.global::<Theme>());
             window.set_screen_text_supported(self.screen_text_supported);
             window.set_paused(self.paused.get());

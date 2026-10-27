@@ -18,8 +18,9 @@ export global Theme {
 
     // The Appearance setting: 0 System, 1 Light, 2 Dark.
     in property <int> appearance: 0;
-    // The Settings window's palette: a white (or black) page with neutral
-    // greys, like a Mac window, instead of the panel's tint.
+    // The Settings window's and the Quick panel's palette: a white (or
+    // black) page with neutral greys, like a Mac window, instead of the
+    // tint the other windows keep.
     in property <bool> clean: false;
 
     // Never written, so that System follows a system switch again after
@@ -35,9 +36,7 @@ export global Theme {
         root.system-text.mix(root.system-bg, amount)
     }
 
-    out property <color> bg: root.use-system ? root.system-bg : root.dark ? #1f1f22 : #f1f9fa;
-    // The Settings window's background: plain white, or black in the dark.
-    out property <color> window-bg: root.use-system ? root.system-bg : root.dark ? #000000 : #ffffff;
+    out property <color> bg: root.use-system ? root.system-bg : root.use-clean ? (root.dark ? #000000 : #ffffff) : root.dark ? #1f1f22 : #f1f9fa;
     // A field or button at rest, and a flat control under the pointer (the
     // shell's hover).
     out property <color> surface: root.use-system ? root.tint(0.1) : root.use-clean ? (root.dark ? #1c1c1e : #f0f0f2) : root.dark ? #2b2b2f : #e2eaec;
