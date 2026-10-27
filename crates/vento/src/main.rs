@@ -348,6 +348,10 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(pocket) = pocket.upgrade() {
                 pocket.apply_clip_settings(new);
                 pocket.apply_pocket_settings(new);
+                // The first listener has switched the language by now.
+                if old.language != new.language {
+                    pocket.apply_language();
+                }
             }
         }));
     }

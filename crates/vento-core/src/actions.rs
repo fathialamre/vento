@@ -1,5 +1,7 @@
 //! The actions a wheel cell can trigger.
 
+use crate::i18n::tr;
+
 /// An action that can be placed on the wheel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionId {
@@ -59,18 +61,18 @@ impl ActionId {
         }
     }
 
-    /// Human-readable label shown on the wheel.
-    pub fn label(self) -> &'static str {
+    /// Human-readable label shown on the wheel, in the interface language.
+    pub fn label(self) -> String {
         match self {
-            ActionId::Pocket => "Pocket",
-            ActionId::Copy => "Copy",
-            ActionId::Move => "Move",
-            ActionId::CopyPath => "Copy path",
-            ActionId::Terminal => "Terminal",
-            ActionId::CopyTo => "Copy to",
-            ActionId::Archive => "Archive",
-            ActionId::Info => "Info",
-            ActionId::Convert => "Convert",
+            ActionId::Pocket => tr("Pocket"),
+            ActionId::Copy => tr("Copy"),
+            ActionId::Move => tr("Move"),
+            ActionId::CopyPath => tr("Copy path"),
+            ActionId::Terminal => tr("Terminal"),
+            ActionId::CopyTo => tr("Copy to"),
+            ActionId::Archive => tr("Archive"),
+            ActionId::Info => tr("Info"),
+            ActionId::Convert => tr("Convert"),
         }
     }
 
@@ -148,5 +150,28 @@ mod tests {
         assert_eq!(ActionId::from_key("convert"), Some(ActionId::Convert));
         assert!(ActionId::Convert.takes_ring());
         assert_eq!(ActionId::ALL.last(), Some(&ActionId::Convert));
+    }
+
+    #[test]
+    fn labels_are_translated() {
+        crate::i18n::with_language("ar", || {
+            let labels: Vec<_> = ActionId::ALL.iter().map(|a| a.label()).collect();
+            assert_eq!(
+                labels,
+                [
+                    "الجيب",
+                    "نسخ",
+                    "نقل",
+                    "نسخ المسار",
+                    "الطرفية",
+                    "نسخ إلى",
+                    "أرشفة",
+                    "معلومات",
+                    "تحويل"
+                ]
+            );
+            assert_eq!(ActionId::Move.label(), "نقل");
+        });
+        assert_eq!(ActionId::Move.label(), "Move");
     }
 }

@@ -8,6 +8,9 @@ use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
+use crate::i18n::dates::{day_month, time_hm};
+use crate::i18n::{fill, tr};
+
 /// The longest the app waits between two looks at a running session. The
 /// app's timer runs on a clock that stops while the computer sleeps, so a
 /// session that ended during a sleep ends at most this long after waking.
@@ -60,29 +63,40 @@ impl Session {
         self.ends.is_some_and(|ends| ends <= now)
     }
 
-    /// What the panel says while it runs: `"Awake for 1 h 23 min more"`,
-    /// `"Awake until 18:30"` (`"… tomorrow"` when the end is not today in
-    /// `tz`) or `"Awake until you stop it"`.
+    /// What the panel says while it runs, in the interface language:
+    /// `"Awake for 1 h 23 min more"`, `"Awake until 18:30"` (`"… tomorrow"`
+    /// or `"… on 5 Nov"` when the end is not today in `tz`) or
+    /// `"Awake until you stop it"`.
     pub fn status(&self, now: Timestamp, tz: &TimeZone) -> String {
         let Some(ends) = self.ends else {
-            return "Awake until you stop it".into();
+            return tr("Awake until you stop it");
         };
         match self.chip {
             Chip::For(_) => {
                 let left = left_until(ends, now);
                 if left < Duration::from_secs(60) {
-                    "Awake for less than a minute more".into()
+                    tr("Awake for less than a minute more")
                 } else {
-                    format!("Awake for {} more", minutes_text(whole_minutes(left)))
+                    fill(
+                        &tr("Awake for {duration} more"),
+                        &[("duration", &duration_text(whole_minutes(left)))],
+                    )
                 }
             }
             Chip::Until { .. } | Chip::Forever => {
                 let end = ends.to_zoned(tz.clone());
                 let today = now.to_zoned(tz.clone()).date();
-                let time = end.strftime("%H:%M");
-                match day_word(end.date(), today) {
-                    Some(day) => format!("Awake until {time} {day}"),
-                    None => format!("Awake until {time}"),
+                let time = time_hm(end.time());
+                let day = end.date();
+                if day == today {
+                    fill(&tr("Awake until {time}"), &[("time", &time)])
+                } else if today.tomorrow().ok() == Some(day) {
+                    fill(&tr("Awake until {time} tomorrow"), &[("time", &time)])
+                } else {
+                    fill(
+                        &tr("Awake until {time} on {date}"),
+                        &[("time", &time), ("date", &day_month(day))],
+                    )
                 }
             }
         }
@@ -144,23 +158,14 @@ fn whole_minutes(left: Duration) -> u64 {
     u64::try_from(left.as_nanos().div_ceil(60_000_000_000)).unwrap_or(u64::MAX)
 }
 
-/// `"1 h 23 min"`, `"45 min"`, `"2 h"`.
-fn minutes_text(minutes: u64) -> String {
+/// `minutes` as hours and minutes, in the interface language: `"1 h 23 min"`,
+/// `"45 min"`, `"2 h"`.
+pub fn duration_text(minutes: u64) -> String {
+    let (h, m) = ((minutes / 60).to_string(), (minutes % 60).to_string());
     match (minutes / 60, minutes % 60) {
-        (0, m) => format!("{m} min"),
-        (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m} min"),
-    }
-}
-
-/// `None` for `today`, `"tomorrow"` for the day after, else the date.
-fn day_word(day: Date, today: Date) -> Option<String> {
-    if day == today {
-        None
-    } else if today.tomorrow().ok() == Some(day) {
-        Some("tomorrow".into())
-    } else {
-        Some(day.strftime("on %-d %b").to_string())
+        (0, _) => fill(&tr("{m} min"), &[("m", &m)]),
+        (_, 0) => fill(&tr("{h} h"), &[("h", &h)]),
+        _ => fill(&tr("{h} h {m} min"), &[("h", &h), ("m", &m)]),
     }
 }
 
@@ -322,5 +327,62 @@ mod tests {
         assert_eq!(default_until(at(10, 30, 0), &utc()), (12, 0));
         assert_eq!(default_until(at(23, 10, 0), &utc()), (0, 0));
         assert_eq!(default_until(at(23, 45, 0), &utc()), (1, 0));
+    }
+
+    #[test]
+    fn status_reads_in_arabic() {
+        use crate::i18n::with_language;
+        with_language("ar", || {
+            let forever = Session::start(Chip::Forever, at(10, 0, 0), &utc());
+            assert_eq!(forever.status(at(10, 0, 0), &utc()), "مستيقظ حتى توقفه");
+
+            let timed = Session::start(Chip::For(minutes(83)), at(10, 0, 0), &utc());
+            assert_eq!(
+                timed.status(at(10, 0, 0), &utc()),
+                "مستيقظ لمدة 1 س 23 د أخرى"
+            );
+            assert_eq!(timed.status(at(11, 22, 1), &utc()), "مستيقظ لأقل من دقيقة");
+
+            let until = |hour, minute| Chip::Until { hour, minute };
+            let today = Session::start(until(18, 30), at(10, 0, 0), &utc());
+            assert_eq!(today.status(at(10, 0, 0), &utc()), "مستيقظ حتى 18:30");
+            let tomorrow = Session::start(until(7, 0), at(10, 0, 0), &utc());
+            assert_eq!(
+                tomorrow.status(at(10, 0, 0), &utc()),
+                "مستيقظ حتى 07:00 غداً"
+            );
+        });
+    }
+
+    #[test]
+    fn an_end_beyond_tomorrow_names_its_date() {
+        // Seen from the 25th, an end on the 28th is named by its date.
+        let ends = at(9, 5, 0).saturating_add(minutes(3 * 24 * 60)).unwrap();
+        let session = Session {
+            chip: Chip::Until { hour: 9, minute: 5 },
+            ends: Some(ends),
+        };
+        assert_eq!(
+            session.status(at(10, 0, 0), &utc()),
+            "Awake until 09:05 on 28 Oct"
+        );
+        crate::i18n::with_language("ar", || {
+            assert_eq!(
+                session.status(at(10, 0, 0), &utc()),
+                "مستيقظ حتى 09:05 يوم 28 أكتوبر"
+            );
+        });
+    }
+
+    #[test]
+    fn durations_read_in_both_languages() {
+        assert_eq!(duration_text(45), "45 min");
+        assert_eq!(duration_text(120), "2 h");
+        assert_eq!(duration_text(90), "1 h 30 min");
+        crate::i18n::with_language("ar", || {
+            assert_eq!(duration_text(45), "45 د");
+            assert_eq!(duration_text(120), "2 س");
+            assert_eq!(duration_text(90), "1 س 30 د");
+        });
     }
 }

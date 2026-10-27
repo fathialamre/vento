@@ -1469,6 +1469,14 @@ impl PocketController {
         }
     }
 
+    /// Writes the texts Rust pushes into the island again after a language
+    /// change: the kind names of the stacks and the filter chips of the
+    /// list. Only what is in sight is made, as for any refresh.
+    pub fn apply_language(&self) {
+        self.refresh_stacks();
+        self.refresh_list();
+    }
+
     /// Empties the clipboard history at once, with no Undo (the settings'
     /// "Clear history"). An Undo of the history on offer is withdrawn too,
     /// its entries let go with the rest, and a history file set aside as

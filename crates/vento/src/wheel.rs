@@ -28,6 +28,7 @@ use vento_core::geometry::{
     self, HEX_CORNER_RADIUS, HEX_RADIUS, Layout, PETAL_DEAD_ZONE, Point, Rect, RingGeometry, Vec2,
     WheelGeometry, place_center, rounded_hex_path, screen_for,
 };
+use vento_core::i18n::tr;
 use vento_core::ring::{Hover, RingEvent, RingTracker};
 use vento_core::settings::Settings;
 use vento_core::trigger::{InputSample, TriggerEvent, TriggerMachine};
@@ -186,10 +187,10 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
 
 /// What the wheel calls `action`: the Archive cell names what a drop will
 /// do with the files being dragged.
-fn action_text(action: ActionId, extracting: bool) -> &'static str {
+fn action_text(action: ActionId, extracting: bool) -> String {
     match action {
-        ActionId::Archive if extracting => "Extract",
-        ActionId::Archive => "Compress",
+        ActionId::Archive if extracting => tr("Extract"),
+        ActionId::Archive => tr("Compress"),
         other => other.label(),
     }
 }
@@ -234,11 +235,11 @@ pub struct WheelDrop {
 }
 
 /// The verb in front of the ring cell under the cursor.
-fn ring_verb(action: ActionId) -> &'static str {
+fn ring_verb(action: ActionId) -> String {
     match action {
-        ActionId::CopyTo => "Copy to",
-        ActionId::Convert => "Convert to",
-        _ => "Move to",
+        ActionId::CopyTo => tr("Copy to"),
+        ActionId::Convert => tr("Convert to"),
+        _ => tr("Move to"),
     }
 }
 
@@ -709,7 +710,7 @@ impl WheelController {
         let mut state = self.state.borrow_mut();
         if state.highlighted != action {
             state.highlighted = action;
-            let label = action.map_or("", |i| {
+            let label = action.map_or_else(String::new, |i| {
                 action_text(state.settings.actions[i], state.extracting)
             });
             self.window.set_highlighted(action.map_or(-1, |i| i as i32));
@@ -1293,6 +1294,19 @@ mod tests {
         assert_eq!(action_text(ActionId::Move, true), "Move");
         assert_eq!(action_text(ActionId::CopyPath, false), "Copy path");
         assert_eq!(action_text(ActionId::Info, false), "Info");
+    }
+
+    #[test]
+    fn wheel_text_reads_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(ring_verb(ActionId::Move), "نقل إلى");
+            assert_eq!(ring_verb(ActionId::CopyTo), "نسخ إلى");
+            assert_eq!(ring_verb(ActionId::Convert), "تحويل إلى");
+            assert_eq!(action_text(ActionId::Archive, false), "ضغط");
+            assert_eq!(action_text(ActionId::Archive, true), "فك الضغط");
+            assert_eq!(action_text(ActionId::Move, true), "نقل");
+            assert_eq!(action_text(ActionId::CopyPath, false), "نسخ المسار");
+        });
     }
 
     fn cell(x: f32, y: f32, radius: f32) -> geometry::Cell {

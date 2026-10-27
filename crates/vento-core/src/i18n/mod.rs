@@ -7,9 +7,11 @@
 //! English is the source language and needs no catalog: a missing catalog,
 //! entry or translation falls back to the English text in the code.
 
+pub mod dates;
 pub mod plural;
 pub mod po;
 
+use std::cell::Cell;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -42,10 +44,38 @@ pub const LANGUAGES: &[Language] = &[
 
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
 
+thread_local! {
+    /// The language this thread reads in place of the process-wide one, as
+    /// an index into [`LANGUAGES`]; see [`with_language`]. In this crate's
+    /// own unit tests every thread starts on English, so a test that
+    /// switches the process-wide language cannot disturb the others.
+    static OVERRIDE: Cell<Option<usize>> = const { Cell::new(if cfg!(test) { Some(0) } else { None }) };
+}
+
+/// The index in [`LANGUAGES`] of `code`; an unknown code is English.
+fn index_of(code: &str) -> usize {
+    LANGUAGES.iter().position(|l| l.code == code).unwrap_or(0)
+}
+
 /// Switches the language. An unknown code means English.
 pub fn set_language(code: &str) {
-    let idx = LANGUAGES.iter().position(|l| l.code == code).unwrap_or(0);
-    CURRENT.store(idx, Ordering::Relaxed);
+    CURRENT.store(index_of(code), Ordering::Relaxed);
+}
+
+/// Runs `f` with this thread reading the language `code` (English for an
+/// unknown one) instead of the process-wide one, and puts back what it read
+/// before, also when `f` panics. Other threads are not affected, so tests
+/// that need Arabic can run beside tests that need English.
+pub fn with_language<R>(code: &str, f: impl FnOnce() -> R) -> R {
+    /// Puts the previous override back when dropped.
+    struct Restore(Option<usize>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            OVERRIDE.with(|o| o.set(self.0));
+        }
+    }
+    let _restore = Restore(OVERRIDE.with(|o| o.replace(Some(index_of(code)))));
+    f()
 }
 
 /// The language the `language` setting asks for. `"auto"` takes the first
@@ -84,7 +114,10 @@ pub fn system_languages() -> Vec<String> {
 
 /// The language in use.
 pub fn current() -> &'static Language {
-    &LANGUAGES[CURRENT.load(Ordering::Relaxed).min(LANGUAGES.len() - 1)]
+    let index = OVERRIDE
+        .with(Cell::get)
+        .unwrap_or_else(|| CURRENT.load(Ordering::Relaxed));
+    &LANGUAGES[index.min(LANGUAGES.len() - 1)]
 }
 
 /// The catalog of the language in use; `None` for English.
@@ -176,16 +209,70 @@ mod tests {
 
     static LOCK: Mutex<()> = Mutex::new(());
 
+    /// Runs `f` reading the process-wide language, which `set_language`
+    /// sets, as the app does. Every test thread starts on an English
+    /// override (see [`OVERRIDE`]), so only this thread sees the switch,
+    /// and the lock keeps two such tests apart.
+    fn with_process_language<R>(f: impl FnOnce() -> R) -> R {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = OVERRIDE.with(|o| o.replace(None));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        set_language("en");
+        OVERRIDE.with(|o| o.set(before));
+        result.unwrap_or_else(|e| std::panic::resume_unwind(e))
+    }
+
     #[test]
     fn falls_back_to_english_and_switches() {
-        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        set_language("en");
-        assert_eq!(tr("Language"), "Language");
-        set_language("ar");
-        assert_eq!(tr("Language"), "اللغة");
-        assert_eq!(current().code, "ar");
-        set_language("xx");
+        with_process_language(|| {
+            set_language("en");
+            assert_eq!(tr("Language"), "Language");
+            set_language("ar");
+            assert_eq!(tr("Language"), "اللغة");
+            assert_eq!(current().code, "ar");
+            set_language("xx");
+            assert_eq!(current().code, "en");
+        });
+    }
+
+    #[test]
+    fn with_language_reads_that_language_on_this_thread_only() {
         assert_eq!(current().code, "en");
+        with_language("ar", || {
+            assert_eq!(current().code, "ar");
+            assert_eq!(tr("Language"), "اللغة");
+            // Another thread is not affected.
+            std::thread::spawn(|| assert_eq!(tr("Language"), "Language"))
+                .join()
+                .unwrap();
+            // Nested: the inner one wins, the outer one comes back.
+            with_language("en", || assert_eq!(tr("Language"), "Language"));
+            assert_eq!(current().code, "ar");
+        });
+        assert_eq!(current().code, "en");
+        with_language("xx", || assert_eq!(current().code, "en"));
+    }
+
+    #[test]
+    fn with_language_is_undone_by_a_panic() {
+        let result = std::panic::catch_unwind(|| {
+            with_language("ar", || {
+                assert_eq!(current().code, "ar");
+                panic!("on purpose");
+            })
+        });
+        assert!(result.is_err());
+        assert_eq!(current().code, "en");
+    }
+
+    #[test]
+    fn with_language_wins_over_the_process_language() {
+        with_process_language(|| {
+            set_language("ar");
+            assert_eq!(current().code, "ar");
+            with_language("en", || assert_eq!(current().code, "en"));
+            assert_eq!(current().code, "ar");
+        });
     }
 
     const SAMPLE: &str = r#"msgid ""

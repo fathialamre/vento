@@ -15,10 +15,13 @@ use vento_platform::{AwakeHold, Platform};
 use crate::settings_hub::SettingsHub;
 
 /// What the status line says while nothing is held.
-#[cfg(target_os = "macos")]
-const IDLE_STATUS: &str = "Your Mac follows its usual energy settings";
-#[cfg(not(target_os = "macos"))]
-const IDLE_STATUS: &str = "Your computer follows its usual energy settings";
+fn idle_status() -> String {
+    if cfg!(target_os = "macos") {
+        tr("Your Mac follows its usual energy settings")
+    } else {
+        tr("Your computer follows its usual energy settings")
+    }
+}
 
 /// The right-click menu's Keep Awake item: names what a click does, which
 /// is the opposite of what runs now.
@@ -40,8 +43,10 @@ pub struct KeepAwake {
     session: Cell<Option<Session>>,
     /// What the platform holds now.
     held: Cell<Option<AwakeHold>>,
-    /// Why the last start failed, shown until the next start or stop.
-    error: RefCell<Option<String>>,
+    /// Whether the last start failed, shown in the status until the next
+    /// start or stop. The text is made when it is read, so it follows the
+    /// language.
+    failed: Cell<bool>,
     /// Fires when the status may next change or the session ends; idle
     /// while nothing runs.
     timer: Timer,
@@ -57,7 +62,7 @@ impl KeepAwake {
             hub,
             session: Cell::new(None),
             held: Cell::new(None),
-            error: RefCell::new(None),
+            failed: Cell::new(false),
             timer: Timer::default(),
             listeners: RefCell::new(Vec::new()),
             this: this.clone(),
@@ -81,12 +86,12 @@ impl KeepAwake {
 
     /// The status line.
     pub fn status(&self) -> String {
-        if let Some(error) = self.error.borrow().as_ref() {
-            return error.clone();
+        if self.failed.get() {
+            return tr("Cannot keep the computer awake");
         }
         match self.session.get() {
             Some(session) => session.status(Timestamp::now(), &TimeZone::system()),
-            None => IDLE_STATUS.into(),
+            None => idle_status(),
         }
     }
 
@@ -102,7 +107,7 @@ impl KeepAwake {
 
     /// Starts `chip`, replacing what runs.
     pub fn start(&self, chip: Chip) {
-        *self.error.borrow_mut() = None;
+        self.failed.set(false);
         if !self.hold(Some(self.wanted_hold())) {
             // What ran before ends too, rather than holding on unseen.
             self.hold(None);
@@ -122,7 +127,7 @@ impl KeepAwake {
 
     /// Lets the computer sleep as usual again.
     pub fn stop(&self) {
-        *self.error.borrow_mut() = None;
+        self.failed.set(false);
         self.hold(None);
         self.session.set(None);
         self.timer.stop();
@@ -143,7 +148,7 @@ impl KeepAwake {
     }
 
     /// Asks the platform for `hold` unless it holds that already; false
-    /// when it cannot, with the reason kept for the status line.
+    /// when it cannot, with the failure kept for the status line.
     fn hold(&self, hold: Option<AwakeHold>) -> bool {
         if self.held.get() == hold {
             return true;
@@ -157,7 +162,7 @@ impl KeepAwake {
             Err(e) => {
                 warn!("cannot change Keep Awake to {hold:?}: {e}");
                 if hold.is_some() {
-                    *self.error.borrow_mut() = Some("Cannot keep the computer awake".into());
+                    self.failed.set(true);
                 }
                 false
             }
@@ -208,5 +213,25 @@ mod tests {
     fn keep_awake_menu_item_says_what_a_click_does() {
         assert_eq!(keep_awake_menu_text(false), "Start Keep Awake");
         assert_eq!(keep_awake_menu_text(true), "Stop Keep Awake");
+    }
+
+    #[test]
+    fn the_idle_status_and_the_menu_item_read_in_arabic() {
+        let idle = idle_status();
+        if cfg!(target_os = "macos") {
+            assert_eq!(idle, "Your Mac follows its usual energy settings");
+        } else {
+            assert_eq!(idle, "Your computer follows its usual energy settings");
+        }
+        vento_core::i18n::with_language("ar", || {
+            let expected = if cfg!(target_os = "macos") {
+                "يتبع جهاز Mac إعدادات الطاقة المعتادة"
+            } else {
+                "يتبع جهازك إعدادات الطاقة المعتادة"
+            };
+            assert_eq!(idle_status(), expected);
+            assert_eq!(keep_awake_menu_text(false), "بدء إبقاء الجهاز مستيقظاً");
+            assert_eq!(keep_awake_menu_text(true), "إيقاف إبقاء الجهاز مستيقظاً");
+        });
     }
 }
