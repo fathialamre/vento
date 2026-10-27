@@ -141,6 +141,28 @@ where
     });
 }
 
+/// Runs `refresh` on `owner` after every language change, for as long as
+/// `owner` exists: for a window's text that Rust pushed in (the Info
+/// window's details). Like [`follow`], the registry keeps only a weak
+/// reference.
+pub fn follow_language<T: 'static>(owner: std::rc::Weak<T>, refresh: impl Fn(&T) + 'static) {
+    let alive = {
+        let owner = owner.clone();
+        move || owner.strong_count() > 0
+    };
+    let refresh = move || {
+        let Some(owner) = owner.upgrade() else {
+            return false;
+        };
+        refresh(&owner);
+        true
+    };
+    register(Follower {
+        alive: Box::new(alive),
+        refresh: Box::new(refresh),
+    });
+}
+
 /// Adds `follower` to the registry, dropping the followers whose window is
 /// gone first. A window made on use (the Quick panel, the Settings window,
 /// the archive and Screen Recording windows) is dropped once it has stayed
@@ -285,6 +307,18 @@ mod tests {
         // Asked once more, said its window is gone, and was forgotten.
         assert_eq!(followers(), 1);
         FOLLOWERS.with(|followers| followers.borrow_mut().clear());
+    }
+
+    #[test]
+    fn an_owner_is_refreshed_on_each_language_change_until_it_is_gone() {
+        let owner = Rc::new(Cell::new(0));
+        follow_language(Rc::downgrade(&owner), |n: &Cell<u32>| n.set(n.get() + 1));
+        refresh_followers();
+        refresh_followers();
+        assert_eq!(owner.get(), 2);
+        drop(owner);
+        refresh_followers();
+        assert_eq!(followers(), 0);
     }
 
     #[test]

@@ -8,23 +8,24 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::destinations::display_path;
+use crate::i18n::dates::date_time;
+use crate::i18n::{fill, tr, trn, trn_shown};
 use crate::sizes::Progress;
 
 /// `bytes` in decimal units: `"Zero bytes"`, `"512 bytes"`, `"839 KB"`, `"4.82 GB"`.
 pub fn human_size(bytes: u64) -> String {
     match bytes {
-        0 => return "Zero bytes".to_owned(),
-        1 => return "1 byte".to_owned(),
-        2..=999 => return format!("{bytes} bytes"),
+        0 => return tr("Zero bytes"),
+        1..=999 => return trn("{n} byte", "{n} bytes", bytes),
         _ => {}
     }
-    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    let units = [tr("KB"), tr("MB"), tr("GB"), tr("TB")];
     let mut scale = 1_000f64;
-    for (i, unit) in UNITS.iter().enumerate() {
+    for (i, unit) in units.iter().enumerate() {
         let value = bytes as f64 / scale;
         let text = round_trimmed(value);
         let rounded_up = text.parse::<f64>().is_ok_and(|v| v >= 1_000.0);
-        if i + 1 == UNITS.len() || !rounded_up {
+        if i + 1 == units.len() || !rounded_up {
             return format!("{text} {unit}");
         }
         scale *= 1_000.0;
@@ -62,15 +63,13 @@ pub fn group_thousands(n: u64) -> String {
     out
 }
 
-/// `t` as local time in `tz`, e.g. `"20 Oct 2026, 2:35 PM"`.
+/// `t` as local time in `tz`, in the interface language, e.g.
+/// `"20 Oct 2026, 2:35 PM"`.
 ///
 /// Empty when `t` is outside the range dates can express.
 pub fn format_time(t: SystemTime, tz: &jiff::tz::TimeZone) -> String {
     match jiff::Timestamp::try_from(t) {
-        Ok(ts) => ts
-            .to_zoned(tz.clone())
-            .strftime("%-d %b %Y, %-I:%M %p")
-            .to_string(),
+        Ok(ts) => date_time(ts.to_zoned(tz.clone()).datetime()),
         Err(_) => String::new(),
     }
 }
@@ -173,13 +172,15 @@ pub fn view(
     let tally = &progress.tally;
     let home = ctx.home.as_deref();
     let mut details: Vec<(String, String)> = Vec::new();
-    let mut push = |label: &str, value: String| details.push((label.to_owned(), value));
+    let mut push = |label: String, value: String| details.push((label, value));
     let time_row =
         |t: Option<SystemTime>| t.map(|t| format_time(t, &ctx.tz)).filter(|s| !s.is_empty());
-    let contains = format!(
-        "{}, {}",
-        plural(tally.files, "file"),
-        plural(tally.folders, "folder")
+    let contains = fill(
+        &tr("{files}, {folders}"),
+        &[
+            ("files", &counted_files(tally.files)),
+            ("folders", &counted_folders(tally.folders)),
+        ],
     );
     let mut with_bars = true;
 
@@ -187,11 +188,11 @@ pub fn view(
         Subject::File | Subject::Package => {
             with_bars = false;
             if let Some(kind) = &facts.kind {
-                push("Kind", kind.clone());
+                push(tr("Kind"), kind.clone());
             }
             let exact = exact_size(tally.bytes);
             push(
-                "Size",
+                tr("Size"),
                 if tally.skipped {
                     format!("≥ {exact}")
                 } else {
@@ -199,37 +200,37 @@ pub fn view(
                 },
             );
             if let Some(parent) = paths.first().and_then(|p| p.parent()) {
-                push("Where", display_path(parent, home));
+                push(tr("Where"), display_path(parent, home));
             }
             if let Some(created) = time_row(facts.created) {
-                push("Created", created);
+                push(tr("Created"), created);
             }
             if let Some(modified) = time_row(facts.modified) {
-                push("Modified", modified);
+                push(tr("Modified"), modified);
             }
         }
         Subject::Folder => {
-            push("Contains", contains);
+            push(tr("Contains"), contains);
             if let Some(modified) = time_row(facts.modified) {
-                push("Modified", modified);
+                push(tr("Modified"), modified);
             }
         }
         Subject::Several => {
-            push("Contains", contains);
+            push(tr("Contains"), contains);
             let mut parents = paths.iter().map(|p| p.parent());
             let first = parents.next().flatten();
             if parents.all(|p| p == first) {
                 if let Some(parent) = first {
-                    push("Where", display_path(parent, home));
+                    push(tr("Where"), display_path(parent, home));
                 }
             } else {
-                push("Where", "Several folders".to_owned());
+                push(tr("Where"), tr("Several folders"));
             }
         }
     }
 
     let title = match subject {
-        Subject::Several => format!("{} items", paths.len()),
+        Subject::Several => trn("{n} item", "{n} items", paths.len() as u64),
         _ => paths.first().map(|p| name_of(p)).unwrap_or_default(),
     };
     let size = if tally.skipped {
@@ -262,11 +263,11 @@ pub fn view(
         status: if progress.done {
             String::new()
         } else {
-            "Calculating…".to_owned()
+            tr("Calculating…")
         },
         details,
         note: if tally.skipped {
-            "Some items could not be read".to_owned()
+            tr("Some items could not be read")
         } else {
             String::new()
         },
@@ -289,19 +290,24 @@ fn name_of(path: &Path) -> String {
 }
 
 /// `"1 file"`, `"2 files"`, with thousands separators.
-fn plural(n: u64, noun: &str) -> String {
-    let s = if n == 1 { "" } else { "s" };
-    format!("{} {noun}{s}", group_thousands(n))
+fn counted_files(n: u64) -> String {
+    trn_shown("{n} file", "{n} files", n, &group_thousands(n))
+}
+
+/// `"1 folder"`, `"2 folders"`, with thousands separators.
+fn counted_folders(n: u64) -> String {
+    trn_shown("{n} folder", "{n} folders", n, &group_thousands(n))
 }
 
 /// Exact byte count: `"838,591 bytes"`, `"1 byte"`.
 fn exact_size(bytes: u64) -> String {
-    plural(bytes, "byte")
+    trn_shown("{n} byte", "{n} bytes", bytes, &group_thousands(bytes))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::with_language;
     use crate::sizes::{Part, Tally};
 
     fn at(rfc3339: &str) -> SystemTime {
@@ -384,6 +390,23 @@ mod tests {
             format_time(at("2026-03-03T09:05:00Z"), &jiff::tz::TimeZone::UTC),
             "3 Mar 2026, 9:05 AM"
         );
+    }
+
+    #[test]
+    fn english_times_match_strftime_for_every_month_and_hour() {
+        let tz = jiff::tz::TimeZone::UTC;
+        for month in 1..=12 {
+            for hour in [0, 1, 9, 11, 12, 13, 23] {
+                let ts = format!("2026-{month:02}-{:02}T{hour:02}:07:00Z", month + 3);
+                let t = at(&ts);
+                let want = jiff::Timestamp::try_from(t)
+                    .unwrap()
+                    .to_zoned(tz.clone())
+                    .strftime("%-d %b %Y, %-I:%M %p")
+                    .to_string();
+                assert_eq!(format_time(t, &tz), want, "{ts}");
+            }
+        }
     }
 
     #[test]
@@ -472,6 +495,117 @@ mod tests {
         let p = progress(tally(5, 1, 1), Vec::new(), true);
         let v = view(&paths, Subject::Folder, &Facts::default(), &p, &ctx());
         assert_eq!(v.details[0].1, "1 file, 1 folder");
+    }
+
+    #[test]
+    fn contains_reads_in_english_and_in_arabic() {
+        let paths = [PathBuf::from("/a")];
+        let p = progress(tally(5, 2, 1), Vec::new(), true);
+        let v = view(&paths, Subject::Folder, &Facts::default(), &p, &ctx());
+        assert_eq!(v.details[0].1, "2 files, 1 folder");
+        with_language("ar", || {
+            let v = view(&paths, Subject::Folder, &Facts::default(), &p, &ctx());
+            assert_eq!(v.details[0].0, "يحتوي");
+            assert_eq!(v.details[0].1, "ملفان، مجلد واحد");
+            for (files, folders, want) in [
+                (0, 0, "0 ملف، 0 مجلد"),
+                (1, 3, "ملف واحد، 3 مجلدات"),
+                (12_408, 1_031, "12,408 ملفات، 1,031 مجلداً"),
+                (11, 100, "11 ملفاً، 100 مجلد"),
+            ] {
+                let p = progress(tally(5, files, folders), Vec::new(), true);
+                let v = view(&paths, Subject::Folder, &Facts::default(), &p, &ctx());
+                assert_eq!(v.details[0].1, want);
+            }
+        });
+    }
+
+    #[test]
+    fn sizes_read_in_arabic() {
+        with_language("ar", || {
+            for (bytes, want) in [
+                (0, "صفر بايت"),
+                (1, "بايت واحد"),
+                (512, "512 بايت"),
+                (1_000, "1 ك.ب"),
+                (838_591, "839 ك.ب"),
+                (4_823_117_402, "4.82 ج.ب"),
+                (999_999_999, "1 ج.ب"),
+                (2_500_000_000_000, "2.5 ت.ب"),
+            ] {
+                assert_eq!(human_size(bytes), want, "{bytes}");
+            }
+            assert_eq!(human_size(1_000_000), "1 م.ب");
+            assert_eq!(exact_size(838_591), "838,591 بايت");
+            assert_eq!(exact_size(2), "2 بايت");
+        });
+    }
+
+    #[test]
+    fn a_file_reads_in_arabic() {
+        let facts = Facts {
+            kind: Some("PNG image".to_owned()),
+            created: Some(at("2026-11-05T15:20:00Z")),
+            modified: Some(at("2026-03-03T09:05:00Z")),
+        };
+        let paths = [PathBuf::from("/Users/me/Desktop/shot.png")];
+        let p = progress(tally(838_591, 1, 0), Vec::new(), true);
+        with_language("ar", || {
+            let v = view(&paths, Subject::File, &facts, &p, &ctx());
+            let row = |l: &str, s: &str| (l.to_owned(), s.to_owned());
+            assert_eq!(v.size, "839 ك.ب");
+            assert_eq!(
+                v.details,
+                [
+                    row("النوع", "PNG image"),
+                    row("الحجم", "838,591 بايت"),
+                    row("المكان", "~/Desktop"),
+                    row("الإنشاء", "5 نوفمبر 2026، 3:20 م"),
+                    row("آخر تعديل", "3 مارس 2026، 9:05 ص"),
+                ]
+            );
+        });
+    }
+
+    #[test]
+    fn several_and_unfinished_counts_read_in_arabic() {
+        let p = progress(tally(10, 2, 0), Vec::new(), false);
+        let paths = [PathBuf::from("/a/x"), PathBuf::from("/b/y")];
+        with_language("ar", || {
+            let v = view(&paths, Subject::Several, &Facts::default(), &p, &ctx());
+            assert_eq!(v.title, "عنصران");
+            assert_eq!(v.status, "جارٍ الحساب…");
+            assert!(
+                v.details
+                    .contains(&("المكان".to_owned(), "عدة مجلدات".to_owned()))
+            );
+            let three = [paths[0].clone(), paths[1].clone(), PathBuf::from("/c/z")];
+            let v = view(&three, Subject::Several, &Facts::default(), &p, &ctx());
+            assert_eq!(v.title, "3 عناصر");
+            let skipped = Tally {
+                skipped: true,
+                ..tally(1, 1, 0)
+            };
+            let v = view(
+                &paths[..1],
+                Subject::Folder,
+                &Facts::default(),
+                &progress(skipped, Vec::new(), true),
+                &ctx(),
+            );
+            assert_eq!(v.note, "تعذّرت قراءة بعض العناصر");
+        });
+    }
+
+    #[test]
+    fn a_single_item_title_is_its_name_and_several_count_one_by_one() {
+        let p = progress(tally(10, 2, 0), Vec::new(), true);
+        let paths = [PathBuf::from("/a/x"), PathBuf::from("/b/y")];
+        let v = view(&paths, Subject::Several, &Facts::default(), &p, &ctx());
+        assert_eq!(v.title, "2 items");
+        // A group of one (never made by the window) still reads right.
+        let v = view(&paths[..1], Subject::Several, &Facts::default(), &p, &ctx());
+        assert_eq!(v.title, "1 item");
     }
 
     #[test]

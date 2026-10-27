@@ -5,7 +5,9 @@
 //! already exists is ever replaced.
 
 use crate::fileops::unique_destination;
+use crate::i18n::{fill, tr};
 use std::ffi::OsString;
+use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -17,6 +19,29 @@ const IMAGE_EXTS: [&str; 5] = ["png", "tiff", "jpg", "gif", "heic"];
 const MAX_HOST_CHARS: usize = 100;
 /// How many names are tried when others keep appearing under us.
 const NAME_ATTEMPTS: u32 = 1000;
+
+/// Why saving content failed, worded when it is shown: in the interface
+/// language, and in English for a log.
+#[derive(Debug)]
+enum Reason {
+    /// The image type is not one the Pocket accepts.
+    UnsupportedImage(String),
+    /// Every name tried was taken.
+    NoFreeName,
+}
+
+impl fmt::Display for Reason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedImage(ext) => {
+                f.write_str(&fill(&tr("unsupported image type: {ext}"), &[("ext", ext)]))
+            }
+            Self::NoFreeName => f.write_str(&tr("no free name for the saved item")),
+        }
+    }
+}
+
+impl std::error::Error for Reason {}
 
 /// Saves `text` as `Text <timestamp>.txt` (UTF-8) in `dir`.
 pub fn save_text(dir: &Path, text: &str, now: SystemTime) -> io::Result<PathBuf> {
@@ -55,7 +80,7 @@ pub fn save_image(dir: &Path, bytes: &[u8], ext: &str, now: SystemTime) -> io::R
     if !IMAGE_EXTS.contains(&ext) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unsupported image type: {ext}"),
+            Reason::UnsupportedImage(ext.to_owned()),
         ));
     }
     let name = format!("Image {}.{ext}", timestamp(now));
@@ -85,7 +110,7 @@ fn write_new(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
     }
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
-        "no free name for the saved item",
+        Reason::NoFreeName,
     ))
 }
 
@@ -262,6 +287,37 @@ mod tests {
             assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{ext:?}");
         }
         assert!(names(d.path()).is_empty());
+    }
+
+    #[test]
+    fn a_reason_is_worded_when_it_is_shown_and_a_file_name_never_is() {
+        let d = tempdir().unwrap();
+        let err = save_image(d.path(), &[1], "exe", fixed()).unwrap_err();
+        assert_eq!(err.to_string(), "unsupported image type: exe");
+        crate::i18n::with_language("ar", || {
+            assert_eq!(err.to_string(), "نوع الصورة غير مدعوم: exe");
+            let path = save_text(d.path(), "x", fixed()).unwrap();
+            assert_eq!(path, d.path().join("Text 2026-10-20 05.30.00.txt"));
+            let path = save_url(d.path(), "https://example.com/a", fixed()).unwrap();
+            assert_eq!(
+                path,
+                d.path().join("example.com 2026-10-20 05.30.00.webloc")
+            );
+            let path = save_url(d.path(), "not a link", fixed()).unwrap();
+            assert_eq!(path, d.path().join("Link 2026-10-20 05.30.00.webloc"));
+            let path = save_image(d.path(), &[1], "png", fixed()).unwrap();
+            assert_eq!(path, d.path().join("Image 2026-10-20 05.30.00.png"));
+        });
+        assert_eq!(
+            Reason::NoFreeName.to_string(),
+            "no free name for the saved item"
+        );
+        crate::i18n::with_language("ar", || {
+            assert_eq!(
+                Reason::NoFreeName.to_string(),
+                "لا يوجد اسم متاح للعنصر المحفوظ"
+            );
+        });
     }
 
     #[test]

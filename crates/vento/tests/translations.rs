@@ -247,8 +247,9 @@ struct Call {
     line: usize,
 }
 
-/// Finds `tr("..")`, `trc("..", "..")` and `trn("..", "..", n)` calls whose
-/// text arguments are string literals.
+/// Finds `tr("..")`, `trc("..", "..")`, `trn("..", "..", n)` and
+/// `trn_shown("..", "..", n, shown)` calls whose text arguments are string
+/// literals.
 fn scan_rust(src: &str) -> Vec<Call> {
     let mut lx = Lexer::new(src, Lang::Rust);
     let mut calls = Vec::new();
@@ -262,7 +263,7 @@ fn scan_rust(src: &str) -> Vec<Call> {
                 let id = lx.ident();
                 if matches!(id, "r" | "br" | "cr") && matches!(lx.at(0), Some(b'"' | b'#')) {
                     lx.skip_raw_string();
-                } else if matches!(id, "tr" | "trc" | "trn") {
+                } else if matches!(id, "tr" | "trc" | "trn" | "trn_shown") {
                     let line = lx.line(at);
                     let save = lx.i;
                     if let Some(call) = rust_args(&mut lx, id, line) {
@@ -383,7 +384,7 @@ fn scan_sources() -> BTreeMap<Key, Found> {
     let mut slint = Vec::new();
     files_under(&root.join("crates/vento/ui"), "slint", &mut slint);
     sources.extend(slint.into_iter().map(|p| (p, Lang::Slint)));
-    for krate in ["vento", "vento-core"] {
+    for krate in ["vento", "vento-core", "vento-platform"] {
         let mut rust = Vec::new();
         files_under(
             &root.join("crates").join(krate).join("src"),

@@ -12,6 +12,7 @@ use std::time::Instant;
 use log::{info, warn};
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition};
 use vento_core::geometry::{Point, Rect, screen_for};
+use vento_core::i18n::tr;
 use vento_core::screen_text::{Selection, TextBox, assemble};
 use vento_platform::{Platform, PlatformError, ScreenText};
 
@@ -32,11 +33,19 @@ pub type CopyText = Box<dyn Fn(&str) -> Result<(), PlatformError>>;
 pub type Notify = Box<dyn Fn(&str, Point)>;
 
 /// The toast after a copy.
-const COPIED: &str = "Copied text";
+fn copied_text() -> String {
+    tr("Copied text")
+}
+
 /// The toast when the area holds no text; the clipboard keeps what it had.
-const NO_TEXT: &str = "No text found";
+fn no_text() -> String {
+    tr("No text found")
+}
+
 /// The toast when the capture, the reading or the copy failed.
-const FAILED: &str = "Couldn't read the screen";
+fn failed_text() -> String {
+    tr("Couldn't read the screen")
+}
 
 /// What the controller needs from the rest of vento.
 pub struct ScreenTextDeps {
@@ -111,21 +120,21 @@ impl ScreenTextController {
         let message = match result {
             Err(e) => {
                 warn!("cannot read the screen: {e}");
-                FAILED
+                failed_text()
             }
             Ok(boxes) => {
                 let text = assemble(&boxes);
                 if text.is_empty() {
-                    NO_TEXT
+                    no_text()
                 } else if let Err(e) = (self.deps.copy)(&text) {
                     warn!("cannot copy the text read from the screen: {e}");
-                    FAILED
+                    failed_text()
                 } else {
-                    COPIED
+                    copied_text()
                 }
             }
         };
-        (self.deps.notify)(message, bottom_centre(area));
+        (self.deps.notify)(&message, bottom_centre(area));
         self.busy.set(false);
     }
 }
@@ -315,6 +324,7 @@ impl ScreenAccessView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vento_core::i18n::with_language;
 
     type Done = Box<dyn FnOnce(Option<Selection>)>;
 
@@ -544,6 +554,26 @@ mod tests {
         rig.answer(Ok(vec![b(0.0, "  "), b(30.0, "\t")]));
         assert!(rig.log.copied.borrow().is_empty());
         assert_eq!(rig.note_texts(), vec!["No text found".to_owned()]);
+    }
+
+    #[test]
+    fn the_toasts_read_in_arabic() {
+        for (answer, want) in [
+            (Ok(vec![b(0.0, "a")]), "تم نسخ النص"),
+            (Ok(vec![b(0.0, "  ")]), "لم يُعثر على نص"),
+            (
+                Err(PlatformError::Failed("capture timed out".into())),
+                "تعذّرت قراءة الشاشة",
+            ),
+        ] {
+            let rig = Rig::new(true);
+            with_language("ar", || {
+                rig.controller.start();
+                rig.select(Some(sel()));
+                rig.answer(answer);
+            });
+            assert_eq!(rig.note_texts(), vec![want.to_owned()]);
+        }
     }
 
     #[test]

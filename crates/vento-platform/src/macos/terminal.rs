@@ -56,7 +56,7 @@ pub(super) fn open(
     let id = resolve(&terminals, terminal);
     let app = NSWorkspace::sharedWorkspace()
         .URLForApplicationWithBundleIdentifier(&NSString::from_str(id))
-        .ok_or_else(|| PlatformError::Failed(format!("{id} is not installed")))?;
+        .ok_or_else(|| PlatformError::NotInstalled(id.to_owned()))?;
     apps::launch(&[file_url(dir)?], &app, on_error);
     Ok(())
 }

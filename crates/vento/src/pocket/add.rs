@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use vento_core::fileops::copy_into;
+use vento_core::i18n::errors::io_reason;
+use vento_core::i18n::with_language;
 use vento_core::pocket::ItemSource;
 use vento_core::pocket_content::{save_image, save_text, save_url, webloc_bytes};
 use vento_platform::Dropped;
@@ -145,16 +147,40 @@ impl SavedPrints {
 /// A file to add, who owns it, and (for a kept copy) where it came from.
 pub(super) type Entry = (PathBuf, ItemSource, Option<PathBuf>);
 
+/// Why one part of an add failed: `shown` in the toast, in the interface
+/// language, and `logged` in English.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Failure {
+    pub shown: String,
+    pub logged: String,
+}
+
+impl Failure {
+    /// The failure `reason` words, read once in the interface language and
+    /// once in English.
+    pub(super) fn new(reason: impl Fn() -> String) -> Self {
+        Self {
+            shown: reason(),
+            logged: with_language("en", &reason),
+        }
+    }
+
+    /// The failure of an I/O error `e`.
+    pub(super) fn io(e: &std::io::Error) -> Self {
+        Self::new(|| io_reason(e))
+    }
+}
+
 /// Carries out `plan` under `dir` (the Pocket's content folder): copies go to
 /// `kept/`, saved content to `saved/`. Returns the files to add with their
 /// source (and origin), and a reason for each part that failed. Copies can
 /// take long: run them off the main thread.
-pub(super) fn store(plan: AddPlan, dir: &Path) -> (Vec<Entry>, Vec<String>) {
+pub(super) fn store(plan: AddPlan, dir: &Path) -> (Vec<Entry>, Vec<Failure>) {
     let saved = dir.join("saved");
     let now = SystemTime::now();
     let saved_one = |result: std::io::Result<PathBuf>| match result {
         Ok(path) => (vec![(path, ItemSource::Saved, None)], Vec::new()),
-        Err(e) => (Vec::new(), vec![e.to_string()]),
+        Err(e) => (Vec::new(), vec![Failure::io(&e)]),
     };
     match plan {
         AddPlan::References(paths) => (
@@ -168,14 +194,16 @@ pub(super) fn store(plan: AddPlan, dir: &Path) -> (Vec<Entry>, Vec<String>) {
             let kept = dir.join("kept");
             // `copy_into` needs the folder to exist.
             if let Err(e) = fs::create_dir_all(&kept) {
-                return (Vec::new(), vec![e.to_string()]);
+                return (Vec::new(), vec![Failure::io(&e)]);
             }
             let mut entries = Vec::new();
             let mut errors = Vec::new();
             for path in paths {
                 match copy_into(&path, &kept) {
                     Ok(copy) => entries.push((copy, ItemSource::Kept, Some(path))),
-                    Err(e) => errors.push(format!("{}: {e}", display_name(&path))),
+                    Err(e) => {
+                        errors.push(Failure::new(|| format!("{}: {e}", display_name(&path))));
+                    }
                 }
             }
             (entries, errors)
@@ -344,6 +372,16 @@ mod tests {
         let gone = dir.path().join("gone.txt");
         let (entries, errors) = store(AddPlan::Copies(vec![gone]), dir.path());
         assert!(entries.is_empty());
-        assert_eq!(errors, vec!["gone.txt: source not found".to_owned()]);
+        let shown: Vec<_> = errors.iter().map(|f| f.shown.as_str()).collect();
+        assert_eq!(shown, ["gone.txt: source not found"]);
+        // A reason in Arabic is shown; the log keeps English.
+        let (_, errors) = with_language("ar", || {
+            store(
+                AddPlan::Copies(vec![dir.path().join("gone.txt")]),
+                dir.path(),
+            )
+        });
+        assert_eq!(errors[0].shown, "gone.txt: العنصر الأصلي غير موجود");
+        assert_eq!(errors[0].logged, "gone.txt: source not found");
     }
 }

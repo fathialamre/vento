@@ -2,7 +2,7 @@
 //! the order of day, month and time come from the catalog, so each language
 //! writes them its own way. Digits stay Western.
 
-use jiff::civil::{Date, Time};
+use jiff::civil::{Date, DateTime, Time, Weekday};
 
 use super::{fill, trc};
 
@@ -48,6 +48,56 @@ pub fn time_hm(time: Time) -> String {
     )
 }
 
+/// The name of the day of the week `date` falls on: English writes it short,
+/// as `"Wed"`, and a language may write it out in full (`"الأربعاء"`).
+pub fn weekday_short(date: Date) -> String {
+    match date.weekday() {
+        Weekday::Sunday => trc("weekday", "Sun"),
+        Weekday::Monday => trc("weekday", "Mon"),
+        Weekday::Tuesday => trc("weekday", "Tue"),
+        Weekday::Wednesday => trc("weekday", "Wed"),
+        Weekday::Thursday => trc("weekday", "Thu"),
+        Weekday::Friday => trc("weekday", "Fri"),
+        Weekday::Saturday => trc("weekday", "Sat"),
+    }
+}
+
+/// The time of day on a 12-hour clock with the period: `"3:20 PM"`,
+/// `"3:20 م"`. Midnight is `"12:00 AM"`, noon `"12:00 PM"`.
+fn time_12h(time: Time) -> String {
+    let hour = match time.hour() % 12 {
+        0 => 12,
+        h => h,
+    };
+    let period = if time.hour() < 12 {
+        trc("time", "AM")
+    } else {
+        trc("time", "PM")
+    };
+    fill(
+        &trc("time", "{hour}:{minute} {period}"),
+        &[
+            ("hour", &hour.to_string()),
+            ("minute", &format!("{:02}", time.minute())),
+            ("period", &period),
+        ],
+    )
+}
+
+/// The date with its year and the time of day on a 12-hour clock:
+/// `"5 Nov 2026, 3:20 PM"`, `"5 نوفمبر 2026، 3:20 م"`.
+pub fn date_time(dt: DateTime) -> String {
+    fill(
+        &trc("date", "{day} {month} {year}, {time}"),
+        &[
+            ("day", &dt.day().to_string()),
+            ("month", &month_name(dt.month())),
+            ("year", &dt.year().to_string()),
+            ("time", &time_12h(dt.time())),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +137,67 @@ mod tests {
                 assert_eq!(day_month(date(month, 1)), format!("1 {name}"));
             }
         });
+    }
+
+    fn at(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> DateTime {
+        jiff::civil::date(year, month, day).at(hour, minute, 0, 0)
+    }
+
+    #[test]
+    fn a_date_and_time_read_in_english() {
+        assert_eq!(date_time(at(2026, 11, 5, 15, 20)), "5 Nov 2026, 3:20 PM");
+        assert_eq!(date_time(at(2026, 11, 5, 9, 5)), "5 Nov 2026, 9:05 AM");
+        assert_eq!(date_time(at(2026, 11, 5, 0, 0)), "5 Nov 2026, 12:00 AM");
+        assert_eq!(date_time(at(2026, 11, 5, 12, 0)), "5 Nov 2026, 12:00 PM");
+        assert_eq!(date_time(at(2026, 1, 31, 23, 59)), "31 Jan 2026, 11:59 PM");
+    }
+
+    #[test]
+    fn a_date_and_time_read_in_arabic() {
+        with_language("ar", || {
+            assert_eq!(date_time(at(2026, 11, 5, 15, 20)), "5 نوفمبر 2026، 3:20 م");
+            assert_eq!(date_time(at(2026, 11, 5, 9, 5)), "5 نوفمبر 2026، 9:05 ص");
+            assert_eq!(date_time(at(2026, 11, 5, 0, 0)), "5 نوفمبر 2026، 12:00 ص");
+            assert_eq!(date_time(at(2026, 11, 5, 12, 0)), "5 نوفمبر 2026، 12:00 م");
+        });
+    }
+
+    #[test]
+    fn the_english_date_and_time_match_strftime_everywhere() {
+        for month in 1..=12 {
+            for (day, hour, minute) in
+                [(1, 0, 0), (9, 1, 7), (15, 11, 59), (28, 12, 0), (28, 23, 5)]
+            {
+                let dt = at(2026, month, day, hour, minute);
+                assert_eq!(
+                    date_time(dt),
+                    dt.strftime("%-d %b %Y, %-I:%M %p").to_string(),
+                    "{dt}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_weekday_reads_short_in_english_and_in_full_in_arabic() {
+        // 2026-11-01 is a Sunday.
+        let english = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        let arabic = [
+            "الأحد",
+            "الاثنين",
+            "الثلاثاء",
+            "الأربعاء",
+            "الخميس",
+            "الجمعة",
+            "السبت",
+        ];
+        for day in 1..=7 {
+            let d = date(11, day);
+            let i = usize::try_from(day - 1).unwrap();
+            assert_eq!(weekday_short(d), english[i]);
+            assert_eq!(weekday_short(d), d.strftime("%a").to_string());
+            with_language("ar", || assert_eq!(weekday_short(d), arabic[i]));
+        }
     }
 
     #[test]

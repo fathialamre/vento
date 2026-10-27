@@ -907,7 +907,10 @@ impl Executor {
     ) {
         match result {
             Ok(()) => info!("{}", describe()),
-            Err(error) => self.toast_error(action, &error.to_string(), at),
+            Err(error) => {
+                let logged = in_english(|| error.to_string());
+                self.toast_error_as(action, &error.to_string(), &logged, at);
+            }
         }
     }
 
@@ -916,7 +919,8 @@ impl Executor {
     }
 
     /// Toasts `reason` and logs `logged`, the same reason in English (a
-    /// reason from the platform is English already; `toast_error` does that).
+    /// reason that is English whatever the language, such as one from an
+    /// outside library, goes through `toast_error`, which logs it as it is).
     fn toast_error_as(&self, action: ActionId, reason: &str, logged: &str, at: Point) {
         warn!("{action:?} failed: {logged}");
         self.toast

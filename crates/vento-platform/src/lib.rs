@@ -184,8 +184,29 @@ pub enum MenuEntry {
 pub enum PlatformError {
     #[error("{0}")]
     Failed(String),
+    /// The app with this id or name is not installed. Worded when shown, in
+    /// the interface language.
+    #[error("{}", not_installed(.0))]
+    NotInstalled(String),
+    /// No terminal app is installed. Worded when shown, in the interface
+    /// language.
+    #[error("{}", no_terminal())]
+    NoTerminal,
     #[error("unsupported on this platform")]
     Unsupported,
+}
+
+/// "`app` is not installed", in the interface language.
+fn not_installed(app: &str) -> String {
+    vento_core::i18n::fill(
+        &vento_core::i18n::tr("{app} is not installed"),
+        &[("app", app)],
+    )
+}
+
+/// "no terminal is installed", in the interface language.
+fn no_terminal() -> String {
+    vento_core::i18n::tr("no terminal is installed")
 }
 
 /// Everything vento needs from the operating system.
@@ -668,5 +689,21 @@ mod tests {
         // Green weighs most: a bright green is light, a bright blue dark.
         assert!(!menus([0, 0xc0, 0, 0xff]).is_dark());
         assert!(menus([0, 0, 0xff, 0xff]).is_dark());
+    }
+
+    #[test]
+    fn a_missing_terminal_is_worded_when_it_is_shown() {
+        use vento_core::i18n::with_language;
+        let app = PlatformError::NotInstalled("org.gnome.Terminal".into());
+        let none = PlatformError::NoTerminal;
+        assert_eq!(app.to_string(), "org.gnome.Terminal is not installed");
+        assert_eq!(none.to_string(), "no terminal is installed");
+        with_language("ar", || {
+            assert_eq!(app.to_string(), "org.gnome.Terminal غير مثبّت");
+            assert_eq!(none.to_string(), "لا توجد طرفية مثبّتة");
+        });
+        // The same error read again in English: a log line stays English.
+        let toast = with_language("ar", || app.to_string());
+        assert_ne!(toast, with_language("en", || app.to_string()));
     }
 }

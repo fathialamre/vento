@@ -46,7 +46,8 @@ use slint::{
 };
 use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
-use vento_core::i18n::{fill, tr};
+use vento_core::i18n::errors::io_reason;
+use vento_core::i18n::{fill, tr, with_language};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::{PocketLayout, Settings};
@@ -62,7 +63,7 @@ use crate::ui::{Icons, PocketCell, PocketIsland};
 
 #[cfg(target_os = "linux")]
 use crate::drag;
-use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
+use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
 use geometry::{Frames, cell_cap, frames, hits, hover_event, interactive_rect, island_inputs};
@@ -643,7 +644,10 @@ impl PocketController {
             }
         };
         if let Err((failure, e)) = result {
-            warn!("pocket menu: {failure:?} failed: {e}");
+            warn!(
+                "pocket menu: {failure:?} failed: {}",
+                with_language("en", || e.to_string())
+            );
             let template = match failure {
                 MenuFailure::Open => tr("Couldn't open: {reason}"),
                 MenuFailure::Copy => tr("Couldn't copy: {reason}"),
@@ -667,8 +671,11 @@ impl PocketController {
         let Some(first) = paths.first() else {
             self.latch.ended();
             info!("drag out: nothing left to drag");
-            self.toast
-                .show("Those items are no longer there", None, self.toast_at());
+            self.toast.show(
+                &tr("Those items are no longer there"),
+                None,
+                self.toast_at(),
+            );
             return;
         };
         let icon = self
@@ -1368,7 +1375,8 @@ impl PocketController {
                     controller.end_copies(&done);
                     match result {
                         Ok((entries, errors)) => controller.finish_add(entries, &errors),
-                        Err(_) => controller.finish_add(Vec::new(), &["internal error".into()]),
+                        Err(_) => controller
+                            .finish_add(Vec::new(), &[Failure::new(|| tr("internal error"))]),
                     }
                 });
                 if let Err(e) = delivered {
@@ -1377,7 +1385,13 @@ impl PocketController {
             });
         if let Err(e) = spawned {
             self.end_copies(&paths);
-            self.finish_add(Vec::new(), &[format!("cannot start copying: {e}")]);
+            let failure = Failure::new(|| {
+                fill(
+                    &tr("cannot start copying: {reason}"),
+                    &[("reason", &io_reason(&e))],
+                )
+            });
+            self.finish_add(Vec::new(), &[failure]);
         }
     }
 
@@ -1394,7 +1408,7 @@ impl PocketController {
     /// Adds stored files to the Pocket, saves and refreshes, and toasts the
     /// first error. A kept copy of a file the Pocket now holds anyway (it
     /// came in another way while copying) is removed: vento made it.
-    fn finish_add(&self, entries: Vec<Entry>, errors: &[String]) {
+    fn finish_add(&self, entries: Vec<Entry>, errors: &[Failure]) {
         let now_unix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
@@ -1424,13 +1438,14 @@ impl PocketController {
             self.save();
             self.refresh();
         }
-        if let Some(reason) = errors.first() {
-            warn!("cannot add to the pocket: {}", errors.join("; "));
-            self.toast.show(
-                &format!("Couldn't add to Pocket: {reason}"),
-                None,
-                self.toast_at(),
+        if let Some(first) = errors.first() {
+            let logged: Vec<&str> = errors.iter().map(|f| f.logged.as_str()).collect();
+            warn!("cannot add to the pocket: {}", logged.join("; "));
+            let text = fill(
+                &tr("Couldn't add to Pocket: {reason}"),
+                &[("reason", &first.shown)],
             );
+            self.toast.show(&text, None, self.toast_at());
         }
     }
 
@@ -1625,11 +1640,11 @@ impl PocketController {
     fn save(&self) {
         if let Err(e) = self.pocket.borrow().save(&self.path) {
             warn!("cannot save the pocket to {}: {e}", self.path.display());
-            self.toast.show(
-                &format!("Couldn't save the Pocket: {e}"),
-                None,
-                self.toast_at(),
+            let text = fill(
+                &tr("Couldn't save the Pocket: {error}"),
+                &[("error", &io_reason(&e))],
             );
+            self.toast.show(&text, None, self.toast_at());
         }
     }
 

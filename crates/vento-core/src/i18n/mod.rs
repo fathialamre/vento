@@ -162,6 +162,14 @@ pub fn trn(singular: &'static str, plural: &'static str, n: u64) -> String {
     translate_plural(catalog(), singular, plural, n)
 }
 
+/// Like [`trn`], but fills `{n}` with `shown` instead of the plain count:
+/// the count as the sentence writes it (`"12,408"`, with thousands
+/// separators). `n` alone picks the form.
+pub fn trn_shown(singular: &'static str, plural: &'static str, n: u64, shown: &str) -> String {
+    let template = template_for(catalog(), singular, plural, n);
+    fill(template, &[("n", shown)])
+}
+
 /// Replaces each `{name}` in `template` with its value from `args`. A name
 /// that is not in `args` is left as it is, and replaced text is not
 /// searched again.
@@ -197,10 +205,21 @@ fn translate(cat: Option<&Catalog>, ctx: &str, msgid: &str) -> String {
 }
 
 fn translate_plural(cat: Option<&Catalog>, singular: &str, plural: &str, n: u64) -> String {
-    let template = cat
-        .and_then(|c| c.translate_plural("", singular, n))
-        .unwrap_or(if n == 1 { singular } else { plural });
-    fill(template, &[("n", &n.to_string())])
+    fill(
+        template_for(cat, singular, plural, n),
+        &[("n", &n.to_string())],
+    )
+}
+
+/// The text of the form `n` takes: the catalog's, else the English one.
+fn template_for<'a>(
+    cat: Option<&'a Catalog>,
+    singular: &'a str,
+    plural: &'a str,
+    n: u64,
+) -> &'a str {
+    cat.and_then(|c| c.translate_plural("", singular, n))
+        .unwrap_or(if n == 1 { singular } else { plural })
 }
 
 #[cfg(test)]
@@ -321,6 +340,22 @@ msgstr[1] ""
             (e(1), e(0), e(3)),
             ("1 file".into(), "0 files".into(), "3 files".into())
         );
+    }
+
+    #[test]
+    fn a_shown_count_fills_the_count_but_the_plain_one_picks_the_form() {
+        assert_eq!(
+            trn_shown("{n} file", "{n} files", 12_408, "12,408"),
+            "12,408 files"
+        );
+        assert_eq!(trn_shown("{n} file", "{n} files", 1, "1"), "1 file");
+        with_language("ar", || {
+            assert_eq!(trn_shown("{n} file", "{n} files", 2, "2"), "ملفان");
+            assert_eq!(
+                trn_shown("{n} file", "{n} files", 12_408, "12,408"),
+                "12,408 ملفات"
+            );
+        });
     }
 
     #[test]

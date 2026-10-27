@@ -29,6 +29,8 @@ use vento_core::clip_history::{
     ClipEntry, ClipHistory, Loaded, clipboard_dir, clipboard_path, has_backup, remove_backup,
 };
 use vento_core::clip_store::{delete_entry, highest_id, read_entry, sweep, write_entry};
+use vento_core::i18n::dates::{day_month, weekday_short};
+use vento_core::i18n::{fill, tr};
 use vento_core::settings::Settings;
 use vento_platform::{Dropped, Platform};
 
@@ -850,9 +852,12 @@ fn build_rows(
                 Summary::Image { width, height, .. } => (
                     ClipKind::Image,
                     if *width == 0 || *height == 0 {
-                        "Image".to_owned()
+                        tr("Image")
                     } else {
-                        format!("Image {width}×{height}")
+                        fill(
+                            &tr("Image {w}×{h}"),
+                            &[("w", &width.to_string()), ("h", &height.to_string())],
+                        )
                     },
                     false,
                     Some(dir.join(e.id.to_string()).join(THUMB_FILE)),
@@ -879,8 +884,11 @@ fn files_label(paths: &[PathBuf]) -> String {
     };
     let first = display_name(first);
     match paths {
-        [_, second] => format!("{first}, {}", display_name(second)),
-        [_, _, ..] => format!("{first} +{}", paths.len() - 1),
+        [_, second] => format!("{first}{}{}", tr(", "), display_name(second)),
+        [_, _, ..] => fill(
+            &tr("{first} +{n}"),
+            &[("first", &first), ("n", &(paths.len() - 1).to_string())],
+        ),
         _ => first,
     }
 }
@@ -893,22 +901,22 @@ fn link_label(url: &str) -> String {
         .to_owned()
 }
 
-/// How long ago `copied_unix` was at `now_unix`: `now` under a minute,
-/// then `5m`, `3h`, the weekday in `tz` within a week, else the date
-/// (`12 Oct`).
+/// How long ago `copied_unix` was at `now_unix`, in the interface language:
+/// `now` under a minute, then `5m`, `3h`, the weekday in `tz` within a week,
+/// else the date (`12 Oct`).
 fn age_label(copied_unix: u64, now_unix: u64, tz: TimeZone) -> String {
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60 * MINUTE;
     const DAY: u64 = 24 * HOUR;
     let secs = now_unix.saturating_sub(copied_unix);
     if secs < MINUTE {
-        return "now".to_owned();
+        return tr("now");
     }
     if secs < HOUR {
-        return format!("{}m", secs / MINUTE);
+        return fill(&tr("{n}m"), &[("n", &(secs / MINUTE).to_string())]);
     }
     if secs < DAY {
-        return format!("{}h", secs / HOUR);
+        return fill(&tr("{n}h"), &[("n", &(secs / HOUR).to_string())]);
     }
     let Some(at) = i64::try_from(copied_unix)
         .ok()
@@ -916,8 +924,12 @@ fn age_label(copied_unix: u64, now_unix: u64, tz: TimeZone) -> String {
     else {
         return String::new();
     };
-    let format = if secs < 7 * DAY { "%a" } else { "%-d %b" };
-    at.to_zoned(tz).strftime(format).to_string()
+    let date = at.to_zoned(tz).date();
+    if secs < 7 * DAY {
+        weekday_short(date)
+    } else {
+        day_month(date)
+    }
 }
 
 #[cfg(test)]
@@ -928,6 +940,7 @@ mod tests {
     use vento_core::clip::{ClipRep, TYPE_FILE_URL, TYPE_PNG, TYPE_TEXT, TYPE_URL, snapshot_hash};
     use vento_core::clip_history::MAX_ENTRIES;
     use vento_core::geometry::{Point, Rect};
+    use vento_core::i18n::with_language;
     use vento_platform::{
         AppInfo, DropCatcher, IslandHome, MenuEntry, PlatformError, RgbaImage, TerminalApp,
     };
@@ -1701,6 +1714,55 @@ mod tests {
         assert_eq!(age_label(now - 10 * 86400, now, TimeZone::UTC), "12 Oct");
         // A time ahead of now (a clock set back) reads as now.
         assert_eq!(age_label(now + 50, now, TimeZone::UTC), "now");
+    }
+
+    #[test]
+    fn ages_read_in_arabic() {
+        let utc = |s: &str| s.parse::<jiff::Timestamp>().unwrap().as_second() as u64;
+        // A Thursday.
+        let now = utc("2026-10-22T12:00:00Z");
+        with_language("ar", || {
+            assert_eq!(age_label(now - 5, now, TimeZone::UTC), "الآن");
+            assert_eq!(age_label(now - 5 * 60, now, TimeZone::UTC), "5 د");
+            assert_eq!(age_label(now - 3 * 3600, now, TimeZone::UTC), "3 س");
+            assert_eq!(age_label(now - 2 * 86400, now, TimeZone::UTC), "الثلاثاء");
+            assert_eq!(age_label(now - 10 * 86400, now, TimeZone::UTC), "12 أكتوبر");
+        });
+    }
+
+    #[test]
+    fn row_labels_read_in_arabic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let image = |id, width, height| {
+            entry(
+                id,
+                now - 300,
+                Summary::Image {
+                    ext: "png".into(),
+                    width,
+                    height,
+                },
+                vec![vec![TYPE_PNG.into()]],
+            )
+        };
+        let entries = [image(1, 640, 480), image(2, 0, 0)];
+        let rows = with_language("ar", || build_rows(&entries, now, |_| true, tmp.path()));
+        let shown: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|r| (r.label.as_str(), r.age.as_str()))
+            .collect();
+        assert_eq!(shown, [("صورة 640×480", "5 د"), ("صورة", "5 د")]);
+        assert_eq!(
+            files_label(&[PathBuf::from("/a/x.txt"), PathBuf::from("/a/y.txt")]),
+            "x.txt, y.txt"
+        );
+        with_language("ar", || {
+            let two = [PathBuf::from("/a/x.txt"), PathBuf::from("/a/y.txt")];
+            assert_eq!(files_label(&two), "x.txt، y.txt");
+            let three = [two[0].clone(), two[1].clone(), PathBuf::from("/a/z.txt")];
+            assert_eq!(files_label(&three), "x.txt +2");
+        });
     }
 
     #[test]

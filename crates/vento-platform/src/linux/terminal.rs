@@ -183,10 +183,8 @@ pub(super) fn open(
     on_error: Box<dyn Fn(String) + Send>,
 ) -> Result<(), PlatformError> {
     let apps = installed();
-    let id = resolve(&apps, terminal)
-        .ok_or_else(|| PlatformError::Failed("no terminal is installed".into()))?;
-    let app = DesktopAppInfo::new(id)
-        .ok_or_else(|| PlatformError::Failed(format!("{id} is not installed")))?;
+    let id = resolve(&apps, terminal).ok_or(PlatformError::NoTerminal)?;
+    let app = DesktopAppInfo::new(id).ok_or_else(|| PlatformError::NotInstalled(id.to_owned()))?;
     let program = app.executable();
     let mut child = detached(Command::new(&program).args(workdir_args(id, dir)), dir)
         .spawn()
