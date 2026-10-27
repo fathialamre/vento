@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds vento in release mode and wraps it in target/bundle/Vento.app, with
-# the app icon and LSUIElement so it stays out of the Dock.
+# the app icon and LSUIElement so it stays out of the Dock. The languages in
+# CFBundleLocalizations are the ones in lang/; add a language there too.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,6 +32,11 @@ cat > "$app/Contents/Info.plist" <<EOF
 	<string>io.github.fathialamre.vento</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ar</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>Vento</string>
 	<key>CFBundleDisplayName</key>
