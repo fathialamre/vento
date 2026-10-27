@@ -109,7 +109,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // Pocket's window is the first. Text made before this is English.
     appearance::apply_language(language_code(&hub.current().language));
     let info = info::InfoController::new(platform.clone(), toaster.clone());
-    let pdf = pdf::PdfController::new(platform.clone(), toaster.clone(), executor.clone());
+    let pdf = pdf::PdfController::new(
+        platform.clone(),
+        toaster.clone(),
+        executor.clone(),
+        hub.clone(),
+    );
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
     let drop_info = info.clone();

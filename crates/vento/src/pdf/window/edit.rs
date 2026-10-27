@@ -15,6 +15,7 @@ use vento_core::i18n::{fill, tr};
 use vento_core::pdf::{PageList, PageRef, PdfError, Selection, Source, open_sources};
 use vento_platform::SystemPdf;
 
+use super::write::BannerAction;
 use super::{BANNER_TIME, DROP_BATCH, PdfView, SCROLL_TICK, live_view, spawn_worker};
 use crate::exec::pdf_open_toast_text;
 use crate::pdf::logic::{
@@ -25,9 +26,13 @@ use crate::pdf::thumbs;
 
 impl PdfView {
     /// Whether the page list can be edited now: not while a page is shown
-    /// large or pages are being dragged.
+    /// large or pages are being dragged, a write runs, or a popover, cut
+    /// mode or the closing question holds the window.
     pub(super) fn can_edit(&self) -> bool {
-        self.large.get().is_none() && self.drag.borrow().is_idle()
+        self.large.get().is_none()
+            && self.drag.borrow().is_idle()
+            && !self.is_busy()
+            && !self.is_held()
     }
 
     /// Runs `edit` on the page list and the selection, then shows the
@@ -81,7 +86,7 @@ impl PdfView {
             pages.delete(&at);
             selection.clear();
         });
-        self.show_banner(&removed_text(at.len()));
+        self.show_banner(&removed_text(at.len()), BannerAction::Undo);
     }
 
     /// Turns the selected pages a quarter turn; they stay selected.
@@ -124,9 +129,16 @@ impl PdfView {
         });
     }
 
-    /// Shows `text` in the banner over the grid, with Undo, for a while.
-    pub(super) fn show_banner(&self, text: &str) {
+    /// Shows `text` in the banner over the grid for a while, with a button
+    /// that does `action`.
+    pub(super) fn show_banner(&self, text: &str, action: BannerAction) {
+        let button = match action {
+            BannerAction::Undo => tr("Undo"),
+            BannerAction::Reveal(_) => tr("Show in Finder"),
+        };
+        *self.banner_action.borrow_mut() = action;
         self.window.set_banner(text.into());
+        self.window.set_banner_button(button.into());
         self.window.set_banner_shown(true);
         let this = self.this.clone();
         self.banner_timer
@@ -318,6 +330,9 @@ impl PdfView {
 
     /// ＋ Add PDF: the open panel, starting in the first file's folder.
     pub(super) fn add_pdf(&self) {
+        if !self.can_edit() {
+            return;
+        }
         let start = self
             .sources
             .borrow()
@@ -339,7 +354,7 @@ impl PdfView {
 
     /// A file dropped on the window: collected with the rest of its drop.
     pub(super) fn file_dropped(&self, path: PathBuf) {
-        if self.closed.get() {
+        if self.closed.get() || !self.can_edit() {
             return;
         }
         self.dropped.borrow_mut().push(path);

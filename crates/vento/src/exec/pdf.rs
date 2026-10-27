@@ -22,8 +22,8 @@ pub type PdfDone = Box<dyn FnOnce(&PdfOutcome)>;
 
 /// Toast text for a finished PDF write job. A file (Save, Extract, a single
 /// image) is named; a folder (Split, several images) is named with how many
-/// files it holds.
-pub(super) fn pdf_toast_text(outcome: &PdfOutcome) -> String {
+/// files it holds. The PDF window's banner says the same.
+pub fn pdf_toast_text(outcome: &PdfOutcome) -> String {
     if outcome.cancelled || matches!(outcome.failed, Some(PdfError::Cancelled)) {
         return cancelled_text();
     }
@@ -161,7 +161,6 @@ impl Executor {
     /// PDF window shows its own progress, so `progress` is only handed to the
     /// job (and cancelled when vento quits). Returns `false`, with a Busy
     /// toast and `done` never called, when another job is running.
-    #[allow(dead_code)] // The PDF window's Save and page tools call this (Task 10).
     pub fn pdf_job(
         &self,
         job: PdfJob,

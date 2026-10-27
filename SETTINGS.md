@@ -123,6 +123,14 @@ clipboard_shortcut = "ctrl+alt+v"
 # Global shortcut for Copy from screen; same form as pocket_shortcut
 # ("ctrl+alt+o" on Linux, where GNOME opens a terminal on Ctrl+Alt+T)
 screen_text_shortcut = "ctrl+alt+t"
+
+# PDF window, To images: the format last picked, "png" or "jpeg" (JPEG is
+# drawn on white); any other value means "png". macOS only for now
+pdf_image_format = "png"
+
+# PDF window, To images: the quality last picked, in dots per inch: 300
+# (Print) or 150 (Screen); any other value means 300
+pdf_image_dpi = 300
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

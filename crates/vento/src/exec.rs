@@ -33,9 +33,7 @@ mod convert;
 mod pdf;
 
 use archive::archive_undo_toast_text;
-#[allow(unused_imports)] // The PDF window's Save uses it (Task 10).
-pub use pdf::PdfDone;
-pub use pdf::pdf_open_toast_text;
+pub use pdf::{PdfDone, pdf_open_toast_text, pdf_toast_text};
 
 /// The side notes of a move or an undo: what failed, and what was moved
 /// but could not be removed from where it came from. Each is a clause of

@@ -24,6 +24,7 @@ use vento_core::pdf::{PdfError, Source, open_sources};
 use vento_platform::{Platform, SystemPdf};
 
 use crate::exec::{Executor, pdf_open_toast_text};
+use crate::settings_hub::SettingsHub;
 use crate::toast::Toaster;
 pub use window::PdfView;
 use window::ViewCtx;
@@ -39,6 +40,7 @@ pub struct PdfController {
     platform: Rc<dyn Platform>,
     toaster: Rc<Toaster>,
     executor: Rc<Executor>,
+    settings: Rc<SettingsHub>,
     /// The open windows, in the order they opened.
     views: RefCell<Vec<Rc<PdfView>>>,
     /// Whether another vento window is open (it keeps the focus when the
@@ -53,11 +55,13 @@ impl PdfController {
         platform: Rc<dyn Platform>,
         toaster: Rc<Toaster>,
         executor: Rc<Executor>,
+        settings: Rc<SettingsHub>,
     ) -> Rc<Self> {
         let controller = Rc::new_cyclic(|this| Self {
             platform,
             toaster,
             executor,
+            settings,
             views: RefCell::new(Vec::new()),
             other_window_open: RefCell::new(None),
             this: this.clone(),
@@ -118,6 +122,7 @@ impl PdfController {
             platform: self.platform.clone(),
             toaster: self.toaster.clone(),
             executor: self.executor.clone(),
+            settings: self.settings.clone(),
             closed: Rc::new(move |id| {
                 if let Some(controller) = this.upgrade() {
                     controller.closed(id);
@@ -175,16 +180,37 @@ impl PdfController {
             .count()
     }
 
-    /// Closes every window, then calls `on_done` with whether quitting may
-    /// go on. Every window closes through its `request_close` path; until
-    /// that can ask about unsaved edits (Task 10), all close and quitting
-    /// goes on.
+    /// Closes every window, in the order they opened, then calls `on_done`
+    /// with whether quitting may go on. A window with unsaved edits comes
+    /// forward with its question and the next one waits for the answer:
+    /// Cancel on any stops there with `on_done(false)`; once every window
+    /// has closed (saved or discarded), `on_done(true)`.
     #[allow(dead_code)] // Quitting calls it (Task 11).
     pub fn close_all(&self, on_done: Box<dyn FnOnce(bool)>) {
-        let views: Vec<Rc<PdfView>> = self.views.borrow().clone();
-        for view in views {
-            view.request_close();
-        }
-        on_done(true);
+        let views: Vec<Rc<PdfView>> = self
+            .views
+            .borrow()
+            .iter()
+            .filter(|view| !view.is_closed())
+            .rev()
+            .cloned()
+            .collect();
+        close_in_turn(views, on_done);
     }
+}
+
+/// Closes the last of `views` (asking about edits), then the rest the
+/// same way, then tells `on_done`; stops at a Cancel.
+fn close_in_turn(mut views: Vec<Rc<PdfView>>, on_done: Box<dyn FnOnce(bool)>) {
+    let Some(view) = views.pop() else {
+        on_done(true);
+        return;
+    };
+    view.close_asking(Box::new(move |closed| {
+        if closed {
+            close_in_turn(views, on_done);
+        } else {
+            on_done(false);
+        }
+    }));
 }

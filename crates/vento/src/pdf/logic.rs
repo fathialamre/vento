@@ -6,7 +6,9 @@
 use std::collections::{HashMap, HashSet};
 
 use vento_core::i18n::{fill, tr, trn};
-use vento_core::pdf::{GridMetrics, PageRef, page_ranges};
+use vento_core::pdf::{
+    GridMetrics, ImageKind, ImageOptions, PageRef, SplitMode, page_ranges, split_plan,
+};
 
 /// How far, in points, the pointer moves with the button down on a page
 /// before it drags the page.
@@ -343,6 +345,160 @@ pub fn turned_pages(before: &[PageRef], after: &[PageRef]) -> Vec<(usize, PageRe
         .collect()
 }
 
+/// How near, in points, a click in cut mode must come to the middle of the
+/// gap between two pages to place or remove a cut there.
+pub const CUT_REACH: f32 = 24.0;
+
+/// Cut mode's footer pieces for `count` pages cut at `cuts` (a cut `c`
+/// falls between positions `c - 1` and `c`): the page ranges of the pieces
+/// (`"1–2 | 3–5 | 6–8"`) and the button's text (`"Split into 3"`). No cut
+/// is one piece.
+pub fn cut_summary(count: usize, cuts: &[usize]) -> (String, String) {
+    let pieces: Vec<String> = split_plan(count, &SplitMode::AtCuts(cuts.to_vec()))
+        .into_iter()
+        .map(|range| page_ranges(&range.collect::<Vec<_>>()))
+        .collect();
+    let n = pieces.len().max(1) as u64;
+    (
+        pieces.join(" | "),
+        trn("Split into {n}", "Split into {n}", n),
+    )
+}
+
+/// Cut mode's footer text: how to place a cut, then the pieces.
+pub fn cut_footer(pieces: &str) -> String {
+    fill(
+        &tr("Click between pages to add or remove a cut · {pieces}"),
+        &[("pieces", pieces)],
+    )
+}
+
+/// The cut a click at (`x`, `y`) in the grid's content space (before the
+/// columns' centring offset, scroll included) places or removes: the gap
+/// between two pages within [`CUT_REACH`] of the click, as an insertion
+/// index `1..count`. `None` far from a gap, before the first page and after
+/// the last. The gap at the start of a row is the cut after the last page
+/// of the row above.
+pub fn cut_at(metrics: &GridMetrics, x: f32, y: f32, count: usize) -> Option<usize> {
+    if count < 2 {
+        return None;
+    }
+    let columns = metrics.columns.max(1);
+    let row_stride = metrics.cell_h + metrics.gap;
+    // The band of a row reaches half way into the gaps above and below it.
+    let row = ((y - metrics.pad + metrics.gap / 2.0) / row_stride).floor();
+    if row < 0.0 || row as usize >= metrics.rows(count) {
+        return None;
+    }
+    let start = row as usize * columns;
+    let in_row = (count - start).min(columns);
+    let along = if metrics.rtl {
+        metrics.content_width() - x
+    } else {
+        x
+    };
+    // Gap `j` of the row has its middle at `pad + j * stride - gap / 2`.
+    let stride = metrics.cell_w + metrics.gap;
+    let gap = ((along - metrics.pad + metrics.gap / 2.0) / stride)
+        .round()
+        .clamp(0.0, in_row as f32);
+    let middle = metrics.pad + gap * stride - metrics.gap / 2.0;
+    if (along - middle).abs() > CUT_REACH {
+        return None;
+    }
+    let cut = start + gap as usize;
+    (cut > 0 && cut < count).then_some(cut)
+}
+
+/// Where the marker of `cut` stands, as [`insertion_bar`] gives it: in the
+/// gap after page `cut - 1`, in that page's row.
+pub fn cut_marker(metrics: &GridMetrics, cut: usize, count: usize) -> (f32, f32) {
+    let columns = metrics.columns.max(1);
+    let row = cut.saturating_sub(1) / columns;
+    let top = metrics.pad + row as f32 * (metrics.cell_h + metrics.gap);
+    insertion_bar(metrics, cut, count, top)
+}
+
+/// Places `cut` in `cuts`, or removes it when it is there; `cuts` stays
+/// sorted.
+pub fn toggle_cut(cuts: &mut Vec<usize>, cut: usize) {
+    match cuts.binary_search(&cut) {
+        Ok(i) => {
+            cuts.remove(i);
+        }
+        Err(i) => cuts.insert(i, cut),
+    }
+}
+
+/// The pages per piece "Every N pages" offers for `count` pages: from 2 to
+/// one less than the count (2 at least).
+pub fn split_n_range(count: usize) -> (usize, usize) {
+    (2, count.saturating_sub(1).max(2))
+}
+
+/// The Split popover's heading: "Split report.pdf".
+pub fn split_heading(name: &str) -> String {
+    fill(&tr("Split {name}"), &[("name", name)])
+}
+
+/// The Split popover's first choice: "Every page → 8 files".
+pub fn every_page_text(count: usize) -> String {
+    trn(
+        "Every page → {n} file",
+        "Every page → {n} files",
+        count as u64,
+    )
+}
+
+/// The Split popover's second choice, before its number's buttons:
+/// "Every 2 pages".
+pub fn every_n_text(n: usize) -> String {
+    trn("Every {n} page", "Every {n} pages", n as u64)
+}
+
+/// What a choice makes, after it: "→ 4 files".
+pub fn files_text(files: usize) -> String {
+    trn("→ {n} file", "→ {n} files", files as u64)
+}
+
+/// The To images popover's heading ("3 pages to images") and its button
+/// ("Save images") for `n` pages.
+pub fn images_texts(n: usize) -> (String, String) {
+    let n = n as u64;
+    (
+        trn("{n} page to image", "{n} pages to images", n),
+        trn("Save image", "Save images", n),
+    )
+}
+
+/// To images' format and resolution from the settings' `pdf_image_format`
+/// and `pdf_image_dpi`: JPEG only for `"jpeg"`, 150 DPI only for 150.
+pub fn image_options(format: &str, dpi: u32) -> ImageOptions {
+    ImageOptions {
+        kind: if format == "jpeg" {
+            ImageKind::Jpeg
+        } else {
+            ImageKind::Png
+        },
+        dpi: if dpi == 150 { 150 } else { 300 },
+    }
+}
+
+/// The settings' `pdf_image_format` value for `kind`.
+pub fn format_key(kind: ImageKind) -> &'static str {
+    match kind {
+        ImageKind::Png => "png",
+        ImageKind::Jpeg => "jpeg",
+    }
+}
+
+/// How far a write job is, from its counts of files: `None` while there is
+/// no measure of it (one file, or nothing counted yet), when the footer's
+/// bar shows only that it is busy.
+pub fn job_fraction(done: u64, total: u64) -> Option<f32> {
+    (total > 1).then(|| (done as f64 / total as f64).min(1.0) as f32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,6 +552,141 @@ mod tests {
     #[test]
     fn footer_names_one_page_singular() {
         assert_eq!(footer_text(&[4]), "1 selected · page 5");
+    }
+
+    #[test]
+    fn cut_mode_summary() {
+        assert_eq!(
+            cut_summary(8, &[2, 5]),
+            ("1–2 | 3–5 | 6–8".into(), "Split into 3".into())
+        );
+        assert_eq!(cut_summary(8, &[]).1, "Split into 1");
+    }
+
+    #[test]
+    fn cut_summary_of_single_pages_and_stray_cuts() {
+        assert_eq!(cut_summary(8, &[]).0, "1–8");
+        assert_eq!(cut_summary(3, &[1, 2]).0, "1 | 2 | 3");
+        // Cuts out of range or repeated change nothing.
+        assert_eq!(cut_summary(3, &[0, 2, 2, 9]).0, "1–2 | 3");
+        assert_eq!(
+            cut_footer("1–2 | 3"),
+            "Click between pages to add or remove a cut · 1–2 | 3"
+        );
+    }
+
+    #[test]
+    fn a_click_in_a_gap_finds_its_cut() {
+        // 4 columns: gap lines at x = 125, 235, 345 (pad 20, cell 100, gap 10).
+        let m = metrics(4, false);
+        assert_eq!(cut_at(&m, 125.0, 100.0, 10), Some(1));
+        assert_eq!(cut_at(&m, 125.0 + CUT_REACH, 100.0, 10), Some(1));
+        assert_eq!(cut_at(&m, 237.0, 100.0, 10), Some(2));
+        // The middle of a page is far from every gap.
+        assert_eq!(cut_at(&m, 180.0, 100.0, 10), None);
+        // Before the first page and after the last there is nothing to cut.
+        assert_eq!(cut_at(&m, 15.0, 100.0, 10), None);
+        // Second row (y 180..330): its start is the cut after page 4.
+        assert_eq!(cut_at(&m, 15.0, 250.0, 10), Some(4));
+        assert_eq!(cut_at(&m, 455.0, 100.0, 10), Some(4));
+        // Third row holds pages 9 and 10: after page 10 is the end.
+        assert_eq!(cut_at(&m, 125.0, 400.0, 10), Some(9));
+        assert_eq!(cut_at(&m, 235.0, 400.0, 10), None);
+        // Below the last row.
+        assert_eq!(cut_at(&m, 125.0, 700.0, 10), None);
+        assert_eq!(cut_at(&m, 125.0, 100.0, 1), None);
+    }
+
+    #[test]
+    fn cuts_mirror_right_to_left() {
+        // Content width 470: the first gap is at 470 - 125 = 345.
+        let m = metrics(4, true);
+        assert_eq!(cut_at(&m, 345.0, 100.0, 10), Some(1));
+        assert_eq!(cut_at(&m, 125.0, 100.0, 10), Some(3));
+    }
+
+    #[test]
+    fn cut_markers_stand_after_the_page_before_the_cut() {
+        let m = metrics(4, false);
+        assert_eq!(cut_marker(&m, 1, 10), (125.0, 20.0));
+        // A cut at a row's start is drawn at the end of the row above.
+        assert_eq!(cut_marker(&m, 4, 10), (455.0, 20.0));
+        assert_eq!(cut_marker(&m, 5, 10), (125.0, 180.0));
+        let rtl = metrics(4, true);
+        assert_eq!(cut_marker(&rtl, 1, 10), (345.0, 20.0));
+    }
+
+    #[test]
+    fn cuts_toggle_and_stay_sorted() {
+        let mut cuts = Vec::new();
+        toggle_cut(&mut cuts, 5);
+        toggle_cut(&mut cuts, 2);
+        assert_eq!(cuts, [2, 5]);
+        toggle_cut(&mut cuts, 5);
+        assert_eq!(cuts, [2]);
+    }
+
+    #[test]
+    fn split_choices_word_their_files() {
+        assert_eq!(split_n_range(8), (2, 7));
+        assert_eq!(split_n_range(2), (2, 2));
+        assert_eq!(split_n_range(1), (2, 2));
+        assert_eq!(split_heading("report.pdf"), "Split report.pdf");
+        assert_eq!(every_page_text(8), "Every page → 8 files");
+        assert_eq!(every_page_text(1), "Every page → 1 file");
+        assert_eq!(every_n_text(2), "Every 2 pages");
+        assert_eq!(files_text(4), "→ 4 files");
+        assert_eq!(files_text(1), "→ 1 file");
+    }
+
+    #[test]
+    fn images_popover_texts() {
+        assert_eq!(
+            images_texts(1),
+            ("1 page to image".into(), "Save image".into())
+        );
+        assert_eq!(
+            images_texts(8),
+            ("8 pages to images".into(), "Save images".into())
+        );
+    }
+
+    #[test]
+    fn image_settings_pick_the_options() {
+        let o = image_options("jpeg", 150);
+        assert_eq!((o.kind, o.dpi), (ImageKind::Jpeg, 150));
+        let o = image_options("png", 300);
+        assert_eq!((o.kind, o.dpi), (ImageKind::Png, 300));
+        let o = image_options("gif", 72);
+        assert_eq!((o.kind, o.dpi), (ImageKind::Png, 300));
+        assert_eq!(format_key(ImageKind::Jpeg), "jpeg");
+        assert_eq!(format_key(ImageKind::Png), "png");
+    }
+
+    #[test]
+    fn job_fraction_needs_several_files() {
+        assert_eq!(job_fraction(0, 0), None);
+        assert_eq!(job_fraction(0, 1), None);
+        assert_eq!(job_fraction(1, 4), Some(0.25));
+        assert_eq!(job_fraction(5, 4), Some(1.0));
+    }
+
+    #[test]
+    fn writing_texts_in_arabic() {
+        with_language("ar", || {
+            let (pieces, button) = cut_summary(8, &[2, 5]);
+            assert_eq!(pieces, "1–2 | 3–5 | 6–8");
+            assert!(!button.starts_with("Split"));
+            assert!(button.contains('3'));
+            assert!(!cut_footer("1–8").starts_with("Click"));
+            assert!(!every_page_text(8).starts_with("Every"));
+            assert!(!every_n_text(2).starts_with("Every"));
+            assert!(!files_text(4).contains("files"));
+            assert!(!images_texts(3).0.contains("pages"));
+            assert!(!images_texts(3).1.starts_with("Save"));
+            assert!(split_heading("r.pdf").contains("r.pdf"));
+            assert!(!split_heading("r.pdf").starts_with("Split"));
+        });
     }
 
     #[test]

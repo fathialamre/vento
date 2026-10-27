@@ -145,6 +145,12 @@ pub struct Settings {
     /// one on or off never moves it. Ignored when its shown actions are not
     /// in `actions`' order (a hand-edited file); empty in older files.
     pub action_order: Vec<ActionId>,
+    /// The PDF window's To images format: `"png"` or `"jpeg"`. Any other
+    /// value reads as `"png"`.
+    pub pdf_image_format: String,
+    /// The PDF window's To images resolution in DPI: 300 (Print) or 150
+    /// (Screen). Any other value reads as 300.
+    pub pdf_image_dpi: u32,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -209,6 +215,8 @@ impl Default for Settings {
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
             action_order: Vec::new(),
+            pdf_image_format: "png".to_owned(),
+            pdf_image_dpi: 300,
         }
     }
 }
@@ -239,6 +247,8 @@ struct RawSettings {
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
     action_order: Vec<String>,
+    pdf_image_format: String,
+    pdf_image_dpi: u32,
 }
 
 impl Default for RawSettings {
@@ -275,6 +285,8 @@ impl From<&Settings> for RawSettings {
                 .map(|a| a.key().to_owned())
                 .collect(),
             action_order: s.action_order.iter().map(|a| a.key().to_owned()).collect(),
+            pdf_image_format: s.pdf_image_format.clone(),
+            pdf_image_dpi: s.pdf_image_dpi,
         }
     }
 }
@@ -353,6 +365,12 @@ impl From<RawSettings> for Settings {
             move_hold_ms,
             hidden_actions,
             action_order,
+            pdf_image_format: if raw.pdf_image_format == "jpeg" {
+                raw.pdf_image_format
+            } else {
+                "png".to_owned()
+            },
+            pdf_image_dpi: if raw.pdf_image_dpi == 150 { 150 } else { 300 },
         }
     }
 }
@@ -637,6 +655,43 @@ mod tests {
         // The system's own words are shown as they are.
         let refused = ShortcutError::Refused("in use".into());
         assert_eq!(with_language("ar", || refused.to_string()), "in use");
+    }
+
+    /// Settings read from `text`, as a settings file would be.
+    fn parse(text: &str) -> Settings {
+        Settings::from(toml::from_str::<RawSettings>(text).unwrap())
+    }
+
+    #[test]
+    fn image_settings_default_and_clamp() {
+        let s = parse("pdf_image_dpi = 600");
+        assert_eq!(s.pdf_image_dpi, 300);
+        assert_eq!(Settings::default().pdf_image_format, "png");
+    }
+
+    #[test]
+    fn image_settings_keep_the_two_choices_and_nothing_else() {
+        let s = parse("pdf_image_format = \"jpeg\"\npdf_image_dpi = 150");
+        assert_eq!(s.pdf_image_format, "jpeg");
+        assert_eq!(s.pdf_image_dpi, 150);
+        let s = parse("pdf_image_format = \"tiff\"\npdf_image_dpi = 0");
+        assert_eq!(s.pdf_image_format, "png");
+        assert_eq!(s.pdf_image_dpi, 300);
+        let s = parse("");
+        assert_eq!((s.pdf_image_format.as_str(), s.pdf_image_dpi), ("png", 300));
+    }
+
+    #[test]
+    fn image_settings_survive_a_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            pdf_image_format: "jpeg".into(),
+            pdf_image_dpi: 150,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::try_load(&p).unwrap(), s);
     }
 
     #[test]

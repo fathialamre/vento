@@ -1,7 +1,9 @@
 //! One PDF Pages window: the pages of the PDFs from one drop as a grid of
 //! thumbnails, with selection, the keyboard, the large view of a page, and
 //! the page list's edits: delete, drag to reorder, rotate, add PDFs (the
-//! open panel or files dropped on the window) and in-window undo.
+//! open panel or files dropped on the window) and in-window undo, and
+//! writing: Save as new PDF, Extract, Split, To images, and the question
+//! about unsaved edits on closing.
 //!
 //! The view owns its Slint window, its page list, its thumbnail thread and
 //! its image cache; the controller drops the view when the window closes,
@@ -12,11 +14,13 @@
 //!   changing it call [`PdfView::pages_changed`], which rebuilds the Slint
 //!   rows, starts a new thumbnail layout (bumping the generation, so older
 //!   results are dropped) and retitles the window;
-//! - every close goes through [`PdfView::request_close`];
+//! - every close goes through [`PdfView::request_close`] (or
+//!   [`PdfView::close_asking`] when quitting);
 //! - keys arrive in [`PdfView::key`];
 //! - whether there is anything to save is [`PdfView::has_pages`].
 
 mod edit;
+mod write;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -36,7 +40,7 @@ use slint::{
 };
 use vento_core::geometry::{Point, screen_for};
 use vento_core::i18n::{self, fill, tr};
-use vento_core::pdf::{GridMetrics, PageList, PageRef, Selection, Source};
+use vento_core::pdf::{GridMetrics, ImageKind, ImageOptions, PageList, PageRef, Selection, Source};
 use vento_platform::Platform;
 
 use super::logic::{
@@ -45,10 +49,12 @@ use super::logic::{
 use super::thumbs::{self, LARGE, Rendered, ThumbState, ThumbWorker};
 use crate::appearance;
 use crate::exec::Executor;
+use crate::settings_hub::SettingsHub;
 use crate::settings_window::centred_on;
 use crate::toast::Toaster;
 use crate::ui::{PdfPage, PdfSourceTag, PdfWindow, Theme};
 use edit::Drag;
+use write::{BannerAction, Job, Popover, SplitChoice};
 
 /// A grid cell, in logical points: the page box plus the number under it
 /// (matches `PageCell` in `pdf.slint`: 6 pt inset, 20 pt label).
@@ -88,14 +94,19 @@ fn live_view(id: u64) -> Option<Rc<PdfView>> {
     VIEWS.with(|views| views.borrow().get(&id).and_then(Weak::upgrade))
 }
 
+/// Told whether a window closed (`true`) or stayed open after its
+/// closing question (`false`, Cancel).
+pub type Answered = Box<dyn FnOnce(bool)>;
+
 /// What a view needs from the app.
 pub struct ViewCtx {
     pub platform: Rc<dyn Platform>,
     /// Says which added files could not be opened.
     pub toaster: Rc<Toaster>,
-    /// Runs the write jobs (Task 10).
-    #[allow(dead_code)] // Saving and the page tools use it (Task 10).
+    /// Runs the write jobs.
     pub executor: Rc<Executor>,
+    /// Keeps To images' format and quality.
+    pub settings: Rc<SettingsHub>,
     /// Told the view's id once its window has closed; the controller then
     /// drops the view.
     pub closed: Rc<dyn Fn(u64)>,
@@ -130,8 +141,28 @@ pub struct PdfView {
     /// A drag of pages, and the timer that scrolls the grid during it.
     drag: RefCell<Drag>,
     scroll_timer: Timer,
-    /// Hides the "pages removed" banner.
+    /// Hides the banner, and what its button does.
     banner_timer: Timer,
+    banner_action: RefCell<BannerAction>,
+    /// The write running, and the timer that shows its progress.
+    job: RefCell<Option<Job>>,
+    job_timer: Timer,
+    /// Saved: the window closes when this fires, and nothing more can be
+    /// done in it meanwhile.
+    saved: Cell<bool>,
+    close_timer: Timer,
+    /// The popover open, the Split popover's choice and N, and To images'
+    /// format and quality.
+    popover: Cell<Popover>,
+    split_choice: Cell<SplitChoice>,
+    split_n: Cell<usize>,
+    image_opts: Cell<ImageOptions>,
+    /// Cut mode's cuts, while it is on (insertion indices, sorted).
+    cuts: RefCell<Option<Vec<usize>>>,
+    /// The closing question shows, and who waits for its answer (quitting):
+    /// told `true` once the window has closed, `false` on Cancel.
+    sheet: Cell<bool>,
+    answer: RefCell<Option<Answered>>,
     /// Files dropped on the window, collected until the drop is whole.
     dropped: RefCell<Vec<PathBuf>>,
     drop_timer: Timer,
@@ -186,6 +217,21 @@ impl PdfView {
             drag: RefCell::new(Drag::Idle),
             scroll_timer: Timer::default(),
             banner_timer: Timer::default(),
+            banner_action: RefCell::new(BannerAction::Undo),
+            job: RefCell::new(None),
+            job_timer: Timer::default(),
+            saved: Cell::new(false),
+            close_timer: Timer::default(),
+            popover: Cell::new(Popover::None),
+            split_choice: Cell::new(SplitChoice::EveryPage),
+            split_n: Cell::new(2),
+            image_opts: Cell::new(ImageOptions {
+                kind: ImageKind::Png,
+                dpi: 300,
+            }),
+            cuts: RefCell::new(None),
+            sheet: Cell::new(false),
+            answer: RefCell::new(None),
             dropped: RefCell::new(Vec::new()),
             drop_timer: Timer::default(),
             closed: Cell::new(false),
@@ -209,7 +255,6 @@ impl PdfView {
     }
 
     /// Whether the grid has any page: Save as new PDF is dimmed without.
-    #[allow(dead_code)] // Saving uses it (Task 10).
     pub fn has_pages(&self) -> bool {
         !self.pages.borrow().is_empty()
     }
@@ -350,7 +395,79 @@ impl PdfView {
         }
         {
             let with = with.clone();
-            window.on_banner_undo(move || with(&|v| v.undo()));
+            window.on_banner_clicked(move || with(&|v| v.banner_clicked()));
+        }
+        {
+            let with = with.clone();
+            window.on_save(move || with(&|v| v.save()));
+        }
+        {
+            let with = with.clone();
+            window.on_extract(move || with(&|v| v.extract()));
+        }
+        {
+            let with = with.clone();
+            window.on_split(move || with(&|v| v.open_split()));
+        }
+        {
+            let with = with.clone();
+            window.on_to_images(move || with(&|v| v.open_images()));
+        }
+        {
+            let with = with.clone();
+            window.on_cancel_job(move || with(&|v| v.cancel_job()));
+        }
+        {
+            let with = with.clone();
+            window.on_split_choose(move |choice| with(&|v| v.split_choose(choice)));
+        }
+        {
+            let with = with.clone();
+            window.on_split_step(move |delta| with(&|v| v.split_step(delta)));
+        }
+        {
+            let with = with.clone();
+            window.on_split_confirmed(move || with(&|v| v.split_confirmed()));
+        }
+        {
+            let with = with.clone();
+            window.on_images_format(move |jpeg| with(&|v| v.images_format(jpeg)));
+        }
+        {
+            let with = with.clone();
+            window.on_images_quality(move |print| with(&|v| v.images_quality(print)));
+        }
+        {
+            let with = with.clone();
+            window.on_images_confirmed(move || with(&|v| v.images_confirmed()));
+        }
+        {
+            let with = with.clone();
+            window.on_popover_cancel(move || with(&|v| v.close_popover()));
+        }
+        {
+            let with = with.clone();
+            window.on_cut_clicked(move |x, y| with(&|v| v.cut_clicked(x, y)));
+        }
+        {
+            let with = with.clone();
+            window.on_cut_confirmed(move || with(&|v| v.cut_confirmed()));
+        }
+        {
+            let with = with.clone();
+            window.on_cut_cancel(move || with(&|v| v.leave_cut_mode()));
+        }
+        {
+            let with = with.clone();
+            window.on_sheet_save(move || with(&|v| v.sheet_save()));
+        }
+        {
+            let with = with.clone();
+            window.on_sheet_discard(move || with(&|v| v.sheet_discard()));
+        }
+        {
+            let with = with.clone();
+            window.on_sheet_cancel(move || with(&|v| v.sheet_cancel()));
         }
         let this = self.this.clone();
         window.on_key(move |text, command, shift| {
@@ -423,14 +540,23 @@ impl PdfView {
     }
 
     /// Asks to close the window: every way of closing it (the red button,
-    /// ⌘W, Escape with nothing selected, quitting) comes here. Closes at
-    /// once for now; asking about unsaved edits belongs here (Task 10).
+    /// ⌘W, Escape with nothing selected) comes here. With unsaved edits it
+    /// asks first: "Save your changes as a new PDF?" (Save / Discard /
+    /// Cancel); without, it closes at once.
     pub fn request_close(&self) {
-        self.close_now();
+        self.ask_close(None);
+    }
+
+    /// Like [`request_close`](Self::request_close), for quitting: brings
+    /// the window forward with its question when it has unsaved edits, then
+    /// tells `answered` `true` once it has closed, or `false` on Cancel.
+    pub fn close_asking(&self, answered: Answered) {
+        self.ask_close(Some(answered));
     }
 
     /// Hides the window and tells the controller, which drops the view on
-    /// the next turn of the event loop.
+    /// the next turn of the event loop; whoever waits for the window to
+    /// close is told. A write still running goes on and toasts its result.
     pub fn close_now(&self) {
         if self.closed.replace(true) {
             return;
@@ -438,11 +564,17 @@ impl PdfView {
         self.scroll_timer.stop();
         self.banner_timer.stop();
         self.drop_timer.stop();
+        self.job_timer.stop();
+        self.close_timer.stop();
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the PDF window: {e}");
         }
         (self.ctx.closed)(self.id);
         debug!("PDF window {} closed", self.id);
+        let answered = self.answer.borrow_mut().take();
+        if let Some(answered) = answered {
+            answered(true);
+        }
     }
 
     /// Takes a change to [`pages`](Self::pages): rebuilds the grid's rows,
@@ -452,6 +584,8 @@ impl PdfView {
     /// without moving anything.
     pub fn pages_changed(&self) {
         self.end_drag();
+        // Cuts are positions in the list that was.
+        self.leave_cut_mode();
         let pages = self.pages.borrow().pages().to_vec();
         let shown = self.shown_sources();
         self.set_legend(&shown);
@@ -483,6 +617,7 @@ impl PdfView {
             self.close_large();
         }
         self.window.set_has_pages(!pages.is_empty());
+        self.update_locks();
         self.selection_changed();
         self.retext();
         self.pump();
@@ -505,8 +640,13 @@ impl PdfView {
             &[("names", &names), ("meta", &meta)],
         );
         self.window.set_heading(heading.into());
-        let selected = self.selection.borrow().indices();
-        self.window.set_footer(footer_text(&selected).into());
+        self.refresh_footer();
+        self.refresh_cuts();
+        match self.popover.get() {
+            Popover::Split => self.refresh_split(),
+            Popover::Images => self.refresh_images(),
+            Popover::None => {}
+        }
         let rtl = i18n::current().rtl;
         if self.metrics.get().rtl != rtl {
             self.layout_grid();
@@ -526,6 +666,7 @@ impl PdfView {
         self.grid_left.set(left);
         self.window.set_columns(metrics.columns as i32);
         self.window.set_grid_left(left);
+        self.refresh_cuts();
         self.pump();
         if self.large.get().is_some() && self.large_wanted_px() > self.large_px.get() * 5 / 4 {
             self.request_large();
@@ -657,8 +798,8 @@ impl PdfView {
             }
         }
         self.window.set_has_selection(!selection.is_empty());
-        self.window
-            .set_footer(footer_text(&selection.indices()).into());
+        drop(selection);
+        self.refresh_footer();
     }
 
     fn set_focus(&self, focus: Option<usize>, shown: bool) {
@@ -676,7 +817,21 @@ impl PdfView {
         let (Some(c), None) = (chars.next(), chars.next()) else {
             return false;
         };
-        if c == char::from(Key::Escape) {
+        if command && matches!(c, 'w' | 'W') {
+            self.request_close();
+            return true;
+        }
+        let escape = c == char::from(Key::Escape);
+        if let Some(used) = self.held_key(escape, c == char::from(Key::Return)) {
+            return used;
+        }
+        if command && matches!(c, 's' | 'S') {
+            if self.drag.borrow().is_idle() {
+                self.save();
+            }
+            return true;
+        }
+        if escape {
             if !self.drag.borrow().is_idle() {
                 self.drag_event(-1, DragEvent::Escape, (0.0, 0.0));
             } else if self.large.get().is_some() {
@@ -686,10 +841,6 @@ impl PdfView {
             } else {
                 self.request_close();
             }
-            return true;
-        }
-        if command && matches!(c, 'w' | 'W') {
-            self.request_close();
             return true;
         }
         if self.large.get().is_some() || !self.drag.borrow().is_idle() {
