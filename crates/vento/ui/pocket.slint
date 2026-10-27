@@ -453,6 +453,44 @@ component ClipList inherits Rectangle {
         }
     }
 
+    // A scrollbar in the gap beside the list, once the rows overflow it:
+    // the thumb shows how much is in view and where, and can be dragged.
+    if list.content-height > list.height: bar := Rectangle {
+        property <length> overflow: list.content-height - list.height;
+        property <length> thumb-h: max(24px, list.height * list.height / list.content-height);
+        property <length> travel: list.height - self.thumb-h;
+        property <length> drag-from;
+        x: list.x + list.width + 3px;
+        y: list.y;
+        width: 4px;
+        height: list.height;
+
+        Rectangle {
+            y: bar.overflow > 0 ? -list.content-y / bar.overflow * bar.travel : 0;
+            width: parent.width;
+            height: bar.thumb-h;
+            border-radius: 2px;
+            background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
+
+            thumb := TouchArea {
+                // A little wider than the thumb, so it is easy to grab.
+                x: -4px;
+                width: parent.width + 8px;
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down {
+                        bar.drag-from = -list.content-y;
+                    }
+                }
+                moved => {
+                    if self.pressed && bar.travel > 0 {
+                        list.content-y = -max(0px, min(bar.overflow,
+                            bar.drag-from + (self.mouse-y - self.pressed-y) * bar.overflow / bar.travel));
+                    }
+                }
+            }
+        }
+    }
+
     if root.rows.length == 0: Text {
         x: list.x;
         y: list.y;
