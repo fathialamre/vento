@@ -39,7 +39,9 @@ use vento_core::i18n::{self, fill, tr};
 use vento_core::pdf::{GridMetrics, PageList, PageRef, Selection, Source};
 use vento_platform::Platform;
 
-use super::logic::{Arrow, footer_text, moved_focus, source_letter, tint_of, title_text};
+use super::logic::{
+    Arrow, DragEvent, footer_text, moved_focus, source_letter, sources_in_use, tint_of, title_text,
+};
 use super::thumbs::{self, LARGE, Rendered, ThumbState, ThumbWorker};
 use crate::appearance;
 use crate::exec::Executor;
@@ -225,30 +227,42 @@ impl PdfView {
         window.set_gap(GAP);
         window.set_pad(PAD);
         window.set_pages(ModelRc::from(self.rows.clone()));
-        self.set_legend();
         self.connect();
         appearance::follow(window, appearance::Look::Full);
         appearance::follow_language(self.this.clone(), |view| view.retext());
         self.pages_changed();
     }
 
-    /// Names the files in the toolbar when there are several.
-    fn set_legend(&self) {
-        let legend: Vec<PdfSourceTag> = {
+    /// The sources the window names (title, legend, letters and tints):
+    /// those the pages use, or every source when no page is left. A file
+    /// whose pages were all deleted, or whose adding was undone, stays
+    /// opened for undo and redo but is not named.
+    fn shown_sources(&self) -> Vec<usize> {
+        let count = self.sources.borrow().len();
+        let used = sources_in_use(self.pages.borrow().pages(), count);
+        if used.is_empty() {
+            (0..count).collect()
+        } else {
+            used
+        }
+    }
+
+    /// Names the shown files in the toolbar when there are several.
+    fn set_legend(&self, shown: &[usize]) {
+        let legend: Vec<PdfSourceTag> = if shown.len() > 1 {
             let sources = self.sources.borrow();
-            if sources.len() > 1 {
-                sources
-                    .iter()
-                    .enumerate()
-                    .map(|(i, s)| PdfSourceTag {
+            shown
+                .iter()
+                .filter_map(|&i| {
+                    Some(PdfSourceTag {
                         letter: source_letter(i).into(),
-                        name: file_name(s).into(),
-                        tint: tint_of(i, sources.len()),
+                        name: file_name(sources.get(i)?).into(),
+                        tint: tint_of(i, shown.len()),
                     })
-                    .collect()
-            } else {
-                Vec::new()
-            }
+                })
+                .collect()
+        } else {
+            Vec::new()
         };
         self.window.set_legend(ModelRc::new(VecModel::from(legend)));
     }
@@ -289,11 +303,21 @@ impl PdfView {
         }
         {
             let with = with.clone();
-            window.on_page_moved(move |i, dx, dy, x, y| with(&|v| v.page_moved(i, dx, dy, x, y)));
+            window.on_page_moved(move |i, left, dx, dy, x, y| {
+                with(&|v| v.drag_event(i, DragEvent::Moved { left, dx, dy }, (x, y)));
+            });
         }
         {
             let with = with.clone();
-            window.on_page_released(move |_| with(&|v| v.page_released()));
+            window.on_page_released(move |i, left| {
+                with(&|v| v.drag_event(i, DragEvent::Up { left }, (0.0, 0.0)));
+            });
+        }
+        {
+            let with = with.clone();
+            window.on_page_cancelled(move |i| {
+                with(&|v| v.drag_event(i, DragEvent::Cancel, (0.0, 0.0)));
+            });
         }
         // The toolbar's page tools also act from the large view: it closes
         // first, as the edit may move its page.
@@ -429,7 +453,9 @@ impl PdfView {
     pub fn pages_changed(&self) {
         self.end_drag();
         let pages = self.pages.borrow().pages().to_vec();
-        let several = self.sources.borrow().len();
+        let shown = self.shown_sources();
+        self.set_legend(&shown);
+        let several = shown.len();
         let rows: Vec<PdfPage> = pages
             .iter()
             .enumerate()
@@ -465,7 +491,13 @@ impl PdfView {
     /// Writes the window's text again: on open, after an edit and after a
     /// language change (which may also change the reading direction).
     fn retext(&self) {
-        let names: Vec<String> = self.sources.borrow().iter().map(file_name).collect();
+        let names: Vec<String> = {
+            let sources = self.sources.borrow();
+            self.shown_sources()
+                .into_iter()
+                .filter_map(|i| sources.get(i).map(file_name))
+                .collect()
+        };
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         let (names, meta) = title_text(&names, self.pages.borrow().len(), self.is_edited());
         let heading = fill(
@@ -646,7 +678,7 @@ impl PdfView {
         };
         if c == char::from(Key::Escape) {
             if !self.drag.borrow().is_idle() {
-                self.cancel_drag();
+                self.drag_event(-1, DragEvent::Escape, (0.0, 0.0));
             } else if self.large.get().is_some() {
                 self.close_large();
             } else if !self.selection.borrow().is_empty() {

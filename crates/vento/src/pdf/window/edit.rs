@@ -18,8 +18,8 @@ use vento_platform::SystemPdf;
 use super::{BANNER_TIME, DROP_BATCH, PdfView, SCROLL_TICK, live_view, spawn_worker};
 use crate::exec::pdf_open_toast_text;
 use crate::pdf::logic::{
-    auto_scroll_step, cell_origin, drag_started, dragged_pages, follow_selection, insert_point,
-    insertion_bar, max_scroll, removed_text, turned_pages,
+    DragAction, DragEvent, DragPhase, auto_scroll_step, cell_origin, drag_step, dragged_pages,
+    follow_selection, insert_point, insertion_bar, max_scroll, removed_text, turned_pages,
 };
 use crate::pdf::thumbs;
 
@@ -142,25 +142,60 @@ impl PdfView {
         self.window.set_banner_shown(false);
     }
 
-    /// The pointer moved with the button down on page `i`, `dx` and `dy`
-    /// from the press, to (`x`, `y`) in the grid area. Far enough, it
-    /// lifts the page (or the selection, when the page is in it) and the
-    /// drag follows the pointer from then on.
-    pub(super) fn page_moved(&self, i: i32, dx: f32, dy: f32, x: f32, y: f32) {
-        if let Drag::Moving(moving) = &mut *self.drag.borrow_mut() {
-            moving.at = (x, y);
+    /// Where the drag stands.
+    fn drag_phase(&self) -> DragPhase {
+        match &*self.drag.borrow() {
+            Drag::Idle => DragPhase::Idle,
+            Drag::Moving(_) => DragPhase::Moving,
+            Drag::Cancelled => DragPhase::Cancelled,
         }
-        if matches!(*self.drag.borrow(), Drag::Moving(_)) {
-            self.drag_moved();
-            return;
+    }
+
+    /// A drag event on page `i` with the pointer at `at` in the grid area
+    /// (not scrolled; only moves use it), carried out as
+    /// [`drag_step`] rules: only the left button lifts pages, any release
+    /// or cancel ends the drag, and Escape cancels it until the release.
+    pub(super) fn drag_event(&self, i: i32, event: DragEvent, at: (f32, f32)) {
+        if let (Drag::Moving(moving), DragEvent::Moved { .. }) =
+            (&mut *self.drag.borrow_mut(), event)
+        {
+            moving.at = at;
         }
-        if !self.can_edit() || !drag_started(dx, dy) {
+        let (phase, action) = drag_step(self.drag_phase(), event);
+        match action {
+            DragAction::Nothing => {
+                if phase == DragPhase::Idle {
+                    *self.drag.borrow_mut() = Drag::Idle;
+                }
+            }
+            DragAction::Start => {
+                if let DragEvent::Moved { dx, dy, .. } = event {
+                    self.start_drag(i, (dx, dy), at);
+                }
+            }
+            DragAction::Follow => self.drag_moved(),
+            DragAction::Drop => self.drop_pages(),
+            DragAction::End => {
+                self.end_drag();
+                if phase == DragPhase::Cancelled {
+                    *self.drag.borrow_mut() = Drag::Cancelled;
+                }
+            }
+        }
+    }
+
+    /// Lifts page `i` (or the selection, when the page is in it), pressed
+    /// `from` (dx, dy) before the pointer reached `at`; the drag follows the
+    /// pointer from then on. Not while the page list cannot be edited.
+    fn start_drag(&self, i: i32, from: (f32, f32), at: (f32, f32)) {
+        if !self.can_edit() {
             return;
         }
         let Ok(i) = usize::try_from(i) else { return };
         if i >= self.rows.row_count() {
             return;
         }
+        let ((dx, dy), (x, y)) = (from, at);
         let pages = dragged_pages(&self.selection.borrow().indices(), i);
         if !self.selection.borrow().contains(i) {
             self.selection.borrow_mut().click(i);
@@ -255,9 +290,9 @@ impl PdfView {
         }
     }
 
-    /// The button went up after a press on a page: a drag drops its pages
-    /// where the orange bar stands; they stay selected there.
-    pub(super) fn page_released(&self) {
+    /// The left button went up during a drag: the pages drop where the
+    /// orange bar stands and stay selected there.
+    fn drop_pages(&self) {
         let drag = std::mem::replace(&mut *self.drag.borrow_mut(), Drag::Idle);
         let Drag::Moving(moving) = drag else { return };
         let mut moved = Vec::new();
@@ -267,15 +302,6 @@ impl PdfView {
         });
         if let Some(&first) = moved.first() {
             self.set_focus(Some(first), false);
-        }
-    }
-
-    /// Escape during a drag: the pages stay where they were, and the
-    /// release still to come does nothing.
-    pub(super) fn cancel_drag(&self) {
-        if matches!(*self.drag.borrow(), Drag::Moving(_)) {
-            self.end_drag();
-            *self.drag.borrow_mut() = Drag::Cancelled;
         }
     }
 
@@ -396,7 +422,6 @@ impl PdfView {
         // The old thread still answers what it was asked; those results are
         // for a layout that has gone by then and are dropped.
         *self.worker.borrow_mut() = spawn_worker(self.id, bytes);
-        self.set_legend();
         self.close_large();
         self.end_drag();
         let at = insert_point(self.focus.get(), self.pages.borrow().len());

@@ -148,6 +148,66 @@ pub fn dragged_pages(selected: &[usize], pressed: usize) -> Vec<usize> {
     }
 }
 
+/// Where a drag of pages stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragPhase {
+    /// No drag.
+    Idle,
+    /// Pages follow the pointer.
+    Moving,
+    /// Cancelled with Escape while the button is still down: the release
+    /// still to come does nothing.
+    Cancelled,
+}
+
+/// What happens to a page under the pointer during a drag.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DragEvent {
+    /// The pointer moved with a button down on the page: `left` when it is
+    /// the left button, and `dx`, `dy` from its press.
+    Moved { left: bool, dx: f32, dy: f32 },
+    /// A button went up; `left` when it was the left one.
+    Up { left: bool },
+    /// The page lost the pointer without a release (Slint's cancel).
+    Cancel,
+    /// Escape was pressed.
+    Escape,
+}
+
+/// What the window does for a [`DragEvent`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragAction {
+    Nothing,
+    /// Lift the pages and follow the pointer.
+    Start,
+    /// Move the lifted pages and the bar to the pointer.
+    Follow,
+    /// Drop the pages where the bar stands.
+    Drop,
+    /// Put the pages back: nothing moves.
+    End,
+}
+
+/// The next phase of a drag and what to do, for `event` in `phase`. Only
+/// the left button drags; it starts once the pointer is [`DRAG_START`]
+/// from the press. Any release or cancel ends a drag, so it can never
+/// outlive the press that began it; only a left release drops the pages.
+pub fn drag_step(phase: DragPhase, event: DragEvent) -> (DragPhase, DragAction) {
+    use DragAction as A;
+    use DragPhase as P;
+    match (phase, event) {
+        (P::Idle, DragEvent::Moved { left, dx, dy }) if left && drag_started(dx, dy) => {
+            (P::Moving, A::Start)
+        }
+        (P::Moving, DragEvent::Moved { .. }) => (P::Moving, A::Follow),
+        (P::Moving, DragEvent::Up { left: true }) => (P::Idle, A::Drop),
+        (P::Moving, DragEvent::Up { left: false } | DragEvent::Cancel) => (P::Idle, A::End),
+        (P::Moving, DragEvent::Escape) => (P::Cancelled, A::End),
+        (P::Cancelled, DragEvent::Up { .. } | DragEvent::Cancel) => (P::Idle, A::Nothing),
+        (phase, _) => (phase, A::Nothing),
+    }
+}
+
 /// How far the grid scrolls this frame while dragging with the pointer at
 /// `y` in a grid area `height` tall (both in the area's own points, not
 /// scrolled): up (negative) within [`SCROLL_EDGE`] of the top, down within
@@ -220,6 +280,19 @@ pub fn cell_origin(metrics: &GridMetrics, i: usize) -> (f32, f32) {
         metrics.pad + col as f32 * (metrics.cell_w + metrics.gap),
         metrics.pad + (i / columns) as f32 * (metrics.cell_h + metrics.gap),
     )
+}
+
+/// The sources that the pages use, in source order, out of `sources`. The
+/// title, legend and tints name only these: after undoing an add, the
+/// added file stays opened (for redo) but is not shown.
+pub fn sources_in_use(pages: &[PageRef], sources: usize) -> Vec<usize> {
+    let mut used = vec![false; sources];
+    for page in pages {
+        if let Some(slot) = used.get_mut(page.source) {
+            *slot = true;
+        }
+    }
+    (0..sources).filter(|&i| used[i]).collect()
 }
 
 /// The page's identity in a window: a page of a source is in the list at
@@ -477,6 +550,121 @@ mod tests {
         let m = metrics(4, false);
         assert_eq!(insertion_bar(&m, 8, 8, 900.0), (455.0, 180.0));
         assert_eq!(insertion_bar(&m, 0, 0, 0.0), (15.0, 20.0));
+    }
+
+    #[test]
+    fn a_left_press_moved_far_enough_starts_a_drag() {
+        let far = DragEvent::Moved {
+            left: true,
+            dx: 4.0,
+            dy: 0.0,
+        };
+        let near = DragEvent::Moved {
+            left: true,
+            dx: 2.0,
+            dy: 1.0,
+        };
+        assert_eq!(
+            drag_step(DragPhase::Idle, near),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Idle, far),
+            (DragPhase::Moving, DragAction::Start)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Moving, near),
+            (DragPhase::Moving, DragAction::Follow)
+        );
+    }
+
+    #[test]
+    fn other_buttons_never_start_a_drag() {
+        let right = DragEvent::Moved {
+            left: false,
+            dx: 40.0,
+            dy: 40.0,
+        };
+        assert_eq!(
+            drag_step(DragPhase::Idle, right),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Idle, DragEvent::Up { left: false }),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+    }
+
+    #[test]
+    fn a_release_ends_every_drag() {
+        assert_eq!(
+            drag_step(DragPhase::Moving, DragEvent::Up { left: true }),
+            (DragPhase::Idle, DragAction::Drop)
+        );
+        // Another button's release puts the pages back.
+        assert_eq!(
+            drag_step(DragPhase::Moving, DragEvent::Up { left: false }),
+            (DragPhase::Idle, DragAction::End)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Cancelled, DragEvent::Up { left: true }),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Cancelled, DragEvent::Up { left: false }),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+    }
+
+    #[test]
+    fn a_cancel_ends_any_drag() {
+        assert_eq!(
+            drag_step(DragPhase::Moving, DragEvent::Cancel),
+            (DragPhase::Idle, DragAction::End)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Cancelled, DragEvent::Cancel),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Idle, DragEvent::Cancel),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+    }
+
+    #[test]
+    fn escape_cancels_a_drag_until_the_release() {
+        assert_eq!(
+            drag_step(DragPhase::Moving, DragEvent::Escape),
+            (DragPhase::Cancelled, DragAction::End)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Cancelled, DragEvent::Escape),
+            (DragPhase::Cancelled, DragAction::Nothing)
+        );
+        assert_eq!(
+            drag_step(DragPhase::Idle, DragEvent::Escape),
+            (DragPhase::Idle, DragAction::Nothing)
+        );
+        // Moving on after Escape does not lift the pages again.
+        let far = DragEvent::Moved {
+            left: true,
+            dx: 30.0,
+            dy: 0.0,
+        };
+        assert_eq!(
+            drag_step(DragPhase::Cancelled, far),
+            (DragPhase::Cancelled, DragAction::Nothing)
+        );
+    }
+
+    #[test]
+    fn titles_name_only_the_sources_in_use() {
+        let pages = [page(0, 0, 0), page(2, 1, 0), page(0, 1, 0)];
+        assert_eq!(sources_in_use(&pages, 3), vec![0, 2]);
+        assert_eq!(sources_in_use(&[], 2), Vec::<usize>::new());
+        // A page of a source past the list is ignored.
+        assert_eq!(sources_in_use(&[page(5, 0, 0)], 2), Vec::<usize>::new());
     }
 
     #[test]

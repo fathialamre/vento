@@ -53,7 +53,7 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:474
+#: crates/vento/ui/pdf.slint:484
 msgid "Add PDF"
 msgstr ""
 
@@ -367,7 +367,7 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:496
+#: crates/vento/ui/pdf.slint:506
 msgid "Delete"
 msgstr ""
 
@@ -781,11 +781,11 @@ msgstr[1] ""
 msgid "Resume"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:530
+#: crates/vento/ui/pdf.slint:540
 msgid "Rotate left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:540
+#: crates/vento/ui/pdf.slint:550
 msgid "Rotate right"
 msgstr ""
 
@@ -813,7 +813,7 @@ msgstr[1] ""
 msgid "Scroll"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:481
+#: crates/vento/ui/pdf.slint:491
 msgid "Select all"
 msgstr ""
 
@@ -853,7 +853,7 @@ msgstr ""
 msgid "Some items could not be read"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:520
+#: crates/vento/ui/pdf.slint:530
 msgid "Split…"
 msgstr ""
 
@@ -917,7 +917,7 @@ msgstr ""
 msgid "Those items are no longer there"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:512
+#: crates/vento/ui/pdf.slint:522
 msgid "To images"
 msgstr ""
 
@@ -929,7 +929,7 @@ msgstr ""
 msgid "Trigger"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:690
+#: crates/vento/ui/pdf.slint:705
 msgid "Undo"
 msgstr ""
 
@@ -1289,7 +1289,7 @@ msgstr ""
 msgid "{m} min"
 msgstr ""
 
-#: crates/vento/src/pdf/window.rs:472
+#: crates/vento/src/pdf/window.rs:504
 msgid "{names} — {meta}"
 msgstr ""
 
@@ -1421,11 +1421,11 @@ msgid_plural "{} {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:473
+#: crates/vento/ui/pdf.slint:483
 msgid "＋ Add PDF"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:504
+#: crates/vento/ui/pdf.slint:514
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr ""

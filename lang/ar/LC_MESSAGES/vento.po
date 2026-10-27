@@ -55,7 +55,7 @@ msgstr "حول"
 msgid "Actions"
 msgstr "الإجراءات"
 
-#: crates/vento/ui/pdf.slint:474
+#: crates/vento/ui/pdf.slint:484
 msgid "Add PDF"
 msgstr "إضافة PDF"
 
@@ -397,7 +397,7 @@ msgstr "الإنشاء"
 msgid "Dark"
 msgstr "داكن"
 
-#: crates/vento/ui/pdf.slint:496
+#: crates/vento/ui/pdf.slint:506
 msgid "Delete"
 msgstr "حذف"
 
@@ -855,11 +855,11 @@ msgstr[5] "جارٍ استعادة {n} عنصر…"
 msgid "Resume"
 msgstr "استئناف"
 
-#: crates/vento/ui/pdf.slint:530
+#: crates/vento/ui/pdf.slint:540
 msgid "Rotate left"
 msgstr "تدوير لليسار"
 
-#: crates/vento/ui/pdf.slint:540
+#: crates/vento/ui/pdf.slint:550
 msgid "Rotate right"
 msgstr "تدوير لليمين"
 
@@ -895,7 +895,7 @@ msgstr[5] "تم حفظ {n} صورة في {folder}"
 msgid "Scroll"
 msgstr "تمرير"
 
-#: crates/vento/ui/pdf.slint:481
+#: crates/vento/ui/pdf.slint:491
 msgid "Select all"
 msgstr "تحديد الكل"
 
@@ -935,7 +935,7 @@ msgstr "الحجم"
 msgid "Some items could not be read"
 msgstr "تعذّرت قراءة بعض العناصر"
 
-#: crates/vento/ui/pdf.slint:520
+#: crates/vento/ui/pdf.slint:530
 msgid "Split…"
 msgstr "تقسيم…"
 
@@ -999,7 +999,7 @@ msgstr "لا يمكن استخدام هذا الاختصار"
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
-#: crates/vento/ui/pdf.slint:512
+#: crates/vento/ui/pdf.slint:522
 msgid "To images"
 msgstr "تحويل لصور"
 
@@ -1011,7 +1011,7 @@ msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسج
 msgid "Trigger"
 msgstr "المفتاح المشغّل"
 
-#: crates/vento/ui/pdf.slint:690
+#: crates/vento/ui/pdf.slint:705
 msgid "Undo"
 msgstr "تراجع"
 
@@ -1379,7 +1379,7 @@ msgstr "{ms} م.ث"
 msgid "{m} min"
 msgstr "{m} د"
 
-#: crates/vento/src/pdf/window.rs:472
+#: crates/vento/src/pdf/window.rs:504
 msgid "{names} — {meta}"
 msgstr "‏{names} — ‏{meta}"
 
@@ -1575,11 +1575,11 @@ msgstr[3] "‏{} {n}"
 msgstr[4] "‏{} {n}"
 msgstr[5] "‏{} {n}"
 
-#: crates/vento/ui/pdf.slint:473
+#: crates/vento/ui/pdf.slint:483
 msgid "＋ Add PDF"
 msgstr "＋ إضافة PDF"
 
-#: crates/vento/ui/pdf.slint:504
+#: crates/vento/ui/pdf.slint:514
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr "قص"

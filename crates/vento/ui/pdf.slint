@@ -133,9 +133,11 @@ component ToolGap inherits Rectangle {
 // One page in the grid: its picture fitted in the cell's page box, its
 // number under it, its file's letter and tint, and the selection and focus
 // marks. Clicks are reported with the ⌘ (`control`) and Shift keys held
-// at the press. While the button is down, moves are reported with how far
-// the pointer is from the press and where it is in the cell, and the
-// release after them.
+// at the press. While a button is down, moves are reported with whether it
+// is the left one, how far the pointer is from its press and where it is in
+// the cell; every release (with whether it was the left button) and every
+// cancel (the cell lost the pointer) are reported too, so a drag always
+// ends.
 component PageCell inherits Rectangle {
     in property <PdfPage> page;
     in property <bool> focused;
@@ -145,8 +147,9 @@ component PageCell inherits Rectangle {
     in property <length> label-height: 20px;
     callback clicked(bool, bool);
     callback double-clicked();
-    callback moved(length, length, length, length);
-    callback released();
+    callback moved(bool, length, length, length, length);
+    callback released(bool);
+    callback cancelled();
 
     property <length> box-w: self.width - 2 * self.inset;
     property <length> box-h: self.height - self.label-height - 2 * self.inset;
@@ -278,12 +281,16 @@ component PageCell inherits Rectangle {
                 root.command = event.modifiers.control;
                 root.shift = event.modifiers.shift;
             }
-            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
-                root.released();
+            if (event.kind == PointerEventKind.up) {
+                root.released(event.button == PointerEventButton.left);
+            }
+            if (event.kind == PointerEventKind.cancel) {
+                root.cancelled();
             }
         }
+        // `pressed` (and `pressed-x/y`) follow the left button only.
         moved => {
-            root.moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y, self.mouse-x, self.mouse-y);
+            root.moved(self.pressed, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y, self.mouse-x, self.mouse-y);
         }
         clicked => { root.clicked(root.command, root.shift); }
         double-clicked => { root.double-clicked(); }
@@ -422,11 +429,14 @@ export component PdfWindow inherits Window {
     callback page-clicked(int, bool, bool);
     // A page was double-clicked.
     callback page-opened(int);
-    // The button is down on a page and the pointer moved: how far from the
-    // press, and where it is in the grid area (not scrolled).
-    callback page-moved(int, length, length, length, length);
-    // The button went up after a press on a page.
-    callback page-released(int);
+    // A button is down on a page and the pointer moved: whether it is the
+    // left button, how far from its press, and where the pointer is in the
+    // grid area (not scrolled).
+    callback page-moved(int, bool, length, length, length, length);
+    // A button went up after a press on a page (true: the left one).
+    callback page-released(int, bool);
+    // A page lost the pointer without a release.
+    callback page-cancelled(int);
     // Undo in the banner.
     callback banner-undo();
     // A click in the grid but on no page.
@@ -631,10 +641,11 @@ export component PdfWindow inherits Window {
                         focused: root.show-focus && root.focus-index == i;
                         clicked(command, shift) => { root.page-clicked(i, command, shift); }
                         double-clicked => { root.page-opened(i); }
-                        moved(dx, dy, x, y) => {
-                            root.page-moved(i, dx, dy, self.x + x, self.y + y + flick.content-y);
+                        moved(left, dx, dy, x, y) => {
+                            root.page-moved(i, left, dx, dy, self.x + x, self.y + y + flick.content-y);
                         }
-                        released => { root.page-released(i); }
+                        released(left) => { root.page-released(i, left); }
+                        cancelled => { root.page-cancelled(i); }
                     }
 
                     // Where the dragged pages would land, over the page
@@ -669,6 +680,10 @@ export component PdfWindow inherits Window {
                     border-width: 1px;
                     border-color: #ffffff26;
                     background: #1d1d21f2;
+
+                    // Clicks on the banner stay with it, not the pages
+                    // under it.
+                    TouchArea { }
 
                     banner-row := HorizontalLayout {
                         padding-left: Theme.rtl ? 5px : 14px;
