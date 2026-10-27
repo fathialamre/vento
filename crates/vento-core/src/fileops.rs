@@ -1,36 +1,73 @@
 //! Safe file moves: never overwrite, never delete a source before a verified copy exists.
 
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::i18n::errors::io_reason;
+use crate::i18n::{fill, tr};
+
 /// Why a single item could not be moved.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug)]
 pub enum FileOpError {
     /// An underlying filesystem call failed.
-    #[error("i/o error: {0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     /// The destination is the item itself or lies inside it.
-    #[error("cannot move an item into itself")]
     IntoItself,
     /// The source does not exist.
-    #[error("source not found")]
     NotFound,
     /// A cross-device copy did not match its source; the copy was removed.
-    #[error("copy could not be verified; source left untouched")]
     VerifyFailed,
     /// A cross-device move was copied and verified, but the original could not
     /// be (fully) removed. The complete copy is at `copy`; the leftover source
     /// must not be mistaken for a stray duplicate.
-    #[error("moved to {}, but the original could not be fully removed: {source}", .copy.display())]
     SourceNotRemoved {
         /// Where the verified, complete copy lives.
         copy: PathBuf,
         /// Why removing the original failed.
         source: io::Error,
     },
+}
+
+impl fmt::Display for FileOpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FileOpError::Io(e) => f.write_str(&fill(
+                &tr("i/o error: {reason}"),
+                &[("reason", &io_reason(e))],
+            )),
+            FileOpError::IntoItself => f.write_str(&tr("cannot move an item into itself")),
+            FileOpError::NotFound => f.write_str(&tr("source not found")),
+            FileOpError::VerifyFailed => {
+                f.write_str(&tr("copy could not be verified; source left untouched"))
+            }
+            FileOpError::SourceNotRemoved { copy, source } => f.write_str(&fill(
+                &tr("moved to {copy}, but the original could not be fully removed: {reason}"),
+                &[
+                    ("copy", &copy.display().to_string()),
+                    ("reason", &io_reason(source)),
+                ],
+            )),
+        }
+    }
+}
+
+impl std::error::Error for FileOpError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            FileOpError::Io(e) | FileOpError::SourceNotRemoved { source: e, .. } => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<io::Error> for FileOpError {
+    fn from(e: io::Error) -> Self {
+        FileOpError::Io(e)
+    }
 }
 
 /// Items successfully moved, as `(from, to)` pairs, in input order.
@@ -54,7 +91,7 @@ pub struct MoveOutcome {
 fn no_file_name() -> FileOpError {
     FileOpError::Io(io::Error::new(
         io::ErrorKind::InvalidInput,
-        "path has no file name",
+        tr("path has no file name"),
     ))
 }
 
@@ -602,7 +639,7 @@ pub(crate) fn place_partial(
     }
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
-        "no free name for the moved item",
+        tr("no free name for the moved item"),
     ))
 }
 
@@ -624,7 +661,10 @@ fn ensure_removable(path: &Path) -> Result<(), FileOpError> {
     let denied = |what: &Path| {
         FileOpError::Io(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            format!("cannot remove from read-only folder {}", what.display()),
+            fill(
+                &tr("cannot remove from read-only folder {dir}"),
+                &[("dir", &what.display().to_string())],
+            ),
         ))
     };
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty())
@@ -642,7 +682,10 @@ fn ensure_removable(path: &Path) -> Result<(), FileOpError> {
 fn special_file(path: &Path) -> io::Error {
     io::Error::new(
         io::ErrorKind::Unsupported,
-        format!("cannot move special file {}", path.display()),
+        fill(
+            &tr("cannot move special file {path}"),
+            &[("path", &path.display().to_string())],
+        ),
     )
 }
 
@@ -1691,5 +1734,70 @@ mod tests {
 
         assert_eq!(undone.kept_changed, [dest.join("src")]);
         assert!(trashed.is_empty());
+    }
+
+    #[test]
+    fn errors_read_in_english_and_arabic() {
+        use crate::i18n::with_language;
+        let all = || {
+            vec![
+                FileOpError::Io(io::Error::from(io::ErrorKind::PermissionDenied)),
+                FileOpError::Io(io::Error::other("busy")),
+                FileOpError::IntoItself,
+                FileOpError::NotFound,
+                FileOpError::VerifyFailed,
+                FileOpError::SourceNotRemoved {
+                    copy: PathBuf::from("/d/a"),
+                    source: io::Error::from(io::ErrorKind::PermissionDenied),
+                },
+                no_file_name(),
+            ]
+        };
+        let texts = || -> Vec<String> { all().iter().map(ToString::to_string).collect() };
+        assert_eq!(
+            texts(),
+            [
+                "i/o error: permission denied",
+                "i/o error: busy",
+                "cannot move an item into itself",
+                "source not found",
+                "copy could not be verified; source left untouched",
+                "moved to /d/a, but the original could not be fully removed: permission denied",
+                "i/o error: path has no file name",
+            ]
+        );
+        with_language("ar", || {
+            assert_eq!(
+                texts(),
+                [
+                    "خطأ في القراءة أو الكتابة: لا توجد صلاحية",
+                    "خطأ في القراءة أو الكتابة: busy",
+                    "لا يمكن نقل عنصر إلى داخل نفسه",
+                    "العنصر الأصلي غير موجود",
+                    "تعذّر التحقق من النسخة؛ لم يُلمس الأصل",
+                    "نُقل إلى /d/a، لكن تعذّرت إزالة الأصل بالكامل: لا توجد صلاحية",
+                    "خطأ في القراءة أو الكتابة: المسار بلا اسم ملف",
+                ]
+            );
+        });
+    }
+
+    #[test]
+    fn our_own_io_messages_are_worded_where_they_are_made() {
+        use crate::i18n::with_language;
+        let tmp = tempfile::tempdir().unwrap();
+        let special = special_file(tmp.path());
+        let here = tmp.path().display();
+        assert_eq!(
+            special.to_string(),
+            format!("cannot move special file {here}")
+        );
+        with_language("ar", || {
+            let special = special_file(tmp.path());
+            assert_eq!(
+                crate::i18n::errors::io_reason(&special),
+                format!("لا يمكن نقل الملف الخاص {here}")
+            );
+        });
     }
 }

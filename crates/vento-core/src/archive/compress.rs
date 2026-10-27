@@ -16,6 +16,7 @@ use super::job::{ArchiveError, Counting, Made, Progress};
 use super::staging::{Partial, claim_partial_file};
 use crate::durable;
 use crate::fileops::{Fingerprint, numbered_name, place_partial};
+use crate::i18n::{fill, tr};
 
 /// Macs scatter these through folders; they carry nothing worth archiving.
 const DS_STORE: &str = ".DS_Store";
@@ -96,9 +97,9 @@ fn collect_inputs(paths: &[PathBuf], progress: &Progress) -> Result<Vec<Item>, A
     let mut items = Vec::new();
     let mut top_level = HashSet::new();
     for path in paths {
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+        let file_name = path.file_name().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, tr("path has no file name"))
+        })?;
         if file_name == DS_STORE {
             continue;
         }
@@ -172,7 +173,10 @@ fn walk(
     } else {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            format!("cannot compress special file {}", path.display()),
+            fill(
+                &tr("cannot compress special file {path}"),
+                &[("path", &path.display().to_string())],
+            ),
         )
         .into());
     }

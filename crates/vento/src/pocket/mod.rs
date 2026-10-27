@@ -46,6 +46,7 @@ use slint::{
 };
 use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
+use vento_core::i18n::{fill, tr};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::{PocketLayout, Settings};
@@ -101,13 +102,20 @@ thread_local! {
     static MAIN_POCKET: RefCell<Weak<PocketController>> = const { RefCell::new(Weak::new()) };
 }
 
+/// What a right-click menu action that failed was doing, for its toast.
+#[derive(Debug, Clone, Copy)]
+enum MenuFailure {
+    Open,
+    Copy,
+}
+
 /// Shows a launch that failed after Open With returned (`reason`, from any
 /// thread) in the Pocket's toast, on the main thread.
 fn toast_late_open_error(reason: String) {
     let delivered = slint::invoke_from_event_loop(move || {
         if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
-            c.toast
-                .show(&format!("Couldn't open: {reason}"), None, c.toast_at());
+            let text = fill(&tr("Couldn't open: {reason}"), &[("reason", &reason)]);
+            c.toast.show(&text, None, c.toast_at());
         }
     });
     if let Err(e) = delivered {
@@ -612,26 +620,36 @@ impl PocketController {
     /// Remove) or to `paths` (the files of those still there).
     fn run_menu_action(&self, action: MenuAction, targets: &[u64], paths: &[PathBuf]) {
         let result = match action {
-            MenuAction::Open => self.platform.open_paths(paths).map_err(|e| ("open", e)),
+            MenuAction::Open => self
+                .platform
+                .open_paths(paths)
+                .map_err(|e| (MenuFailure::Open, e)),
             MenuAction::OpenWith(app) => self
                 .platform
                 .open_with(paths, &app, Box::new(toast_late_open_error))
-                .map_err(|e| ("open", e)),
+                .map_err(|e| (MenuFailure::Open, e)),
             MenuAction::Reveal => {
                 self.platform.reveal_in_finder(paths);
                 Ok(())
             }
-            MenuAction::Copy => self.platform.copy_files(paths).map_err(|e| ("copy", e)),
+            MenuAction::Copy => self
+                .platform
+                .copy_files(paths)
+                .map_err(|e| (MenuFailure::Copy, e)),
             // As the cell's x does, for one item or many.
             MenuAction::Remove => {
                 self.remove_items(targets, UNDO_WINDOW, true);
                 Ok(())
             }
         };
-        if let Err((verb, e)) = result {
-            warn!("pocket menu: cannot {verb}: {e}");
-            self.toast
-                .show(&format!("Couldn't {verb}: {e}"), None, self.toast_at());
+        if let Err((failure, e)) = result {
+            warn!("pocket menu: {failure:?} failed: {e}");
+            let template = match failure {
+                MenuFailure::Open => tr("Couldn't open: {reason}"),
+                MenuFailure::Copy => tr("Couldn't copy: {reason}"),
+            };
+            let text = fill(&template, &[("reason", &e.to_string())]);
+            self.toast.show(&text, None, self.toast_at());
         }
     }
 

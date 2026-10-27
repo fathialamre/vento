@@ -18,7 +18,8 @@ use vento_core::fileops::{
     move_items, undo, undo_copies,
 };
 use vento_core::geometry::Point;
-use vento_core::i18n::tr;
+use vento_core::i18n::errors::io_reason;
+use vento_core::i18n::{fill, tr, trn};
 use vento_core::paths::format_paths;
 use vento_core::settings::Settings;
 use vento_platform::Platform;
@@ -32,40 +33,39 @@ mod convert;
 
 use archive::archive_undo_toast_text;
 
-/// `"1 copy"` / `"3 copies"`.
-fn plural_copies(n: usize) -> String {
-    format!("{n} {}", if n == 1 { "copy" } else { "copies" })
-}
-
-/// `"1 item"` / `"3 items"`.
-fn items(n: usize) -> String {
-    format!("{n} {}", if n == 1 { "item" } else { "items" })
-}
-
-/// ` · {k} failed` and ` · {j} original(s) couldn't be removed`, or nothing.
+/// The side notes of a move or an undo: what failed, and what was moved
+/// but could not be removed from where it came from. Each is a clause of
+/// its own, in the order the toast says them.
 ///
 /// A `SourceNotRemoved` item is in both `record.moved` and `failed`; it is
 /// counted as moved only, and here only as an original that is still there.
-fn failure_suffix(outcome: &MoveOutcome) -> String {
+fn failure_notes(outcome: &MoveOutcome) -> Vec<String> {
     let leftovers = outcome
         .failed
         .iter()
         .filter(|(_, e)| matches!(e, FileOpError::SourceNotRemoved { .. }))
         .count();
     let failed = outcome.failed.len() - leftovers;
-    let mut suffix = String::new();
+    let mut notes = Vec::new();
     if failed > 0 {
-        suffix.push_str(&format!(" · {failed} failed"));
+        notes.push(trn("{n} failed", "{n} failed", failed as u64));
     }
     if leftovers > 0 {
-        let noun = if leftovers == 1 {
-            "original"
-        } else {
-            "originals"
-        };
-        suffix.push_str(&format!(" · {leftovers} {noun} couldn't be removed"));
+        notes.push(trn(
+            "{n} original couldn't be removed",
+            "{n} originals couldn't be removed",
+            leftovers as u64,
+        ));
     }
-    suffix
+    notes
+}
+
+/// `text` followed by each of the `notes` after the separator that sets a
+/// side note apart (` · `).
+fn with_notes(text: String, notes: &[String]) -> String {
+    notes
+        .iter()
+        .fold(text, |text, note| format!("{text}{}{note}", tr(" · ")))
 }
 
 /// The item's own name, or the whole path for one without a name (`/`).
@@ -76,46 +76,45 @@ fn display_name(path: &Path) -> String {
     )
 }
 
-/// The name of the only one of `paths`, or `count` of them when there are
-/// several: `Photos.zip` / `2 archives`.
-fn name_or_count(paths: &[&Path], count: fn(usize) -> String) -> String {
+/// The name of the only one of `paths`, or `None` when there are none or
+/// several: a sentence names one item and counts many, and each way is a
+/// sentence of its own.
+fn only_name(paths: &[&Path]) -> Option<String> {
     match paths {
-        [only] => display_name(only),
-        _ => count(paths.len()),
-    }
-}
-
-/// The parts of a toast joined with `; `, the first letter capitalised.
-fn sentence(parts: &[String]) -> String {
-    let text = parts.join("; ");
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().chain(chars).collect(),
-        None => text,
+        [only] => Some(display_name(only)),
+        _ => None,
     }
 }
 
 /// Toast text for a finished move.
 fn move_toast_text(outcome: &MoveOutcome) -> String {
-    format!(
-        "Moved {} to {}{}",
-        items(outcome.record.moved.len()),
-        display_name(&outcome.record.dest),
-        failure_suffix(outcome)
-    )
+    let main = fill(
+        &trn(
+            "Moved {n} item to {dest}",
+            "Moved {n} items to {dest}",
+            outcome.record.moved.len() as u64,
+        ),
+        &[("dest", &display_name(&outcome.record.dest))],
+    );
+    with_notes(main, &failure_notes(outcome))
 }
 
 /// Toast text for a finished Copy to.
 fn copy_toast_text(outcome: &CopyOutcome) -> String {
-    let mut text = format!(
-        "Copied {} to {}",
-        items(outcome.record.copies.len()),
-        display_name(&outcome.record.dest)
+    let main = fill(
+        &trn(
+            "Copied {n} item to {dest}",
+            "Copied {n} items to {dest}",
+            outcome.record.copies.len() as u64,
+        ),
+        &[("dest", &display_name(&outcome.record.dest))],
     );
+    let mut notes = Vec::new();
     if !outcome.failed.is_empty() {
-        text.push_str(&format!(" · {} failed", outcome.failed.len()));
+        let n = outcome.failed.len() as u64;
+        notes.push(trn("{n} failed", "{n} failed", n));
     }
-    text
+    with_notes(main, &notes)
 }
 
 /// Toast text for a finished undo of a Copy to: what went to the Trash, what
@@ -123,17 +122,30 @@ fn copy_toast_text(outcome: &CopyOutcome) -> String {
 /// deleted since), and what the Trash refused.
 fn copy_undo_toast_text(outcome: &CopyUndoOutcome) -> String {
     if outcome.trashed == 0 && outcome.kept_changed.is_empty() && outcome.failed.is_empty() {
-        return "Nothing left to remove".into();
+        return tr("Nothing left to remove");
     }
-    let mut text = format!("Removed {}", plural_copies(outcome.trashed));
+    let mut text = trn(
+        "Removed {n} copy",
+        "Removed {n} copies",
+        outcome.trashed as u64,
+    );
     if !outcome.kept_changed.is_empty() {
-        text.push_str(&format!(", kept {} changed", outcome.kept_changed.len()));
+        let n = outcome.kept_changed.len() as u64;
+        text.push_str(&tr(", "));
+        text.push_str(&trn("kept {n} changed", "kept {n} changed", n));
     }
     if outcome.gone > 0 {
-        text.push_str(&format!(", {} no longer there", outcome.gone));
+        text.push_str(&tr(", "));
+        text.push_str(&trn(
+            "{n} no longer there",
+            "{n} no longer there",
+            outcome.gone as u64,
+        ));
     }
     if !outcome.failed.is_empty() {
-        text.push_str(&format!(" · {} failed", outcome.failed.len()));
+        let n = outcome.failed.len() as u64;
+        text.push_str(&tr(" · "));
+        text.push_str(&trn("{n} failed", "{n} failed", n));
     }
     text
 }
@@ -166,11 +178,63 @@ fn after_transfer(done: usize, first_error: Option<String>) -> AfterTransfer {
 
 /// Toast text for a finished undo.
 fn undo_toast_text(outcome: &MoveOutcome) -> String {
-    format!(
-        "Restored {}{}",
-        items(outcome.record.moved.len()),
-        failure_suffix(outcome)
-    )
+    let main = trn(
+        "Restored {n} item",
+        "Restored {n} items",
+        outcome.record.moved.len() as u64,
+    );
+    with_notes(main, &failure_notes(outcome))
+}
+
+/// What a move, copy or undo is busy with, for the toast that says so.
+#[derive(Debug, Clone, Copy)]
+enum Working {
+    Moving,
+    Copying,
+    Restoring,
+    Removing,
+}
+
+/// The toast shown while `count` items are being moved, copied or restored,
+/// or `count` copies removed.
+fn working_text(what: Working, count: usize) -> String {
+    let n = count as u64;
+    match what {
+        Working::Moving => trn("Moving {n} item…", "Moving {n} items…", n),
+        Working::Copying => trn("Copying {n} item…", "Copying {n} items…", n),
+        Working::Restoring => trn("Restoring {n} item…", "Restoring {n} items…", n),
+        Working::Removing => trn("Removing {n} copy…", "Removing {n} copies…", n),
+    }
+}
+
+/// The toast shown while the outputs of an Archive or Convert (`paths`) go
+/// to the Trash.
+fn trashing_text(paths: &[&Path]) -> String {
+    match only_name(paths) {
+        Some(name) => fill(&tr("Moving {name} to the Trash…"), &[("name", &name)]),
+        None => trn(
+            "Moving {n} item to the Trash…",
+            "Moving {n} items to the Trash…",
+            paths.len() as u64,
+        ),
+    }
+}
+
+/// The toast for `action` failing for `reason`: one sentence per action, so
+/// each language can word the action as it needs to.
+fn action_error_text(action: ActionId, reason: &str) -> String {
+    let template = match action {
+        ActionId::Pocket => tr("Couldn't add to Pocket: {reason}"),
+        ActionId::Copy => tr("Couldn't copy: {reason}"),
+        ActionId::Move => tr("Couldn't move: {reason}"),
+        ActionId::CopyPath => tr("Couldn't copy the path: {reason}"),
+        ActionId::Terminal => tr("Couldn't open the terminal: {reason}"),
+        ActionId::CopyTo => tr("Couldn't copy to the folder: {reason}"),
+        ActionId::Archive => tr("Couldn't archive: {reason}"),
+        ActionId::Info => tr("Couldn't show info: {reason}"),
+        ActionId::Convert => tr("Couldn't convert: {reason}"),
+    };
+    fill(&template, &[("reason", reason)])
 }
 
 /// Folder a terminal should open in: the first path if it is a folder,
@@ -212,10 +276,14 @@ pub fn undo_menu_text(kind: Option<UndoKind>) -> String {
 type UndoListener = Box<dyn Fn(Option<UndoKind>)>;
 
 /// Toast shown when a move, copy or undo is requested while one is running.
-const BUSY_TEXT: &str = "Busy — still working";
+fn busy_text() -> String {
+    tr("Busy — still working")
+}
 
 /// Toast shown when Convert is released without a format chosen.
-const HOLD_FOR_FORMAT_TEXT: &str = "Hold on Convert to pick a format";
+fn hold_for_format_text() -> String {
+    tr("Hold on Convert to pick a format")
+}
 
 /// Longest vento waits, when quitting, for a running job to stop.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
@@ -422,9 +490,9 @@ impl Executor {
             ActionId::Convert => match format {
                 Some(format) => self.convert(paths, format, at),
                 None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
-                    self.toast_error(action, "no images", at);
+                    self.toast_error(action, &tr("no images"), at);
                 }
-                None => self.toast.show(HOLD_FOR_FORMAT_TEXT, None, at),
+                None => self.toast.show(&hold_for_format_text(), None, at),
             },
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
@@ -442,9 +510,9 @@ impl Executor {
                             }
                         }),
                     ),
-                    None => Err(vento_platform::PlatformError::Failed(
-                        "no folder to open".into(),
-                    )),
+                    None => Err(vento_platform::PlatformError::Failed(tr(
+                        "no folder to open",
+                    ))),
                 };
                 self.finish(action, result, at, || {
                     format!(
@@ -481,7 +549,7 @@ impl Executor {
 
     fn undo_move(&self, record: MoveRecord, at: Point) {
         self.toast.show(
-            &format!("Restoring {}…", items(record.moved.len())),
+            &working_text(Working::Restoring, record.moved.len()),
             None,
             at,
         );
@@ -527,7 +595,7 @@ impl Executor {
     fn undo_copy(&self, record: CopyRecord, kind: UndoKind, at: Point) {
         let (text, action) = if matches!(kind, UndoKind::Archive | UndoKind::Convert) {
             let outputs: Vec<&Path> = record.copies.iter().map(|(_, o, _)| o.as_path()).collect();
-            let text = format!("Moving {} to the Trash…", name_or_count(&outputs, items));
+            let text = trashing_text(&outputs);
             let action = if kind == UndoKind::Archive {
                 ActionId::Archive
             } else {
@@ -535,7 +603,7 @@ impl Executor {
             };
             (text, action)
         } else {
-            let text = format!("Removing {}…", plural_copies(record.copies.len()));
+            let text = working_text(Working::Removing, record.copies.len());
             (text, ActionId::CopyTo)
         };
         self.toast.show(&text, None, at);
@@ -616,7 +684,7 @@ impl Executor {
     fn refuse_if_busy(&self, at: Point) -> bool {
         if self.busy.get() {
             debug!("busy: request ignored");
-            self.toast.show(BUSY_TEXT, None, at);
+            self.toast.show(&busy_text(), None, at);
         }
         self.busy.get()
     }
@@ -638,7 +706,7 @@ impl Executor {
         }
         if action == ActionId::CopyTo {
             self.toast
-                .show(&format!("Copying {}…", items(paths.len())), None, at);
+                .show(&working_text(Working::Copying, paths.len()), None, at);
             self.spawn_file_job(
                 action,
                 move || copy_items(&paths, &dest),
@@ -648,7 +716,7 @@ impl Executor {
             );
         } else {
             self.toast
-                .show(&format!("Moving {}…", items(paths.len())), None, at);
+                .show(&working_text(Working::Moving, paths.len()), None, at);
             self.spawn_file_job(
                 action,
                 move || move_items(&paths, &dest),
@@ -671,7 +739,7 @@ impl Executor {
             }
             AfterTransfer::Nothing => {
                 debug!("nothing to move");
-                self.toast.show("Nothing to move", None, at);
+                self.toast.show(&tr("Nothing to move"), None, at);
                 return;
             }
             AfterTransfer::Done => {}
@@ -698,7 +766,7 @@ impl Executor {
             }
             AfterTransfer::Nothing => {
                 debug!("nothing to copy");
-                self.toast.show("Nothing to copy", None, at);
+                self.toast.show(&tr("Nothing to copy"), None, at);
                 return;
             }
             AfterTransfer::Done => {}
@@ -761,7 +829,7 @@ impl Executor {
                     executor.progress.close();
                     match result {
                         Ok(value) => done(executor, value),
-                        Err(_) => executor.toast_error(action, "internal error", at),
+                        Err(_) => executor.toast_error(action, &tr("internal error"), at),
                     }
                 });
                 if let Err(e) = delivered {
@@ -772,7 +840,8 @@ impl Executor {
             Ok(worker) => *self.running.borrow_mut() = Some(RunningJob { worker, cancel }),
             Err(e) => {
                 self.busy.set(false);
-                self.toast_error(action, &format!("cannot start: {e}"), at);
+                let reason = fill(&tr("cannot start: {reason}"), &[("reason", &io_reason(&e))]);
+                self.toast_error(action, &reason, at);
             }
         }
     }
@@ -815,10 +884,9 @@ impl Executor {
     }
 
     fn toast_error(&self, action: ActionId, reason: &str, at: Point) {
-        let label = action.label().to_lowercase();
-        warn!("couldn't {label}: {reason}");
+        warn!("{action:?} failed: {reason}");
         self.toast
-            .show(&format!("Couldn't {label}: {reason}"), None, at);
+            .show(&action_error_text(action, reason), None, at);
     }
 }
 
@@ -997,6 +1065,160 @@ mod tests {
             }),
             "Removed 0 copies, kept 1 changed, 1 no longer there · 1 failed"
         );
+    }
+
+    /// A move of `moved` items into the folder called `dest`.
+    fn moved_into(dest: &str, moved: usize) -> MoveOutcome {
+        let mut o = outcome(moved, vec![]);
+        o.record.dest = p(&format!("/dest/{dest}"));
+        o
+    }
+
+    #[test]
+    fn move_text_reads_in_arabic_with_the_noun_after_the_verb() {
+        vento_core::i18n::with_language("ar", || {
+            let say = |n| move_toast_text(&moved_into("المستندات", n));
+            assert_eq!(say(1), "تم نقل عنصر واحد إلى المستندات");
+            assert_eq!(say(2), "تم نقل عنصرين إلى المستندات");
+            assert_eq!(say(3), "تم نقل 3 عناصر إلى المستندات");
+            assert_eq!(say(11), "تم نقل 11 عنصراً إلى المستندات");
+            assert_eq!(say(100), "تم نقل 100 عنصر إلى المستندات");
+            assert_eq!(say(0), "لم يُنقل أي عنصر إلى المستندات");
+            // A Latin name stays whole inside the Arabic sentence.
+            assert_eq!(
+                move_toast_text(&moved_into("Photos", 11)),
+                "تم نقل 11 عنصراً إلى Photos"
+            );
+        });
+    }
+
+    #[test]
+    fn side_notes_are_whole_clauses_after_the_separator() {
+        let failed = vec![
+            (p("/src/x"), FileOpError::IntoItself),
+            not_removed("0"),
+            not_removed("1"),
+        ];
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(
+                move_toast_text(&outcome(3, failed)),
+                "تم نقل 3 عناصر إلى Photos · تعذّرت معالجة عنصر واحد · تعذّرت إزالة أصلين"
+            );
+            assert_eq!(
+                undo_toast_text(&outcome(2, vec![(p("/x"), FileOpError::NotFound)])),
+                "تمت استعادة عنصرين · تعذّرت معالجة عنصر واحد"
+            );
+        });
+    }
+
+    #[test]
+    fn copy_texts_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(
+                copy_toast_text(&copy_outcome(2, vec![])),
+                "تم نسخ عنصرين إلى Photos"
+            );
+            assert_eq!(
+                copy_toast_text(&copy_outcome(3, vec![(p("/src/x"), FileOpError::NotFound)])),
+                "تم نسخ 3 عناصر إلى Photos · تعذّرت معالجة عنصر واحد"
+            );
+            let undone = CopyUndoOutcome {
+                trashed: 2,
+                kept_changed: vec![p("/c/0")],
+                gone: 11,
+                ..Default::default()
+            };
+            assert_eq!(
+                copy_undo_toast_text(&undone),
+                "تمت إزالة نسختين، تم إبقاء عنصر واحد لأنه تغيّر، لم يُعثر على 11 عنصراً بعد الآن"
+            );
+            assert_eq!(
+                copy_undo_toast_text(&CopyUndoOutcome::default()),
+                "لم يبقَ شيء لإزالته"
+            );
+        });
+    }
+
+    #[test]
+    fn an_error_is_one_sentence_per_action() {
+        let say = |action| action_error_text(action, "no folder to open");
+        assert_eq!(
+            say(ActionId::Terminal),
+            "Couldn't open the terminal: no folder to open"
+        );
+        let all: Vec<_> = ActionId::ALL.iter().map(|&a| say(a)).collect();
+        assert_eq!(
+            all,
+            [
+                "Couldn't add to Pocket: no folder to open",
+                "Couldn't copy: no folder to open",
+                "Couldn't move: no folder to open",
+                "Couldn't copy the path: no folder to open",
+                "Couldn't open the terminal: no folder to open",
+                "Couldn't copy to the folder: no folder to open",
+                "Couldn't archive: no folder to open",
+                "Couldn't show info: no folder to open",
+                "Couldn't convert: no folder to open",
+            ]
+        );
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(
+                action_error_text(ActionId::Terminal, "x"),
+                "تعذّر فتح الطرفية: x"
+            );
+            assert_eq!(action_error_text(ActionId::Move, "x"), "تعذّر النقل: x");
+            assert_eq!(
+                action_error_text(ActionId::Convert, &tr("no images")),
+                "تعذّر التحويل: لا توجد صور"
+            );
+        });
+    }
+
+    #[test]
+    fn short_toasts_read_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(busy_text(), "مشغول، العمل جارٍ");
+            assert_eq!(
+                hold_for_format_text(),
+                "اضغط مطوّلاً على «تحويل» لاختيار الصيغة"
+            );
+            assert_eq!(working_text(Working::Moving, 2), "جارٍ نقل عنصرين…");
+            assert_eq!(working_text(Working::Copying, 11), "جارٍ نسخ 11 عنصراً…");
+            assert_eq!(
+                working_text(Working::Restoring, 1),
+                "جارٍ استعادة عنصر واحد…"
+            );
+            assert_eq!(working_text(Working::Removing, 2), "جارٍ إزالة نسختين…");
+        });
+        assert_eq!(working_text(Working::Moving, 1), "Moving 1 item…");
+        assert_eq!(working_text(Working::Copying, 3), "Copying 3 items…");
+        assert_eq!(working_text(Working::Restoring, 2), "Restoring 2 items…");
+        assert_eq!(working_text(Working::Removing, 1), "Removing 1 copy…");
+        assert_eq!(busy_text(), "Busy — still working");
+    }
+
+    #[test]
+    fn moving_to_the_trash_names_one_and_counts_many() {
+        let one = [p("/d/Archive.zip")];
+        let two = [p("/d/a"), p("/d/b")];
+        fn names(paths: &[PathBuf]) -> Vec<&Path> {
+            paths.iter().map(PathBuf::as_path).collect()
+        }
+        assert_eq!(
+            trashing_text(&names(&one)),
+            "Moving Archive.zip to the Trash…"
+        );
+        assert_eq!(trashing_text(&names(&two)), "Moving 2 items to the Trash…");
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(
+                trashing_text(&names(&one)),
+                "جارٍ نقل Archive.zip إلى سلة المهملات…"
+            );
+            assert_eq!(
+                trashing_text(&names(&two)),
+                "جارٍ نقل عنصرين إلى سلة المهملات…"
+            );
+        });
     }
 
     #[test]

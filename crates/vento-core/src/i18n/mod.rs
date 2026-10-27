@@ -8,6 +8,7 @@
 //! entry or translation falls back to the English text in the code.
 
 pub mod dates;
+pub mod errors;
 pub mod plural;
 pub mod po;
 

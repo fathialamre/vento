@@ -5,6 +5,18 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: crates/vento/src/exec.rs:68
+msgid " · "
+msgstr ""
+
+#: crates/vento/src/archive_ui.rs:76
+msgid "\"{name}\" is protected"
+msgstr ""
+
+#: crates/vento/src/exec.rs:134
+msgid ", "
+msgstr ""
+
 #: crates/vento/ui/controls.slint:716
 msgid "1 h"
 msgstr ""
@@ -27,6 +39,10 @@ msgstr ""
 
 #: crates/vento/ui/controls.slint:716
 msgid "8 h"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:40
+msgid "; "
 msgstr ""
 
 #: crates/vento/src/settings_window/mod.rs:115
@@ -111,8 +127,16 @@ msgstr ""
 msgid "Biggest inside"
 msgstr ""
 
+#: crates/vento/src/exec.rs:280
+msgid "Busy — still working"
+msgstr ""
+
 #: crates/vento/ui/archive.slint:81
 msgid "Cancel"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:27
+msgid "Cancelled"
 msgstr ""
 
 #: crates/vento/src/awake.rs:90
@@ -143,6 +167,20 @@ msgstr ""
 msgid "Compress"
 msgstr ""
 
+#: crates/vento/src/exec/archive.rs:43
+msgid "Compressed {n} item to {name}"
+msgid_plural "Compressed {n} items to {name}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/archive_ui.rs:53
+msgid "Compressing"
+msgstr ""
+
+#: crates/vento/src/archive_ui.rs:67
+msgid "Compressing {name}…"
+msgstr ""
+
 #: crates/vento-core/src/actions.rs:75
 msgid "Convert"
 msgstr ""
@@ -150,6 +188,34 @@ msgstr ""
 #: crates/vento/src/wheel.rs:241
 msgid "Convert to"
 msgstr ""
+
+#: crates/vento/src/exec/convert.rs:80
+msgid "Converted {made} of {total} to {format}"
+msgstr ""
+
+#: crates/vento/src/exec/convert.rs:66
+msgid "Converted {name} to {format}"
+msgstr ""
+
+#: crates/vento/src/exec/convert.rs:70
+msgid "Converted {n} image to {format}"
+msgid_plural "Converted {n} images to {format}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/archive_ui.rs:55
+msgid "Converting"
+msgstr ""
+
+#: crates/vento/src/archive_ui.rs:69
+msgid "Converting {name}…"
+msgstr ""
+
+#: crates/vento/src/exec.rs:105
+msgid "Copied {n} item to {dest}"
+msgid_plural "Copied {n} items to {dest}"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/vento-core/src/actions.rs:68
 msgid "Copy"
@@ -187,8 +253,78 @@ msgstr ""
 msgid "Copy to"
 msgstr ""
 
+#: crates/vento/src/exec.rs:204
+msgid "Copying {n} item…"
+msgid_plural "Copying {n} items…"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:227
+msgid "Couldn't add to Pocket: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:233
+msgid "Couldn't archive: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:337
+msgid "Couldn't compress: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec/convert.rs:39
+msgid "Couldn't convert {name}: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec/convert.rs:43
+msgid "Couldn't convert {n} image: {reason}"
+msgid_plural "Couldn't convert {n} images: {reason}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:235
+msgid "Couldn't convert: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:230
+msgid "Couldn't copy the path: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:232
+msgid "Couldn't copy to the folder: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:228
+msgid "Couldn't copy: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:75
+msgid "Couldn't extract {name}: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:79
+msgid "Couldn't extract {n} archive: {reason}"
+msgid_plural "Couldn't extract {n} archives: {reason}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:229
+msgid "Couldn't move: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:231
+msgid "Couldn't open the terminal: {reason}"
+msgstr ""
+
+#: crates/vento/src/pocket/mod.rs:117
+msgid "Couldn't open: {reason}"
+msgstr ""
+
 #: crates/vento/src/settings_window/mod.rs:1191
 msgid "Couldn't save settings: {error}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:234
+msgid "Couldn't show info: {reason}"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:631
@@ -219,6 +355,28 @@ msgstr ""
 msgid "Extract"
 msgstr ""
 
+#: crates/vento/src/exec/archive.rs:100
+msgid "Extracted {made} of {total}"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:91
+msgid "Extracted {name}"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:92
+msgid "Extracted {n} archive"
+msgid_plural "Extracted {n} archives"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/archive_ui.rs:54
+msgid "Extracting"
+msgstr ""
+
+#: crates/vento/src/archive_ui.rs:68
+msgid "Extracting {name}…"
+msgstr ""
+
 #: crates/vento/ui/pocket.slint:502
 msgid "Files"
 msgstr ""
@@ -233,6 +391,10 @@ msgstr ""
 
 #: crates/vento/src/settings_window/mod.rs:107
 msgid "General"
+msgstr ""
+
+#: crates/vento/src/exec.rs:285
+msgid "Hold on Convert to pick a format"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:435
@@ -263,7 +425,17 @@ msgstr ""
 msgid "Keep a copy"
 msgstr ""
 
-#: crates/vento-core/src/i18n/mod.rs:229
+#: crates/vento/src/exec/archive.rs:155
+msgid "Kept {name}: changed since it was made"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:162
+msgid "Kept {n} item: changed since it was made"
+msgid_plural "Kept {n} items: changed since they were made"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento-core/src/i18n/mod.rs:230
 msgid "Language"
 msgstr ""
 
@@ -311,6 +483,38 @@ msgstr ""
 msgid "Move to"
 msgstr ""
 
+#: crates/vento/src/exec/archive.rs:139
+msgid "Moved {name} to the Trash"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:140
+msgid "Moved {n} item to the Trash"
+msgid_plural "Moved {n} items to the Trash"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:92
+msgid "Moved {n} item to {dest}"
+msgid_plural "Moved {n} items to {dest}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:214
+msgid "Moving {name} to the Trash…"
+msgstr ""
+
+#: crates/vento/src/exec.rs:215
+msgid "Moving {n} item to the Trash…"
+msgid_plural "Moving {n} items to the Trash…"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:203
+msgid "Moving {n} item…"
+msgid_plural "Moving {n} items…"
+msgstr[0] ""
+msgstr[1] ""
+
 #: crates/vento/ui/settings_pages.slint:364
 msgid "No pinned folders"
 msgstr ""
@@ -323,8 +527,24 @@ msgstr ""
 msgid "None found"
 msgstr ""
 
+#: crates/vento/src/exec.rs:125
+msgid "Nothing left to remove"
+msgstr ""
+
 #: crates/vento/ui/pocket.slint:717
 msgid "Nothing of this kind yet"
+msgstr ""
+
+#: crates/vento/src/exec/convert.rs:55
+msgid "Nothing to convert: already {format}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:769
+msgid "Nothing to copy"
+msgstr ""
+
+#: crates/vento/src/exec.rs:742
+msgid "Nothing to move"
 msgstr ""
 
 #: crates/vento/ui/quick.slint:337
@@ -427,6 +647,30 @@ msgstr ""
 msgid "Remove from Pocket"
 msgstr ""
 
+#: crates/vento/src/exec.rs:127
+msgid "Removed {n} copy"
+msgid_plural "Removed {n} copies"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:206
+msgid "Removing {n} copy…"
+msgid_plural "Removing {n} copies…"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:181
+msgid "Restored {n} item"
+msgid_plural "Restored {n} items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:205
+msgid "Restoring {n} item…"
+msgid_plural "Restoring {n} items…"
+msgstr[0] ""
+msgstr[1] ""
+
 #: crates/vento/ui/quick.slint:309
 msgid "Resume"
 msgstr ""
@@ -523,19 +767,19 @@ msgstr ""
 msgid "Undo"
 msgstr ""
 
-#: crates/vento/src/exec.rs:205
+#: crates/vento/src/exec.rs:269
 msgid "Undo last archive"
 msgstr ""
 
-#: crates/vento/src/exec.rs:206
+#: crates/vento/src/exec.rs:270
 msgid "Undo last convert"
 msgstr ""
 
-#: crates/vento/src/exec.rs:204
+#: crates/vento/src/exec.rs:268
 msgid "Undo last copy"
 msgstr ""
 
-#: crates/vento/src/exec.rs:207
+#: crates/vento/src/exec.rs:271
 msgid "Undo last move"
 msgstr ""
 
@@ -631,8 +875,144 @@ msgstr ""
 msgid "Your settings file has an error on line {line}: {message}; changing a setting here will replace it"
 msgstr ""
 
+#: crates/vento-core/src/i18n/errors.rs:27
+msgid "already exists"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:59
+msgid "archive is empty"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:62
+msgid "cancelled"
+msgstr ""
+
+#: crates/vento-core/src/archive/compress.rs:177
+msgid "cannot compress special file {path}"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:42
+msgid "cannot move an item into itself"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:686
+msgid "cannot move special file {path}"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:665
+msgid "cannot remove from read-only folder {dir}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:843
+msgid "cannot start: {reason}"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:45
+msgid "copy could not be verified; source left untouched"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:55
+msgid "damaged archive: {detail}"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:39
+msgid "i/o error: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:832
+msgid "internal error"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:30
+msgid "interrupted"
+msgstr ""
+
+#: crates/vento/src/exec/archive.rs:159
+msgid "kept {name}: changed since it was made"
+msgstr ""
+
+#: crates/vento/src/exec.rs:135
+msgid "kept {n} changed"
+msgid_plural "kept {n} changed"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec/archive.rs:167
+msgid "kept {n} item: changed since it was made"
+msgid_plural "kept {n} items: changed since they were made"
+msgstr[0] ""
+msgstr[1] ""
+
 #: crates/vento/src/settings_window/mod.rs:1206
 msgid "macOS uses this shortcut"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:48
+msgid "moved to {copy}, but the original could not be fully removed: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:513
+msgid "no folder to open"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:642
+msgid "no free name for the moved item"
+msgstr ""
+
+#: crates/vento/src/exec.rs:493
+msgid "no images"
+msgstr ""
+
+#: crates/vento-core/src/convert/batch.rs:35
+msgid "not an image"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:51
+msgid "not enough disk space"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:25
+msgid "not found"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:60
+msgid "password needed"
+msgstr ""
+
+#: crates/vento-core/src/archive/compress.rs:101
+msgid "path has no file name"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:26
+msgid "permission denied"
+msgstr ""
+
+#: crates/vento-core/src/fileops.rs:43
+msgid "source not found"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:28
+msgid "the disk is full"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:29
+msgid "the disk is read-only"
+msgstr ""
+
+#: crates/vento-core/src/i18n/errors.rs:31
+msgid "the name isn't valid"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:53
+msgid "unsafe path in archive: {detail}"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:57
+msgid "unsupported archive: {detail}"
+msgstr ""
+
+#: crates/vento-core/src/archive/job.rs:61
+msgid "wrong password"
 msgstr ""
 
 #: crates/vento/src/pocket/menu.rs:111
@@ -655,9 +1035,51 @@ msgstr ""
 msgid "{m} min"
 msgstr ""
 
+#: crates/vento/src/exec/convert.rs:90
+msgid "{n} already {format}"
+msgid_plural "{n} already {format}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:51
+msgid "{n} failed"
+msgid_plural "{n} failed"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec/archive.rs:124
+msgid "{n} failed: {reason}"
+msgid_plural "{n} failed: {reason}"
+msgstr[0] ""
+msgstr[1] ""
+
 #: crates/vento/src/panel/mod.rs:596
 msgid "{n} item"
 msgid_plural "{n} items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:139
+msgid "{n} no longer there"
+msgid_plural "{n} no longer there"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec/convert.rs:99
+msgid "{n} not an image"
+msgid_plural "{n} not images"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec.rs:54
+msgid "{n} original couldn't be removed"
+msgid_plural "{n} originals couldn't be removed"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec/archive.rs:112
+msgid "{n} skipped"
+msgid_plural "{n} skipped"
 msgstr[0] ""
 msgstr[1] ""
 
