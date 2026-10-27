@@ -14,7 +14,7 @@ use vento_core::clip_history::ClipEntry;
 use crate::ui::{ClipRow, PocketIsland};
 
 use super::clip::{ClipKind, ClipRowData, now_unix};
-use super::geometry::Panel;
+use super::geometry::{Panel, Row};
 use super::{PocketController, Undo, View};
 
 /// How long the island stays open after a switch button, wherever the
@@ -335,7 +335,14 @@ impl PocketController {
         let switch = self.clip.enabled();
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
-            View::Pocket if self.list_shown() => Panel::PocketList { switch },
+            View::Pocket if self.list_shown() => Panel::PocketList {
+                switch,
+                row: if self.stacks_shown() {
+                    Row::Stacks(self.stacks.len())
+                } else {
+                    Row::Cells(self.layout.get())
+                },
+            },
             View::Pocket if self.stacks_shown() => Panel::Stacks {
                 switch,
                 stacks: self.stacks.len(),
