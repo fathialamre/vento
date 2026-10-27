@@ -5,7 +5,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/vento/src/exec.rs:68
+#: crates/vento/src/exec.rs:71
 msgid " · "
 msgstr ""
 
@@ -13,7 +13,7 @@ msgstr ""
 msgid "\"{name}\" is protected"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:243
+#: crates/vento-platform/src/lib.rs:247
 msgid ", "
 msgstr ""
 
@@ -127,7 +127,7 @@ msgstr ""
 msgid "Biggest inside"
 msgstr ""
 
-#: crates/vento/src/exec.rs:287
+#: crates/vento/src/exec.rs:299
 msgid "Busy — still working"
 msgstr ""
 
@@ -223,7 +223,7 @@ msgstr ""
 msgid "Copied text"
 msgstr ""
 
-#: crates/vento/src/exec.rs:111
+#: crates/vento/src/exec.rs:114
 msgid "Copied {n} item to {dest}"
 msgid_plural "Copied {n} items to {dest}"
 msgstr[0] ""
@@ -265,17 +265,17 @@ msgstr ""
 msgid "Copy to"
 msgstr ""
 
-#: crates/vento/src/exec.rs:210
+#: crates/vento/src/exec.rs:213
 msgid "Copying {n} item…"
 msgid_plural "Copying {n} items…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:233
+#: crates/vento/src/exec.rs:236
 msgid "Couldn't add to Pocket: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:239
+#: crates/vento/src/exec.rs:242
 msgid "Couldn't archive: {reason}"
 msgstr ""
 
@@ -293,19 +293,19 @@ msgid_plural "Couldn't convert {n} images: {reason}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:241
+#: crates/vento/src/exec.rs:244
 msgid "Couldn't convert: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:236
+#: crates/vento/src/exec.rs:239
 msgid "Couldn't copy the path: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:238
+#: crates/vento/src/exec.rs:241
 msgid "Couldn't copy to the folder: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:234
+#: crates/vento/src/exec.rs:237
 msgid "Couldn't copy: {reason}"
 msgstr ""
 
@@ -319,15 +319,15 @@ msgid_plural "Couldn't extract {n} archives: {reason}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:235
+#: crates/vento/src/exec.rs:238
 msgid "Couldn't move: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:242
+#: crates/vento/src/exec.rs:245
 msgid "Couldn't open the PDF: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:237
+#: crates/vento/src/exec.rs:240
 msgid "Couldn't open the terminal: {reason}"
 msgstr ""
 
@@ -347,7 +347,11 @@ msgstr ""
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:240
+#: crates/vento/src/exec/pdf.rs:30
+msgid "Couldn't save: {reason}"
+msgstr ""
+
+#: crates/vento/src/exec.rs:243
 msgid "Couldn't show info: {reason}"
 msgstr ""
 
@@ -425,7 +429,7 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: crates/vento/src/exec.rs:292
+#: crates/vento/src/exec.rs:304
 msgid "Hold on Convert to pick a format"
 msgstr ""
 
@@ -561,27 +565,31 @@ msgid_plural "Moved {n} items to the Trash"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:98
+#: crates/vento/src/exec.rs:101
 msgid "Moved {n} item to {dest}"
 msgid_plural "Moved {n} items to {dest}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:220
+#: crates/vento/src/exec.rs:223
 msgid "Moving {name} to the Trash…"
 msgstr ""
 
-#: crates/vento/src/exec.rs:221
+#: crates/vento/src/exec.rs:224
 msgid "Moving {n} item to the Trash…"
 msgid_plural "Moving {n} items to the Trash…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:209
+#: crates/vento/src/exec.rs:212
 msgid "Moving {n} item…"
 msgid_plural "Moving {n} items…"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/vento/src/exec/pdf.rs:73
+msgid "No PDFs to open"
+msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:362
 msgid "No pinned folders"
@@ -599,7 +607,7 @@ msgstr ""
 msgid "None found"
 msgstr ""
 
-#: crates/vento/src/exec.rs:131
+#: crates/vento/src/exec.rs:134
 msgid "Nothing left to remove"
 msgstr ""
 
@@ -611,11 +619,11 @@ msgstr ""
 msgid "Nothing to convert: already {format}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:798
+#: crates/vento/src/exec.rs:820
 msgid "Nothing to copy"
 msgstr ""
 
-#: crates/vento/src/exec.rs:766
+#: crates/vento/src/exec.rs:788
 msgid "Nothing to move"
 msgstr ""
 
@@ -650,6 +658,12 @@ msgstr ""
 #: crates/vento/src/main.rs:158
 msgid "Open the clipboard history"
 msgstr ""
+
+#: crates/vento/src/exec/pdf.rs:77
+msgid "Opened {n} PDF; skipped {m}: {reason}"
+msgid_plural "Opened {n} PDFs; skipped {m}: {reason}"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/vento-core/src/pocket_kind.rs:44
 msgid "Other"
@@ -727,25 +741,25 @@ msgstr ""
 msgid "Remove from Pocket"
 msgstr ""
 
-#: crates/vento/src/exec.rs:133
+#: crates/vento/src/exec.rs:136
 msgid "Removed {n} copy"
 msgid_plural "Removed {n} copies"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:212
+#: crates/vento/src/exec.rs:215
 msgid "Removing {n} copy…"
 msgid_plural "Removing {n} copies…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:187
+#: crates/vento/src/exec.rs:190
 msgid "Restored {n} item"
 msgid_plural "Restored {n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:211
+#: crates/vento/src/exec.rs:214
 msgid "Restoring {n} item…"
 msgid_plural "Restoring {n} items…"
 msgstr[0] ""
@@ -754,6 +768,22 @@ msgstr[1] ""
 #: crates/vento/ui/quick.slint:329
 msgid "Resume"
 msgstr ""
+
+#: crates/vento/src/exec/pdf.rs:39
+msgid "Saved {name}"
+msgstr ""
+
+#: crates/vento/src/exec/pdf.rs:43
+msgid "Saved {n} file in {folder}"
+msgid_plural "Saved {n} files in {folder}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/src/exec/pdf.rs:53
+msgid "Saved {n} image in {folder}"
+msgid_plural "Saved {n} images in {folder}"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/vento/ui/settings_pages.slint:516
 msgid "Scroll"
@@ -867,19 +897,23 @@ msgstr ""
 msgid "Undo"
 msgstr ""
 
-#: crates/vento/src/exec.rs:276
+#: crates/vento/src/exec.rs:283
+msgid "Undo last PDF"
+msgstr ""
+
+#: crates/vento/src/exec.rs:281
 msgid "Undo last archive"
 msgstr ""
 
-#: crates/vento/src/exec.rs:277
+#: crates/vento/src/exec.rs:282
 msgid "Undo last convert"
 msgstr ""
 
-#: crates/vento/src/exec.rs:275
+#: crates/vento/src/exec.rs:280
 msgid "Undo last copy"
 msgstr ""
 
-#: crates/vento/src/exec.rs:278
+#: crates/vento/src/exec.rs:284
 msgid "Undo last move"
 msgstr ""
 
@@ -1011,19 +1045,23 @@ msgstr ""
 msgid "cannot remove from read-only folder {dir}"
 msgstr ""
 
+#: crates/vento/src/exec/pdf.rs:195
+msgid "cannot start"
+msgstr ""
+
 #: crates/vento/src/pocket/mod.rs:1391
 msgid "cannot start copying: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:877
+#: crates/vento/src/exec.rs:899
 msgid "cannot start: {reason}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:213
+#: crates/vento-platform/src/lib.rs:217
 msgid "clipboard rejected the files"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:209
+#: crates/vento-platform/src/lib.rs:213
 msgid "clipboard rejected the text"
 msgstr ""
 
@@ -1031,7 +1069,7 @@ msgstr ""
 msgid "copy could not be verified; source left untouched"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:257
+#: crates/vento-platform/src/lib.rs:261
 msgid "could not run {program}: {reason}"
 msgstr ""
 
@@ -1043,7 +1081,7 @@ msgstr ""
 msgid "i/o error: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:863
+#: crates/vento/src/exec.rs:885
 msgid "internal error"
 msgstr ""
 
@@ -1059,7 +1097,7 @@ msgstr ""
 msgid "kept {name}: changed since it was made"
 msgstr ""
 
-#: crates/vento/src/exec.rs:141
+#: crates/vento/src/exec.rs:144
 msgid "kept {n} changed"
 msgid_plural "kept {n} changed"
 msgstr[0] ""
@@ -1083,11 +1121,11 @@ msgstr ""
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:242
+#: crates/vento-platform/src/lib.rs:246
 msgid "no app opened {names}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:302
+#: crates/vento-platform/src/lib.rs:306
 msgid "no folder to open"
 msgstr ""
 
@@ -1099,11 +1137,11 @@ msgstr ""
 msgid "no free name for the saved item"
 msgstr ""
 
-#: crates/vento/src/exec.rs:501
+#: crates/vento/src/exec.rs:521
 msgid "no images"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:297
+#: crates/vento-platform/src/lib.rs:301
 msgid "no terminal is installed"
 msgstr ""
 
@@ -1179,11 +1217,11 @@ msgstr ""
 msgid "{app} (default)"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:250
+#: crates/vento-platform/src/lib.rs:254
 msgid "{app} is no longer there"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:290
+#: crates/vento-platform/src/lib.rs:294
 msgid "{app} is not installed"
 msgstr ""
 
@@ -1211,6 +1249,10 @@ msgstr ""
 msgid "{m} min"
 msgstr ""
 
+#: crates/vento/src/exec/pdf.rs:71
+msgid "{name} is locked"
+msgstr ""
+
 #: crates/vento/src/main.rs:443
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
@@ -1227,7 +1269,7 @@ msgid_plural "{n} bytes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:51
+#: crates/vento/src/exec.rs:54
 msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] ""
@@ -1257,7 +1299,7 @@ msgid_plural "{n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:145
+#: crates/vento/src/exec.rs:148
 msgid "{n} no longer there"
 msgid_plural "{n} no longer there"
 msgstr[0] ""
@@ -1269,7 +1311,7 @@ msgid_plural "{n} not images"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:54
+#: crates/vento/src/exec.rs:57
 msgid "{n} original couldn't be removed"
 msgid_plural "{n} originals couldn't be removed"
 msgstr[0] ""
@@ -1289,15 +1331,15 @@ msgstr ""
 msgid "{n}m"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:267
+#: crates/vento-platform/src/lib.rs:271
 msgid "{program} exited with code {code}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:271
+#: crates/vento-platform/src/lib.rs:275
 msgid "{program} was stopped by a signal"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:282
+#: crates/vento-platform/src/lib.rs:286
 msgid "{program}: {reason}"
 msgstr ""
 

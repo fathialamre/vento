@@ -30,8 +30,11 @@ use crate::wheel::WheelDrop;
 
 mod archive;
 mod convert;
+mod pdf;
 
 use archive::archive_undo_toast_text;
+#[allow(unused_imports)] // The PDF window uses these (Task 8).
+pub use pdf::{PdfDone, pdf_open_toast_text};
 
 /// The side notes of a move or an undo: what failed, and what was moved
 /// but could not be removed from where it came from. Each is a clause of
@@ -266,6 +269,8 @@ pub enum UndoKind {
     Archive,
     /// The last Convert (the images it wrote).
     Convert,
+    /// The last PDF write (the file or folder it made).
+    Pdf,
 }
 
 /// The tray's Undo item text: names what would be undone, and reads
@@ -275,8 +280,15 @@ pub fn undo_menu_text(kind: Option<UndoKind>) -> String {
         Some(UndoKind::Copy) => tr("Undo last copy"),
         Some(UndoKind::Archive) => tr("Undo last archive"),
         Some(UndoKind::Convert) => tr("Undo last convert"),
+        Some(UndoKind::Pdf) => tr("Undo last PDF"),
         Some(UndoKind::Move) | None => tr("Undo last move"),
     }
+}
+
+/// Whether undoing `kind` trashes files the job made (Archive, Convert, PDF),
+/// as opposed to removing the copies of a Copy to.
+fn undoes_outputs(kind: UndoKind) -> bool {
+    matches!(kind, UndoKind::Archive | UndoKind::Convert | UndoKind::Pdf)
 }
 
 /// Callback told which undo, if any, is available.
@@ -358,6 +370,8 @@ enum LastOp {
     Archive(CopyRecord),
     /// What a Convert job made, undone like an Archive.
     Convert(CopyRecord),
+    /// What a PDF write job made, undone like an Archive.
+    Pdf(CopyRecord),
 }
 
 impl LastOp {
@@ -367,6 +381,7 @@ impl LastOp {
             LastOp::Copy(_) => UndoKind::Copy,
             LastOp::Archive(_) => UndoKind::Archive,
             LastOp::Convert(_) => UndoKind::Convert,
+            LastOp::Pdf(_) => UndoKind::Pdf,
         }
     }
 }
@@ -402,8 +417,8 @@ pub struct Executor {
     last: RefCell<Option<Last>>,
     /// Folders recently moved or copied to; saved after each addition.
     recent: Rc<RefCell<RecentDestinations>>,
-    /// Whether a move, copy, archive, convert or undo is running on a worker
-    /// thread.
+    /// Whether a move, copy, archive, convert, PDF write or undo is running on
+    /// a worker thread.
     busy: Cell<bool>,
     /// That job, until its result is handled on the main thread.
     running: RefCell<Option<RunningJob>>,
@@ -413,6 +428,10 @@ pub struct Executor {
     password: Rc<PasswordView>,
     /// Told which undo is available whenever that changes.
     on_undo_changed: RefCell<Vec<UndoListener>>,
+    /// Told how the running PDF job ended; set by `pdf_job`, taken when it
+    /// finishes. It lives here, not with the worker, because it is not
+    /// `Send`.
+    pdf_done: RefCell<Option<pdf::PdfDone>>,
     this: Weak<Self>,
 }
 
@@ -440,6 +459,7 @@ impl Executor {
             progress,
             password,
             on_undo_changed: RefCell::new(Vec::new()),
+            pdf_done: RefCell::new(None),
             this: this.clone(),
         });
         MAIN_EXECUTOR.with(|slot| *slot.borrow_mut() = Rc::downgrade(&executor));
@@ -558,6 +578,7 @@ impl Executor {
             LastOp::Copy(record) => self.undo_copy(record, UndoKind::Copy, at),
             LastOp::Archive(record) => self.undo_copy(record, UndoKind::Archive, at),
             LastOp::Convert(record) => self.undo_copy(record, UndoKind::Convert, at),
+            LastOp::Pdf(record) => self.undo_copy(record, UndoKind::Pdf, at),
         }
         true
     }
@@ -607,18 +628,19 @@ impl Executor {
         self.toast.show(&undo_toast_text(&outcome), None, at);
     }
 
-    /// Undoes a Copy to, an Archive or a Convert (`kind`), in two steps. The
-    /// worker finds the items that are still exactly as vento made them (the
-    /// platform is not `Send`, so it cannot trash from there); the main
-    /// thread then trashes just those. Nothing else is re-checked in between.
+    /// Undoes a Copy to, an Archive, a Convert or a PDF write (`kind`), in
+    /// two steps. The worker finds the items that are still exactly as vento
+    /// made them (the platform is not `Send`, so it cannot trash from there);
+    /// the main thread then trashes just those. Nothing else is re-checked in
+    /// between.
     fn undo_copy(&self, record: CopyRecord, kind: UndoKind, at: Point) {
-        let (text, action) = if matches!(kind, UndoKind::Archive | UndoKind::Convert) {
+        let (text, action) = if undoes_outputs(kind) {
             let outputs: Vec<&Path> = record.copies.iter().map(|(_, o, _)| o.as_path()).collect();
             let text = trashing_text(&outputs);
-            let action = if kind == UndoKind::Archive {
-                ActionId::Archive
-            } else {
-                ActionId::Convert
+            let action = match kind {
+                UndoKind::Archive => ActionId::Archive,
+                UndoKind::Pdf => ActionId::Pdf,
+                _ => ActionId::Convert,
             };
             (text, action)
         } else {
@@ -672,7 +694,7 @@ impl Executor {
             outcome.failed.len()
         );
         self.notify_undo_changed();
-        let text = if matches!(kind, UndoKind::Archive | UndoKind::Convert) {
+        let text = if undoes_outputs(kind) {
             archive_undo_toast_text(&outcome, &trashed)
         } else {
             copy_undo_toast_text(&outcome)
@@ -943,6 +965,7 @@ mod tests {
         assert_eq!(undo_menu_text(Some(UndoKind::Copy)), "Undo last copy");
         assert_eq!(undo_menu_text(Some(UndoKind::Archive)), "Undo last archive");
         assert_eq!(undo_menu_text(Some(UndoKind::Convert)), "Undo last convert");
+        assert_eq!(undo_menu_text(Some(UndoKind::Pdf)), "Undo last PDF");
         assert_eq!(undo_menu_text(None), "Undo last move");
     }
     use std::io;
