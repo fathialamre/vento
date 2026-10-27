@@ -1149,6 +1149,10 @@ msgstr[3] "تم إبقاء {n} عناصر: تغيّرت بعد إنشائها"
 msgstr[4] "تم إبقاء {n} عنصراً: تغيّرت بعد إنشائها"
 msgstr[5] "تم إبقاء {n} عنصر: تغيّرت بعد إنشائها"
 
+#: crates/vento-core/src/pdf/jobs.rs:64
+msgid "locked"
+msgstr "محمي بكلمة مرور"
+
 #: crates/vento/src/settings_window/mod.rs:1208
 msgid "macOS uses this shortcut"
 msgstr "يستخدم macOS هذا الاختصار"
@@ -1181,6 +1185,10 @@ msgstr "لا توجد صور"
 msgid "no terminal is installed"
 msgstr "لا توجد طرفية مثبّتة"
 
+#: crates/vento-core/src/pdf/jobs.rs:65
+msgid "not a PDF"
+msgstr "ليس ملف PDF"
+
 #: crates/vento-core/src/convert/batch.rs:35
 msgid "not an image"
 msgstr "ليست صورة"
@@ -1192,6 +1200,10 @@ msgstr "لا توجد مساحة كافية على القرص"
 #: crates/vento-core/src/i18n/errors.rs:25
 msgid "not found"
 msgstr "غير موجود"
+
+#: crates/vento-core/src/pdf/jobs.rs:281
+msgid "nothing to write"
+msgstr "لا يوجد ما يُكتب"
 
 #: crates/vento/src/pocket/clip.rs:913
 msgid "now"

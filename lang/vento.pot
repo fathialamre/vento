@@ -1071,6 +1071,10 @@ msgid_plural "kept {n} items: changed since they were made"
 msgstr[0] ""
 msgstr[1] ""
 
+#: crates/vento-core/src/pdf/jobs.rs:64
+msgid "locked"
+msgstr ""
+
 #: crates/vento/src/settings_window/mod.rs:1208
 msgid "macOS uses this shortcut"
 msgstr ""
@@ -1103,6 +1107,10 @@ msgstr ""
 msgid "no terminal is installed"
 msgstr ""
 
+#: crates/vento-core/src/pdf/jobs.rs:65
+msgid "not a PDF"
+msgstr ""
+
 #: crates/vento-core/src/convert/batch.rs:35
 msgid "not an image"
 msgstr ""
@@ -1113,6 +1121,10 @@ msgstr ""
 
 #: crates/vento-core/src/i18n/errors.rs:25
 msgid "not found"
+msgstr ""
+
+#: crates/vento-core/src/pdf/jobs.rs:281
+msgid "nothing to write"
 msgstr ""
 
 #: crates/vento/src/pocket/clip.rs:913
