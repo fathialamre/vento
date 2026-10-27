@@ -273,7 +273,7 @@ changes apply right away.
 
 | Page | What it holds |
 |---|---|
-| General | The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
+| General | The **Language** (English or العربية, or follow the system), the key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
 | Wheel | Honeycomb or petals layout; which actions show and in what order. |
 | Move | Pinned and recent folders for the Move ring, and how long to hold. |
 | Pocket | The Pocket shortcut, what happens after you drag items out, and how a full Pocket (more than 8 items) lays them out: List, Scroll or Stacks. |
@@ -293,6 +293,18 @@ pause Vento, Settings…, open the settings file, or quit.
 
 Prefer a text file? Everything is also in `settings.toml`; see
 [SETTINGS.md](SETTINGS.md).
+
+## Languages
+
+Vento speaks **English** and **العربية** (Arabic). In Arabic the whole interface
+is mirrored to read right to left, and the windows, the menu and the next notice
+change as soon as you pick it, with no restart.
+
+The language is picked in **Settings → General → Language**. The first choice,
+**Automatic (system language)**, follows your Mac's preferred languages and falls
+back to English; English and العربية are listed under their own names. Or set
+`language` in `settings.toml` (see [SETTINGS.md](SETTINGS.md)). To add another
+language, see [lang/README.md](lang/README.md).
 
 ## Uninstall
 
@@ -320,6 +332,7 @@ Help with Linux and Windows support is especially welcome.
 
 - [SETTINGS.md](SETTINGS.md): the settings file, and where Vento keeps its data
 - [BUILDING.md](BUILDING.md): build Vento from source and work on the code
+- [lang/README.md](lang/README.md): the translations, and how to add a language
 
 ## License
 
