@@ -19,6 +19,7 @@ use slint::winit_030::winit::event::{ElementState, WindowEvent};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, ModelRc, Timer, VecModel};
 use vento_core::geometry::{Point, Rect};
+use vento_core::i18n::tr;
 use vento_core::info::{Facts, Subject, ViewContext, subject_of, view};
 use vento_core::sizes::{self, CountOptions, Progress, Tally, count};
 use vento_platform::Platform;
@@ -36,6 +37,16 @@ const WIDTH: f64 = 300.0;
 /// Size of the item's Finder icon, in points (the platform multiplies by the
 /// backing scale; it is shown at 32 pt).
 const ICON_PT: u32 = 32;
+
+/// The reveal button's text: the file manager is Finder on a Mac and Files
+/// elsewhere.
+fn reveal_label() -> String {
+    if cfg!(target_os = "macos") {
+        tr("Show in Finder")
+    } else {
+        tr("Show in Files")
+    }
+}
 
 thread_local! {
     /// The controller, for progress sent from the counting thread. Set by
@@ -124,6 +135,7 @@ impl InfoController {
 
         let subject = subject_of(&paths, &vento_platform::is_package);
         let window = self.window();
+        window.set_reveal_label(reveal_label().into());
         match paths.as_slice() {
             [only] => {
                 let icon = self

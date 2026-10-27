@@ -136,7 +136,7 @@ component DoneButton inherits Rectangle {
     border-radius: 8px;
     background: touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent);
     accessible-role: button;
-    accessible-label: "Done";
+    accessible-label: @tr("Done");
     accessible-action-default => { self.clicked(); }
 
     HorizontalLayout {
@@ -144,7 +144,7 @@ component DoneButton inherits Rectangle {
         padding-right: 18px;
 
         Text {
-            text: "Done";
+            text: @tr("Done");
             font-size: 13px;
             font-weight: 600;
             color: white;
@@ -284,7 +284,7 @@ export component QuickPanel inherits Window {
                     }
 
                     Text {
-                        text: root.paused ? "Vento is paused" : "Vento is on";
+                        text: root.paused ? @tr("Vento is paused") : @tr("Vento is on");
                         font-size: 13px;
                         font-weight: 600;
                         color: Theme.text;
@@ -296,7 +296,7 @@ export component QuickPanel inherits Window {
                         alignment: center;
 
                         TextButton {
-                            label: root.paused ? "Resume" : "Pause";
+                            label: root.paused ? @tr("Resume") : @tr("Pause");
                             icon: root.paused ? PanelIcons.resume : PanelIcons.pause;
                             has-icon: true;
                             clicked => { root.pause-clicked(); }
@@ -311,7 +311,7 @@ export component QuickPanel inherits Window {
                         row: 0;
                         col: 0;
                         icon: PanelIcons.scan-text;
-                        label: "Copy text";
+                        label: @tr("Copy text");
                         detail: root.screen-text-shortcut;
                         enabled: !root.paused;
                         clicked => { root.copy-from-screen-clicked(); }
@@ -321,8 +321,8 @@ export component QuickPanel inherits Window {
                         row: 0;
                         col: root.shift;
                         icon: Icons.clipboard;
-                        label: "Clipboard";
-                        detail: root.clip-history ? root.clip-shortcut : "Off";
+                        label: @tr("Clipboard");
+                        detail: root.clip-history ? root.clip-shortcut : @tr("Off");
                         enabled: root.clip-history && !root.paused;
                         clicked => { root.clipboard-clicked(); }
                     }
@@ -331,7 +331,7 @@ export component QuickPanel inherits Window {
                         row: root.shift;
                         col: 1 - root.shift;
                         icon: Icons.pocket;
-                        label: "Pocket";
+                        label: @tr("Pocket");
                         detail: root.pocket-count;
                         enabled: !root.paused;
                         clicked => { root.pocket-clicked(); }
@@ -341,7 +341,7 @@ export component QuickPanel inherits Window {
                         row: 1;
                         col: root.shift;
                         icon: PanelIcons.awake;
-                        label: "Keep Awake";
+                        label: @tr("Keep Awake");
                         detail: root.awake-status;
                         active: root.awake-on;
                         clicked => { root.awake-tile-clicked(); }
@@ -376,7 +376,7 @@ export component QuickPanel inherits Window {
                             }
 
                             Text {
-                                text: "Keep Awake";
+                                text: @tr("Keep Awake");
                                 font-size: 13px;
                                 font-weight: 600;
                                 color: Theme.text;
@@ -423,7 +423,7 @@ export component QuickPanel inherits Window {
                         alignment: center;
 
                         TextButton {
-                            label: "Undo";
+                            label: @tr("Undo");
                             clicked => { root.undo-clicked(); }
                         }
                     }
@@ -434,13 +434,13 @@ export component QuickPanel inherits Window {
                 HorizontalLayout {
                     FooterItem {
                         icon: PanelIcons.general;
-                        label: "Settings…";
+                        label: @tr("Settings…");
                         clicked => { root.settings-clicked(); }
                     }
 
                     FooterItem {
                         icon: PanelIcons.quit;
-                        label: "Quit";
+                        label: @tr("Quit");
                         clicked => { root.quit-clicked(); }
                     }
 

@@ -92,8 +92,14 @@ pub enum Page {
 }
 
 impl Page {
-    /// The page's name, in the sidebar and over the page. The window picks
-    /// the page's body by it (matches `settings_window.slint`).
+    /// The page's number in the order above. The window picks the page's
+    /// body by it (matches `settings_window.slint`), so a page's name can
+    /// change with the language.
+    fn id(self) -> i32 {
+        self as i32
+    }
+
+    /// The page's name, in the sidebar and over the page. Shown only.
     fn label(self) -> &'static str {
         match self {
             Self::General => "General",
@@ -340,6 +346,7 @@ impl SettingsWindowController {
                 .map(|&page| PageItem {
                     icon: page.icon(&window),
                     label: page.label().into(),
+                    id: page.id(),
                 })
                 .collect();
             window.set_pages(ModelRc::new(VecModel::from(items)));
@@ -1825,6 +1832,20 @@ mod tests {
         );
         assert!(!pages(false).contains(&CopyFromScreen));
         assert_eq!(pages(false).len(), 7);
+    }
+
+    #[test]
+    fn pages_have_ids_in_the_order_of_the_enum() {
+        use Page::*;
+        let all = pages(true);
+        let ids: Vec<i32> = all.iter().map(|p| p.id()).collect();
+        assert_eq!(ids, (0..8).collect::<Vec<_>>());
+        assert_eq!(General.id(), 0);
+        assert_eq!(CopyFromScreen.id(), 5);
+        assert_eq!(About.id(), 7);
+        // A page left out does not shift the ids of the others.
+        let ids: Vec<i32> = pages(false).iter().map(|p| p.id()).collect();
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7]);
     }
 
     #[test]

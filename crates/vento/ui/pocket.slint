@@ -166,7 +166,7 @@ component UndoRing inherits Rectangle {
         y: root.compact ? 0px : 50px;
         width: root.compact ? ring.x - 5px : parent.width;
         height: root.compact ? root.ring-d : 16px;
-        text: "Undo \{root.secs}s";
+        text: @tr("Undo {}s", root.secs);
         color: undo-touch.has-hover ? white : #ffffffb0;
         font-size: 11px;
         horizontal-alignment: root.compact ? right : center;
@@ -330,7 +330,7 @@ component FilterButton inherits Rectangle {
     border-radius: 12px;
     background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
     accessible-role: button;
-    accessible-label: "\{root.label} \{root.count}";
+    accessible-label: @tr("{} {n}" | "{} {n}" % root.count, root.label);
     accessible-action-default => {
         root.clicked();
     }
@@ -406,7 +406,7 @@ component ClearButton inherits Rectangle {
     border-radius: self.width / 2;
     background: touch.has-hover ? #2c2c32 : #1d1d21;
     accessible-role: button;
-    accessible-label: "Clear";
+    accessible-label: @tr("Clear");
     accessible-action-default => {
         root.clicked();
     }
@@ -450,7 +450,7 @@ component ClipList inherits Rectangle {
     property <length> row-h: 36px;
     property <length> head-h: 24px;
     // The filters' names, in the order of `counts`, for VoiceOver.
-    property <[string]> filter-names: ["All", "Pinned", "Text", "Links", "Images", "Files"];
+    property <[string]> filter-names: [@tr("All"), @tr("Pinned"), @tr("Text"), @tr("Links"), @tr("Images"), @tr("Files")];
 
     ChipRow {
         x: root.pad;
@@ -600,7 +600,7 @@ component ClipList inherits Rectangle {
                         border-radius: 12px;
                         background: pocket-touch.has-hover ? #55555c : #3a3a40;
                         accessible-role: button;
-                        accessible-label: "Add to Pocket";
+                        accessible-label: @tr("Add to Pocket");
 
                         Image {
                             source: Icons.pocket;
@@ -660,8 +660,8 @@ component ClipList inherits Rectangle {
         width: list.width;
         height: list.height;
         text: root.filter == 0
-            ? "Copy something and it shows up here"
-            : root.filter == 1 ? "Pin a copy to keep it here" : "Nothing of this kind yet";
+            ? @tr("Copy something and it shows up here")
+            : root.filter == 1 ? @tr("Pin a copy to keep it here") : @tr("Nothing of this kind yet");
         color: #ffffff66;
         font-size: 13px;
         font-weight: 600;
@@ -781,7 +781,7 @@ component KindChip inherits Rectangle {
     border-radius: 12px;
     background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
     accessible-role: button;
-    accessible-label: "\{root.label} \{root.count}";
+    accessible-label: @tr("{} {n}" | "{} {n}" % root.count, root.label);
     accessible-action-default => {
         root.clicked();
     }
@@ -860,7 +860,7 @@ component PocketList inherits Rectangle {
         border-radius: 12px;
         background: back-touch.has-hover ? #2c2c32 : root.item-fill;
         accessible-role: button;
-        accessible-label: "Back to Pocket";
+        accessible-label: @tr("Back to Pocket");
         accessible-action-default => {
             root.back();
         }
@@ -877,7 +877,7 @@ component PocketList inherits Rectangle {
         Text {
             x: 23px;
             width: parent.width - self.x - 8px;
-            text: "Pocket";
+            text: @tr("Pocket");
             color: back-touch.has-hover ? white : #ffffffc0;
             font-size: 11px;
             font-weight: 600;
@@ -994,7 +994,7 @@ component PocketList inherits Rectangle {
                     border-radius: 12px;
                     background: remove-touch.has-hover ? #55555c : #3a3a40;
                     accessible-role: button;
-                    accessible-label: "Remove";
+                    accessible-label: @tr("Remove");
                     accessible-action-default => {
                         root.remove(row.id);
                     }
@@ -1214,7 +1214,7 @@ export component PocketIsland inherits Window {
             }
 
             if root.undo-active || !root.clip-wing: Text {
-                text: root.undo-active ? "Undo" : root.count;
+                text: root.undo-active ? @tr("Undo") : root.count;
                 color: root.undo-active ? root.accent : white;
                 font-size: root.undo-active ? 11px : 13px;
                 font-weight: 600;
@@ -1437,7 +1437,7 @@ export component PocketIsland inherits Window {
                         width: 64px;
                         height: 80px;
                         accessible-role: button;
-                        accessible-label: "\{stack.label} \{stack.count}";
+                        accessible-label: @tr("{} {n}" | "{} {n}" % stack.count, stack.label);
                         accessible-action-default => {
                             root.stack-pressed(stack.kind);
                             root.stack-released(stack.kind);
@@ -1538,7 +1538,7 @@ export component PocketIsland inherits Window {
                         border-radius: 12px;
                         background: list-touch.has-hover ? #2c2c32 : root.item-fill;
                         accessible-role: button;
-                        accessible-label: "All \{root.count}";
+                        accessible-label: @tr("All {n}" | "All {n}" % root.count);
                         accessible-action-default => {
                             root.list-open();
                         }
@@ -1548,7 +1548,7 @@ export component PocketIsland inherits Window {
                             spacing: 1px;
 
                             Text {
-                                text: "All";
+                                text: @tr("All");
                                 color: list-touch.has-hover ? white : #ffffff90;
                                 font-size: 11px;
                                 font-weight: 600;
@@ -1652,7 +1652,7 @@ export component PocketIsland inherits Window {
                     Text {
                         y: parent.height / 2 + 4px;
                         height: 18px;
-                        text: "Drop to add";
+                        text: @tr("Drop to add");
                         color: root.hint ? root.accent : #ffffff66;
                         font-size: 13px;
                         font-weight: 600;
@@ -1764,7 +1764,7 @@ export component PocketIsland inherits Window {
 
                     SwitchButton {
                         icon: Icons.clipboard;
-                        label: "Clipboard";
+                        label: @tr("Clipboard");
                         count: root.clip-count;
                         current: root.view == 1;
                         clicked => {
@@ -1774,7 +1774,7 @@ export component PocketIsland inherits Window {
 
                     SwitchButton {
                         icon: Icons.pocket;
-                        label: "Pocket";
+                        label: @tr("Pocket");
                         count: root.count;
                         // The Pocket list is part of the Pocket.
                         current: root.view != 1;

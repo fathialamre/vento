@@ -180,7 +180,7 @@ export component MenuField inherits Rectangle {
         spacing: 6px;
 
         Text {
-            text: root.valid ? root.items[root.current] : "None found";
+            text: root.valid ? root.items[root.current] : @tr("None found");
             font-size: 13px;
             color: root.valid ? Theme.text : Theme.muted;
             vertical-alignment: center;
@@ -484,7 +484,7 @@ export component Stepper inherits HorizontalLayout {
 
     StepButton {
         plus: false;
-        label: "Less " + root.label;
+        label: @tr("Less {}", root.label);
         enabled: root.can-decrease;
         clicked => { root.decrease(); }
     }
@@ -502,7 +502,7 @@ export component Stepper inherits HorizontalLayout {
 
     StepButton {
         plus: true;
-        label: "More " + root.label;
+        label: @tr("More {}", root.label);
         enabled: root.can-increase;
         clicked => { root.increase(); }
     }
@@ -529,7 +529,7 @@ export component ShortcutField inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: self.label;
-    accessible-value: self.recording ? "Press a shortcut…" : self.text;
+    accessible-value: self.recording ? @tr("Press a shortcut…") : self.text;
     accessible-enabled: self.enabled;
     accessible-action-default => { root.start(); }
 
@@ -543,7 +543,7 @@ export component ShortcutField inherits Rectangle {
     }
 
     Text {
-        text: root.recording ? "Press a shortcut…" : root.text;
+        text: root.recording ? @tr("Press a shortcut…") : root.text;
         font-size: 13px;
         color: root.recording || !root.enabled ? Theme.muted : Theme.text;
         horizontal-alignment: center;
@@ -689,7 +689,7 @@ export component AwakeChips inherits VerticalLayout {
     callback until-started(int, int);
     callback stop-clicked();
 
-    property <[string]> times: ["15 min", "30 min", "1 h", "2 h", "4 h", "8 h"];
+    property <[string]> times: [@tr("15 min"), @tr("30 min"), @tr("1 h"), @tr("2 h"), @tr("4 h"), @tr("8 h")];
 
     function two-digits(n: int) -> string {
         return (n < 10 ? "0" : "") + n;
@@ -716,14 +716,14 @@ export component AwakeChips inherits VerticalLayout {
 
             Chip {
                 horizontal-stretch: 1;
-                label: "Until stopped";
+                label: @tr("Until stopped");
                 chosen: root.chip == 6;
                 clicked => { root.chip-clicked(6); }
             }
 
             Chip {
                 horizontal-stretch: 1;
-                label: "Until…";
+                label: @tr("Until…");
                 chosen: root.chip == 7;
                 clicked => {
                     if (root.chip == 7) {
@@ -738,7 +738,7 @@ export component AwakeChips inherits VerticalLayout {
                 alignment: center;
 
                 TextButton {
-                    label: "Stop";
+                    label: @tr("Stop");
                     enabled: root.on;
                     clicked => { root.stop-clicked(); }
                 }
@@ -767,7 +767,7 @@ export component AwakeChips inherits VerticalLayout {
                     spacing: 8px;
 
                     Text {
-                        text: "Stay awake until";
+                        text: @tr("Stay awake until");
                         font-size: 12px;
                         color: Theme.muted;
                     }
@@ -778,7 +778,7 @@ export component AwakeChips inherits VerticalLayout {
 
                         Stepper {
                             text: root.two-digits(root.until-hour);
-                            label: "Hour";
+                            label: @tr("Hour");
                             can-decrease: true;
                             can-increase: true;
                             decrease => { root.until-hour = Math.mod(root.until-hour + 23, 24); }
@@ -794,7 +794,7 @@ export component AwakeChips inherits VerticalLayout {
 
                         Stepper {
                             text: root.two-digits(root.until-minute);
-                            label: "Minute";
+                            label: @tr("Minute");
                             can-decrease: true;
                             can-increase: true;
                             decrease => { root.until-minute = Math.mod(root.until-minute + 55, 60); }
@@ -806,7 +806,7 @@ export component AwakeChips inherits VerticalLayout {
                         alignment: end;
 
                         TextButton {
-                            label: "Start";
+                            label: @tr("Start");
                             clicked => {
                                 root.until-started(root.until-hour, root.until-minute);
                                 until-popup.close();

@@ -23,7 +23,7 @@ component DoneButton inherits Rectangle {
     border-radius: 7px;
     background: touch.pressed ? #cc5414 : (touch.has-hover ? #ff8040 : Theme.accent);
     accessible-role: button;
-    accessible-label: "Done";
+    accessible-label: @tr("Done");
     accessible-action-default => { self.clicked(); }
 
     HorizontalLayout {
@@ -31,7 +31,7 @@ component DoneButton inherits Rectangle {
         padding-right: 16px;
 
         Text {
-            text: "Done";
+            text: @tr("Done");
             font-size: 12px;
             font-weight: 600;
             color: white;
@@ -91,7 +91,7 @@ export component InfoWindow inherits Window {
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    title: root.item-name != "" ? root.item-name : "Vento info";
+    title: root.item-name != "" ? root.item-name : @tr("Vento info");
     default-font-size: 13px;
 
     // The item's Finder icon, shown when `has-icon` (otherwise the stack
@@ -114,7 +114,11 @@ export component InfoWindow inherits Window {
     // The folder holds nothing: "Empty folder" shows in place of the card.
     in property <bool> empty-folder;
 
-    // "Show in Finder": vento reveals the items, then closes the window.
+    // The reveal button's text, "Show in Finder" or "Show in Files"
+    // (vento chooses by platform and language).
+    in property <string> reveal-label;
+
+    // The reveal button: vento reveals the items, then closes the window.
     callback reveal-clicked();
     // Done or Esc.
     callback close-requested();
@@ -258,7 +262,7 @@ export component InfoWindow inherits Window {
                         padding: 12px;
                         spacing: 8px;
 
-                        SectionHeading { text: "Biggest inside"; }
+                        SectionHeading { text: @tr("Biggest inside"); }
 
                         for bar in root.biggest: BarRow {
                             name: bar.name;
@@ -269,7 +273,7 @@ export component InfoWindow inherits Window {
                 }
 
                 if root.empty-folder: Text {
-                    text: "Empty folder";
+                    text: @tr("Empty folder");
                     font-size: 12px;
                     color: Theme.muted;
                 }
@@ -280,7 +284,7 @@ export component InfoWindow inherits Window {
                     spacing: 8px;
 
                     TextButton {
-                        label: "Show in Finder";
+                        label: root.reveal-label;
                         clicked => { root.reveal-clicked(); }
                     }
 

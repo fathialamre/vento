@@ -748,6 +748,205 @@ fn placeholders_survive_translation() {
 }
 
 // ---------------------------------------------------------------------------
+// No bare text in the windows
+
+/// Properties whose value a person reads or hears.
+const TEXT_PROPERTIES: &[&str] = &[
+    "text",
+    "label",
+    "title",
+    "accessible-label",
+    "accessible-value",
+    "accessible-description",
+    "accessible-placeholder-text",
+    "placeholder-text",
+];
+
+/// Literals that need no translation: the name, a separator and a
+/// capped counter.
+const BARE_ALLOWED: &[&str] = &["Vento", ":", "99+"];
+
+fn is_ident_byte(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_' || c == b'-'
+}
+
+/// The text of a Slint string literal at the cursor with its `\{...}`
+/// interpolations cut out, and whether it had any.
+fn slint_literal(lx: &mut Lexer) -> (String, bool) {
+    // At the opening quote.
+    lx.i += 1;
+    let mut text = String::new();
+    let mut interpolated = false;
+    while let Some(c) = lx.at(0) {
+        match c {
+            b'"' => {
+                lx.i += 1;
+                break;
+            }
+            b'\\' if lx.at(1) == Some(b'{') => {
+                interpolated = true;
+                lx.i += 2;
+                let mut depth = 1;
+                while let Some(c) = lx.at(0) {
+                    lx.i += 1;
+                    match c {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            b'\\' => lx.i += 2,
+            _ => {
+                let start = lx.i;
+                lx.i += 1;
+                while lx.at(0).is_some_and(|c| c & 0xC0 == 0x80) {
+                    lx.i += 1;
+                }
+                text.push_str(std::str::from_utf8(&lx.b[start..lx.i]).unwrap_or(""));
+            }
+        }
+    }
+    (text, interpolated)
+}
+
+/// Reads a value up to its `;` and reports the string literals in it that
+/// are not inside `@tr(...)`.
+fn scan_value(lx: &mut Lexer, out: &mut Vec<(usize, String)>) {
+    let mut depth = 0i32;
+    while let Some(c) = lx.at(0) {
+        match c {
+            b'/' if matches!(lx.at(1), Some(b'/' | b'*')) => lx.skip_trivia(),
+            b'"' => {
+                let line = lx.line(lx.i);
+                let (text, interpolated) = slint_literal(lx);
+                let allowed = BARE_ALLOWED.contains(&text.as_str());
+                if !allowed && (interpolated || text.chars().any(|c| c.is_alphabetic())) {
+                    out.push((line, text));
+                }
+            }
+            b'@' => {
+                lx.i += 1;
+                while lx.at(0).is_some_and(is_ident_byte) {
+                    lx.i += 1;
+                }
+                lx.skip_trivia();
+                if lx.at(0) == Some(b'(') {
+                    // `@tr(...)` is marked for translation; `@image-url(...)`
+                    // and the like hold no text.
+                    let mut depth = 0;
+                    while let Some(c) = lx.at(0) {
+                        match c {
+                            b'"' => {
+                                slint_literal(lx);
+                                continue;
+                            }
+                            b'(' => depth += 1,
+                            b')' => depth -= 1,
+                            _ => {}
+                        }
+                        lx.i += 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                }
+            }
+            b'(' | b'[' | b'{' => {
+                depth += 1;
+                lx.i += 1;
+            }
+            b')' | b']' | b'}' => {
+                depth -= 1;
+                if depth < 0 {
+                    return;
+                }
+                lx.i += 1;
+            }
+            b';' if depth == 0 => {
+                lx.i += 1;
+                return;
+            }
+            _ => lx.i += 1,
+        }
+    }
+}
+
+/// The string literals in `.slint` source that a person reads but that are
+/// not marked with `@tr`: the values of the text properties and of
+/// `[string]` lists. Each is a line and the literal's text.
+fn bare_slint_text(src: &str) -> Vec<(usize, String)> {
+    let mut lx = Lexer::new(src, Lang::Slint);
+    let mut out = Vec::new();
+    while lx.i < lx.b.len() {
+        match lx.at(0).unwrap() {
+            b'/' if matches!(lx.at(1), Some(b'/' | b'*')) => lx.skip_trivia(),
+            b'"' => lx.skip_string_raw(),
+            c if c.is_ascii_alphabetic() || c == b'_' => {
+                let after_dot = lx.i > 0 && lx.b[lx.i - 1] == b'.';
+                let start = lx.i;
+                while lx.at(0).is_some_and(is_ident_byte) {
+                    lx.i += 1;
+                }
+                let name = std::str::from_utf8(&lx.b[start..lx.i]).unwrap_or("");
+                if after_dot {
+                    continue;
+                }
+                if name == "property" {
+                    lx.skip_trivia();
+                    if lx.b[lx.i..].starts_with(b"<[string]>") {
+                        lx.i += "<[string]>".len();
+                        lx.skip_trivia();
+                        while lx.at(0).is_some_and(is_ident_byte) {
+                            lx.i += 1;
+                        }
+                        lx.skip_trivia();
+                        if lx.at(0) == Some(b':') {
+                            lx.i += 1;
+                            scan_value(&mut lx, &mut out);
+                        }
+                    }
+                } else if name == "items" || TEXT_PROPERTIES.contains(&name) {
+                    lx.skip_trivia();
+                    if lx.at(0) == Some(b':') && lx.at(1) != Some(b':') {
+                        lx.i += 1;
+                        scan_value(&mut lx, &mut out);
+                    }
+                }
+            }
+            _ => lx.i += 1,
+        }
+    }
+    out
+}
+
+#[test]
+fn no_bare_text_in_slint() {
+    let mut files = Vec::new();
+    files_under(&repo_root().join("crates/vento/ui"), "slint", &mut files);
+    files.sort();
+    assert!(!files.is_empty(), "no .slint files found");
+    let mut problems = Vec::new();
+    for path in files {
+        let src = fs::read_to_string(&path).unwrap();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        for (line, text) in bare_slint_text(&src) {
+            problems.push(format!("{name}:{line}: {text:?}"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "text a person reads must be marked with @tr(...):\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The scanner itself
 
 fn keys(calls: Vec<Call>) -> Vec<(String, String, Option<String>)> {
@@ -846,4 +1045,34 @@ fn plural_forms_may_leave_out_the_count_only() {
     // Plain entries stay strict: {n} cannot be left out there.
     assert!(placeholder_problem("Moved {n}", "نُقل", false).is_some());
     assert_eq!(placeholder_problem("Moved {n}", "نُقل {n}", false), None);
+}
+
+#[test]
+fn finds_bare_text_in_slint() {
+    let src = r#"
+        // text: "in a comment";
+        Text { text: "Bare"; }
+        Text { text: @tr("Marked"); }
+        Text { text: root.on ? "Yes" : @tr("No"); }
+        Text { text: root.on ? @tr("Yes {}", "inner") : "No"; }
+        Text { text: "Vento"; }
+        Text { text: ":"; }
+        Text { text: root.count > 99 ? "99+" : root.count; }
+        Text { text: "\{root.a} \{root.b}"; }
+        Text { text: root.a + "x"; }
+        Foo { label: "Label"; accessible-label: "Name"; title: "T"; }
+        Foo { items: ["One", @tr("Two")]; }
+        property <[string]> names: ["A", "B"];
+        in property <[string]> from-rust;
+        Foo { commands: "M 1 0 L 4"; text: root.name; }
+        Foo { x: self.text; font-family: "Inter"; source: @image-url("a.svg"); }
+    "#;
+    let lines: Vec<(usize, String)> = bare_slint_text(src);
+    let found: Vec<&str> = lines.iter().map(|(_, t)| t.as_str()).collect();
+    assert_eq!(
+        found,
+        vec![
+            "Bare", "Yes", "No", " ", "x", "Label", "Name", "T", "One", "A", "B"
+        ]
+    );
 }

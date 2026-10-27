@@ -147,7 +147,7 @@ export component WheelPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Layout";
+        text: @tr("Layout");
     }
 
     HorizontalLayout {
@@ -157,7 +157,7 @@ export component WheelPage inherits VerticalLayout {
             preferred-width: 100px;
             horizontal-stretch: 1;
             icon: PanelIcons.wheel;
-            label: "Honeycomb";
+            label: @tr("Honeycomb");
             chosen: root.wheel-layout == 0;
             clicked => { root.layout-chosen(0); }
         }
@@ -166,7 +166,7 @@ export component WheelPage inherits VerticalLayout {
             preferred-width: 100px;
             horizontal-stretch: 1;
             icon: PanelIcons.petals;
-            label: "Petals";
+            label: @tr("Petals");
             chosen: root.wheel-layout == 1;
             clicked => { root.layout-chosen(1); }
         }
@@ -175,7 +175,7 @@ export component WheelPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Actions";
+        text: @tr("Actions");
     }
 
     ActionList {
@@ -225,7 +225,7 @@ component FolderLabel inherits HorizontalLayout {
     }
 
     Text {
-        text: root.folder.missing ? "Missing" : root.folder.place;
+        text: root.folder.missing ? @tr("Missing") : root.folder.place;
         font-size: 11px;
         color: Theme.muted;
         vertical-alignment: center;
@@ -288,7 +288,7 @@ component PinnedList inherits Rectangle {
 
                 IconButton {
                     icon: Icons.remove;
-                    label: "Unpin " + row.name;
+                    label: @tr("Unpin {}", row.name);
                     clicked => { root.unpinned(i); }
                 }
             }
@@ -325,13 +325,13 @@ export component MovePage inherits VerticalLayout {
 
     HorizontalLayout {
         SectionHeading {
-            text: "Pinned";
+            text: @tr("Pinned");
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
         TextButton {
-            label: root.pinned-full ? "Up to 7 folders" : "Add folder";
+            label: root.pinned-full ? @tr("Up to 7 folders") : @tr("Add folder");
             icon: PanelIcons.add;
             has-icon: !root.pinned-full;
             enabled: !root.pinned-full;
@@ -340,7 +340,7 @@ export component MovePage inherits VerticalLayout {
     }
 
     if root.pinned.length == 0: EmptyLine {
-        text: "No pinned folders";
+        text: @tr("No pinned folders");
     }
 
     if root.pinned.length > 0: PinnedList {
@@ -353,20 +353,20 @@ export component MovePage inherits VerticalLayout {
 
     HorizontalLayout {
         SectionHeading {
-            text: "Recent";
+            text: @tr("Recent");
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
 
         TextButton {
-            label: "Clear";
+            label: @tr("Clear");
             enabled: root.has-history;
             clicked => { root.recent-cleared(); }
         }
     }
 
     if root.recent.length == 0: EmptyLine {
-        text: "No recent folders";
+        text: @tr("No recent folders");
     }
 
     if root.recent.length > 0: VerticalLayout {
@@ -390,7 +390,7 @@ export component MovePage inherits VerticalLayout {
 
                     IconButton {
                         icon: Icons.pin;
-                        label: "Pin " + row.name;
+                        label: @tr("Pin {}", row.name);
                         enabled: root.can-pin;
                         clicked => { root.recent-pinned(i); }
                     }
@@ -405,7 +405,7 @@ export component MovePage inherits VerticalLayout {
         spacing: 8px;
 
         Text {
-            text: "Hold on Move";
+            text: @tr("Hold on Move");
             font-size: 13px;
             color: Theme.text;
             vertical-alignment: center;
@@ -416,7 +416,7 @@ export component MovePage inherits VerticalLayout {
         Stepper {
             horizontal-stretch: 0;
             text: root.hold;
-            label: "Hold on Move";
+            label: @tr("Hold on Move");
             can-decrease: root.hold-can-decrease;
             can-increase: root.hold-can-increase;
             decrease => { root.hold-stepped(-1); }
@@ -444,12 +444,12 @@ export component PocketPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Shortcut";
+        text: @tr("Shortcut");
     }
 
     ShortcutField {
         text: root.shortcut;
-        label: "Pocket shortcut";
+        label: @tr("Pocket shortcut");
         recording <=> root.recording;
         started => {
             root.shortcut-error = "";
@@ -468,13 +468,13 @@ export component PocketPage inherits VerticalLayout {
     Separator { }
 
     SwitchRow {
-        label: "Remove after drag-out";
+        label: @tr("Remove after drag-out");
         on: root.remove-after-drop;
         toggled(on) => { root.remove-after-drop-toggled(on); }
     }
 
     SwitchRow {
-        label: "Keep a copy";
+        label: @tr("Keep a copy");
         on: root.keep-copies;
         toggled(on) => { root.keep-copies-toggled(on); }
     }
@@ -482,11 +482,11 @@ export component PocketPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "When it holds more than 8 items";
+        text: @tr("When it holds more than 8 items");
     }
 
     Segmented {
-        items: ["List", "Scroll", "Stacks"];
+        items: [@tr("List"), @tr("Scroll"), @tr("Stacks")];
         current: root.pocket-layout;
         chosen(i) => { root.pocket-layout-chosen(i); }
     }
@@ -509,7 +509,7 @@ export component ClipboardPage inherits VerticalLayout {
     spacing: 8px;
 
     SwitchRow {
-        label: "Clipboard history";
+        label: @tr("Clipboard history");
         on: root.history;
         toggled(on) => { root.history-toggled(on); }
     }
@@ -517,12 +517,12 @@ export component ClipboardPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Shortcut";
+        text: @tr("Shortcut");
     }
 
     ShortcutField {
         text: root.shortcut;
-        label: "Clipboard shortcut";
+        label: @tr("Clipboard shortcut");
         enabled: root.history;
         recording <=> root.recording;
         started => {
@@ -545,7 +545,7 @@ export component ClipboardPage inherits VerticalLayout {
         alignment: start;
 
         TextButton {
-            label: "Clear history";
+            label: @tr("Clear history");
             clicked => { root.history-cleared(); }
         }
     }
@@ -594,21 +594,21 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Appearance";
+        text: @tr("Appearance");
     }
 
     Segmented {
-        items: ["System", "Light", "Dark"];
+        items: [@tr("System"), @tr("Light"), @tr("Dark")];
         current: root.appearance;
         chosen(i) => { root.appearance-chosen(i); }
     }
 
     SectionHeading {
-        text: "Theme";
+        text: @tr("Theme");
     }
 
     MenuField {
-        label: "Theme";
+        label: @tr("Theme");
         items: root.theme-names;
         current: root.theme;
         chosen(i) => { root.theme-chosen(i); }
@@ -617,7 +617,7 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Trigger";
+        text: @tr("Trigger");
     }
 
     Segmented {
@@ -627,7 +627,7 @@ export component GeneralPage inherits VerticalLayout {
     }
 
     SwitchRow {
-        label: "Shake to open";
+        label: @tr("Shake to open");
         on: root.shake-to-open;
         toggled(on) => { root.shake-to-open-toggled(on); }
     }
@@ -635,11 +635,11 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Terminal";
+        text: @tr("Terminal");
     }
 
     MenuField {
-        label: "Terminal";
+        label: @tr("Terminal");
         items: root.terminals;
         current: root.terminal;
         chosen(i) => { root.terminal-chosen(i); }
@@ -648,11 +648,11 @@ export component GeneralPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: "Copy path";
+        text: @tr("Copy path");
     }
 
     Segmented {
-        items: ["Plain", "Shell-quoted"];
+        items: [@tr("Plain"), @tr("Shell-quoted")];
         current: root.path-format;
         chosen(i) => { root.path-format-chosen(i); }
     }
@@ -671,12 +671,12 @@ export component CopyFromScreenPage inherits VerticalLayout {
     spacing: 8px;
 
     SectionHeading {
-        text: "Shortcut";
+        text: @tr("Shortcut");
     }
 
     ShortcutField {
         text: root.shortcut;
-        label: "Copy from screen shortcut";
+        label: @tr("Copy from screen shortcut");
         recording <=> root.recording;
         started => {
             root.shortcut-error = "";
@@ -701,7 +701,7 @@ export component KeepAwakePage inherits VerticalLayout {
     spacing: 8px;
 
     SwitchRow {
-        label: "Let the screen turn off";
+        label: @tr("Let the screen turn off");
         on: root.screen-off;
         toggled(on) => { root.screen-off-toggled(on); }
     }
@@ -724,7 +724,7 @@ export component AboutPage inherits VerticalLayout {
     }
 
     Text {
-        text: "Version " + root.version;
+        text: @tr("Version {}", root.version);
         font-size: 12px;
         color: Theme.muted;
     }
@@ -735,7 +735,7 @@ export component AboutPage inherits VerticalLayout {
         alignment: start;
 
         TextButton {
-            label: "Open settings file";
+            label: @tr("Open settings file");
             clicked => { root.open-settings-file(); }
         }
     }
@@ -743,7 +743,7 @@ export component AboutPage inherits VerticalLayout {
     Separator { }
 
     Text {
-        text: "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.";
+        text: @tr("GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.");
         font-size: 12px;
         color: Theme.muted;
         wrap: word-wrap;
@@ -753,7 +753,7 @@ export component AboutPage inherits VerticalLayout {
         alignment: start;
 
         TextButton {
-            label: "View licenses";
+            label: @tr("View licenses");
             clicked => { root.open-licenses(); }
         }
     }

@@ -6,8 +6,10 @@ import { Theme } from "theme.slint";
 import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
-// One row of the sidebar.
-export struct PageItem { icon: image, label: string }
+// One row of the sidebar. `id` names the page whatever its label says:
+// 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Clipboard, 5 Copy from screen,
+// 6 Keep Awake, 7 About (the order of `Page` in `settings_window/mod.rs`).
+export struct PageItem { icon: image, label: string, id: int }
 
 // A sidebar row: the page's icon and name, on the accent's faint tint while
 // it is the page shown.
@@ -57,7 +59,7 @@ component SidebarRow inherits Rectangle {
 }
 
 export component SettingsWindow inherits Window {
-    title: "Vento Settings";
+    title: @tr("Vento Settings");
     default-font-size: 13px;
     preferred-width: 680px;
     preferred-height: 520px;
@@ -66,7 +68,7 @@ export component SettingsWindow inherits Window {
     background: Theme.bg;
 
     // The sidebar's rows, in order, and the one shown (an index into them).
-    // The page shown is found by its name, so a page left out (Copy from
+    // The page shown is found by its id, so a page left out (Copy from
     // screen, where unsupported) moves the rows after it up.
     in property <[PageItem]> pages;
     in-out property <int> page;
@@ -180,8 +182,10 @@ export component SettingsWindow inherits Window {
     // button does. While a shortcut field records, Esc only cancels that.
     callback close-requested();
 
-    // The name of the page shown, which picks its body.
+    // The name of the page shown (display only) and its id, which picks its
+    // body.
     property <string> label: root.pages[root.page].label;
+    property <int> page-id: root.page < root.pages.length ? root.pages[root.page].id : -1;
 
     forward-focus: keys;
 
@@ -271,7 +275,7 @@ export component SettingsWindow inherits Window {
                         text: root.notice;
                     }
 
-                    if root.label == "General": GeneralPage {
+                    if root.page-id == 0: GeneralPage {
                         language-names: root.language-names;
                         language: root.language;
                         language-chosen(i) => { root.language-chosen(i); }
@@ -291,7 +295,7 @@ export component SettingsWindow inherits Window {
                         terminal-chosen(i) => { root.terminal-chosen(i); }
                         path-format-chosen(i) => { root.path-format-chosen(i); }
                     }
-                    if root.label == "Wheel": WheelPage {
+                    if root.page-id == 1: WheelPage {
                         wheel-layout: root.wheel-layout;
                         actions: root.actions;
                         shown-actions: root.shown-actions;
@@ -299,7 +303,7 @@ export component SettingsWindow inherits Window {
                         action-toggled(i, on) => { root.action-toggled(i, on); }
                         action-moved(from, to) => { root.action-moved(from, to); }
                     }
-                    if root.label == "Move": MovePage {
+                    if root.page-id == 2: MovePage {
                         pinned: root.pinned;
                         pinned-full: root.pinned-full;
                         recent: root.recent;
@@ -315,7 +319,7 @@ export component SettingsWindow inherits Window {
                         recent-cleared => { root.recent-cleared(); }
                         hold-stepped(step) => { root.hold-stepped(step); }
                     }
-                    if root.label == "Pocket": PocketPage {
+                    if root.page-id == 3: PocketPage {
                         shortcut: root.shortcut;
                         shortcut-error <=> root.shortcut-error;
                         recording <=> root.shortcut-recording;
@@ -328,7 +332,7 @@ export component SettingsWindow inherits Window {
                         keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
                         pocket-layout-chosen(i) => { root.pocket-layout-chosen(i); }
                     }
-                    if root.label == "Clipboard": ClipboardPage {
+                    if root.page-id == 4: ClipboardPage {
                         history: root.clip-history;
                         shortcut: root.clip-shortcut;
                         shortcut-error <=> root.clip-shortcut-error;
@@ -338,18 +342,18 @@ export component SettingsWindow inherits Window {
                         recording-cancelled => { root.stop-recording(); }
                         history-cleared => { root.clip-history-cleared(); }
                     }
-                    if root.label == "Copy from screen" && root.screen-text-supported: CopyFromScreenPage {
+                    if root.page-id == 5 && root.screen-text-supported: CopyFromScreenPage {
                         shortcut: root.screen-shortcut;
                         shortcut-error <=> root.screen-shortcut-error;
                         recording <=> root.screen-shortcut-recording;
                         recording-started => { root.screen-shortcut-recording-started(); }
                         recording-cancelled => { root.stop-recording(); }
                     }
-                    if root.label == "Keep Awake": KeepAwakePage {
+                    if root.page-id == 6: KeepAwakePage {
                         screen-off: root.awake-screen-off;
                         screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
                     }
-                    if root.label == "About": AboutPage {
+                    if root.page-id == 7: AboutPage {
                         version: root.version;
                         open-settings-file => { root.open-settings-file(); }
                         open-licenses => { root.open-licenses(); }

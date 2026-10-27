@@ -5,10 +5,434 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/vento/src/settings_window/mod.rs:1116
+#: crates/vento/ui/controls.slint:692
+msgid "1 h"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:692
+msgid "15 min"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:692
+msgid "2 h"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:692
+msgid "30 min"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:692
+msgid "4 h"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:692
+msgid "8 h"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:178
+msgid "Actions"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:334
+msgid "Add folder"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:603
+msgid "Add to Pocket"
+msgstr ""
+
+#: crates/vento/ui/screen_access.slint:118
+msgid "After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again."
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:453
+msgid "All"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:1541
+msgid "All {n}"
+msgid_plural "All {n}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/vento/ui/settings_pages.slint:597
+msgid "Appearance"
+msgstr ""
+
+#: crates/vento/src/settings_window/mod.rs:1123
 msgid "Automatic (system language)"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:863
+msgid "Back to Pocket"
+msgstr ""
+
+#: crates/vento/ui/info.slint:265
+msgid "Biggest inside"
+msgstr ""
+
+#: crates/vento/ui/archive.slint:77
+msgid "Cancel"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:409
+msgid "Clear"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:548
+msgid "Clear history"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:1767
+msgid "Clipboard"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:512
+msgid "Clipboard history"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:525
+msgid "Clipboard shortcut"
+msgstr ""
+
+#: crates/vento/ui/screen_access.slint:100
+msgid "Copy from screen needs Screen Recording"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:679
+msgid "Copy from screen shortcut"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:651
+msgid "Copy path"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:663
+msgid "Copy something and it shows up here"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:314
+msgid "Copy text"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:601
+msgid "Dark"
+msgstr ""
+
+#: crates/vento/ui/info.slint:26
+msgid "Done"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:1655
+msgid "Drop to add"
+msgstr ""
+
+#: crates/vento/ui/info.slint:276
+msgid "Empty folder"
+msgstr ""
+
+#: crates/vento/ui/archive.slint:109
+msgid "Extract"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:453
+msgid "Files"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:746
+msgid "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed."
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:408
+msgid "Hold on Move"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:160
+msgid "Honeycomb"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:781
+msgid "Hour"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:453
+msgid "Images"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:344
+msgid "Keep Awake"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:477
+msgid "Keep a copy"
 msgstr ""
 
 #: crates/vento-core/src/i18n/mod.rs:183
 msgid "Language"
 msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:150
+msgid "Layout"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:487
+msgid "Less {}"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:704
+msgid "Let the screen turn off"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:601
+msgid "Light"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:453
+msgid "Links"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:489
+msgid "List"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:797
+msgid "Minute"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:228
+msgid "Missing"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:505
+msgid "More {}"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:343
+msgid "No pinned folders"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:369
+msgid "No recent folders"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:183
+msgid "None found"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:664
+msgid "Nothing of this kind yet"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:325
+msgid "Off"
+msgstr ""
+
+#: crates/vento/ui/screen_access.slint:137
+msgid "Open Settings"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:738
+msgid "Open settings file"
+msgstr ""
+
+#: crates/vento/ui/archive.slint:255
+msgid "Password"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:299
+msgid "Pause"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:169
+msgid "Petals"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:664
+msgid "Pin a copy to keep it here"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:393
+msgid "Pin {}"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:453
+msgid "Pinned"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:655
+msgid "Plain"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:880
+msgid "Pocket"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:452
+msgid "Pocket shortcut"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:532
+msgid "Press a shortcut…"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:443
+msgid "Quit"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:356
+msgid "Recent"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:997
+msgid "Remove"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:471
+msgid "Remove after drag-out"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:299
+msgid "Resume"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:489
+msgid "Scroll"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:437
+msgid "Settings…"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:630
+msgid "Shake to open"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:655
+msgid "Shell-quoted"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:447
+msgid "Shortcut"
+msgstr ""
+
+#: crates/vento/src/info.rs:47
+msgid "Show in Files"
+msgstr ""
+
+#: crates/vento/src/info.rs:45
+msgid "Show in Finder"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:489
+msgid "Stacks"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:809
+msgid "Start"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:770
+msgid "Stay awake until"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:741
+msgid "Stop"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:601
+msgid "System"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:638
+msgid "Terminal"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:453
+msgid "Text"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:607
+msgid "Theme"
+msgstr ""
+
+#: crates/vento/ui/screen_access.slint:111
+msgid "To read text on your screen, Vento needs Screen Recording. It only looks at the area you select."
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:620
+msgid "Trigger"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:1217
+msgid "Undo"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:169
+msgid "Undo {}s"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:291
+msgid "Unpin {}"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:719
+msgid "Until stopped"
+msgstr ""
+
+#: crates/vento/ui/controls.slint:726
+msgid "Until…"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:334
+msgid "Up to 7 folders"
+msgstr ""
+
+#: crates/vento/ui/screen_access.slint:44
+msgid "Vento Screen Recording"
+msgstr ""
+
+#: crates/vento/ui/settings_window.slint:62
+msgid "Vento Settings"
+msgstr ""
+
+#: crates/vento/ui/archive.slint:144
+msgid "Vento archive password"
+msgstr ""
+
+#: crates/vento/ui/archive.slint:10
+msgid "Vento archive progress"
+msgstr ""
+
+#: crates/vento/ui/info.slint:94
+msgid "Vento info"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:287
+msgid "Vento is on"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:287
+msgid "Vento is paused"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:727
+msgid "Version {}"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:756
+msgid "View licenses"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:485
+msgid "When it holds more than 8 items"
+msgstr ""
+
+#: crates/vento/ui/archive.slint:287
+msgid "Wrong password"
+msgstr ""
+
+#: crates/vento/ui/pocket.slint:333
+msgid "{} {n}"
+msgid_plural "{} {n}"
+msgstr[0] ""
+msgstr[1] ""
