@@ -39,7 +39,21 @@ pub struct SystemPdf;
 impl PdfBackend for SystemPdf {
     fn inspect(&self, bytes: &[u8]) -> Result<usize, PdfError> {
         autoreleasepool(|_| {
-            let doc = open(&NSData::with_bytes(bytes))?;
+            // SAFETY: `bytes` is valid for its length for the whole call. The
+            // data never frees or writes through the pointer, and it and the
+            // document opened from it are released (directly, or when this
+            // pool drains) before `inspect` returns, so nothing reads the
+            // borrowed bytes after the borrow ends. Copying instead would
+            // double the memory of a large PDF for a page count.
+            let data = unsafe {
+                NSData::initWithBytesNoCopy_length_freeWhenDone(
+                    NSData::alloc(),
+                    NonNull::from(bytes).cast::<c_void>(),
+                    bytes.len(),
+                    false,
+                )
+            };
+            let doc = open(&data)?;
             // SAFETY: `doc` is a valid, unlocked document.
             Ok(unsafe { doc.pageCount() })
         })

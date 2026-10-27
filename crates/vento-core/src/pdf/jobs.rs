@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -52,7 +52,8 @@ pub enum PdfError {
     NotPdf,
     /// A filesystem call failed.
     Io(io::Error),
-    /// The PDF library failed; its text stays English.
+    /// The PDF library failed, or there was nothing to write. The library's
+    /// own text stays English; vento's own reasons arrive translated.
     Backend(String),
     /// The user cancelled the job.
     Cancelled,
@@ -134,11 +135,15 @@ pub fn open_sources(
     (opened, skipped)
 }
 
+/// How far into a file its `%PDF-` header may start; PDF readers look
+/// this far, so a file with a few stray bytes in front still opens.
+const HEADER_WINDOW: u64 = 1024;
+
 fn open_one(path: &Path, backend: &dyn PdfBackend) -> Result<Source, PdfError> {
     if fs::metadata(path)?.is_dir() {
         return Err(PdfError::NotPdf);
     }
-    let bytes: Arc<[u8]> = Arc::from(fs::read(path)?);
+    let bytes: Arc<[u8]> = Arc::from(read_pdf(path)?);
     match backend.inspect(&bytes)? {
         0 => Err(PdfError::NotPdf),
         page_count => Ok(Source {
@@ -147,6 +152,28 @@ fn open_one(path: &Path, backend: &dyn PdfBackend) -> Result<Source, PdfError> {
             page_count,
         }),
     }
+}
+
+/// The whole of `path`, if its first [`HEADER_WINDOW`] bytes hold a
+/// `%PDF-` header; anything else is `NotPdf` without reading the rest, so a
+/// large video dropped next to a PDF costs one small read.
+fn read_pdf(path: &Path) -> Result<Vec<u8>, PdfError> {
+    let file = fs::File::open(path)?;
+    let size = file.metadata()?.len();
+    let mut bytes = Vec::new();
+    let mut file = file.take(HEADER_WINDOW);
+    file.read_to_end(&mut bytes)?;
+    if !bytes.windows(5).any(|w| w == b"%PDF-") {
+        return Err(PdfError::NotPdf);
+    }
+    let mut file = file.into_inner();
+    bytes.reserve(
+        usize::try_from(size)
+            .unwrap_or(0)
+            .saturating_sub(bytes.len()),
+    );
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 /// What to write.
@@ -459,6 +486,8 @@ mod tests {
         calls: Cell<usize>,
         last_pages: RefCell<Vec<PageRef>>,
         seen_bytes: RefCell<Vec<Vec<u8>>>,
+        /// Panics in `inspect`: for files that must be turned away first.
+        no_inspect: Cell<bool>,
     }
 
     impl FakeBackend {
@@ -487,12 +516,16 @@ mod tests {
 
     impl PdfBackend for FakeBackend {
         fn inspect(&self, bytes: &[u8]) -> Result<usize, PdfError> {
-            if bytes.starts_with(b"LOCKED") {
+            if self.no_inspect.get() {
+                panic!("inspect called");
+            }
+            let has = |m: &[u8]| bytes.windows(m.len()).any(|w| w == m);
+            if has(b"LOCKED") {
                 Err(PdfError::Locked)
-            } else if bytes.starts_with(b"%PDF") {
-                Ok(8)
-            } else if bytes.starts_with(b"EMPTY") {
+            } else if has(b"EMPTY") {
                 Ok(0)
+            } else if has(b"%PDF") {
+                Ok(8)
             } else {
                 Err(PdfError::NotPdf)
             }
@@ -983,9 +1016,9 @@ mod tests {
         let folder = dir.path().join("folder.pdf");
         let missing = dir.path().join("missing.pdf");
         fs::write(&good, ORIGINAL).unwrap();
-        fs::write(&locked, b"LOCKED").unwrap();
+        fs::write(&locked, b"%PDF-LOCKED").unwrap();
         fs::write(&text, b"hello").unwrap();
-        fs::write(&empty, b"EMPTY").unwrap();
+        fs::write(&empty, b"%PDF-EMPTY").unwrap();
         fs::create_dir(&folder).unwrap();
         let paths = vec![
             folder.clone(),
@@ -1006,6 +1039,39 @@ mod tests {
         assert!(matches!(bad[2], (ref p, PdfError::Locked) if *p == locked));
         assert!(matches!(bad[3], (ref p, PdfError::NotPdf) if *p == empty));
         assert!(matches!(bad[4], (ref p, PdfError::Io(_)) if *p == missing));
+    }
+
+    #[test]
+    fn a_big_file_without_a_pdf_header_is_never_read_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let movie = dir.path().join("movie.mov");
+        // A sparse 64 MiB file: only the first KB is ever looked at.
+        let file = fs::File::create(&movie).unwrap();
+        file.set_len(64 << 20).unwrap();
+        drop(file);
+        let late = dir.path().join("late.pdf");
+        let mut bytes = vec![b' '; 1024];
+        bytes.extend_from_slice(b"%PDF-1.7");
+        fs::write(&late, &bytes).unwrap();
+        let fake = FakeBackend::default();
+        fake.no_inspect.set(true);
+        let (ok, bad) = open_sources(&[movie.clone(), late.clone()], &fake);
+        assert!(ok.is_empty());
+        assert!(matches!(bad[0], (ref p, PdfError::NotPdf) if *p == movie));
+        assert!(matches!(bad[1], (ref p, PdfError::NotPdf) if *p == late));
+    }
+
+    #[test]
+    fn a_pdf_with_junk_before_its_header_opens_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("junk.pdf");
+        let mut bytes = b"\r\n\x00junk".to_vec();
+        bytes.extend_from_slice(ORIGINAL);
+        bytes.extend(std::iter::repeat_n(b'x', 5000));
+        fs::write(&path, &bytes).unwrap();
+        let (ok, bad) = open_sources(std::slice::from_ref(&path), &FakeBackend::default());
+        assert!(bad.is_empty());
+        assert_eq!(&*ok[0].bytes, &bytes[..]);
     }
 
     #[test]
