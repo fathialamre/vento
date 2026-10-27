@@ -22,9 +22,14 @@ use slint::ComponentHandle;
 
 use crate::ui::Theme;
 
-/// Gives a window's `Theme` what it follows again; false once the window is
-/// gone.
-type Follower = Box<dyn Fn() -> bool>;
+/// A window that [`follow`]s the language, by a weak reference.
+struct Follower {
+    /// Whether the window still exists.
+    alive: Box<dyn Fn() -> bool>,
+    /// Gives the window's `Theme` what it follows again; false once the
+    /// window is gone.
+    refresh: Box<dyn Fn() -> bool>,
+}
 
 thread_local! {
     // All the UI runs on the main thread.
@@ -114,6 +119,10 @@ where
     for<'a> Theme<'a>: slint::Global<'a, T>,
 {
     let weak = window.as_weak();
+    let alive = {
+        let weak = weak.clone();
+        move || weak.upgrade().is_some()
+    };
     let refresh = move || {
         let Some(window) = weak.upgrade() else {
             return false;
@@ -126,7 +135,23 @@ where
         true
     };
     refresh();
-    FOLLOWERS.with(|followers| followers.borrow_mut().push(Box::new(refresh)));
+    register(Follower {
+        alive: Box::new(alive),
+        refresh: Box::new(refresh),
+    });
+}
+
+/// Adds `follower` to the registry, dropping the followers whose window is
+/// gone first. A window made on use (the Quick panel, the Settings window,
+/// the archive and Screen Recording windows) is dropped once it has stayed
+/// hidden and made again at its next use; a dead follower's weak reference
+/// would keep the dropped window's memory, so none is kept.
+fn register(follower: Follower) {
+    FOLLOWERS.with(|followers| {
+        let mut followers = followers.borrow_mut();
+        followers.retain(|each| (each.alive)());
+        followers.push(follower);
+    });
 }
 
 /// Gives every window that [`follow`]s its look again, and forgets the
@@ -134,7 +159,10 @@ where
 fn refresh_followers() {
     // Taken out while they run, so a window made meanwhile can still follow.
     let followers = FOLLOWERS.with(|followers| std::mem::take(&mut *followers.borrow_mut()));
-    let mut kept: Vec<Follower> = followers.into_iter().filter(|refresh| refresh()).collect();
+    let mut kept: Vec<Follower> = followers
+        .into_iter()
+        .filter(|each| (each.refresh)())
+        .collect();
     FOLLOWERS.with(|followers| {
         let mut followers = followers.borrow_mut();
         kept.append(&mut followers);
@@ -177,6 +205,8 @@ pub fn show_menu_colors(platform: &dyn Platform, theme: &Theme<'_>) {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use super::*;
 
     #[test]
@@ -220,28 +250,56 @@ mod tests {
         assert_eq!(theme_index(ThemeName::Nord), 6);
     }
 
+    /// A follower whose window lives while `alive` is true, counting its
+    /// refreshes in `refreshed`.
+    fn test_follower(alive: &Rc<Cell<bool>>, refreshed: &Rc<Cell<u32>>) -> Follower {
+        let (a, r) = (alive.clone(), refreshed.clone());
+        let a2 = alive.clone();
+        Follower {
+            alive: Box::new(move || a2.get()),
+            refresh: Box::new(move || {
+                if !a.get() {
+                    return false;
+                }
+                r.set(r.get() + 1);
+                true
+            }),
+        }
+    }
+
+    fn followers() -> usize {
+        FOLLOWERS.with(|followers| followers.borrow().len())
+    }
+
     #[test]
     fn followers_run_again_until_their_window_is_gone() {
-        use std::rc::Rc;
-        let (kept, gone) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
-        let (k, g) = (kept.clone(), gone.clone());
-        FOLLOWERS.with(|followers| {
-            let mut followers = followers.borrow_mut();
-            followers.push(Box::new(move || {
-                k.set(k.get() + 1);
-                true
-            }));
-            followers.push(Box::new(move || {
-                g.set(g.get() + 1);
-                false
-            }));
-        });
+        let (kept, gone) = (Rc::new(Cell::new(true)), Rc::new(Cell::new(true)));
+        let (kept_runs, gone_runs) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
+        register(test_follower(&kept, &kept_runs));
+        register(test_follower(&gone, &gone_runs));
         refresh_followers();
+        gone.set(false);
         refresh_followers();
-        assert_eq!(kept.get(), 2);
-        // Asked once, said its window is gone, and was forgotten.
-        assert_eq!(gone.get(), 1);
-        assert_eq!(FOLLOWERS.with(|followers| followers.borrow().len()), 1);
+        assert_eq!(kept_runs.get(), 2);
+        assert_eq!(gone_runs.get(), 1);
+        // Asked once more, said its window is gone, and was forgotten.
+        assert_eq!(followers(), 1);
+        FOLLOWERS.with(|followers| followers.borrow_mut().clear());
+    }
+
+    #[test]
+    fn a_window_made_again_does_not_grow_the_registry() {
+        let runs = Rc::new(Cell::new(0));
+        // Made, dropped after staying hidden, made again: many times over,
+        // with no language change in between.
+        for _ in 0..5 {
+            let window = Rc::new(Cell::new(true));
+            register(test_follower(&window, &runs));
+            window.set(false);
+        }
+        let last = Rc::new(Cell::new(true));
+        register(test_follower(&last, &runs));
+        assert_eq!(followers(), 1);
         FOLLOWERS.with(|followers| followers.borrow_mut().clear());
     }
 

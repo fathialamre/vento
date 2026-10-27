@@ -376,21 +376,57 @@ component FilterButton inherits Rectangle {
     }
 }
 
+// A Flickable that scrolls sideways, its content laid out from the start of
+// the line within `span`: from the left, or from the right in a
+// right-to-left language. It opens at the content's start (`start-x`), and
+// `to-start` goes back there. In a right-to-left language content that
+// grows grows at the left of `span`, so the view moves with it and what is
+// in view stays still, as it does when content grows at the right of a
+// left-to-right row. The view is a plain value, not a binding: the
+// Flickable itself writes it when a trackpad scrolls it.
+component SideFlickable inherits Flickable {
+    // The width the content is laid out in: the Flickable's, or the
+    // content's when it is wider.
+    out property <length> span: max(self.width, self.content-width);
+    // The view at the content's start.
+    out property <length> start-x: Theme.rtl ? min(0px, self.width - self.content-width) : 0px;
+    // `span` as the view last followed it.
+    property <length> seen-span;
+    property <bool> rtl: Theme.rtl;
+
+    public function to-start() {
+        self.seen-span = self.span;
+        self.content-x = self.start-x;
+    }
+
+    init => {
+        self.to-start();
+    }
+    changed rtl => {
+        self.to-start();
+    }
+    changed span => {
+        if (self.rtl) {
+            self.content-x = max(self.width - self.content-width,
+                min(0px, self.content-x - (self.span - self.seen-span)));
+        }
+        self.seen-span = self.span;
+    }
+}
+
 // A row of chips (its children), scrolling sideways when they don't fit, by
 // trackpad or by a mouse wheel's vertical scroll. The chips start at the
 // start of the line: in a right-to-left language at the right, scrolled to
 // the right end, and give each a `layout-order` that reverses them.
 component ChipRow inherits Rectangle {
-    flick := Flickable {
+    flick := SideFlickable {
         width: root.width;
         height: root.height;
         interactive: false;
         content-width: chips-layout.preferred-width;
-        // Until the row is first scrolled.
-        content-x: Theme.rtl ? min(0px, self.width - self.content-width) : 0px;
 
         TouchArea {
-            width: max(flick.width, chips-layout.preferred-width);
+            width: flick.span;
             height: flick.height;
             scroll-event(e) => {
                 if e.delta-x == 0 && e.delta-y != 0 && flick.content-width > flick.width {
@@ -1271,7 +1307,7 @@ export component PocketIsland inherits Window {
                 width: parent.width;
                 height: 112px;
 
-                row := Flickable {
+                row := SideFlickable {
                     // Under Scroll, a full Pocket's strip of every item (or of
                     // a clear's faded items while its Undo is offered, as long
                     // as nothing new came in: those are shown only in an empty
@@ -1283,13 +1319,6 @@ export component PocketIsland inherits Window {
                     // anyway.
                     property <bool> full-scroll: root.layout == 1 && root.count > 8;
 
-                    // The width the cells are laid out in: the row's, or the
-                    // strip's when it is wider. In a right-to-left language the
-                    // first cell is at its right end.
-                    property <length> span: max(self.width, self.content-width);
-                    // Where the strip starts: at its first item, which is at the
-                    // right end in a right-to-left language.
-                    property <length> first-x: Theme.rtl ? min(0px, self.width - self.content-width) : 0px;
 
                     x: Theme.rtl ? root.pad + root.side-room : root.pad;
                     y: 16px;
@@ -1301,11 +1330,8 @@ export component PocketIsland inherits Window {
                         : max(root.cells.length, root.count == 0 ? root.ghosts.length : 0) * root.cell-step
                         + (root.count > root.cells.length && root.layout == 0 ? 48px : 0px);
 
-                    // Until the strip is first scrolled.
-                    content-x: self.first-x;
-
                     changed full-scroll => {
-                        self.content-x = self.first-x;
+                        self.to-start();
                     }
 
                     // Behind the cells, so it gets the wheel events they let
