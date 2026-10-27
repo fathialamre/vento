@@ -68,14 +68,26 @@ pub struct Toaster {
 impl Toaster {
     /// Creates the toaster; its window comes with the first toast.
     pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
-        Rc::new_cyclic(|this| Self {
+        let toaster = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             platform,
             window: LazyWindow::new(),
             timer: Timer::default(),
             undo: RefCell::new(None),
             non_key: Cell::new(false),
-        })
+        });
+        // A toast's sentence is made in the language of its moment: one up
+        // during a language change goes, and the next is in the new one.
+        appearance::follow_language(Rc::downgrade(&toaster), Toaster::dismiss);
+        toaster
+    }
+
+    /// Hides the toast that is up, if any, and drops its Undo button (the
+    /// undo itself stays on offer in the menus).
+    fn dismiss(&self) {
+        self.timer.stop();
+        self.undo.borrow_mut().take();
+        self.hide();
     }
 
     /// The toast window, created and connected if there is none.

@@ -270,18 +270,35 @@ pub struct PasswordView {
     window: LazyWindow<PasswordPrompt>,
     answer: RefCell<Option<Answer>>,
     open: Cell<bool>,
+    /// The name of the archive asked about, to write the line again in
+    /// another language.
+    archive_name: RefCell<String>,
 }
 
 impl PasswordView {
     /// Creates the view; its window comes with the first question.
     pub fn new(platform: Rc<dyn Platform>) -> Rc<Self> {
-        Rc::new_cyclic(|this| Self {
+        let view = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             platform,
             window: LazyWindow::new(),
             answer: RefCell::new(None),
             open: Cell::new(false),
-        })
+            archive_name: RefCell::new(String::new()),
+        });
+        appearance::follow_language(Rc::downgrade(&view), PasswordView::relanguage);
+        view
+    }
+
+    /// Writes the open window's line again after a language change; the
+    /// rest of its text is the window's own.
+    fn relanguage(&self) {
+        if !self.open.get() {
+            return;
+        }
+        if let Some(window) = self.window.get() {
+            window.set_heading(prompt_title(&self.archive_name.borrow()).into());
+        }
     }
 
     /// The password window, created and connected if there is none.
@@ -329,6 +346,7 @@ impl PasswordView {
         *self.answer.borrow_mut() = Some(answer);
         let window = self.window();
         appearance::apply(&window.global::<Theme>());
+        archive_name.clone_into(&mut self.archive_name.borrow_mut());
         window.set_heading(prompt_title(archive_name).into());
         window.set_wrong(wrong);
         window.set_password("".into());
