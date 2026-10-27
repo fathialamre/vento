@@ -43,6 +43,14 @@ pub fn sheet_save_allowed(has_pages: bool, busy: bool) -> bool {
     has_pages && !busy
 }
 
+/// Whether a finished save may close its window: only when it wrote the
+/// grid as it stands now (`written` equals `now`) and no added files are
+/// still on their way (`adding`). Otherwise the window stays open, so
+/// pages added while the save ran are never lost.
+pub fn closes_after_save(written: &[PageRef], now: &[PageRef], adding: bool) -> bool {
+    !adding && written == now
+}
+
 /// Arrow keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Arrow {
@@ -572,6 +580,21 @@ mod tests {
         assert!(sheet_save_allowed(true, false));
         assert!(!sheet_save_allowed(true, true), "a write already runs");
         assert!(!sheet_save_allowed(false, false), "nothing to write");
+    }
+
+    #[test]
+    fn a_save_closes_the_window_only_when_it_wrote_the_grid_as_it_is() {
+        let written = [page(0, 0, 0), page(0, 1, 0)];
+        assert!(closes_after_save(&written, &written, false));
+        let grown = [page(0, 0, 0), page(0, 1, 0), page(1, 0, 0)];
+        assert!(
+            !closes_after_save(&written, &grown, false),
+            "pages added while it wrote"
+        );
+        assert!(
+            !closes_after_save(&written, &written, true),
+            "added files are still being read"
+        );
     }
     use vento_core::i18n::with_language;
 

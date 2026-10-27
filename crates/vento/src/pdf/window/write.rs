@@ -17,14 +17,14 @@ use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, TimerMode, VecModel};
 use vento_core::archive::Progress;
 use vento_core::i18n::{fill, tr};
-use vento_core::pdf::{ImageKind, ImageOptions, PdfJob, PdfOutcome, SplitMode};
+use vento_core::pdf::{ImageKind, ImageOptions, PageRef, PdfJob, PdfOutcome, SplitMode};
 
 use super::{Answered, PdfView, file_name};
 use crate::exec::{PdfDone, pdf_toast_text};
 use crate::pdf::logic::{
-    cut_at, cut_footer, cut_marker, cut_summary, every_n_text, every_page_text, files_text,
-    format_key, image_options, images_texts, job_fraction, replace_answer, sheet_save_allowed,
-    split_heading, split_n_range, toggle_cut,
+    closes_after_save, cut_at, cut_footer, cut_marker, cut_summary, every_n_text, every_page_text,
+    files_text, format_key, image_options, images_texts, job_fraction, replace_answer,
+    sheet_save_allowed, split_heading, split_n_range, toggle_cut,
 };
 use crate::ui::PdfCutMark;
 
@@ -343,6 +343,7 @@ impl PdfView {
         self.popover.set(Popover::None);
         self.window.set_split_open(false);
         self.window.set_images_open(false);
+        self.add_waiting_soon();
     }
 
     /// The orange button of the popover open (Return).
@@ -376,6 +377,7 @@ impl PdfView {
             .set_cut_marks(ModelRc::new(VecModel::<PdfCutMark>::default()));
         self.refresh_footer();
         self.update_locks();
+        self.add_waiting_soon();
     }
 
     /// A click at (`x`, `y`) in the grid's content in cut mode.
@@ -458,9 +460,10 @@ impl PdfView {
                 }
             });
         let this = self.this.clone();
+        let written = pages.clone();
         let done: PdfDone = Box::new(move |outcome| {
             if let Some(view) = this.upgrade() {
-                view.job_done(outcome, after);
+                view.job_done(outcome, after, &written);
             }
         });
         debug!("PDF window {} writes {job:?}", self.id);
@@ -510,10 +513,13 @@ impl PdfView {
         self.job_timer.stop();
         self.window.set_progress_shown(false);
         self.update_locks();
+        self.add_waiting_soon();
     }
 
-    /// How a write ended (the toast has said so already).
-    fn job_done(&self, outcome: &PdfOutcome, after: After) {
+    /// How a write of the pages `written` ended (the toast has said so
+    /// already). A save marks exactly what it wrote as saved; pages added
+    /// while it ran keep the window open and edited.
+    fn job_done(&self, outcome: &PdfOutcome, after: After, written: &[PageRef]) {
         self.job_over();
         let made = (outcome.failed.is_none() && !outcome.cancelled)
             .then(|| outcome.made.first().map(|m| m.output.clone()))
@@ -532,11 +538,14 @@ impl PdfView {
         }
         match after {
             After::Save => {
-                self.pages.borrow_mut().mark_saved();
+                self.pages.borrow_mut().mark_saved_as(written);
                 self.retext();
+                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
+                if !self.closes_after_save(written) {
+                    return;
+                }
                 self.saved.set(true);
                 self.update_locks();
-                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
                 let this = self.this.clone();
                 self.close_timer
                     .start(TimerMode::SingleShot, SAVED_TIME, move || {
@@ -548,15 +557,29 @@ impl PdfView {
             After::SaveAndClose if !self.sheet.get() => {
                 // Cancel came too late to stop the write: the file is made,
                 // so the window is saved, but it stays open as asked.
-                self.pages.borrow_mut().mark_saved();
+                self.pages.borrow_mut().mark_saved_as(written);
                 self.retext();
                 self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
             }
             After::SaveAndClose => {
-                self.pages.borrow_mut().mark_saved();
+                self.pages.borrow_mut().mark_saved_as(written);
                 self.sheet.set(false);
                 self.window.set_sheet_open(false);
-                self.close_now();
+                if self.closes_after_save(written) {
+                    self.close_now();
+                    return;
+                }
+                // Pages came in while it wrote and are not in the file: the
+                // window stays, edited, and whoever asked it to close (only
+                // quitting asks) hears that it did not.
+                self.update_locks();
+                self.retext();
+                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
+                self.add_waiting_soon();
+                let answered = self.answer.borrow_mut().take();
+                if let Some(answered) = answered {
+                    answered(false);
+                }
             }
             After::Write { cut } => {
                 if cut {
@@ -565,6 +588,11 @@ impl PdfView {
                 self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
             }
         }
+    }
+
+    /// Whether a save that wrote `written` may close the window now.
+    fn closes_after_save(&self, written: &[PageRef]) -> bool {
+        closes_after_save(written, self.pages.borrow().pages(), self.is_adding())
     }
 
     /// The banner's button: Undo, or Show in Finder.
@@ -651,6 +679,7 @@ impl PdfView {
         self.sheet.set(false);
         self.window.set_sheet_open(false);
         self.update_locks();
+        self.add_waiting_soon();
         let answered = self.answer.borrow_mut().take();
         if let Some(answered) = answered {
             answered(false);

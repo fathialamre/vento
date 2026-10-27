@@ -59,6 +59,12 @@ impl PageList {
         self.saved = self.pages.clone();
     }
 
+    /// Takes `written`, the pages a save wrote, as the saved list. Edits
+    /// made while the save ran then still count as unsaved.
+    pub fn mark_saved_as(&mut self, written: &[PageRef]) {
+        self.saved = written.to_vec();
+    }
+
     /// Removes the pages at `at`; the rest close up. Out-of-range
     /// indices are ignored.
     pub fn delete(&mut self, at: &[usize]) {
@@ -270,6 +276,37 @@ mod tests {
         assert!(l.move_to(&[], 1).is_empty());
         l.delete(&[9]);
         assert!(!l.undo());
+        assert!(!l.is_edited());
+    }
+
+    #[test]
+    fn marking_a_written_snapshot_keeps_later_edits_edited() {
+        let mut l = list(3);
+        l.delete(&[0]);
+        let written = l.pages().to_vec();
+        l.insert(
+            vec![PageRef {
+                source: 1,
+                page: 0,
+                turns: 0,
+            }],
+            2,
+        );
+        l.mark_saved_as(&written);
+        assert!(l.is_edited(), "pages added after the write are unsaved");
+        assert!(l.undo());
+        assert!(
+            !l.is_edited(),
+            "undoing the add is back at what was written"
+        );
+    }
+
+    #[test]
+    fn marking_the_current_list_as_saved_is_unedited() {
+        let mut l = list(3);
+        l.rotate(&[1], true);
+        let written = l.pages().to_vec();
+        l.mark_saved_as(&written);
         assert!(!l.is_edited());
     }
 

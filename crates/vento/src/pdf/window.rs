@@ -40,7 +40,9 @@ use slint::{
 };
 use vento_core::geometry::{Point, screen_for};
 use vento_core::i18n::{self, fill, tr};
-use vento_core::pdf::{GridMetrics, ImageKind, ImageOptions, PageList, PageRef, Selection, Source};
+use vento_core::pdf::{
+    GridMetrics, ImageKind, ImageOptions, PageList, PageRef, PdfError, Selection, Source,
+};
 use vento_platform::Platform;
 
 use super::logic::{
@@ -95,6 +97,9 @@ fn live_view(id: u64) -> Option<Rc<PdfView>> {
 }
 
 pub use super::logic::Answered;
+
+/// Added files once read: the PDFs opened and the paths skipped, with why.
+type Added = (Vec<Source>, Vec<(PathBuf, PdfError)>);
 
 /// What a view needs from the app.
 pub struct ViewCtx {
@@ -161,6 +166,10 @@ pub struct PdfView {
     /// told `true` once the window has closed, `false` on Cancel.
     sheet: Cell<bool>,
     answer: RefCell<Option<Answered>>,
+    /// Added files: how many reads are under way, and those read that
+    /// wait for a write or a hold of the window to end.
+    reading: Cell<usize>,
+    waiting: RefCell<Vec<Added>>,
     /// Files dropped on the window, collected until the drop is whole.
     dropped: RefCell<Vec<PathBuf>>,
     drop_timer: Timer,
@@ -230,6 +239,8 @@ impl PdfView {
             cuts: RefCell::new(None),
             sheet: Cell::new(false),
             answer: RefCell::new(None),
+            reading: Cell::new(0),
+            waiting: RefCell::new(Vec::new()),
             dropped: RefCell::new(Vec::new()),
             drop_timer: Timer::default(),
             closed: Cell::new(false),

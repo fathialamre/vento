@@ -380,13 +380,16 @@ impl PdfView {
                 let (sources, skipped) = open_sources(&paths, &SystemPdf);
                 let result = slint::invoke_from_event_loop(move || {
                     if let Some(view) = live_view(id) {
-                        view.files_opened(sources, skipped);
+                        view.files_read(sources, skipped);
                     }
                 });
                 if let Err(e) = result {
                     warn!("cannot hand the added PDFs to the window: {e}");
                 }
             });
+        if spawned.is_ok() {
+            self.reading.set(self.reading.get() + 1);
+        }
         if let Err(e) = spawned {
             warn!("cannot start opening the added PDFs: {e}");
             let text = fill(
@@ -397,11 +400,46 @@ impl PdfView {
         }
     }
 
+    /// Added files back from their reading thread.
+    fn files_read(&self, opened: Vec<Source>, skipped: Vec<(PathBuf, PdfError)>) {
+        self.reading.set(self.reading.get().saturating_sub(1));
+        self.files_opened(opened, skipped);
+    }
+
+    /// Whether added files are still being read, or wait to be added.
+    pub(super) fn is_adding(&self) -> bool {
+        self.reading.get() > 0 || !self.waiting.borrow().is_empty()
+    }
+
+    /// Adds, on the next turn of the event loop, the files that waited for
+    /// a write or the closing question to end. Those still held wait on.
+    pub(super) fn add_waiting_soon(&self) {
+        if self.waiting.borrow().is_empty() {
+            return;
+        }
+        let this = self.this.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            if let Some(view) = this.upgrade() {
+                let waiting = std::mem::take(&mut *view.waiting.borrow_mut());
+                for (opened, skipped) in waiting {
+                    view.files_opened(opened, skipped);
+                }
+            }
+        });
+    }
+
     /// Added files read: a toast names the ones skipped (not PDFs, locked,
     /// broken), and the pages of the rest go after the focused page, or at
-    /// the end, selected.
+    /// the end, selected. While a write runs, the window closes after a
+    /// save, or a popover, cut mode or the closing question holds it, they
+    /// wait and are added once that ends, so they are never lost.
     pub(super) fn files_opened(&self, opened: Vec<Source>, skipped: Vec<(PathBuf, PdfError)>) {
         if self.closed.get() {
+            return;
+        }
+        if self.is_busy() || self.is_held() {
+            debug!("PDF window {}: added files wait for the window", self.id);
+            self.waiting.borrow_mut().push((opened, skipped));
             return;
         }
         for (path, error) in &skipped {
