@@ -73,18 +73,27 @@ component ActionTile inherits Rectangle {
             // wraps and elides at the top, and clipping at the top cuts the
             // marks above an Arabic first line (عنصراً). In a right-to-left
             // language the text is clipped instead, in a box that reaches a
-            // little above the first line and ends at the last one.
-            Text {
+            // little above the first line and ends at the last one. That
+            // box can be taller than the two lines the slot has room for,
+            // so the slot's own box (the 4px above it and the slot itself)
+            // clips it: a third line is cut there, not drawn past the tile.
+            Rectangle {
                 y: Theme.rtl ? -4px : 0px;
                 width: parent.width;
-                height: Theme.rtl ? self.preferred-height + 4px : parent.height;
-                horizontal-alignment: Theme.rtl ? right : left;
-                text: root.detail;
-                font-size: 12px;
-                color: Theme.muted;
-                wrap: word-wrap;
-                overflow: Theme.rtl ? TextOverflow.clip : TextOverflow.elide;
-                vertical-alignment: Theme.rtl ? TextVerticalAlignment.bottom : TextVerticalAlignment.top;
+                height: Theme.rtl ? parent.height + 4px : parent.height;
+                clip: Theme.rtl;
+
+                Text {
+                    width: parent.width;
+                    height: Theme.rtl ? self.preferred-height + 4px : parent.height;
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: root.detail;
+                    font-size: 12px;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                    overflow: Theme.rtl ? TextOverflow.clip : TextOverflow.elide;
+                    vertical-alignment: Theme.rtl ? TextVerticalAlignment.bottom : TextVerticalAlignment.top;
+                }
             }
         }
     }

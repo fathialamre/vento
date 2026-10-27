@@ -407,8 +407,10 @@ component SideFlickable inherits Flickable {
     }
     changed span => {
         if (self.rtl) {
-            self.content-x = max(self.width - self.content-width,
-                min(0px, self.content-x - (self.span - self.seen-span)));
+            // Content narrower than the view would make the lower bound
+            // positive: the view never goes right of 0.
+            self.content-x = min(0px, max(self.width - self.content-width,
+                min(0px, self.content-x - (self.span - self.seen-span))));
         }
         self.seen-span = self.span;
     }
