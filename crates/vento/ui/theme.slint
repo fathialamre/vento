@@ -32,6 +32,8 @@ export global Theme {
     }
 
     out property <color> bg: root.use-system ? root.system-bg : root.dark ? #1f1f22 : #f1f9fa;
+    // The Settings window's background: plain white, or black in the dark.
+    out property <color> window-bg: root.use-system ? root.system-bg : root.dark ? #000000 : #ffffff;
     // A field or button at rest, and a flat control under the pointer (the
     // shell's hover).
     out property <color> surface: root.use-system ? root.tint(0.1) : root.dark ? #2b2b2f : #e2eaec;
