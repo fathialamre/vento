@@ -46,6 +46,8 @@ component ToolButton inherits Rectangle {
     // Names the button for assistive technology when `label` is a symbol.
     in property <string> name: self.label;
     in property <bool> enabled: true;
+    // A symbol reads at a larger size than a word.
+    in property <length> label-size: 11px;
     callback clicked();
 
     height: 24px;
@@ -69,7 +71,7 @@ component ToolButton inherits Rectangle {
 
         Text {
             text: root.label;
-            font-size: 11px;
+            font-size: root.label-size;
             color: Theme.text;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -426,6 +428,7 @@ export component PdfWindow inherits Window {
                         layout-order: Theme.rtl ? 13 : 7;
                         y: (parent.height - self.height) / 2;
                         label: "↺";
+                        label-size: 15px;
                         name: @tr("Rotate left");
                         enabled: root.has-selection;
                         clicked => { root.rotate(false); }
@@ -435,6 +438,7 @@ export component PdfWindow inherits Window {
                         layout-order: Theme.rtl ? 12 : 8;
                         y: (parent.height - self.height) / 2;
                         label: "↻";
+                        label-size: 15px;
                         name: @tr("Rotate right");
                         enabled: root.has-selection;
                         clicked => { root.rotate(true); }

@@ -55,7 +55,7 @@ msgstr "حول"
 msgid "Actions"
 msgstr "الإجراءات"
 
-#: crates/vento/ui/pdf.slint:374
+#: crates/vento/ui/pdf.slint:376
 msgid "Add PDF"
 msgstr "إضافة PDF"
 
@@ -397,7 +397,7 @@ msgstr "الإنشاء"
 msgid "Dark"
 msgstr "داكن"
 
-#: crates/vento/ui/pdf.slint:396
+#: crates/vento/ui/pdf.slint:398
 msgid "Delete"
 msgstr "حذف"
 
@@ -677,7 +677,7 @@ msgstr "لم يبقَ شيء لإزالته"
 msgid "Nothing of this kind yet"
 msgstr "لا يوجد شيء من هذا النوع بعد"
 
-#: crates/vento/src/pdf/window.rs:770
+#: crates/vento/src/pdf/window.rs:777
 msgid "Nothing selected"
 msgstr "لا شيء محدد"
 
@@ -855,15 +855,15 @@ msgstr[5] "جارٍ استعادة {n} عنصر…"
 msgid "Resume"
 msgstr "استئناف"
 
-#: crates/vento/ui/pdf.slint:429
+#: crates/vento/ui/pdf.slint:432
 msgid "Rotate left"
 msgstr "تدوير لليسار"
 
-#: crates/vento/ui/pdf.slint:438
+#: crates/vento/ui/pdf.slint:442
 msgid "Rotate right"
 msgstr "تدوير لليمين"
 
-#: crates/vento/ui/pdf.slint:95
+#: crates/vento/ui/pdf.slint:97
 msgid "Save as new PDF"
 msgstr "حفظ كملف PDF جديد"
 
@@ -895,7 +895,7 @@ msgstr[5] "تم حفظ {n} صورة في {folder}"
 msgid "Scroll"
 msgstr "تمرير"
 
-#: crates/vento/ui/pdf.slint:381
+#: crates/vento/ui/pdf.slint:383
 msgid "Select all"
 msgstr "تحديد الكل"
 
@@ -935,7 +935,7 @@ msgstr "الحجم"
 msgid "Some items could not be read"
 msgstr "تعذّرت قراءة بعض العناصر"
 
-#: crates/vento/ui/pdf.slint:420
+#: crates/vento/ui/pdf.slint:422
 msgid "Split…"
 msgstr "تقسيم…"
 
@@ -999,7 +999,7 @@ msgstr "لا يمكن استخدام هذا الاختصار"
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
-#: crates/vento/ui/pdf.slint:412
+#: crates/vento/ui/pdf.slint:414
 msgid "To images"
 msgstr "تحويل لصور"
 
@@ -1355,7 +1355,7 @@ msgstr "‏{app} غير مثبّت"
 msgid "{files}, {folders}"
 msgstr "{files}، {folders}"
 
-#: crates/vento/src/pdf/window.rs:750
+#: crates/vento/src/pdf/window.rs:757
 msgid "{first} + {second}"
 msgstr "‏{first} + {second}"
 
@@ -1379,11 +1379,11 @@ msgstr "{ms} م.ث"
 msgid "{m} min"
 msgstr "{m} د"
 
-#: crates/vento/src/pdf/window.rs:375
+#: crates/vento/src/pdf/window.rs:378
 msgid "{names} — {meta}"
-msgstr "‏{names} — {meta}"
+msgstr "‏{names} — ‏{meta}"
 
-#: crates/vento/src/pdf/window.rs:754
+#: crates/vento/src/pdf/window.rs:761
 msgid "{name} + {n} more"
 msgid_plural "{name} + {n} more"
 msgstr[0] "‏{name}"
@@ -1501,7 +1501,7 @@ msgstr[3] "تعذّرت إزالة {n} أصول"
 msgstr[4] "تعذّرت إزالة {n} أصلاً"
 msgstr[5] "تعذّرت إزالة {n} أصل"
 
-#: crates/vento/src/pdf/window.rs:758
+#: crates/vento/src/pdf/window.rs:765
 msgid "{n} page"
 msgid_plural "{n} pages"
 msgstr[0] "لا صفحات"
@@ -1511,7 +1511,7 @@ msgstr[3] "{n} صفحات"
 msgstr[4] "{n} صفحة"
 msgstr[5] "{n} صفحة"
 
-#: crates/vento/src/pdf/window.rs:773
+#: crates/vento/src/pdf/window.rs:780
 msgid "{n} selected · page {pages}"
 msgid_plural "{n} selected · pages {pages}"
 msgstr[0] "{n} محددة · الصفحات {pages}"
@@ -1539,7 +1539,7 @@ msgstr "{n} س"
 msgid "{n}m"
 msgstr "{n} د"
 
-#: crates/vento/src/pdf/window.rs:760
+#: crates/vento/src/pdf/window.rs:767
 msgid "{pages} · edited"
 msgstr "‏{pages} · معدّل"
 
@@ -1565,11 +1565,11 @@ msgstr[3] "‏{} {n}"
 msgstr[4] "‏{} {n}"
 msgstr[5] "‏{} {n}"
 
-#: crates/vento/ui/pdf.slint:373
+#: crates/vento/ui/pdf.slint:375
 msgid "＋ Add PDF"
 msgstr "＋ إضافة PDF"
 
-#: crates/vento/ui/pdf.slint:404
+#: crates/vento/ui/pdf.slint:406
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr "قص"
