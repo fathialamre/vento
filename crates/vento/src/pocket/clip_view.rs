@@ -21,7 +21,7 @@ use super::{PocketController, Undo, View};
 /// pointer is.
 const SWITCH_GRACE: Duration = Duration::from_secs(1);
 
-/// Which rows the Clipboard view lists, chosen in the column under Clear.
+/// Which rows the Clipboard view lists, chosen in the row above them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum ClipFilter {
     #[default]
@@ -33,7 +33,7 @@ pub(super) enum ClipFilter {
     Files,
 }
 
-/// The filters in the order the window's column shows them.
+/// The filters in the order the window's row shows them.
 const FILTERS: [ClipFilter; 6] = [
     ClipFilter::All,
     ClipFilter::Pinned,
@@ -52,7 +52,7 @@ impl ClipFilter {
             .copied()
     }
 
-    /// Its index in the window's column.
+    /// Its index in the window's row.
     fn index(self) -> i32 {
         FILTERS
             .iter()
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(admitted(ClipFilter::Links), [5]);
         assert_eq!(admitted(ClipFilter::Images), [4]);
         assert_eq!(admitted(ClipFilter::Files), [3]);
-        // In the order the window's filter column lists them.
+        // In the order the window's filter row lists them.
         assert_eq!(filter_counts(&rows), [5, 1, 2, 1, 1, 1]);
         for (i, f) in FILTERS.iter().enumerate() {
             assert_eq!(ClipFilter::from_index(i as i32), Some(*f));

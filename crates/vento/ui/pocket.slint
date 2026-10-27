@@ -316,36 +316,48 @@ component StripScrollbar inherits Rectangle {
     }
 }
 
-// One button of the Clipboard view's filter column: an icon and how many
-// rows the filter lists, filled with the accent while it is chosen.
+// One filter of the Clipboard view: an icon and how many rows it lists,
+// filled with the accent while it is chosen. `label` names it for VoiceOver
+// only.
 component FilterButton inherits Rectangle {
     in property <image> icon;
+    in property <string> label;
     in property <int> count;
     in property <bool> current;
     callback clicked();
 
-    height: 22px;
-    border-radius: 11px;
+    height: 24px;
+    border-radius: 12px;
     background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
-
-    Image {
-        source: root.icon;
-        colorize: root.current ? white : #ffffffa8;
-        width: 12px;
-        height: 12px;
-        x: 9px;
-        y: (parent.height - self.height) / 2;
+    accessible-role: button;
+    accessible-label: "\{root.label} \{root.count}";
+    accessible-action-default => {
+        root.clicked();
     }
 
-    Text {
-        x: 24px;
-        width: parent.width - self.x - 8px;
-        text: root.count;
-        color: root.current ? white : #ffffff80;
-        font-size: 11px;
-        font-weight: 600;
-        horizontal-alignment: right;
-        vertical-alignment: center;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 5px;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                colorize: root.current ? white : #ffffffa8;
+                width: 12px;
+                height: 12px;
+            }
+        }
+
+        Text {
+            text: root.count;
+            color: root.current ? white : #ffffff80;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
     }
 
     touch := TouchArea {
@@ -355,8 +367,69 @@ component FilterButton inherits Rectangle {
     }
 }
 
-// The Clipboard view: the history as a list, pinned entries first, then
-// newest on top, with Clear (or Undo) beside it and the filters below that.
+// A row of chips (its children), scrolling sideways when they don't fit, by
+// trackpad or by a mouse wheel's vertical scroll.
+component ChipRow inherits Rectangle {
+    flick := Flickable {
+        width: root.width;
+        height: root.height;
+        interactive: false;
+        content-width: chips-layout.preferred-width;
+
+        TouchArea {
+            width: max(flick.width, chips-layout.preferred-width);
+            height: flick.height;
+            scroll-event(e) => {
+                if e.delta-x == 0 && e.delta-y != 0 && flick.content-width > flick.width {
+                    flick.content-x = max(flick.width - flick.content-width, min(0px, flick.content-x + e.delta-y));
+                    return accept;
+                }
+                return reject;
+            }
+
+            chips-layout := HorizontalLayout {
+                alignment: start;
+                spacing: 4px;
+
+                @children
+            }
+        }
+    }
+}
+
+// A round Clear button with a trash can, `width` across.
+component ClearButton inherits Rectangle {
+    in property <length> icon-size: 14px;
+    callback clicked();
+
+    height: self.width;
+    border-radius: self.width / 2;
+    background: touch.has-hover ? #2c2c32 : #1d1d21;
+    accessible-role: button;
+    accessible-label: "Clear";
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    Image {
+        source: Icons.trash;
+        colorize: touch.has-hover ? #ff7b72 : #ffffffa0;
+        width: root.icon-size;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The Clipboard view: the filters in a row on top, and under them the
+// history as a list, pinned entries first, then newest on top. Clear (or
+// Undo) is in the bottom bar under it.
 component ClipList inherits Rectangle {
     // The rows the chosen filter lists.
     in property <[ClipRow]> rows;
@@ -364,29 +437,43 @@ component ClipList inherits Rectangle {
     // 5 Files) and how many rows each lists; the first is the whole history.
     in property <int> filter;
     in property <[int]> counts;
-    in property <bool> undo-active;
-    in property <float> undo-left;
-    in property <int> undo-secs;
     // All by entry id.
     callback pressed(int);
     callback pocket(int);
     callback pin(int, bool);
     callback remove(int);
-    callback clear();
-    callback undo();
     callback filter-chosen(int);
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
     property <length> pad: 14px;
-    property <length> side-w: 52px;
     property <length> row-h: 36px;
+    property <length> head-h: 24px;
+    // The filters' names, in the order of `counts`, for VoiceOver.
+    property <[string]> filter-names: ["All", "Pinned", "Text", "Links", "Images", "Files"];
+
+    ChipRow {
+        x: root.pad;
+        y: 8px;
+        width: parent.width - 2 * root.pad;
+        height: root.head-h;
+
+        for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
+            icon: f;
+            label: root.filter-names[i];
+            count: root.counts[i];
+            current: root.filter == i;
+            clicked => {
+                root.filter-chosen(i);
+            }
+        }
+    }
 
     list := Flickable {
         x: root.pad;
-        y: 8px;
-        width: parent.width - 2 * root.pad - root.side-w - 10px;
-        height: parent.height - 16px;
+        y: 8px + root.head-h + 6px;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - self.y - 8px;
         // Presses belong to the rows; the list scrolls by wheel only.
         interactive: false;
         content-height: root.rows.length * root.row-h;
@@ -581,60 +668,6 @@ component ClipList inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-
-    // At the foot of the column. Clear empties everything but pinned
-    // entries, whatever the filter.
-    if root.counts[0] > root.counts[1] && !root.undo-active: Rectangle {
-        x: parent.width - root.pad - root.side-w;
-        y: parent.height - 8px - self.height;
-        width: root.side-w;
-        height: 26px;
-        border-radius: 13px;
-        background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
-
-        Text {
-            text: "Clear";
-            color: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-            font-size: 11px;
-            font-weight: 600;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-
-        clear-touch := TouchArea {
-            clicked => {
-                root.clear();
-            }
-        }
-    }
-
-    if root.undo-active: UndoRing {
-        x: parent.width - root.pad - root.side-w;
-        y: parent.height - 8px - self.height;
-        width: root.side-w;
-        left: root.undo-left;
-        secs: root.undo-secs;
-        clicked => {
-            root.undo();
-        }
-    }
-
-    // The filters, at the head of the column (above Clear or Undo).
-    VerticalLayout {
-        x: parent.width - root.pad - root.side-w;
-        y: 8px;
-        width: root.side-w;
-        spacing: 2px;
-
-        for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
-            icon: f;
-            count: root.counts[i];
-            current: root.filter == i;
-            clicked => {
-                root.filter-chosen(i);
-            }
-        }
-    }
 }
 
 // The Pocket's column beside its items: "Drag all" with the item count and
@@ -654,7 +687,6 @@ component PocketSide inherits Rectangle {
     callback clear();
     callback undo();
 
-    property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
     property <length> clear-d: root.compact ? 28px : 30px;
 
@@ -714,27 +746,13 @@ component PocketSide inherits Rectangle {
             }
         }
 
-        Rectangle {
+        ClearButton {
             x: root.compact ? parent.width - self.width : (parent.width - self.width) / 2;
             y: root.compact ? 0px : 50px;
             width: root.clear-d;
-            height: root.clear-d;
-            border-radius: root.clear-d / 2;
-            background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
-
-            Image {
-                source: Icons.trash;
-                colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-                width: root.compact ? 14px : 16px;
-                height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-            }
-
-            clear-touch := TouchArea {
-                clicked => {
-                    root.clear();
-                }
+            icon-size: root.compact ? 14px : 16px;
+            clicked => {
+                root.clear();
             }
         }
     }
@@ -873,39 +891,19 @@ component PocketList inherits Rectangle {
         }
     }
 
-    // The chips, scrolling sideways when they don't fit, by trackpad or by a
-    // mouse wheel's vertical scroll.
-    chip-row := Flickable {
+    // The chips, scrolling sideways when they don't fit.
+    ChipRow {
         x: back-button.x + back-button.width + 6px;
         y: 8px;
         width: list.width - back-button.width - 6px;
         height: root.head-h;
-        interactive: false;
-        content-width: chips-layout.preferred-width;
 
-        TouchArea {
-            width: max(chip-row.width, chips-layout.preferred-width);
-            height: chip-row.height;
-            scroll-event(e) => {
-                if e.delta-x == 0 && e.delta-y != 0 && chip-row.content-width > chip-row.width {
-                    chip-row.content-x = max(chip-row.width - chip-row.content-width, min(0px, chip-row.content-x + e.delta-y));
-                    return accept;
-                }
-                return reject;
-            }
-
-            chips-layout := HorizontalLayout {
-                alignment: start;
-                spacing: 4px;
-
-                for chip[i] in root.chips: KindChip {
-                    label: chip.label;
-                    count: chip.count;
-                    current: root.filter == i;
-                    clicked => {
-                        root.filter-chosen(i);
-                    }
-                }
+        for chip[i] in root.chips: KindChip {
+            label: chip.label;
+            count: chip.count;
+            current: root.filter == i;
+            clicked => {
+                root.filter-chosen(i);
             }
         }
     }
@@ -1029,8 +1027,7 @@ component PocketList inherits Rectangle {
         offset <=> list.content-y;
     }
 
-    // "Drag all" and Clear at the foot of the column, like the clipboard
-    // list's Clear.
+    // "Drag all" and Clear at the foot of the column.
     if root.side: PocketSide {
         x: parent.width - root.pad - root.side-w;
         y: parent.height - self.height - 8px;
@@ -1674,9 +1671,6 @@ export component PocketIsland inherits Window {
                 rows: root.clip-rows;
                 filter: root.clip-filter;
                 counts: root.clip-filter-counts;
-                undo-active: root.clip-undo;
-                undo-left: root.undo-left;
-                undo-secs: root.undo-secs;
                 pressed(id) => {
                     root.clip-pressed(id);
                 }
@@ -1691,12 +1685,6 @@ export component PocketIsland inherits Window {
                 }
                 remove(id) => {
                     root.clip-remove(id);
-                }
-                clear => {
-                    root.clip-clear();
-                }
-                undo => {
-                    root.undo();
                 }
             }
 
@@ -1750,7 +1738,9 @@ export component PocketIsland inherits Window {
             }
 
             // Under either view: the two buttons switching between them, and
-            // under the Pocket, its column's controls at the right.
+            // at the right, the shown view's controls: the Pocket's column
+            // ("Drag all" and Clear, or Undo), or the Clipboard's Clear (or
+            // Undo).
             if root.show-switch: Rectangle {
                 x: 0px;
                 y: parent.height - self.height;
@@ -1815,6 +1805,29 @@ export component PocketIsland inherits Window {
                         root.clear();
                     }
                     undo => {
+                        root.undo();
+                    }
+                }
+
+                // Clear empties everything but pinned entries, whatever the
+                // filter.
+                if root.view == 1 && root.clip-filter-counts[0] > root.clip-filter-counts[1] && !root.clip-undo: ClearButton {
+                    x: parent.width - root.pad - self.width;
+                    y: 4px;
+                    width: 28px;
+                    clicked => {
+                        root.clip-clear();
+                    }
+                }
+
+                if root.view == 1 && root.clip-undo: UndoRing {
+                    x: parent.width - root.pad - self.width;
+                    y: 4px;
+                    width: 80px;
+                    compact: true;
+                    left: root.undo-left;
+                    secs: root.undo-secs;
+                    clicked => {
                         root.undo();
                     }
                 }

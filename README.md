@@ -219,9 +219,10 @@ paste them one by one somewhere else. Open the island and switch to the
   included (spreadsheet cells paste as cells), then press ⌘V anywhere.
 - **Hover a copy** for three buttons: the **pin** keeps it until you remove it,
   the **Pocket** button adds it to the Pocket, and **x** removes it.
-- **Filters** beside the list show everything, pinned copies only, or only
+- **Filters** along the top show everything, pinned copies only, or only
   text, links, pictures or files. Pictures copied in Finder show as pictures.
-- **Clear** removes everything except pinned copies, and can be undone.
+- **Clear**, at the bottom right, removes everything except pinned copies, and
+  can be undone.
 - Vento keeps the **50** newest copies plus every pinned one, and skips copies
   that password managers mark as concealed, and anything copied while Vento is
   paused.
