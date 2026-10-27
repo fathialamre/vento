@@ -258,6 +258,49 @@ component ListScrollbar inherits Rectangle {
     }
 }
 
+// The same bar lying under a strip that scrolls sideways (its Flickable's
+// `content-w` and `offset`, as wide as the bar). The offset is only read:
+// a drag reports where it wants the strip with `scrolled`, so the strip's
+// own position keeps no binding and its Flickable keeps it in bounds as
+// items come and go.
+component StripScrollbar inherits Rectangle {
+    in property <length> content-w;
+    in property <length> offset;
+    callback scrolled(length);
+
+    property <length> overflow: root.content-w - root.width;
+    property <length> thumb-w: max(24px, root.width * root.width / root.content-w);
+    property <length> travel: root.width - root.thumb-w;
+    property <length> drag-from;
+
+    height: 4px;
+
+    Rectangle {
+        x: root.overflow > 0 ? -root.offset / root.overflow * root.travel : 0;
+        width: root.thumb-w;
+        height: parent.height;
+        border-radius: 2px;
+        background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
+
+        thumb := TouchArea {
+            // A little taller than the thumb, so it is easy to grab.
+            y: -4px;
+            height: parent.height + 8px;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.drag-from = -root.offset;
+                }
+            }
+            moved => {
+                if self.pressed && root.travel > 0 {
+                    root.scrolled(-max(0px, min(root.overflow,
+                        root.drag-from + (self.mouse-x - self.pressed-x) * root.overflow / root.travel)));
+                }
+            }
+        }
+    }
+}
+
 // One button of the Clipboard view's filter column: an icon and how many
 // rows the filter lists, filled with the accent while it is chosen.
 component FilterButton inherits Rectangle {
@@ -1000,8 +1043,9 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
-    // At most eight; `count` is the total, so the rest show as "All N"
-    // (opening the Pocket list) under the List layout, "+N" otherwise.
+    // At most eight, but every item under the Scroll layout; `count` is
+    // the total, so the rest show as "All N" (opening the Pocket list) under
+    // the List layout, "+N" under Stacks.
     in property <[PocketCell]> cells;
     in property <int> count;
     // How a Pocket of more than eight items is laid out: 0 List, 1 Scroll,
@@ -1162,6 +1206,15 @@ export component PocketIsland inherits Window {
                 height: 112px;
 
                 row := Flickable {
+                    // Under Scroll, a full Pocket's strip of every item (or of
+                    // a clear's faded items while its Undo is offered).
+                    property <bool> strip: root.layout == 1 && max(root.count, root.ghosts.length) > 8;
+                    // The strip starts at the first item whenever the Pocket
+                    // fills up or drops to eight or fewer (a clear included),
+                    // or the layout changes. A collapse starts the row afresh
+                    // anyway.
+                    property <bool> full-scroll: root.layout == 1 && root.count > 8;
+
                     x: root.pad;
                     y: 16px;
                     width: parent.width - 2 * root.pad - root.side-w - 10px;
@@ -1170,6 +1223,26 @@ export component PocketIsland inherits Window {
                     interactive: false;
                     content-width: max(root.cells.length, root.ghosts.length) * root.cell-step
                         + (root.count > root.cells.length ? 48px : 0px);
+
+                    changed full-scroll => {
+                        self.content-x = 0;
+                    }
+
+                    // Behind the cells, so it gets the wheel events they let
+                    // through: the strip also scrolls with a mouse wheel's
+                    // vertical scroll (a trackpad's sideways swipe already
+                    // scrolls it).
+                    if row.strip: TouchArea {
+                        width: max(row.width, row.content-width);
+                        height: row.height;
+                        scroll-event(e) => {
+                            if e.delta-x == 0 && e.delta-y != 0 && row.content-width > row.width {
+                                row.content-x = max(row.width - row.content-width, min(0px, row.content-x + e.delta-y));
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
 
                     // A clear's items, faded, until its Undo is gone.
                     if root.count == 0: Rectangle {
@@ -1319,7 +1392,7 @@ export component PocketIsland inherits Window {
                         }
                     }
 
-                    if root.count > root.cells.length && root.layout != 0: Rectangle {
+                    if root.count > root.cells.length && root.layout == 2: Rectangle {
                         x: root.cells.length * root.cell-step;
                         width: 44px;
                         height: 80px;
@@ -1375,6 +1448,40 @@ export component PocketIsland inherits Window {
                                 root.list-open();
                             }
                         }
+                    }
+                }
+
+                // The strip's edges fade into the island where more items
+                // lie beyond them.
+                if row.strip: Rectangle {
+                    x: row.x;
+                    y: row.y;
+                    width: 24px;
+                    height: row.height;
+                    background: @linear-gradient(90deg, #000000 0%, #00000000 100%);
+                    opacity: row.content-x < 0 ? 1 : 0;
+                    animate opacity { duration: 120ms; }
+                }
+
+                if row.strip: Rectangle {
+                    x: row.x + row.width - self.width;
+                    y: row.y;
+                    width: 24px;
+                    height: row.height;
+                    background: @linear-gradient(90deg, #00000000 0%, #000000 100%);
+                    opacity: row.content-x > row.width - row.content-width ? 1 : 0;
+                    animate opacity { duration: 120ms; }
+                }
+
+                // Under the strip: how much of it is in view, and where.
+                if row.strip && !root.hint: StripScrollbar {
+                    x: row.x;
+                    y: row.y + row.height + 5px;
+                    width: row.width;
+                    content-w: row.content-width;
+                    offset: row.content-x;
+                    scrolled(x) => {
+                        row.content-x = x;
                     }
                 }
 

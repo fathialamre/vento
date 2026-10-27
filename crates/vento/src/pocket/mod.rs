@@ -15,7 +15,8 @@
 //!
 //! A Pocket of more than eight items is laid out as the settings say
 //! ([`PocketLayout`]); under List, its "All N" button opens the Pocket list
-//! (`list_view`).
+//! (`list_view`); under Scroll, every item is a cell in a strip that scrolls
+//! sideways.
 
 mod add;
 mod clip;
@@ -60,7 +61,7 @@ use crate::drag;
 use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
-use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, interactive_rect, island_inputs};
+use geometry::{Frames, cell_cap, frames, hits, hover_event, interactive_rect, island_inputs};
 use list_view::{ListView, list_stays_open};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
@@ -157,17 +158,19 @@ fn layout_index(layout: PocketLayout) -> i32 {
     }
 }
 
-/// Cells for the first [`MAX_CELLS`] items; `icon` gets each item and
-/// whether its file is missing.
+/// Cells for the items `layout` shows as cells (see [`cell_cap`]), in the
+/// Pocket's order so a cell's index is its item's; `icon` gets each item
+/// and whether its file is missing.
 fn build_cells(
     items: &[PocketItem],
+    layout: PocketLayout,
     missing: &[u64],
     selected: &[u64],
     mut icon: impl FnMut(&PocketItem, bool) -> Image,
 ) -> Vec<PocketCell> {
     items
         .iter()
-        .take(MAX_CELLS)
+        .take(cell_cap(layout))
         .map(|item| {
             let gone = missing.contains(&item.id);
             PocketCell {
@@ -1494,9 +1497,13 @@ impl PocketController {
         let mut selected = self.selected.borrow_mut();
         selected.retain(|&id| pocket.get(id).is_some());
         let fallback = self.window.global::<Icons>().get_file();
-        let cells = build_cells(pocket.items(), &missing, &selected, |item, gone| {
-            self.item_icon(&mut icons, item, gone, &fallback)
-        });
+        let cells = build_cells(
+            pocket.items(),
+            self.layout.get(),
+            &missing,
+            &selected,
+            |item, gone| self.item_icon(&mut icons, item, gone, &fallback),
+        );
         set_rows(&self.cells, cells);
     }
 
@@ -1624,7 +1631,9 @@ mod tests {
         let items: Vec<PocketItem> = (0..11)
             .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
             .collect();
-        let cells = build_cells(&items, &[2], &[1], |_, _| slint::Image::default());
+        let cells = build_cells(&items, PocketLayout::List, &[2], &[1], |_, _| {
+            slint::Image::default()
+        });
         assert_eq!(cells.len(), 8);
         // The island shows "+{count - cells}".
         assert_eq!(items.len() - cells.len(), 3);
@@ -1634,6 +1643,21 @@ mod tests {
         assert!(!cells[1].missing);
         assert!(cells[1].selected);
         assert_eq!(cells.iter().filter(|c| c.selected).count(), 1);
+    }
+
+    #[test]
+    fn scroll_makes_a_cell_of_every_item() {
+        let items: Vec<PocketItem> = (0..12)
+            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
+            .collect();
+        let cells = |layout| build_cells(&items, layout, &[], &[11], |_, _| Image::default());
+        let all = cells(PocketLayout::Scroll);
+        assert_eq!(all.len(), 12);
+        // In the Pocket's order, so a cell's index is its item's.
+        assert_eq!(all[11].name, "file-11.txt");
+        assert!(all[11].selected);
+        assert_eq!(cells(PocketLayout::List).len(), 8);
+        assert_eq!(cells(PocketLayout::Stacks).len(), 8);
     }
 
     #[test]
