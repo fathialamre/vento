@@ -88,15 +88,15 @@ pub fn with_language<R>(code: &str, f: impl FnOnce() -> R) -> R {
 /// of the `preferred` languages (the system's, best first) that Vento has;
 /// none means English. A code matches on its language part, so `"AR"` and
 /// `"ar-LY"` both mean Arabic. A value Vento has no language for is logged
-/// once and acts as `"auto"`.
+/// once and means English, the default.
 pub fn resolve(setting: &str, preferred: &[String]) -> &'static Language {
     if setting != "auto" {
         if let Some(language) = lookup(setting) {
             return language;
         }
         static WARNED: std::sync::Once = std::sync::Once::new();
-        WARNED
-            .call_once(|| log::warn!("unknown language {setting:?} in settings, using Automatic"));
+        WARNED.call_once(|| log::warn!("unknown language {setting:?} in settings, using English"));
+        return &LANGUAGES[0];
     }
     preferred
         .iter()
@@ -406,7 +406,7 @@ msgstr[1] ""
         assert_eq!(resolve("ar-LY", &[]).code, "ar");
         assert_eq!(resolve("en", &["ar".into()]).code, "en");
         // A language Vento does not have acts as Automatic.
-        assert_eq!(resolve("xx", &["ar".into()]).code, "ar");
+        assert_eq!(resolve("xx", &["ar".into()]).code, "en");
         assert_eq!(resolve("xx", &[]).code, "en");
     }
 

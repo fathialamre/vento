@@ -73,12 +73,12 @@ move_hold_ms = 400
 # "plain" or "shell_quoted" (single-quoted for POSIX shells)
 copy_path_format = "plain"
 
-# Language of the interface: "auto" (the first language in the system's
-# preferred list that Vento has, else English), "en" or "ar" (Arabic, laid
-# out right to left). A code is matched on its language part, so "AR" and
-# "ar-LY" mean Arabic; any other value acts as "auto" and is logged, not
-# rejected. A change applies at once, with no restart.
-language = "auto"
+# Language of the interface: "en" (English, the default), "ar" (Arabic, laid
+# out right to left) or "auto" (the first language in the system's preferred
+# list that Vento has, else English). A code is matched on its language part,
+# so "AR" and "ar-LY" mean Arabic; any other value means English and is
+# logged, not rejected. A change applies at once, with no restart.
+language = "en"
 
 # "system" (follow the light or dark look of the system), "light" or "dark";
 # the wheel, the Pocket and toasts stay dark either way

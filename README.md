@@ -300,8 +300,8 @@ Vento speaks **English** and **العربية** (Arabic). In Arabic the whole in
 is mirrored to read right to left, and the windows, the menu and the next notice
 change as soon as you pick it, with no restart.
 
-The language is picked in **Settings → General → Language**. The first choice,
-**Automatic (system language)**, follows your Mac's preferred languages (on Linux,
+The language is English until you pick another in **Settings → General →
+Language**. The first choice there, **Automatic (system language)**, follows your Mac's preferred languages (on Linux,
 the `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG` variables) and falls back to
 English; English and العربية are listed under their own names. Or set
 `language` in `settings.toml` (see [SETTINGS.md](SETTINGS.md)). To add another

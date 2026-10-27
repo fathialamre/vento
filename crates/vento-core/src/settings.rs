@@ -113,9 +113,9 @@ pub struct Settings {
     pub pocket_keep_copies: bool,
     /// How the Pocket lays its items out once it holds more than eight.
     pub pocket_layout: PocketLayout,
-    /// The language of the interface: `"auto"` follows the system's, or the
-    /// code of one of the languages Vento has (`"en"`, `"ar"`). Any other
-    /// value acts as `"auto"`; see `i18n::resolve`.
+    /// The language of the interface: the code of one of the languages
+    /// Vento has (`"en"`, the default, or `"ar"`), or `"auto"` to follow the
+    /// system's. Any other value means English; see `i18n::resolve`.
     pub language: String,
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].
@@ -199,7 +199,7 @@ impl Default for Settings {
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
             pocket_layout: PocketLayout::List,
-            language: "auto".to_owned(),
+            language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
             clipboard_shortcut: default_clipboard_shortcut(),
@@ -811,8 +811,8 @@ mod tests {
     }
 
     #[test]
-    fn the_language_follows_the_system_unless_saved_otherwise() {
-        assert_eq!(Settings::default().language, "auto");
+    fn the_language_is_english_unless_saved_otherwise() {
+        assert_eq!(Settings::default().language, "en");
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("settings.toml");
         let s = Settings {
@@ -827,9 +827,9 @@ mod tests {
         );
         assert_eq!(Settings::load(&p), s);
         let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
-        assert_eq!(Settings::try_load(&old).unwrap().language, "auto");
+        assert_eq!(Settings::try_load(&old).unwrap().language, "en");
         // A value Vento does not know loads as it is; `i18n::resolve`
-        // treats it as Automatic.
+        // treats it as English.
         let (_dir, odd) = write_temp("language = \"xx\"\n");
         assert_eq!(Settings::try_load(&odd).unwrap().language, "xx");
     }
