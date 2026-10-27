@@ -320,6 +320,8 @@ impl SettingsWindowController {
     fn window(&self) -> SettingsWindow {
         self.window.get_or_create(|| {
             let window = SettingsWindow::new().expect("cannot create the settings window");
+            // A Mac-window page rather than the panel's tint.
+            window.global::<Theme>().set_clean(true);
             appearance::apply(&window.global::<Theme>());
             window.set_actions(ModelRc::from(self.actions.clone()));
             window.set_pinned(ModelRc::from(self.pinned.clone()));
