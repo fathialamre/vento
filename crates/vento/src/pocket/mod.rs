@@ -61,7 +61,7 @@ use add::{AddPlan, Entry, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
 use geometry::{Frames, MAX_CELLS, frames, hits, hover_event, interactive_rect, island_inputs};
-use list_view::ListView;
+use list_view::{ListView, list_stays_open};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
     ALL, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
@@ -1213,6 +1213,10 @@ impl PocketController {
         if after == Presence::Expanded || before == Presence::Hidden {
             self.refresh();
         }
+        // The next opening shows the cells, whatever was open before.
+        if !list_stays_open(after) {
+            self.close_pocket_list();
+        }
         self.window.set_expanded(after == Presence::Expanded);
         self.run_undo_timer();
         if after == Presence::Hidden {
@@ -1432,8 +1436,9 @@ impl PocketController {
         }
         debug!("pocket layout {layout:?}");
         self.window.set_layout(layout_index(layout));
-        self.close_pocket_list();
-        self.refresh();
+        if !self.close_pocket_list() {
+            self.refresh();
+        }
     }
 
     /// Empties the clipboard history at once, with no Undo (the settings'

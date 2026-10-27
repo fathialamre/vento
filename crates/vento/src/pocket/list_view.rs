@@ -2,7 +2,8 @@
 //! the "All N" button of a full Pocket, with a chip per kind to filter it.
 //! It is part of the Pocket view: the bottom switch shows the Pocket as
 //! current over it, and it is kept open (in memory) while the Clipboard view
-//! is shown or the island is collapsed, until the Pocket is emptied.
+//! is shown. Once the island collapses it closes, so the island always opens
+//! on its cells.
 
 use std::cell::{Cell, RefCell};
 use std::iter;
@@ -12,6 +13,7 @@ use std::rc::Rc;
 use log::debug;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use vento_core::pocket_kind::{PocketKind, kind_of};
+use vento_core::pocket_zone::Presence;
 
 use crate::ui::{Icons, PocketChip, PocketIsland, PocketRow};
 
@@ -51,6 +53,13 @@ pub(super) fn kind_counts(items: &[ListItem]) -> Vec<(PocketKind, usize)> {
         .collect()
 }
 
+/// Whether an open list stays open in `presence`: only while the island is
+/// expanded. Collapsed or hidden, it closes, so the next opening shows the
+/// cells, the island's usual face.
+pub(super) fn list_stays_open(presence: Presence) -> bool {
+    presence == Presence::Expanded
+}
+
 /// The window's number for chip `filter` among the chips of `kinds` (0 is
 /// "All"); a kind not among them is "All".
 fn filter_index(filter: Option<PocketKind>, kinds: &[PocketKind]) -> i32 {
@@ -73,7 +82,7 @@ fn filter_at(i: i32, kinds: &[PocketKind]) -> Option<PocketKind> {
 /// Whether the list is open, its filter, and the rows and chips it shows.
 pub(super) struct ListView {
     /// Opened by "All N", closed by its back control, a new layout, a drag
-    /// headed for the island, or an empty Pocket.
+    /// headed for the island, the island collapsing, or an empty Pocket.
     open: Cell<bool>,
     /// The kind listed, or every item for `None`.
     filter: Cell<Option<PocketKind>>,
@@ -186,14 +195,16 @@ impl PocketController {
         self.refresh();
     }
 
-    /// Goes back from the Pocket list to the cells.
-    pub(super) fn close_pocket_list(&self) {
+    /// Goes back from the Pocket list to the cells; false if it wasn't open
+    /// (and nothing was refreshed).
+    pub(super) fn close_pocket_list(&self) -> bool {
         if !self.list.open.replace(false) {
-            return;
+            return false;
         }
         debug!("pocket list closed");
         self.list.filter.set(None);
         self.refresh();
+        true
     }
 
     /// Whether the island shows the Pocket list (it stays open, unseen,
@@ -331,6 +342,13 @@ mod tests {
         assert_eq!(list_rows(&items, None), [1, 2, 3, 4, 5]);
         assert_eq!(list_rows(&items, Some(PocketKind::Image)), [2, 4]);
         assert_eq!(kind_counts(&items)[0], (PocketKind::Image, 2));
+    }
+
+    #[test]
+    fn the_list_closes_once_the_island_is_no_longer_expanded() {
+        assert!(list_stays_open(Presence::Expanded));
+        assert!(!list_stays_open(Presence::Collapsed));
+        assert!(!list_stays_open(Presence::Hidden));
     }
 
     #[test]
