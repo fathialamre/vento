@@ -2,11 +2,16 @@
 //! Both are platform-free; reading and writing PDFs lives elsewhere.
 
 mod grid;
+mod names;
 mod pages;
 mod selection;
 mod thumbs;
 
 pub use grid::GridMetrics;
+pub use names::{
+    ImageKind, SplitMode, extract_name, image_name, images_folder_name, page_ranges, save_name,
+    split_folder_name, split_piece_name, split_plan, stem,
+};
 pub use pages::{PageList, PageRef};
 pub use selection::Selection;
 pub use thumbs::ThumbQueue;
