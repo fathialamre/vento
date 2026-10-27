@@ -2,8 +2,10 @@
 //! the "All N" button of a full Pocket, with a chip per kind to filter it.
 //! It is part of the Pocket view: the bottom switch shows the Pocket as
 //! current over it, and it is kept open (in memory) while the Clipboard view
-//! is shown. Once the island collapses it closes, so the island always opens
-//! on its cells.
+//! is shown, and across a collapse while the Pocket still holds more than
+//! eight items (so dragging rows out one by one needs no new click on
+//! "All N"). Otherwise a collapse closes it, so the island opens on its
+//! cells, as it always has with eight items or fewer.
 
 use std::cell::{Cell, RefCell};
 use std::iter;
@@ -18,6 +20,7 @@ use vento_core::pocket_zone::Presence;
 use crate::ui::{Icons, PocketChip, PocketIsland, PocketRow};
 
 use super::clip_view::{set_rows_in_place, view_index};
+use super::geometry::MAX_CELLS;
 use super::{PocketController, UNDO_WINDOW, View, display_name};
 
 /// The window's number for the Pocket list (0 and 1 are the Pocket's cells
@@ -53,11 +56,13 @@ pub(super) fn kind_counts(items: &[ListItem]) -> Vec<(PocketKind, usize)> {
         .collect()
 }
 
-/// Whether an open list stays open in `presence`: only while the island is
-/// expanded. Collapsed or hidden, it closes, so the next opening shows the
-/// cells, the island's usual face.
-pub(super) fn list_stays_open(presence: Presence) -> bool {
-    presence == Presence::Expanded
+/// Whether an open list stays open in `presence` with `count` items in the
+/// Pocket: never once it is empty; while the island is expanded, whatever
+/// the count; collapsed or hidden, only while the Pocket still holds more
+/// than [`MAX_CELLS`], so the next opening returns to it. Otherwise that
+/// opening shows the cells, as a Pocket of eight items or fewer always has.
+pub(super) fn list_stays_open(presence: Presence, count: usize) -> bool {
+    count > 0 && (presence == Presence::Expanded || count > MAX_CELLS)
 }
 
 /// The window's number for chip `filter` among the chips of `kinds` (0 is
@@ -82,7 +87,8 @@ fn filter_at(i: i32, kinds: &[PocketKind]) -> Option<PocketKind> {
 /// Whether the list is open, its filter, and the rows and chips it shows.
 pub(super) struct ListView {
     /// Opened by "All N", closed by its back control, a new layout, a drag
-    /// headed for the island, the island collapsing, or an empty Pocket.
+    /// headed for the island, the island collapsing with eight items or
+    /// fewer left, or an empty Pocket.
     open: Cell<bool>,
     /// The kind listed, or every item for `None`.
     filter: Cell<Option<PocketKind>>,
@@ -222,14 +228,20 @@ impl PocketController {
         }
     }
 
-    /// Closes the list once the Pocket is empty, and pushes its chips and
-    /// rows into the window while it is in sight (rows cost a look at each
-    /// file, so none are made for a hidden list). A filter whose kind is
-    /// gone falls back to All. Only rows that changed are touched, so the
-    /// row under the pointer keeps its hover.
+    /// Closes the list once it no longer stays open ([`list_stays_open`]:
+    /// the Pocket emptied, or a drop that removed items left eight or fewer
+    /// while the island was collapsed), and pushes its chips and rows into
+    /// the window while it is in sight (rows cost a look at each file, so
+    /// none are made for a hidden list). A filter whose kind is gone falls
+    /// back to All. Only rows that changed are touched, so the row under the
+    /// pointer keeps its hover.
     pub(super) fn refresh_list(&self) {
-        if self.list.open.get() && self.pocket.borrow().is_empty() {
-            debug!("pocket list closed: the Pocket is empty");
+        let presence = self.island.borrow().presence();
+        if self.list.open.get() && !list_stays_open(presence, self.item_count()) {
+            debug!(
+                "pocket list closed: {} item(s), {presence:?}",
+                self.item_count()
+            );
             self.list.open.set(false);
             self.list.filter.set(None);
         }
@@ -345,10 +357,21 @@ mod tests {
     }
 
     #[test]
-    fn the_list_closes_once_the_island_is_no_longer_expanded() {
-        assert!(list_stays_open(Presence::Expanded));
-        assert!(!list_stays_open(Presence::Collapsed));
-        assert!(!list_stays_open(Presence::Hidden));
+    fn a_collapse_keeps_the_list_only_while_the_pocket_is_full() {
+        // Expanded, it stays whatever the count (removing down to eight
+        // keeps it in sight).
+        assert!(list_stays_open(Presence::Expanded, 12));
+        assert!(list_stays_open(Presence::Expanded, 5));
+        // Collapsed with more than eight: the next opening returns to it.
+        assert!(list_stays_open(Presence::Collapsed, 9));
+        assert!(list_stays_open(Presence::Collapsed, 40));
+        // Eight or fewer: the next opening shows the cells, as today.
+        assert!(!list_stays_open(Presence::Collapsed, 8));
+        assert!(!list_stays_open(Presence::Collapsed, 1));
+        // Empty: closed, even while a clear's Undo holds the island open.
+        assert!(!list_stays_open(Presence::Hidden, 0));
+        assert!(!list_stays_open(Presence::Collapsed, 0));
+        assert!(!list_stays_open(Presence::Expanded, 0));
     }
 
     #[test]

@@ -1213,8 +1213,8 @@ impl PocketController {
         if after == Presence::Expanded || before == Presence::Hidden {
             self.refresh();
         }
-        // The next opening shows the cells, whatever was open before.
-        if !list_stays_open(after) {
+        // With eight items or fewer, the next opening shows the cells.
+        if !list_stays_open(after, self.item_count()) {
             self.close_pocket_list();
         }
         self.window.set_expanded(after == Presence::Expanded);
