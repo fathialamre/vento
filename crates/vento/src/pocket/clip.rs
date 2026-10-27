@@ -1761,7 +1761,8 @@ mod tests {
             let two = [PathBuf::from("/a/x.txt"), PathBuf::from("/a/y.txt")];
             assert_eq!(files_label(&two), "x.txt، y.txt");
             let three = [two[0].clone(), two[1].clone(), PathBuf::from("/a/z.txt")];
-            assert_eq!(files_label(&three), "x.txt +2");
+            // The right-to-left mark first: the name starts the line.
+            assert_eq!(files_label(&three), "\u{200f}x.txt +2");
         });
     }
 

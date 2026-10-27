@@ -708,7 +708,8 @@ mod tests {
         assert_eq!(app.to_string(), "org.gnome.Terminal is not installed");
         assert_eq!(none.to_string(), "no terminal is installed");
         with_language("ar", || {
-            assert_eq!(app.to_string(), "org.gnome.Terminal غير مثبّت");
+            // The right-to-left mark first: the name starts the line.
+            assert_eq!(app.to_string(), "\u{200f}org.gnome.Terminal غير مثبّت");
             assert_eq!(none.to_string(), "لا توجد طرفية مثبّتة");
         });
         // The same error read again in English: a log line stays English.

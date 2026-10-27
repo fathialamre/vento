@@ -13,7 +13,7 @@ msgstr " · "
 
 #: crates/vento/src/archive_ui.rs:76
 msgid "\"{name}\" is protected"
-msgstr "«{name}» محمي بكلمة سر"
+msgstr "‏«{name}» محمي بكلمة سر"
 
 #: crates/vento/src/exec.rs:140
 msgid ", "
@@ -449,7 +449,7 @@ msgstr "ج.ب"
 
 #: crates/vento/ui/settings_pages.slint:780
 msgid "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed."
-msgstr "GPL-3.0-only. أيقونات العجلة من Tabler Icons 3.49.0 بترخيص MIT."
+msgstr "‏GPL-3.0-only. أيقونات العجلة من Tabler Icons 3.49.0 بترخيص MIT."
 
 #: crates/vento/src/settings_window/mod.rs:107
 msgid "General"
@@ -991,11 +991,11 @@ msgstr "معلومات Vento"
 
 #: crates/vento/ui/quick.slint:296
 msgid "Vento is on"
-msgstr "Vento يعمل"
+msgstr "‏Vento يعمل"
 
 #: crates/vento/ui/quick.slint:296
 msgid "Vento is paused"
-msgstr "Vento متوقف مؤقتاً"
+msgstr "‏Vento متوقف مؤقتاً"
 
 #: crates/vento/ui/settings_pages.slint:760
 msgid "Version {}"
@@ -1215,11 +1215,11 @@ msgstr "كلمة السر خاطئة"
 
 #: crates/vento/src/pocket/menu.rs:111
 msgid "{app} (default)"
-msgstr "{app} (افتراضي)"
+msgstr "‏{app} (افتراضي)"
 
 #: crates/vento-platform/src/lib.rs:206
 msgid "{app} is not installed"
-msgstr "{app} غير مثبّت"
+msgstr "‏{app} غير مثبّت"
 
 #: crates/vento-core/src/info.rs:179
 msgid "{files}, {folders}"
@@ -1227,7 +1227,7 @@ msgstr "{files}، {folders}"
 
 #: crates/vento/src/pocket/clip.rs:889
 msgid "{first} +{n}"
-msgstr "{first} +{n}"
+msgstr "‏{first} +{n}"
 
 #: crates/vento-core/src/awake.rs:167
 msgid "{h} h"
@@ -1370,12 +1370,12 @@ msgstr "{n} د"
 #: crates/vento/ui/pocket.slint:339
 msgid "{} {n}"
 msgid_plural "{} {n}"
-msgstr[0] "{} {n}"
-msgstr[1] "{} {n}"
-msgstr[2] "{} {n}"
-msgstr[3] "{} {n}"
-msgstr[4] "{} {n}"
-msgstr[5] "{} {n}"
+msgstr[0] "‏{} {n}"
+msgstr[1] "‏{} {n}"
+msgstr[2] "‏{} {n}"
+msgstr[3] "‏{} {n}"
+msgstr[4] "‏{} {n}"
+msgstr[5] "‏{} {n}"
 
 #: crates/vento-core/src/i18n/dates.rs:32
 msgctxt "date"

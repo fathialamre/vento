@@ -948,6 +948,124 @@ fn no_bare_text_in_slint() {
 }
 
 // ---------------------------------------------------------------------------
+// Right-to-left lines that start with Latin text
+
+/// The right-to-left mark. Slint lays a line out in the direction of its
+/// first strong letter and has no paragraph direction of its own, so a
+/// right-to-left translation that starts with Latin text ("Vento يعمل",
+/// "{app} غير مثبّت") starts with this mark to read right to left.
+const RLM: char = '\u{200F}';
+
+/// Placeholders that never start with Latin text: digits (counts, sizes,
+/// times, dates, phrases a count starts), which take the direction of the
+/// text around them, or words made in the same language (a month's name,
+/// the time of day). They don't decide a line's direction.
+const NUMERIC_PLACEHOLDERS: &[&str] = &[
+    "{n}",
+    "{h}",
+    "{m}",
+    "{w}",
+    "{ms}",
+    "{total}",
+    "{line}",
+    "{day}",
+    "{hour}",
+    "{minute}",
+    "{year}",
+    "{time}",
+    "{files}",
+    "{folders}",
+    "{month}",
+    "{period}",
+];
+
+#[derive(Debug, PartialEq)]
+enum Strong {
+    Latin,
+    RightToLeft,
+}
+
+/// Whether `c` is a right-to-left letter (Hebrew, Arabic, Syriac, Thaana,
+/// NKo and their presentation forms) or the right-to-left mark.
+fn is_rtl_letter(c: char) -> bool {
+    matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF) || c == RLM
+}
+
+/// The direction of the first strong character of `text`: a letter, or a
+/// placeholder other than a numeric one, which stands for a name and is
+/// taken as Latin. `None` for a text of digits, symbols and spaces only.
+fn first_strong(text: &str) -> Option<Strong> {
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        if c == '{'
+            && let Some(close) = rest.find('}')
+        {
+            let token = &rest[..=close];
+            if !NUMERIC_PLACEHOLDERS.contains(&token) {
+                return Some(Strong::Latin);
+            }
+            rest = &rest[close + 1..];
+            continue;
+        }
+        if is_rtl_letter(c) {
+            return Some(Strong::RightToLeft);
+        }
+        if c.is_alphabetic() {
+            return Some(Strong::Latin);
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    None
+}
+
+#[test]
+fn right_to_left_lines_that_start_latin_start_with_the_mark() {
+    if updating() {
+        return;
+    }
+    let mut problems = Vec::new();
+    for (code, path) in po_files() {
+        let rtl = vento_core::i18n::lookup(&code).is_some_and(|l| l.rtl);
+        if !rtl {
+            continue;
+        }
+        let cat = load(&path);
+        for e in cat.entries() {
+            for (i, form) in e.forms.iter().enumerate() {
+                if first_strong(form) == Some(Strong::Latin) {
+                    problems.push(format!("[{code}] {:?} form {i}: {form:?}", e.msgid));
+                }
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "a right-to-left translation that starts with Latin text must start \
+         with U+200F (RIGHT-TO-LEFT MARK):\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+#[test]
+fn finds_the_first_strong_character() {
+    assert_eq!(first_strong("Vento يعمل"), Some(Strong::Latin));
+    assert_eq!(
+        first_strong("\u{200F}Vento يعمل"),
+        Some(Strong::RightToLeft)
+    );
+    assert_eq!(first_strong("«{name}» محمي"), Some(Strong::Latin));
+    assert_eq!(first_strong("{app} غير مثبّت"), Some(Strong::Latin));
+    assert_eq!(first_strong("{n} ملفات"), Some(Strong::RightToLeft));
+    assert_eq!(first_strong("{h} س {m} د"), Some(Strong::RightToLeft));
+    assert_eq!(first_strong("{hour}:{minute}"), None);
+    assert_eq!(first_strong("⌃⌥V"), Some(Strong::Latin));
+    assert_eq!(first_strong("99+ …"), None);
+    assert_eq!(first_strong("{day} {month}"), None);
+    assert_eq!(first_strong("تم نقل {name}"), Some(Strong::RightToLeft));
+    assert_eq!(first_strong("GPL-3.0-only."), Some(Strong::Latin));
+}
+
+// ---------------------------------------------------------------------------
 // The scanner itself
 
 fn keys(calls: Vec<Call>) -> Vec<(String, String, Option<String>)> {

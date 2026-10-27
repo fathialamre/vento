@@ -452,7 +452,11 @@ mod tests {
                 "جارٍ تحويل a.png…"
             );
             assert_eq!(progress_title(Verb::Compressing, ""), "جارٍ الضغط…");
-            assert_eq!(prompt_title("Photos.zip"), "«Photos.zip» محمي بكلمة سر");
+            // Starts with the right-to-left mark: the name comes first.
+            assert_eq!(
+                prompt_title("Photos.zip"),
+                "\u{200f}«Photos.zip» محمي بكلمة سر"
+            );
         });
     }
 
