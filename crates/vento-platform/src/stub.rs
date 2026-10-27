@@ -1,5 +1,6 @@
 //! Platform used where vento has no real implementation yet.
 
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -116,8 +117,9 @@ impl PdfBackend for SystemPdf {
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(Debug)]
 pub struct PdfRenderer {
-    /// Keeps the type unconstructible outside this module.
-    _never: (),
+    /// Not `Send`, like the macOS renderer, so code that builds here builds
+    /// there too.
+    _not_send: PhantomData<*const ()>,
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]

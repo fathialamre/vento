@@ -280,12 +280,14 @@ enum Scale {
     Dpi(u32),
 }
 
-/// Where a page lands in its bitmap: its box, its turn and the pixel size.
+/// Where a page lands in its bitmap: its box as PDFKit shows it, the extra
+/// turns and the pixel size.
 struct Layout {
-    /// The page's box in its own coordinates.
-    bounds: CGRect,
-    /// Clockwise degrees: 0, 90, 180 or 270.
-    rotation: u32,
+    /// The box's size as PDFKit draws it: already turned by the page's own
+    /// rotation.
+    shown: CGSize,
+    /// Extra quarter turns clockwise, 0..=3.
+    turns: u8,
     /// The bitmap's width in pixels, at least 1.
     width: usize,
     /// The bitmap's height in pixels, at least 1.
@@ -298,16 +300,17 @@ impl Layout {
     fn of(page: &PDFPage, turns: u8, scale: Scale) -> Option<Layout> {
         // SAFETY: `page` is a valid page.
         let (bounds, own) = unsafe { (page.boundsForBox(PAGE_BOX), page.rotation()) };
-        let rotation = turned(own, turns);
         let (w, h) = (bounds.size.width, bounds.size.height);
         if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
             return None;
         }
-        let (w, h) = if rotation.is_multiple_of(180) {
-            (w, h)
+        let shown = if turned(own, 0).is_multiple_of(180) {
+            CGSize::new(w, h)
         } else {
-            (h, w)
+            CGSize::new(h, w)
         };
+        let turns = turns % 4;
+        let (w, h) = Self::turned_size(shown, turns);
         let factor = match scale {
             Scale::LongSide(px) => f64::from(px) / w.max(h),
             Scale::Dpi(dpi) => f64::from(dpi) / 72.0,
@@ -319,11 +322,20 @@ impl Layout {
             return None;
         }
         Some(Layout {
-            bounds,
-            rotation,
+            shown,
+            turns,
             width,
             height,
         })
+    }
+
+    /// `shown`'s width and height after `turns` more quarter turns.
+    fn turned_size(shown: CGSize, turns: u8) -> (f64, f64) {
+        if turns.is_multiple_of(2) {
+            (shown.width, shown.height)
+        } else {
+            (shown.height, shown.width)
+        }
     }
 
     /// Fills `context` (this layout's size) with white and draws `page` over
@@ -334,25 +346,21 @@ impl Layout {
         CGContext::set_rgb_fill_color(Some(context), 1.0, 1.0, 1.0, 1.0);
         CGContext::fill_rect(Some(context), full);
         CGContext::set_interpolation_quality(Some(context), CGInterpolationQuality::High);
+        let (turned_w, turned_h) = Self::turned_size(self.shown, self.turns);
+        CGContext::scale_ctm(Some(context), width / turned_w, height / turned_h);
+        // `drawWithBox:toContext:` already turns the page by its own
+        // rotation and puts the box's corner at the origin; only the extra
+        // turns are added, about that shown box (y up). Each quarter turn
+        // clockwise carries the top-left corner to the top-right.
         let CGSize {
             width: w,
             height: h,
-        } = self.bounds.size;
-        let CGPoint { x, y } = self.bounds.origin;
-        let (turned_w, turned_h) = if self.rotation.is_multiple_of(180) {
-            (w, h)
-        } else {
-            (h, w)
-        };
-        CGContext::scale_ctm(Some(context), width / turned_w, height / turned_h);
-        // Page coordinates to the turned box with its corner at the origin
-        // (y up): each quarter turn clockwise carries the top-left corner to
-        // the top-right.
-        let (a, b, c, d, tx, ty) = match self.rotation {
-            90 => (0.0, -1.0, 1.0, 0.0, -y, w + x),
-            180 => (-1.0, 0.0, 0.0, -1.0, w + x, h + y),
-            270 => (0.0, 1.0, -1.0, 0.0, h + y, -x),
-            _ => (1.0, 0.0, 0.0, 1.0, -x, -y),
+        } = self.shown;
+        let (a, b, c, d, tx, ty) = match self.turns {
+            1 => (0.0, -1.0, 1.0, 0.0, 0.0, w),
+            2 => (-1.0, 0.0, 0.0, -1.0, w, h),
+            3 => (0.0, 1.0, -1.0, 0.0, h, 0.0),
+            _ => (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
         };
         let transform = CGAffineTransform { a, b, c, d, tx, ty };
         CGContext::concat_ctm(Some(context), transform);
@@ -407,18 +415,24 @@ mod test_support {
     /// degrees, with a red block in the top-left quarter of each page (away
     /// from the corners), locked with `password` when given.
     pub(super) fn fixture(pages: &[(f64, f64, isize)], password: Option<&str>) -> Vec<u8> {
-        build(pages, password, password, None)
+        build(pages, password, password, None, None)
     }
 
     /// An unlocked [`fixture`] whose document title is `title`.
     pub(super) fn titled(pages: &[(f64, f64, isize)], title: &str) -> Vec<u8> {
-        build(pages, None, None, Some(title))
+        build(pages, None, None, Some(title), None)
     }
 
     /// A [`fixture`] that opens without a password but restricts changes
     /// with `owner`.
     pub(super) fn owner_locked(pages: &[(f64, f64, isize)], owner: &str) -> Vec<u8> {
-        build(pages, None, Some(owner), None)
+        build(pages, None, Some(owner), None, None)
+    }
+
+    /// A one-page [`fixture`] whose crop box is `crop` (x, y, width, height
+    /// in page coordinates) rather than the whole page.
+    pub(super) fn cropped(page: (f64, f64, isize), crop: [f64; 4]) -> Vec<u8> {
+        build(&[page], None, None, None, Some(crop))
     }
 
     fn build(
@@ -426,6 +440,7 @@ mod test_support {
         user: Option<&str>,
         owner: Option<&str>,
         title: Option<&str>,
+        crop: Option<[f64; 4]>,
     ) -> Vec<u8> {
         let data = CFMutableData::new(None, 0).unwrap();
         let consumer = CGDataConsumer::with_cf_data(Some(&data)).unwrap();
@@ -452,12 +467,17 @@ mod test_support {
         CGPDFContextClose(Some(&context));
         drop(context);
         let bytes = data.to_vec();
-        if owner.is_none() && pages.iter().all(|&(_, _, r)| r == 0) {
+        if owner.is_none() && crop.is_none() && pages.iter().all(|&(_, _, r)| r == 0) {
             return bytes;
         }
         let doc = document(&bytes);
         for (i, &(_, _, rotate)) in pages.iter().enumerate() {
-            unsafe { doc.pageAtIndex(i).unwrap().setRotation(rotate) };
+            let page = unsafe { doc.pageAtIndex(i) }.unwrap();
+            unsafe { page.setRotation(rotate) };
+            if let Some([x, y, w, h]) = crop {
+                let crop = CGRect::new(CGPoint::new(x, y), CGSize::new(w, h));
+                unsafe { page.setBounds_forBox(crop, PDFDisplayBox::CropBox) };
+            }
         }
         let Some(owner) = owner else {
             return unsafe { doc.dataRepresentation() }.unwrap().to_vec();
@@ -523,6 +543,44 @@ mod test_support {
         (dims.unit == png::Unit::Meter).then(|| (ppi(dims.xppu), ppi(dims.yppu)))
     }
 
+    /// The image file at `path` (PNG, JPEG) drawn in sRGB as straight RGBA,
+    /// rows top to bottom; every page export is opaque, so premultiplied is
+    /// straight here.
+    pub(super) fn decoded(path: &Path) -> crate::RgbaImage {
+        use objc2_core_foundation::CFURL;
+        use objc2_core_graphics::{
+            CGBitmapContextCreate, CGColorSpace, CGImage, CGImageAlphaInfo, kCGColorSpaceSRGB,
+        };
+        use objc2_image_io::CGImageSource;
+
+        let url = CFURL::from_file_path(path).unwrap();
+        let source = unsafe { CGImageSource::with_url(&url, None) }.expect("an image");
+        let image = unsafe { source.image_at_index(0, None) }.expect("a frame");
+        let (w, h) = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
+        let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).unwrap();
+        let mut pixels = vec![0u8; w * h * 4];
+        let context = unsafe {
+            CGBitmapContextCreate(
+                pixels.as_mut_ptr().cast(),
+                w,
+                h,
+                8,
+                w * 4,
+                Some(&space),
+                CGImageAlphaInfo::PremultipliedLast.0,
+            )
+        }
+        .unwrap();
+        let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64));
+        CGContext::draw_image(Some(&context), rect, Some(&image));
+        drop(context);
+        crate::RgbaImage {
+            width: w as u32,
+            height: h as u32,
+            pixels,
+        }
+    }
+
     fn png_info(path: &Path) -> png::Info<'static> {
         let file = std::fs::File::open(path).unwrap();
         let reader = png::Decoder::new(std::io::BufReader::new(file))
@@ -540,7 +598,8 @@ mod tests {
     use vento_core::pdf::{ImageKind, ImageOptions, PageRef, PdfBackend, PdfError, Source};
 
     use super::test_support::{
-        fixture, owner_locked, png_dpi, png_size, read_back, rotation, sizes, title, titled,
+        cropped, decoded, fixture, owner_locked, png_dpi, png_size, read_back, rotation, sizes,
+        title, titled,
     };
     use super::{PdfRenderer, SystemPdf};
     use crate::RgbaImage;
@@ -580,6 +639,41 @@ mod tests {
 
     fn is_red(p: [u8; 4]) -> bool {
         p[0] > 200 && p[1] < 60 && p[2] < 60
+    }
+
+    /// Which quarters of `img` show the red block, sampled at their centres:
+    /// top left, top right, bottom right, bottom left.
+    fn quarters(img: &RgbaImage) -> [bool; 4] {
+        let (w, h) = (img.width, img.height);
+        [
+            is_red(pixel(img, w / 4, h / 4)),
+            is_red(pixel(img, w * 3 / 4, h / 4)),
+            is_red(pixel(img, w * 3 / 4, h * 3 / 4)),
+            is_red(pixel(img, w / 4, h * 3 / 4)),
+        ]
+    }
+
+    const TOP_LEFT: [bool; 4] = [true, false, false, false];
+    const TOP_RIGHT: [bool; 4] = [false, true, false, false];
+    const BOTTOM_RIGHT: [bool; 4] = [false, false, true, false];
+    const BOTTOM_LEFT: [bool; 4] = [false, false, false, true];
+
+    /// A crop box inside a letter page holding the red block in its own
+    /// top-left quarter: x 40–440, y 300–750.
+    const CROP: [f64; 4] = [40.0, 300.0, 400.0, 450.0];
+
+    /// `page` of `bytes` exported as a PNG at 36 DPI, read back.
+    fn exported(bytes: Vec<u8>, page: PageRef) -> RgbaImage {
+        let dir = tempfile::tempdir().unwrap();
+        let dst = dir.path().join("p.png");
+        let opts = ImageOptions {
+            kind: ImageKind::Png,
+            dpi: 36,
+        };
+        SystemPdf
+            .write_image(&source(bytes), page, &opts, &dst)
+            .unwrap();
+        decoded(&dst)
     }
 
     #[test]
@@ -722,20 +816,64 @@ mod tests {
         let renderer = PdfRenderer::new(&[Arc::from(fixture(&[LETTER], None))]).unwrap();
         // The red block sits in the top-left quarter of the upright page;
         // each quarter turn clockwise carries it to the next corner.
-        let quarters = |turns| {
-            let img = renderer.render(page(0, 0, turns), 200).unwrap();
-            let (w, h) = (img.width, img.height);
-            [
-                is_red(pixel(&img, w / 4, h / 4)),
-                is_red(pixel(&img, w * 3 / 4, h / 4)),
-                is_red(pixel(&img, w * 3 / 4, h * 3 / 4)),
-                is_red(pixel(&img, w / 4, h * 3 / 4)),
-            ]
-        };
-        assert_eq!(quarters(0), [true, false, false, false]);
-        assert_eq!(quarters(1), [false, true, false, false]);
-        assert_eq!(quarters(2), [false, false, true, false]);
-        assert_eq!(quarters(3), [false, false, false, true]);
+        let at = |turns| quarters(&renderer.render(page(0, 0, turns), 200).unwrap());
+        assert_eq!(at(0), TOP_LEFT);
+        assert_eq!(at(1), TOP_RIGHT);
+        assert_eq!(at(2), BOTTOM_RIGHT);
+        assert_eq!(at(3), BOTTOM_LEFT);
+    }
+
+    #[test]
+    fn render_shows_the_page_own_rotation_then_the_turns() {
+        // /Rotate 90 shows the block top right, as Preview does; one more
+        // turn carries it on to the bottom right.
+        let rotated = fixture(&[(612.0, 792.0, 90)], None);
+        let renderer = PdfRenderer::new(&[Arc::from(rotated)]).unwrap();
+        let img = renderer.render(page(0, 0, 0), 200).unwrap();
+        assert_eq!((img.width, img.height), (200, 155));
+        assert_eq!(quarters(&img), TOP_RIGHT);
+        let img = renderer.render(page(0, 0, 1), 200).unwrap();
+        assert_eq!((img.width, img.height), (155, 200));
+        assert_eq!(quarters(&img), BOTTOM_RIGHT);
+        // /Rotate 270 shows it bottom left.
+        let rotated = fixture(&[(612.0, 792.0, 270)], None);
+        let renderer = PdfRenderer::new(&[Arc::from(rotated)]).unwrap();
+        assert_eq!(
+            quarters(&renderer.render(page(0, 0, 0), 200).unwrap()),
+            BOTTOM_LEFT
+        );
+    }
+
+    #[test]
+    fn render_draws_the_crop_box() {
+        let renderer = PdfRenderer::new(&[Arc::from(cropped(LETTER, CROP))]).unwrap();
+        let img = renderer.render(page(0, 0, 0), 200).unwrap();
+        assert_eq!((img.width, img.height), (178, 200));
+        assert_eq!(quarters(&img), TOP_LEFT);
+        let img = renderer.render(page(0, 0, 1), 200).unwrap();
+        assert_eq!((img.width, img.height), (200, 178));
+        assert_eq!(quarters(&img), TOP_RIGHT);
+    }
+
+    #[test]
+    fn export_shows_the_page_own_rotation_then_the_turns() {
+        let rotated = || fixture(&[(612.0, 792.0, 90)], None);
+        let img = exported(rotated(), page(0, 0, 0));
+        assert_eq!((img.width, img.height), (396, 306));
+        assert_eq!(quarters(&img), TOP_RIGHT);
+        let img = exported(rotated(), page(0, 0, 1));
+        assert_eq!((img.width, img.height), (306, 396));
+        assert_eq!(quarters(&img), BOTTOM_RIGHT);
+    }
+
+    #[test]
+    fn export_draws_the_crop_box() {
+        let img = exported(cropped(LETTER, CROP), page(0, 0, 0));
+        assert_eq!((img.width, img.height), (200, 225));
+        assert_eq!(quarters(&img), TOP_LEFT);
+        let img = exported(cropped(LETTER, CROP), page(0, 0, 1));
+        assert_eq!((img.width, img.height), (225, 200));
+        assert_eq!(quarters(&img), TOP_RIGHT);
     }
 
     #[test]
@@ -809,5 +947,14 @@ mod tests {
             .write_image(&a, page(0, 0, 0), &opts, &dst)
             .unwrap();
         assert_eq!(corner_pixel(&dst), [255, 255, 255, 255]);
+        // Away from the corner too: the bottom-right quarter holds no page
+        // content, so it shows the background; the block is still drawn.
+        let img = decoded(&dst);
+        let [r, g, b, a] = pixel(&img, img.width * 3 / 4, img.height * 3 / 4);
+        assert!(
+            r >= 250 && g >= 250 && b >= 250 && a == 255,
+            "{r} {g} {b} {a}"
+        );
+        assert_eq!(quarters(&img), TOP_LEFT);
     }
 }

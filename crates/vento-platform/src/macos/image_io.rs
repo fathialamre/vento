@@ -76,7 +76,8 @@ fn write(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), ConvertError
 }
 
 /// Writes `image` into `dst` as `format`, without metadata; `dpi`, when
-/// given, is recorded as the image's resolution. `dst` may or may not exist;
+/// given, is recorded as the image's resolution (except in WebP, written
+/// without it). `dst` may or may not exist;
 /// its contents are replaced. JPEG goes on white, as Convert's does. The
 /// caller drains the autorelease pool.
 pub(crate) fn encode(
