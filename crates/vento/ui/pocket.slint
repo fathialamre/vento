@@ -11,6 +11,13 @@ export struct PocketCell { name: string, icon: image, missing: bool, selected: b
 // 3 image; `thumb` is an image's thumbnail, empty when it can't be shown.
 export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image, pinned: bool }
 
+// One item of the Pocket list, by item id; `icon` is the one its cell shows.
+export struct PocketRow { id: int, name: string, icon: image, missing: bool, selected: bool }
+
+// One filter chip of the Pocket list: "All" or a kind's name, and how many
+// items it lists.
+export struct PocketChip { label: string, count: int }
+
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
 component DashedBox inherits Rectangle {
@@ -207,6 +214,46 @@ component SwitchButton inherits Rectangle {
     touch := TouchArea {
         clicked => {
             root.clicked();
+        }
+    }
+}
+
+// A scrollbar for a list that overflows (its Flickable's `content-h` and
+// `offset`, as tall as the bar): the thumb shows how much is in view and
+// where, and can be dragged.
+component ListScrollbar inherits Rectangle {
+    in property <length> content-h;
+    in-out property <length> offset;
+
+    property <length> overflow: root.content-h - root.height;
+    property <length> thumb-h: max(24px, root.height * root.height / root.content-h);
+    property <length> travel: root.height - root.thumb-h;
+    property <length> drag-from;
+
+    width: 4px;
+
+    Rectangle {
+        y: root.overflow > 0 ? -root.offset / root.overflow * root.travel : 0;
+        width: parent.width;
+        height: root.thumb-h;
+        border-radius: 2px;
+        background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
+
+        thumb := TouchArea {
+            // A little wider than the thumb, so it is easy to grab.
+            x: -4px;
+            width: parent.width + 8px;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.drag-from = -root.offset;
+                }
+            }
+            moved => {
+                if self.pressed && root.travel > 0 {
+                    root.offset = -max(0px, min(root.overflow,
+                        root.drag-from + (self.mouse-y - self.pressed-y) * root.overflow / root.travel));
+                }
+            }
         }
     }
 }
@@ -453,42 +500,13 @@ component ClipList inherits Rectangle {
         }
     }
 
-    // A scrollbar in the gap beside the list, once the rows overflow it:
-    // the thumb shows how much is in view and where, and can be dragged.
-    if list.content-height > list.height: bar := Rectangle {
-        property <length> overflow: list.content-height - list.height;
-        property <length> thumb-h: max(24px, list.height * list.height / list.content-height);
-        property <length> travel: list.height - self.thumb-h;
-        property <length> drag-from;
+    // A scrollbar in the gap beside the list, once the rows overflow it.
+    if list.content-height > list.height: ListScrollbar {
         x: list.x + list.width + 3px;
         y: list.y;
-        width: 4px;
         height: list.height;
-
-        Rectangle {
-            y: bar.overflow > 0 ? -list.content-y / bar.overflow * bar.travel : 0;
-            width: parent.width;
-            height: bar.thumb-h;
-            border-radius: 2px;
-            background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
-
-            thumb := TouchArea {
-                // A little wider than the thumb, so it is easy to grab.
-                x: -4px;
-                width: parent.width + 8px;
-                pointer-event(e) => {
-                    if e.kind == PointerEventKind.down {
-                        bar.drag-from = -list.content-y;
-                    }
-                }
-                moved => {
-                    if self.pressed && bar.travel > 0 {
-                        list.content-y = -max(0px, min(bar.overflow,
-                            bar.drag-from + (self.mouse-y - self.pressed-y) * bar.overflow / bar.travel));
-                    }
-                }
-            }
-        }
+        content-h: list.content-height;
+        offset <=> list.content-y;
     }
 
     if root.rows.length == 0: Text {
@@ -561,6 +579,413 @@ component ClipList inherits Rectangle {
     }
 }
 
+// The Pocket's column beside its items: "Drag all" with the item count and
+// Clear below it, or, after a removal or a clear, Undo with the time left.
+component PocketSide inherits Rectangle {
+    in property <int> count;
+    in property <bool> undo-active;
+    in property <float> undo-left;
+    in property <int> undo-secs;
+    // `all-moved` offsets are measured from the press point.
+    callback all-pressed();
+    callback all-moved(length, length);
+    callback all-released();
+    callback clear();
+    callback undo();
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+
+    width: 52px;
+    height: 80px;
+
+    if root.count > 0 && !root.undo-active: Rectangle {
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 0px;
+            width: 42px;
+            height: 42px;
+            border-radius: 21px;
+            background: all-touch.pressed ? #e55a10 : root.accent;
+
+            Image {
+                source: Icons.grab;
+                colorize: white;
+                width: 20px;
+                height: 20px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+
+            Rectangle {
+                width: root.count > 99 ? 28px : root.count > 9 ? 24px : 18px;
+                height: 18px;
+                x: parent.width - self.width + 4px;
+                y: -4px;
+                border-radius: 9px;
+                background: white;
+
+                Text {
+                    text: root.count > 99 ? "99+" : root.count;
+                    color: black;
+                    font-size: 11px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            all-touch := TouchArea {
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        root.all-pressed();
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.all-released();
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 50px;
+            width: 30px;
+            height: 30px;
+            border-radius: 15px;
+            background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
+
+            Image {
+                source: Icons.trash;
+                colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
+                width: 16px;
+                height: 16px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+
+            clear-touch := TouchArea {
+                clicked => {
+                    root.clear();
+                }
+            }
+        }
+    }
+
+    if root.undo-active: UndoRing {
+        y: 6px;
+        width: parent.width;
+        left: root.undo-left;
+        secs: root.undo-secs;
+        clicked => {
+            root.undo();
+        }
+    }
+}
+
+// One filter chip of the Pocket list: "All" or a kind's name, and how many
+// items it lists, filled with the accent while it is chosen.
+component KindChip inherits Rectangle {
+    in property <string> label;
+    in property <int> count;
+    in property <bool> current;
+    callback clicked();
+
+    height: 24px;
+    border-radius: 12px;
+    background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
+    accessible-role: button;
+    accessible-label: "\{root.label} \{root.count}";
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 5px;
+
+        Text {
+            text: root.label;
+            color: root.current ? white : #ffffffc0;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.count;
+            color: root.current ? #ffffffc0 : #ffffff70;
+            font-size: 11px;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The Pocket list: every item the Pocket holds, one row each in Pocket
+// order, with a back control and the filter chips above it and the Pocket's
+// column ("Drag all" and Clear, or Undo) beside it.
+component PocketList inherits Rectangle {
+    // The rows the chosen chip lists.
+    in property <[PocketRow]> rows;
+    // "All", then one chip per kind present; `filter` is the chosen one.
+    in property <[PocketChip]> chips;
+    in property <int> filter;
+    // Every item, for the column's "Drag all".
+    in property <int> count;
+    in property <bool> undo-active;
+    in property <float> undo-left;
+    in property <int> undo-secs;
+    // Rows by item id; `moved` offsets are measured from the press point.
+    callback pressed(int);
+    callback moved(int, length, length);
+    callback released(int);
+    callback remove(int);
+    callback filter-chosen(int);
+    callback back();
+    callback all-pressed();
+    callback all-moved(length, length);
+    callback all-released();
+    callback clear();
+    callback undo();
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+    property <length> pad: 14px;
+    property <length> side-w: 52px;
+    property <length> row-h: 36px;
+    property <length> head-h: 24px;
+
+    // Back to the cells.
+    back-button := Rectangle {
+        x: root.pad;
+        y: 8px;
+        width: 74px;
+        height: root.head-h;
+        border-radius: 12px;
+        background: back-touch.has-hover ? #2c2c32 : root.item-fill;
+        accessible-role: button;
+        accessible-label: "Back to Pocket";
+        accessible-action-default => {
+            root.back();
+        }
+
+        Image {
+            source: Icons.back;
+            colorize: back-touch.has-hover ? white : #ffffffc0;
+            width: 14px;
+            height: 14px;
+            x: 7px;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            x: 23px;
+            width: parent.width - self.x - 8px;
+            text: "Pocket";
+            color: back-touch.has-hover ? white : #ffffffc0;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        back-touch := TouchArea {
+            clicked => {
+                root.back();
+            }
+        }
+    }
+
+    // The chips, scrolling sideways when they don't fit, by trackpad or by a
+    // mouse wheel's vertical scroll.
+    chip-row := Flickable {
+        x: back-button.x + back-button.width + 6px;
+        y: 8px;
+        width: list.width - back-button.width - 6px;
+        height: root.head-h;
+        interactive: false;
+        content-width: chips-layout.preferred-width;
+
+        TouchArea {
+            width: max(chip-row.width, chips-layout.preferred-width);
+            height: chip-row.height;
+            scroll-event(e) => {
+                if e.delta-x == 0 && e.delta-y != 0 && chip-row.content-width > chip-row.width {
+                    chip-row.content-x = max(chip-row.width - chip-row.content-width, min(0px, chip-row.content-x + e.delta-y));
+                    return accept;
+                }
+                return reject;
+            }
+
+            chips-layout := HorizontalLayout {
+                alignment: start;
+                spacing: 4px;
+
+                for chip[i] in root.chips: KindChip {
+                    label: chip.label;
+                    count: chip.count;
+                    current: root.filter == i;
+                    clicked => {
+                        root.filter-chosen(i);
+                    }
+                }
+            }
+        }
+    }
+
+    list := Flickable {
+        x: root.pad;
+        y: 8px + root.head-h + 6px;
+        width: parent.width - 2 * root.pad - root.side-w - 10px;
+        height: parent.height - self.y - 8px;
+        // Presses belong to the rows; the list scrolls by wheel only.
+        interactive: false;
+        content-height: root.rows.length * root.row-h;
+
+        for row[i] in root.rows: Rectangle {
+            y: i * root.row-h;
+            height: root.row-h;
+            width: list.width;
+            border-radius: 10px;
+            background: row.selected ? #ff6a1a2e : touch.has-hover ? root.item-fill : transparent;
+            border-width: row.selected ? 1.5px : 0px;
+            border-color: root.accent;
+
+            touch := TouchArea {
+                // As a cell's: a press drags the item (or the selection it is
+                // part of) out, a click selects it.
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        root.pressed(row.id);
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.released(row.id);
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.moved(row.id, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    }
+                }
+
+                Rectangle {
+                    opacity: row.missing ? 0.4 : 1.0;
+
+                    if !row.missing: Image {
+                        source: row.icon;
+                        x: 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 24px;
+                        height: 24px;
+                    }
+
+                    if row.missing: Image {
+                        source: row.icon;
+                        colorize: white;
+                        x: 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 24px;
+                        height: 24px;
+                    }
+
+                    Text {
+                        x: 40px;
+                        width: parent.width - self.x - (touch.has-hover ? 40px : 12px);
+                        text: row.name;
+                        color: #e6e6e6;
+                        font-size: 13px;
+                        overflow: elide;
+                        wrap: no-wrap;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if row.missing: Image {
+                    source: Icons.missing;
+                    colorize: #ffcc33;
+                    x: 20px;
+                    y: parent.height / 2;
+                    width: 12px;
+                    height: 12px;
+                }
+
+                // A child of the row's TouchArea, so hovering it keeps the
+                // row hovered, and it takes the press before the row does.
+                if touch.has-hover: Rectangle {
+                    x: parent.width - self.width - 6px;
+                    y: (parent.height - self.height) / 2;
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 12px;
+                    background: remove-touch.has-hover ? #55555c : #3a3a40;
+                    accessible-role: button;
+                    accessible-label: "Remove";
+
+                    Image {
+                        source: Icons.remove;
+                        colorize: white;
+                        width: 10px;
+                        height: 10px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    remove-touch := TouchArea {
+                        clicked => {
+                            root.remove(row.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // A scrollbar in the gap beside the list, once the rows overflow it.
+    if list.content-height > list.height: ListScrollbar {
+        x: list.x + list.width + 3px;
+        y: list.y;
+        height: list.height;
+        content-h: list.content-height;
+        offset <=> list.content-y;
+    }
+
+    PocketSide {
+        x: parent.width - root.pad - root.side-w;
+        y: 8px;
+        count: root.count;
+        undo-active: root.undo-active;
+        undo-left: root.undo-left;
+        undo-secs: root.undo-secs;
+        all-pressed => {
+            root.all-pressed();
+        }
+        all-moved(dx, dy) => {
+            root.all-moved(dx, dy);
+        }
+        all-released => {
+            root.all-released();
+        }
+        clear => {
+            root.clear();
+        }
+        undo => {
+            root.undo();
+        }
+    }
+}
+
 export component PocketIsland inherits Window {
     no-frame: true;
     always-on-top: true;
@@ -575,9 +1000,13 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
-    // At most eight; `count` is the total, so the rest show as "+N".
+    // At most eight; `count` is the total, so the rest show as "All N"
+    // (opening the Pocket list) under the List layout, "+N" otherwise.
     in property <[PocketCell]> cells;
     in property <int> count;
+    // How a Pocket of more than eight items is laid out: 0 List, 1 Scroll,
+    // 2 Stacks.
+    in property <int> layout;
     // A drag hovers over the island.
     in property <bool> hint;
     // The expanded width: wide enough for the cells shown (set by the app).
@@ -592,7 +1021,8 @@ export component PocketIsland inherits Window {
     in property <int> undo-kind;
     // What a clear took, shown faded while its Undo is offered.
     in property <[PocketCell]> ghosts;
-    // The view shown expanded: 0 the Pocket, 1 the Clipboard.
+    // The view shown expanded: 0 the Pocket, 1 the Clipboard, 2 the Pocket
+    // list.
     in property <int> view;
     // The clipboard history is on: the bar switching views is drawn under
     // either one.
@@ -604,6 +1034,11 @@ export component PocketIsland inherits Window {
     // 4 Images, 5 Files) and how many entries each lists.
     in property <int> clip-filter;
     in property <[int]> clip-filter-counts: [0, 0, 0, 0, 0, 0];
+    // The Pocket list's rows, its chips ("All", then each kind present) and
+    // the chosen chip.
+    in property <[PocketRow]> list-rows;
+    in property <[PocketChip]> list-chips;
+    in property <int> list-filter;
     // Height of what is drawn below the menu bar (set by the app).
     in property <length> panel-h: 112px;
     // Collapsed with an empty Pocket but some history: the wings show the
@@ -635,6 +1070,17 @@ export component PocketIsland inherits Window {
     callback clip-remove(int);
     callback clip-clear();
     callback clip-filter-chosen(int);
+    // "All N": shows the Pocket list.
+    callback list-open();
+    // The Pocket list, by item id: a row pressed, moved (from the press
+    // point) and released, its x; a chip chosen (0 All, then the kinds in
+    // the order shown); and its back control.
+    callback list-pressed(int);
+    callback list-moved(int, length, length);
+    callback list-released(int);
+    callback list-remove(int);
+    callback list-filter-chosen(int);
+    callback list-back();
 
     width: root.panel-w;
     height: root.top-h + root.panel-h;
@@ -873,7 +1319,7 @@ export component PocketIsland inherits Window {
                         }
                     }
 
-                    if root.count > root.cells.length: Rectangle {
+                    if root.count > root.cells.length && root.layout != 0: Rectangle {
                         x: root.cells.length * root.cell-step;
                         width: 44px;
                         height: 80px;
@@ -889,100 +1335,69 @@ export component PocketIsland inherits Window {
                             vertical-alignment: center;
                         }
                     }
-                }
 
-                // "Drag all" with the item count, and Clear below it.
-                if root.count > 0 && !root.pocket-undo: Rectangle {
-                    x: parent.width - root.pad - root.side-w;
-                    y: 16px;
-                    width: root.side-w;
-                    height: 80px;
-
-                    Rectangle {
-                        x: (parent.width - self.width) / 2;
-                        y: 0px;
-                        width: 42px;
-                        height: 42px;
-                        border-radius: 21px;
-                        background: all-touch.pressed ? #e55a10 : root.accent;
-
-                        Image {
-                            source: Icons.grab;
-                            colorize: white;
-                            width: 20px;
-                            height: 20px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
+                    // The List layout: "All N" opens the list of every item.
+                    if root.count > root.cells.length && root.layout == 0: Rectangle {
+                        x: root.cells.length * root.cell-step;
+                        width: 44px;
+                        height: 80px;
+                        border-radius: 12px;
+                        background: list-touch.has-hover ? #2c2c32 : root.item-fill;
+                        accessible-role: button;
+                        accessible-label: "All \{root.count}";
+                        accessible-action-default => {
+                            root.list-open();
                         }
 
-                        Rectangle {
-                            width: root.count > 99 ? 28px : root.count > 9 ? 24px : 18px;
-                            height: 18px;
-                            x: parent.width - self.width + 4px;
-                            y: -4px;
-                            border-radius: 9px;
-                            background: white;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
 
                             Text {
-                                text: root.count > 99 ? "99+" : root.count;
-                                color: black;
+                                text: "All";
+                                color: list-touch.has-hover ? white : #ffffff90;
                                 font-size: 11px;
                                 font-weight: 600;
                                 horizontal-alignment: center;
-                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: root.count;
+                                color: list-touch.has-hover ? white : #ffffffb0;
+                                font-size: 13px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
                             }
                         }
 
-                        all-touch := TouchArea {
-                            pointer-event(e) => {
-                                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                    root.all-pressed();
-                                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
-                                    || e.kind == PointerEventKind.cancel {
-                                    root.all-released();
-                                }
-                            }
-                            moved => {
-                                if self.pressed {
-                                    root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        x: (parent.width - self.width) / 2;
-                        y: 50px;
-                        width: 30px;
-                        height: 30px;
-                        border-radius: 15px;
-                        background: clear-touch.has-hover ? #2c2c32 : root.item-fill;
-
-                        Image {
-                            source: Icons.trash;
-                            colorize: clear-touch.has-hover ? #ff7b72 : #ffffffa0;
-                            width: 16px;
-                            height: 16px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                        }
-
-                        clear-touch := TouchArea {
+                        list-touch := TouchArea {
                             clicked => {
-                                root.clear();
+                                root.list-open();
                             }
                         }
                     }
                 }
 
-                // After a removal or a clear: Undo, with the time left as a ring.
-                if root.pocket-undo: UndoRing {
+                PocketSide {
                     x: parent.width - root.pad - root.side-w;
-                    y: 22px;
-                    width: root.side-w;
-                    left: root.undo-left;
-                    secs: root.undo-secs;
-                    clicked => {
+                    y: 16px;
+                    count: root.count;
+                    undo-active: root.pocket-undo;
+                    undo-left: root.undo-left;
+                    undo-secs: root.undo-secs;
+                    all-pressed => {
+                        root.all-pressed();
+                    }
+                    all-moved(dx, dy) => {
+                        root.all-moved(dx, dy);
+                    }
+                    all-released => {
+                        root.all-released();
+                    }
+                    clear => {
+                        root.clear();
+                    }
+                    undo => {
                         root.undo();
                     }
                 }
@@ -1054,6 +1469,54 @@ export component PocketIsland inherits Window {
                 }
             }
 
+            // The Pocket list.
+            if root.view == 2: PocketList {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 232px;
+                rows: root.list-rows;
+                chips: root.list-chips;
+                filter: root.list-filter;
+                count: root.count;
+                undo-active: root.pocket-undo;
+                undo-left: root.undo-left;
+                undo-secs: root.undo-secs;
+                pressed(id) => {
+                    root.list-pressed(id);
+                }
+                moved(id, dx, dy) => {
+                    root.list-moved(id, dx, dy);
+                }
+                released(id) => {
+                    root.list-released(id);
+                }
+                remove(id) => {
+                    root.list-remove(id);
+                }
+                filter-chosen(i) => {
+                    root.list-filter-chosen(i);
+                }
+                back => {
+                    root.list-back();
+                }
+                all-pressed => {
+                    root.all-pressed();
+                }
+                all-moved(dx, dy) => {
+                    root.all-moved(dx, dy);
+                }
+                all-released => {
+                    root.all-released();
+                }
+                clear => {
+                    root.clear();
+                }
+                undo => {
+                    root.undo();
+                }
+            }
+
             // Under either view: the two buttons switching between them.
             if root.show-switch: Rectangle {
                 x: 0px;
@@ -1090,7 +1553,8 @@ export component PocketIsland inherits Window {
                         icon: Icons.pocket;
                         label: "Pocket";
                         count: root.count;
-                        current: root.view == 0;
+                        // The Pocket list is part of the Pocket.
+                        current: root.view != 1;
                         clicked => {
                             root.view-chosen(0);
                         }

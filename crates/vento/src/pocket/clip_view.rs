@@ -141,7 +141,7 @@ impl ClipView {
 /// dropped at the end and the others rewritten only where they changed.
 /// Each row the window draws stays where it is, so the one under the
 /// pointer keeps its hover when a copy pushes a new entry in on top.
-fn set_rows_in_place<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+pub(super) fn set_rows_in_place<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
     while model.row_count() > rows.len() {
         model.remove(model.row_count() - 1);
     }
@@ -286,6 +286,12 @@ impl PocketController {
     /// reached again.
     fn choose_view(&self, v: View) {
         self.set_view(v);
+        self.hold_open_briefly();
+    }
+
+    /// Keeps the island open a moment after a button that changed its
+    /// shape, wherever the pointer now is, so it can be reached again.
+    pub(super) fn hold_open_briefly(&self) {
         let until = Instant::now() + SWITCH_GRACE;
         if self.pin_until.get().is_none_or(|t| t < until) {
             self.pin_until.set(Some(until));
@@ -306,9 +312,11 @@ impl PocketController {
             // Its rows are made only while it is in sight.
             if v == View::Clipboard {
                 self.refresh_clip();
+            } else {
+                self.refresh_list();
             }
         }
-        self.window.set_view(view_index(self.shown_view()));
+        self.window.set_view(self.window_view());
         self.fit_panel();
         self.run_undo_timer();
     }
@@ -324,11 +332,11 @@ impl PocketController {
 
     /// What the expanded island holds below the menu bar.
     pub(super) fn panel(&self) -> Panel {
+        let switch = self.clip.enabled();
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
-            View::Pocket => Panel::Pocket {
-                switch: self.clip.enabled(),
-            },
+            View::Pocket if self.list_shown() => Panel::PocketList { switch },
+            View::Pocket => Panel::Pocket { switch },
         }
     }
 
@@ -347,7 +355,7 @@ impl PocketController {
         let w = &self.window;
         w.set_clip_count(i32::try_from(self.clip.len()).unwrap_or(i32::MAX));
         w.set_show_switch(on);
-        w.set_view(view_index(self.shown_view()));
+        w.set_view(self.window_view());
         w.set_clip_wing(on && !self.clip.is_empty() && self.pocket.borrow().is_empty());
     }
 }

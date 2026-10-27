@@ -338,6 +338,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             if let Some(pocket) = pocket.upgrade() {
                 pocket.apply_clip_settings(new);
+                pocket.apply_pocket_settings(new);
             }
         }));
     }

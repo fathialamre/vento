@@ -21,7 +21,8 @@ const EXPANDED_MIN_W: f64 = 420.0;
 /// Room the expanded island leaves free on each side of its screen.
 const SCREEN_MARGIN: f64 = 20.0;
 /// The panel's layout, as `pocket.slint` draws it: side padding, one cell
-/// per step, the "+N" tile, and the gap and column of "Drag all".
+/// per step, the "All N" (or "+N") tile, and the gap and column of "Drag
+/// all".
 const PAD: f64 = 14.0;
 const CELL_STEP: f64 = 68.0;
 const OVERFLOW_W: f64 = 48.0;
@@ -31,12 +32,13 @@ const SIDE_W: f64 = 52.0;
 const PANEL_H: f64 = 112.0;
 /// Height of the bar under either view that switches between them.
 const SWITCH_H: f64 = 40.0;
-/// Height of the Clipboard view's list: six 36 pt rows and 8 pt above and
-/// below.
+/// Height of the Clipboard view's list, and of the Pocket list: six 36 pt
+/// rows and 8 pt above and below.
 const CLIP_PANEL_H: f64 = 232.0;
 /// Top height when neither the menu bar nor a notch gives one.
 const FALLBACK_TOP_H: f64 = 32.0;
-/// Cells shown in the expanded island; the rest are summed up as "+N".
+/// Cells shown in the expanded island; the rest are reached through "All N"
+/// (or summed up as "+N").
 pub(super) const MAX_CELLS: usize = 8;
 
 /// What the expanded island shows below the menu bar.
@@ -47,6 +49,9 @@ pub(super) enum Panel {
     Pocket { switch: bool },
     /// The clipboard history's list, always with the bottom switch.
     Clipboard,
+    /// The list of every Pocket item, with the bottom switch when the
+    /// clipboard history is on.
+    PocketList { switch: bool },
 }
 
 /// The island's rects for one home, in logical top-left global coordinates.
@@ -64,7 +69,7 @@ pub(super) struct Frames {
 }
 
 /// The width the panel needs to show `count` items without scrolling: the
-/// first [`MAX_CELLS`] cells, the "+N" tile when there are more, and the
+/// first [`MAX_CELLS`] cells, the "All N" tile when there are more, and the
 /// "Drag all" column.
 fn panel_w(count: usize) -> f64 {
     let cells = count.min(MAX_CELLS) as f64 * CELL_STEP;
@@ -85,7 +90,10 @@ pub(super) fn top_height(home: &IslandHome) -> f64 {
 /// around a notch, and every shape is centred on the slot. Showing the Pocket, the
 /// expanded island widens to fit `count` items, up to the screen's width less
 /// a margin; the row scrolls if that is still too narrow. Showing the
-/// Clipboard, it keeps the width of an empty Pocket and is taller.
+/// Clipboard, it keeps the width of an empty Pocket and is taller. Showing
+/// the Pocket list, it is as tall as the Clipboard view and as wide as a full
+/// row of cells, so the pointer that clicked "All N" stays over it and the
+/// width never jumps as rows are removed.
 pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
     let screen = home.screen;
     let top_h = top_height(home);
@@ -129,6 +137,10 @@ pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
             PANEL_H + if switch { SWITCH_H } else { 0.0 },
         ),
         Panel::Clipboard => (0.0, CLIP_PANEL_H + SWITCH_H),
+        Panel::PocketList { switch } => (
+            panel_w(MAX_CELLS + 1),
+            CLIP_PANEL_H + if switch { SWITCH_H } else { 0.0 },
+        ),
     };
     let w = (notch_w + EXPANDED_EXTRA_W)
         .max(EXPANDED_MIN_W)
@@ -420,6 +432,29 @@ mod tests {
         let mut small = plain(24.0);
         small.screen.w = 400.0;
         assert_eq!(frames(&small, 0, Panel::Clipboard).expanded.w, 360.0);
+    }
+
+    #[test]
+    fn pocket_list_is_as_tall_as_the_clipboard_and_as_wide_as_a_full_row() {
+        let home = notched(188.0, 38.0);
+        let list = frames(&home, 12, Panel::PocketList { switch: false }).expanded;
+        assert_eq!(list.h, 38.0 + 232.0);
+        // Eight cells, the "All N" tile and the "Drag all" column, whatever
+        // the count: removing rows never narrows it.
+        assert_eq!(list.w, 682.0);
+        assert_eq!(
+            frames(&home, 3, Panel::PocketList { switch: false }).expanded,
+            list
+        );
+        // The bottom switch adds its bar, as under the cells.
+        let with = frames(&home, 12, Panel::PocketList { switch: true }).expanded;
+        assert_eq!(with.h, list.h + 40.0);
+        assert_eq!(with.w, list.w);
+        // Capped by the screen like the other views.
+        let mut small = plain(24.0);
+        small.screen.w = 600.0;
+        let f = frames(&small, 12, Panel::PocketList { switch: true });
+        assert_eq!(f.expanded.w, 560.0);
     }
 
     #[test]
