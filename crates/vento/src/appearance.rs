@@ -102,12 +102,15 @@ pub fn title_bar_theme(a: Appearance, content_dark: bool) -> Option<WindowTheme>
 pub fn apply(theme: &Theme<'_>) {
     theme.set_appearance(index(current()));
     theme.set_palette(theme_index(CURRENT_THEME.with(Cell::get)));
-    theme.set_rtl(i18n::current().rtl);
+    apply_direction(theme);
 }
 
-/// Gives a window's `Theme` the interface language's direction alone.
+/// Gives a window's `Theme` the interface language's direction and font
+/// alone.
 pub fn apply_direction(theme: &Theme<'_>) {
-    theme.set_rtl(i18n::current().rtl);
+    let language = i18n::current();
+    theme.set_rtl(language.rtl);
+    theme.set_font_family(language.font.into());
 }
 
 /// Gives `window` its `look` now, and again after every language change

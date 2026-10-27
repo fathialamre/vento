@@ -39,6 +39,7 @@ component DefaultButton inherits Rectangle {
 // Settings and Escape cancels. Its height follows its text; it follows the
 // system light or dark appearance through `Theme`.
 export component ScreenAccess inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;

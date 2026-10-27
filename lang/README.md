@@ -16,8 +16,10 @@ compiled into the app, so a moved or copied `Vento.app` keeps them.
    two-letter language code) and translate every entry. Fill in the header too,
    above all its `Plural-Forms` line.
 2. Add the language to `LANGUAGES` in `crates/vento-core/src/i18n/mod.rs`: its
-   code, its own name ("Deutsch", "العربية") and whether it is written right to
-   left. In the same file, give `catalog()` an arm that loads the new `.po`.
+   code, its own name ("Deutsch", "العربية"), whether it is written right to
+   left, and its font (empty for the system's own; a bundled font is added
+   under `crates/vento/ui/fonts` and imported in `theme.slint`, as IBM Plex
+   Sans Arabic is for Arabic). In the same file, give `catalog()` an arm that loads the new `.po`.
    Also add the code to `CFBundleLocalizations` in `scripts/bundle-macos.sh`.
 3. Build. The Settings window lists the language and Automatic can pick it.
 

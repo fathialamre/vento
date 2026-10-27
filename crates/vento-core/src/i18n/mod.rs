@@ -27,6 +27,9 @@ pub struct Language {
     pub name: &'static str,
     /// Whether the language is written right to left.
     pub rtl: bool,
+    /// The font family the windows use for this language, one of those
+    /// bundled in `crates/vento/ui/fonts`; empty for the system's own font.
+    pub font: &'static str,
 }
 
 /// Every language, English first. English is also the fallback.
@@ -35,11 +38,13 @@ pub const LANGUAGES: &[Language] = &[
         code: "en",
         name: "English",
         rtl: false,
+        font: "",
     },
     Language {
         code: "ar",
         name: "العربية",
         rtl: true,
+        font: "IBM Plex Sans Arabic",
     },
 ];
 

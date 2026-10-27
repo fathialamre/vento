@@ -2,7 +2,7 @@
 // draws one cell per action around the dragged file, and the destination
 // ring around Move or Copy to.
 
-import { LineText } from "theme.slint";
+import { LineText, Theme } from "theme.slint";
 
 export enum WheelLayout { honeycomb, petals }
 
@@ -59,6 +59,7 @@ export global Icons {
 }
 
 export component Wheel inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;

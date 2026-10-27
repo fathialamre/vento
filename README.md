@@ -341,3 +341,7 @@ GPL-3.0-only. See [LICENSE](LICENSE).
 
 Wheel icons are from [Tabler Icons](https://tabler.io/icons) 3.49.0, MIT-licensed
 (see [crates/vento/ui/icons/LICENSE-tabler](crates/vento/ui/icons/LICENSE-tabler)).
+
+Arabic is shown in [IBM Plex Sans Arabic](https://github.com/IBM/plex), under the
+SIL Open Font License 1.1
+(see [crates/vento/ui/fonts/LICENSE-ibm-plex](crates/vento/ui/fonts/LICENSE-ibm-plex)).

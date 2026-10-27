@@ -7,6 +7,7 @@ import { TextButton } from "controls.slint";
 // Progress of a long extraction or compression: a frameless, always-on-top
 // pill in the toast's style, with the job's title, a thin bar and Cancel.
 export component ArchiveProgress inherits Window {
+    default-font-family: Theme.font-family;
     title: @tr("Vento archive progress");
     no-frame: true;
     always-on-top: true;
@@ -142,6 +143,7 @@ component ExtractButton inherits Rectangle {
 // and Escape cancels. It follows the system light or dark appearance
 // through `Theme`.
 export component PasswordPrompt inherits Window {
+    default-font-family: Theme.font-family;
     no-frame: true;
     always-on-top: true;
     background: transparent;
