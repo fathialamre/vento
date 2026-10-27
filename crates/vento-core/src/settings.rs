@@ -74,7 +74,7 @@ pub enum PocketLayout {
     /// The first eight items, with a button for the rest.
     #[default]
     List,
-    /// Every item, in a list that scrolls.
+    /// Every item, in a strip of cells that scrolls sideways.
     Scroll,
     /// The items grouped by kind, each group a stack to open.
     Stacks,
