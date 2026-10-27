@@ -113,6 +113,34 @@ fn to_buffer(image: RgbaImage) -> Rendered {
     ))
 }
 
+/// `buffer` turned `quarter_turns` quarter turns clockwise (0 to 3), as
+/// the page would be drawn with that many more turns: a lossless copy, so
+/// a turned page shows at once instead of waiting for its drawing.
+pub fn turned(
+    buffer: &SharedPixelBuffer<Rgba8Pixel>,
+    quarter_turns: u8,
+) -> SharedPixelBuffer<Rgba8Pixel> {
+    let (w, h) = (buffer.width() as usize, buffer.height() as usize);
+    let src = buffer.as_slice();
+    let turns = quarter_turns % 4;
+    let (out_w, out_h) = if turns % 2 == 1 { (h, w) } else { (w, h) };
+    let mut out = SharedPixelBuffer::<Rgba8Pixel>::new(out_w as u32, out_h as u32);
+    let dst = out.make_mut_slice();
+    for y in 0..h {
+        for x in 0..w {
+            // Where pixel (x, y) lands once turned.
+            let (nx, ny) = match turns {
+                1 => (h - 1 - y, x),
+                2 => (w - 1 - x, h - 1 - y),
+                3 => (y, w - 1 - x),
+                _ => (x, y),
+            };
+            dst[ny * out_w + nx] = src[y * w + x];
+        }
+    }
+    out
+}
+
 /// What the window does after a change to its thumbnails: rows to empty,
 /// rows to show an image in (`None`: the page could not be drawn), and
 /// pages to ask the worker for, with their ticket.
@@ -274,6 +302,12 @@ impl<T: Clone> ThumbState<T> {
         }
         plan.send = self.send_more(pages);
         plan
+    }
+
+    /// Caches `image` as `page`'s thumbnail before a relayout that shows it:
+    /// a page turned in the window gets its old thumbnail turned.
+    pub fn seed(&mut self, page: PageRef, image: Option<T>) {
+        self.cache.insert(key(page), image);
     }
 
     /// The cached image of `page`: `Some(None)` for a page that could not
@@ -443,6 +477,61 @@ mod tests {
         s.relayout(&edited);
         assert_eq!(s.cached(list[1]), None);
         assert_eq!(s.cached(list[2]), Some(&Some(1)));
+    }
+
+    #[test]
+    fn a_seeded_turn_shows_without_drawing() {
+        let list = pages(2);
+        let mut s = ThumbState::<u32>::new(2, 8, 4);
+        let mut turned_list = list.clone();
+        turned_list[1].turns = 1;
+        s.seed(turned_list[1], Some(42));
+        s.relayout(&turned_list);
+        let plan = s.update(&turned_list, 0..2);
+        assert!(plan.fill.contains(&(1, Some(42))));
+        assert_eq!(sent(&plan), vec![0]);
+    }
+
+    /// A 3 by 2 image whose pixel at (x, y) has red `10 * y + x`.
+    fn grid_image() -> SharedPixelBuffer<Rgba8Pixel> {
+        let mut pixels = Vec::new();
+        for y in 0..2u8 {
+            for x in 0..3u8 {
+                pixels.extend([10 * y + x, 0, 0, 255]);
+            }
+        }
+        SharedPixelBuffer::clone_from_slice(&pixels, 3, 2)
+    }
+
+    /// The red values of `buffer`, row by row.
+    fn reds(buffer: &SharedPixelBuffer<Rgba8Pixel>) -> Vec<Vec<u8>> {
+        let w = buffer.width() as usize;
+        buffer
+            .as_slice()
+            .chunks(w)
+            .map(|row| row.iter().map(|p| p.r).collect())
+            .collect()
+    }
+
+    #[test]
+    fn thumbnails_turn_by_quarters() {
+        let image = grid_image();
+        // 0  1  2
+        // 10 11 12
+        assert_eq!(
+            reds(&turned(&image, 0)),
+            vec![vec![0, 1, 2], vec![10, 11, 12]]
+        );
+        let cw = turned(&image, 1);
+        assert_eq!((cw.width(), cw.height()), (2, 3));
+        assert_eq!(reds(&cw), vec![vec![10, 0], vec![11, 1], vec![12, 2]]);
+        assert_eq!(
+            reds(&turned(&image, 2)),
+            vec![vec![12, 11, 10], vec![2, 1, 0]]
+        );
+        let ccw = turned(&image, 3);
+        assert_eq!((ccw.width(), ccw.height()), (2, 3));
+        assert_eq!(reds(&ccw), vec![vec![2, 12], vec![1, 11], vec![0, 10]]);
     }
 
     #[test]

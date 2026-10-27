@@ -7,6 +7,7 @@
 //! and drops each one, with its window, thumbnail thread and images, once
 //! its window has closed: nothing of a closed window stays in memory.
 
+mod logic;
 mod thumbs;
 mod window;
 

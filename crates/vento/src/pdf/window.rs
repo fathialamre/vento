@@ -1,5 +1,7 @@
 //! One PDF Pages window: the pages of the PDFs from one drop as a grid of
-//! thumbnails, with selection, the keyboard and the large view of a page.
+//! thumbnails, with selection, the keyboard, the large view of a page, and
+//! the page list's edits: delete, drag to reorder, rotate, add PDFs (the
+//! open panel or files dropped on the window) and in-window undo.
 //!
 //! The view owns its Slint window, its page list, its thumbnail thread and
 //! its image cache; the controller drops the view when the window closes,
@@ -11,33 +13,40 @@
 //!   rows, starts a new thumbnail layout (bumping the generation, so older
 //!   results are dropped) and retitles the window;
 //! - every close goes through [`PdfView::request_close`];
-//! - keys arrive in [`PdfView::key`].
+//! - keys arrive in [`PdfView::key`];
+//! - whether there is anything to save is [`PdfView::has_pages`].
+
+mod edit;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Range;
+use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::Duration;
 
 use log::{debug, warn};
 use slint::platform::Key;
-use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::winit::event::WindowEvent;
+use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{
     CloseRequestResponse, ComponentHandle, Image, LogicalPosition, LogicalSize, Model, ModelRc,
     SharedString, Timer, VecModel,
 };
 use vento_core::geometry::{Point, screen_for};
-use vento_core::i18n::{self, fill, tr, trn};
-use vento_core::pdf::{GridMetrics, PageList, PageRef, Selection, Source, page_ranges};
+use vento_core::i18n::{self, fill, tr};
+use vento_core::pdf::{GridMetrics, PageList, PageRef, Selection, Source};
 use vento_platform::Platform;
 
+use super::logic::{Arrow, footer_text, moved_focus, source_letter, tint_of, title_text};
 use super::thumbs::{self, LARGE, Rendered, ThumbState, ThumbWorker};
 use crate::appearance;
 use crate::exec::Executor;
 use crate::settings_window::centred_on;
 use crate::toast::Toaster;
 use crate::ui::{PdfPage, PdfSourceTag, PdfWindow, Theme};
+use edit::Drag;
 
 /// A grid cell, in logical points: the page box plus the number under it
 /// (matches `PageCell` in `pdf.slint`: 6 pt inset, 20 pt label).
@@ -57,6 +66,13 @@ const MAX_IN_FLIGHT: usize = 3;
 const WIDTH: f64 = 640.0;
 const HEIGHT: f64 = 660.0;
 const SCREEN_ROOM: f64 = 40.0;
+/// How long the "pages removed" banner stays.
+const BANNER_TIME: Duration = Duration::from_secs(5);
+/// How often the grid scrolls while a drag is near its edge (a frame).
+const SCROLL_TICK: Duration = Duration::from_millis(16);
+/// winit delivers one `DroppedFile` per file; files arriving within this
+/// long of each other are one drop.
+const DROP_BATCH: Duration = Duration::from_millis(30);
 
 thread_local! {
     /// The open views by id, for thumbnails coming back from their thread.
@@ -73,10 +89,10 @@ fn live_view(id: u64) -> Option<Rc<PdfView>> {
 /// What a view needs from the app.
 pub struct ViewCtx {
     pub platform: Rc<dyn Platform>,
-    #[allow(dead_code)] // The page tools' toasts use it (Tasks 9-10).
+    /// Says which added files could not be opened.
     pub toaster: Rc<Toaster>,
     /// Runs the write jobs (Task 10).
-    #[allow(dead_code)] // Saving and the page tools use it (Tasks 9-10).
+    #[allow(dead_code)] // Saving and the page tools use it (Task 10).
     pub executor: Rc<Executor>,
     /// Told the view's id once its window has closed; the controller then
     /// drops the view.
@@ -87,9 +103,9 @@ pub struct ViewCtx {
 pub struct PdfView {
     id: u64,
     window: PdfWindow,
-    /// The opened files, in the order their pages first appear. Their
-    /// bytes are the snapshot every thumbnail and write works from.
-    #[allow(dead_code)] // Saving and Add PDF use them (Tasks 9-10).
+    /// The opened files, in the order they were opened (added files go
+    /// at the end, so a page's source index never changes). Their bytes are
+    /// the snapshot every thumbnail and write works from.
     pub sources: RefCell<Arc<[Source]>>,
     /// The grid's pages, with in-window undo. Call
     /// [`pages_changed`](Self::pages_changed) after changing it.
@@ -99,7 +115,8 @@ pub struct PdfView {
     focus: Cell<Option<usize>>,
     rows: Rc<VecModel<PdfPage>>,
     thumbs: RefCell<ThumbState<Image>>,
-    worker: ThumbWorker,
+    /// Draws the thumbnails; started again when files are added.
+    worker: RefCell<ThumbWorker>,
     metrics: Cell<GridMetrics>,
     /// The left edge of the columns in the grid area (they are centred).
     grid_left: Cell<f32>,
@@ -108,6 +125,14 @@ pub struct PdfView {
     large_seq: Cell<u64>,
     /// The longer side, in pixels, the large page was last asked for.
     large_px: Cell<u32>,
+    /// A drag of pages, and the timer that scrolls the grid during it.
+    drag: RefCell<Drag>,
+    scroll_timer: Timer,
+    /// Hides the "pages removed" banner.
+    banner_timer: Timer,
+    /// Files dropped on the window, collected until the drop is whole.
+    dropped: RefCell<Vec<PathBuf>>,
+    drop_timer: Timer,
     closed: Cell<bool>,
     ctx: ViewCtx,
     this: Weak<Self>,
@@ -132,9 +157,7 @@ impl PdfView {
             .collect();
         let count = pages.len();
         let bytes: Vec<Arc<[u8]>> = sources.iter().map(|s| s.bytes.clone()).collect();
-        let worker = thumbs::spawn(bytes, move |ticket, page, drawn| {
-            deliver(id, ticket, page, drawn)
-        });
+        let worker = spawn_worker(id, bytes);
         let rtl = i18n::current().rtl;
         let view = Rc::new_cyclic(|this| PdfView {
             id,
@@ -145,7 +168,7 @@ impl PdfView {
             focus: Cell::new(None),
             rows: Rc::new(VecModel::default()),
             thumbs: RefCell::new(ThumbState::new(count, MARGIN, MAX_IN_FLIGHT)),
-            worker,
+            worker: RefCell::new(worker),
             metrics: Cell::new(GridMetrics::fit(
                 WIDTH as f32,
                 CELL_W,
@@ -158,6 +181,11 @@ impl PdfView {
             large: Cell::new(None),
             large_seq: Cell::new(0),
             large_px: Cell::new(0),
+            drag: RefCell::new(Drag::Idle),
+            scroll_timer: Timer::default(),
+            banner_timer: Timer::default(),
+            dropped: RefCell::new(Vec::new()),
+            drop_timer: Timer::default(),
             closed: Cell::new(false),
             ctx,
             this: this.clone(),
@@ -178,6 +206,12 @@ impl PdfView {
         self.pages.borrow().is_edited()
     }
 
+    /// Whether the grid has any page: Save as new PDF is dimmed without.
+    #[allow(dead_code)] // Saving uses it (Task 10).
+    pub fn has_pages(&self) -> bool {
+        !self.pages.borrow().is_empty()
+    }
+
     /// Whether the window has closed.
     pub fn is_closed(&self) -> bool {
         self.closed.get()
@@ -191,6 +225,15 @@ impl PdfView {
         window.set_gap(GAP);
         window.set_pad(PAD);
         window.set_pages(ModelRc::from(self.rows.clone()));
+        self.set_legend();
+        self.connect();
+        appearance::follow(window, appearance::Look::Full);
+        appearance::follow_language(self.this.clone(), |view| view.retext());
+        self.pages_changed();
+    }
+
+    /// Names the files in the toolbar when there are several.
+    fn set_legend(&self) {
         let legend: Vec<PdfSourceTag> = {
             let sources = self.sources.borrow();
             if sources.len() > 1 {
@@ -207,11 +250,7 @@ impl PdfView {
                 Vec::new()
             }
         };
-        window.set_legend(ModelRc::new(VecModel::from(legend)));
-        self.connect();
-        appearance::follow(window, appearance::Look::Full);
-        appearance::follow_language(self.this.clone(), |view| view.retext());
-        self.pages_changed();
+        self.window.set_legend(ModelRc::new(VecModel::from(legend)));
     }
 
     fn connect(&self) {
@@ -248,6 +287,47 @@ impl PdfView {
             let with = with.clone();
             window.on_select_all(move || with(&|v| v.select_all()));
         }
+        {
+            let with = with.clone();
+            window.on_page_moved(move |i, dx, dy, x, y| with(&|v| v.page_moved(i, dx, dy, x, y)));
+        }
+        {
+            let with = with.clone();
+            window.on_page_released(move |_| with(&|v| v.page_released()));
+        }
+        // The toolbar's page tools also act from the large view: it closes
+        // first, as the edit may move its page.
+        {
+            let with = with.clone();
+            window.on_delete_pages(move || {
+                with(&|v| {
+                    v.close_large();
+                    v.delete_selected();
+                });
+            });
+        }
+        {
+            let with = with.clone();
+            window.on_rotate(move |clockwise| {
+                with(&|v| {
+                    v.close_large();
+                    v.rotate_selected(clockwise);
+                });
+            });
+        }
+        {
+            let with = with.clone();
+            window.on_add_pdf(move || {
+                with(&|v| {
+                    v.close_large();
+                    v.add_pdf();
+                });
+            });
+        }
+        {
+            let with = with.clone();
+            window.on_banner_undo(move || with(&|v| v.undo()));
+        }
         let this = self.this.clone();
         window.on_key(move |text, command, shift| {
             this.upgrade()
@@ -260,6 +340,16 @@ impl PdfView {
                 view.request_close();
             }
             CloseRequestResponse::KeepWindowShown
+        });
+        // Files dropped on the window, one event per file.
+        let this = self.this.clone();
+        window.window().on_winit_window_event(move |_, event| {
+            if let WindowEvent::DroppedFile(path) = event
+                && let Some(view) = this.upgrade()
+            {
+                view.file_dropped(path.clone());
+            }
+            EventResult::Propagate
         });
     }
 
@@ -321,6 +411,9 @@ impl PdfView {
         if self.closed.replace(true) {
             return;
         }
+        self.scroll_timer.stop();
+        self.banner_timer.stop();
+        self.drop_timer.stop();
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the PDF window: {e}");
         }
@@ -331,8 +424,10 @@ impl PdfView {
     /// Takes a change to [`pages`](Self::pages): rebuilds the grid's rows,
     /// starts a new thumbnail layout (results asked before it are dropped;
     /// cached images come back at once), keeps the selection and focus
-    /// within the list, and retitles the window.
+    /// within the list, and retitles the window. A drag under way ends
+    /// without moving anything.
     pub fn pages_changed(&self) {
+        self.end_drag();
         let pages = self.pages.borrow().pages().to_vec();
         let several = self.sources.borrow().len();
         let rows: Vec<PdfPage> = pages
@@ -356,8 +451,7 @@ impl PdfView {
         if let Some(focus) = self.focus.get()
             && focus >= pages.len()
         {
-            self.focus
-                .set(pages.len().checked_sub(1).filter(|_| !pages.is_empty()));
+            self.set_focus(pages.len().checked_sub(1), self.window.get_show_focus());
         }
         if self.large.get().is_some_and(|i| i >= pages.len()) {
             self.close_large();
@@ -409,13 +503,11 @@ impl PdfView {
     /// A point in the grid area (window points, scroll included) in the
     /// grid's own content space, as `GridMetrics::index_at` and
     /// `insertion_index` take it: the columns are centred in the area.
-    #[allow(dead_code)] // Dragging pages uses it (Task 9).
     pub fn grid_point(&self, x: f32, y: f32) -> (f32, f32) {
         (x - self.grid_left.get(), y)
     }
 
     /// The current grid layout.
-    #[allow(dead_code)] // Dragging pages uses it (Task 9).
     pub fn metrics(&self) -> GridMetrics {
         self.metrics.get()
     }
@@ -459,7 +551,7 @@ impl PdfView {
         }
         let max_px = self.pixels(THUMB_PT);
         for (ticket, page) in plan.send {
-            self.worker.request(ticket, page, max_px);
+            self.worker.borrow().request(ticket, page, max_px);
         }
     }
 
@@ -487,6 +579,10 @@ impl PdfView {
     }
 
     fn page_clicked(&self, i: i32, command: bool, shift: bool) {
+        // The release that ends a drag is not a click.
+        if !self.drag.borrow().is_idle() {
+            return;
+        }
         let Ok(i) = usize::try_from(i) else { return };
         if i >= self.rows.row_count() {
             return;
@@ -541,16 +637,17 @@ impl PdfView {
     }
 
     /// A key pressed in the window, with ⌘ (`command`) and Shift. Returns
-    /// whether it was used.
+    /// whether it was used. While a page is shown large only ⌘W and Escape
+    /// act; while pages are dragged only Escape (which cancels the drag).
     pub fn key(&self, text: &str, command: bool, shift: bool) -> bool {
         let mut chars = text.chars();
         let (Some(c), None) = (chars.next(), chars.next()) else {
             return false;
         };
-        // Shift matters to the editing keys (⇧⌘Z, Task 9).
-        let _ = shift;
         if c == char::from(Key::Escape) {
-            if self.large.get().is_some() {
+            if !self.drag.borrow().is_idle() {
+                self.cancel_drag();
+            } else if self.large.get().is_some() {
                 self.close_large();
             } else if !self.selection.borrow().is_empty() {
                 self.background_clicked();
@@ -559,21 +656,42 @@ impl PdfView {
             }
             return true;
         }
+        if command && matches!(c, 'w' | 'W') {
+            self.request_close();
+            return true;
+        }
+        if self.large.get().is_some() || !self.drag.borrow().is_idle() {
+            return false;
+        }
+        // Delete and Backspace (the Mac's delete key), with or without ⌘.
+        if c == char::from(Key::Delete) || c == char::from(Key::Backspace) {
+            self.delete_selected();
+            return true;
+        }
         if command {
             return match c {
                 'a' | 'A' => {
                     self.select_all();
                     true
                 }
-                'w' | 'W' => {
-                    self.request_close();
+                'z' | 'Z' if shift => {
+                    self.redo();
+                    true
+                }
+                'z' | 'Z' => {
+                    self.undo();
+                    true
+                }
+                '[' => {
+                    self.rotate_selected(false);
+                    true
+                }
+                ']' => {
+                    self.rotate_selected(true);
                     true
                 }
                 _ => false,
             };
-        }
-        if self.large.get().is_some() {
-            return false;
         }
         let arrow = match c {
             _ if c == char::from(Key::LeftArrow) => Some(Arrow::Left),
@@ -630,6 +748,9 @@ impl PdfView {
     /// Shows page `i` large over the grid: its thumbnail at once, then a
     /// drawing for the window's size.
     fn open_large(&self, i: i32) {
+        if !self.drag.borrow().is_idle() {
+            return;
+        }
         let Ok(i) = usize::try_from(i) else { return };
         let Some(row) = self.rows.row_data(i) else {
             return;
@@ -659,7 +780,7 @@ impl PdfView {
         self.large_seq.set(seq);
         let px = self.large_wanted_px();
         self.large_px.set(px);
-        self.worker.request(LARGE | seq, page, px);
+        self.worker.borrow().request(LARGE | seq, page, px);
     }
 
     fn large_arrived(&self, ticket: u64, drawn: Rendered) {
@@ -678,6 +799,13 @@ impl PdfView {
         self.window.set_large_open(false);
         self.window.set_large_image(Image::default());
     }
+}
+
+/// Starts the thumbnail thread of view `id` on its sources' bytes.
+fn spawn_worker(id: u64, bytes: Vec<Arc<[u8]>>) -> ThumbWorker {
+    thumbs::spawn(bytes, move |ticket, page, drawn| {
+        deliver(id, ticket, page, drawn)
+    })
 }
 
 impl Drop for PdfView {
@@ -719,211 +847,10 @@ fn blank_row(i: usize, page: PageRef, sources: usize) -> PdfPage {
     }
 }
 
-/// The tint of source `i` in a window of `sources` files: 0 (none) with a
-/// single file, else its place from 1.
-fn tint_of(i: usize, sources: usize) -> i32 {
-    if sources > 1 {
-        i32::try_from(i % 1000 + 1).unwrap_or(1)
-    } else {
-        0
-    }
-}
-
 /// The name of a source's file.
 fn file_name(source: &Source) -> String {
     source.path.file_name().map_or_else(
         || source.path.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
     )
-}
-
-/// Arrow keys.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Arrow {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
-/// The window title's two parts: the files' names (`report.pdf`,
-/// `report.pdf + scan.pdf`, `report.pdf + 2 more`) and the page count, with
-/// "edited" once the page list changed.
-pub fn title_text(names: &[&str], pages: usize, edited: bool) -> (String, String) {
-    let names_text = match names {
-        [] => String::new(),
-        [one] => (*one).to_owned(),
-        [first, second] => fill(
-            &tr("{first} + {second}"),
-            &[("first", first), ("second", second)],
-        ),
-        [first, rest @ ..] => fill(
-            &trn("{name} + {n} more", "{name} + {n} more", rest.len() as u64),
-            &[("name", first)],
-        ),
-    };
-    let count = trn("{n} page", "{n} pages", pages as u64);
-    let meta = if edited {
-        fill(&tr("{pages} · edited"), &[("pages", &count)])
-    } else {
-        count
-    };
-    (names_text, meta)
-}
-
-/// The footer's text for the selected positions (zero-based, sorted).
-pub fn footer_text(selected: &[usize]) -> String {
-    if selected.is_empty() {
-        return tr("Nothing selected");
-    }
-    fill(
-        &trn(
-            "{n} selected · page {pages}",
-            "{n} selected · pages {pages}",
-            selected.len() as u64,
-        ),
-        &[("pages", &page_ranges(selected))],
-    )
-}
-
-/// The letter of source `i`: A to Z, then A2 to Z2, and so on.
-pub fn source_letter(i: usize) -> String {
-    let letter = char::from(b'A' + (i % 26) as u8);
-    match i / 26 {
-        0 => letter.to_string(),
-        round => format!("{letter}{}", round + 1),
-    }
-}
-
-/// Where an arrow key moves the focus in a grid of `count` pages in
-/// `columns`: Left and Right step through reading order (mirrored right to
-/// left), Up and Down a row; the focus stops at the edges. Without a focus
-/// any arrow focuses the first page.
-pub fn moved_focus(
-    focus: Option<usize>,
-    arrow: Arrow,
-    columns: usize,
-    count: usize,
-    rtl: bool,
-) -> Option<usize> {
-    if count == 0 {
-        return None;
-    }
-    let Some(focus) = focus else {
-        return Some(0);
-    };
-    let focus = focus.min(count - 1);
-    let columns = columns.max(1);
-    let forward = match (arrow, rtl) {
-        (Arrow::Right, false) | (Arrow::Left, true) => Some(true),
-        (Arrow::Left, false) | (Arrow::Right, true) => Some(false),
-        _ => None,
-    };
-    let moved = match (forward, arrow) {
-        (Some(true), _) => (focus + 1).min(count - 1),
-        (Some(false), _) => focus.saturating_sub(1),
-        (None, Arrow::Down) if focus / columns < (count - 1) / columns => {
-            (focus + columns).min(count - 1)
-        }
-        (None, Arrow::Up) if focus >= columns => focus - columns,
-        _ => focus,
-    };
-    Some(moved)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use vento_core::i18n::with_language;
-
-    #[test]
-    fn titles() {
-        assert_eq!(title_text(&["report.pdf"], 8, false).0, "report.pdf");
-        assert_eq!(
-            title_text(&["report.pdf", "scan.pdf"], 8, false).0,
-            "report.pdf + scan.pdf"
-        );
-        assert_eq!(
-            title_text(&["a.pdf", "b.pdf", "c.pdf"], 9, true).0,
-            "a.pdf + 2 more"
-        );
-        assert_eq!(title_text(&["a.pdf"], 5, true).1, "5 pages · edited");
-    }
-
-    #[test]
-    fn title_counts_one_page_and_unedited() {
-        assert_eq!(title_text(&["a.pdf"], 1, false).1, "1 page");
-        assert_eq!(title_text(&["a.pdf"], 8, false).1, "8 pages");
-    }
-
-    #[test]
-    fn footers() {
-        assert_eq!(footer_text(&[]), "Nothing selected");
-        assert_eq!(footer_text(&[1, 2, 6]), "3 selected · pages 2–3, 7");
-    }
-
-    #[test]
-    fn footer_names_one_page_singular() {
-        assert_eq!(footer_text(&[4]), "1 selected · page 5");
-    }
-
-    #[test]
-    fn window_texts_in_arabic() {
-        with_language("ar", || {
-            assert_ne!(footer_text(&[]), "Nothing selected");
-            assert_ne!(title_text(&["a.pdf"], 5, true).1, "5 pages · edited");
-            assert!(
-                title_text(&["a.pdf", "b.pdf", "c.pdf"], 9, false)
-                    .0
-                    .contains("a.pdf")
-            );
-        });
-    }
-
-    #[test]
-    fn letters_name_sources() {
-        assert_eq!(source_letter(0), "A");
-        assert_eq!(source_letter(1), "B");
-        assert_eq!(source_letter(25), "Z");
-        assert_eq!(source_letter(26), "A2");
-        assert_eq!(source_letter(53), "B3");
-    }
-
-    #[test]
-    fn arrows_move_focus_in_reading_order() {
-        // 10 pages, 4 columns.
-        assert_eq!(moved_focus(None, Arrow::Right, 4, 10, false), Some(0));
-        assert_eq!(moved_focus(Some(0), Arrow::Right, 4, 10, false), Some(1));
-        assert_eq!(moved_focus(Some(1), Arrow::Left, 4, 10, false), Some(0));
-        assert_eq!(moved_focus(Some(0), Arrow::Left, 4, 10, false), Some(0));
-        assert_eq!(moved_focus(Some(9), Arrow::Right, 4, 10, false), Some(9));
-        assert_eq!(moved_focus(Some(1), Arrow::Down, 4, 10, false), Some(5));
-        assert_eq!(moved_focus(Some(6), Arrow::Down, 4, 10, false), Some(9));
-        assert_eq!(moved_focus(Some(9), Arrow::Down, 4, 10, false), Some(9));
-        assert_eq!(moved_focus(Some(5), Arrow::Up, 4, 10, false), Some(1));
-        assert_eq!(moved_focus(Some(2), Arrow::Up, 4, 10, false), Some(2));
-        assert_eq!(moved_focus(Some(3), Arrow::Right, 4, 0, false), None);
-    }
-
-    #[test]
-    fn arrows_mirror_right_to_left() {
-        assert_eq!(moved_focus(Some(0), Arrow::Left, 4, 10, true), Some(1));
-        assert_eq!(moved_focus(Some(1), Arrow::Right, 4, 10, true), Some(0));
-        assert_eq!(moved_focus(Some(1), Arrow::Down, 4, 10, true), Some(5));
-    }
-
-    #[test]
-    fn focus_past_the_end_is_clamped() {
-        // After pages were removed the focus may point past the end: it
-        // moves from the last page.
-        assert_eq!(moved_focus(Some(12), Arrow::Left, 4, 10, false), Some(8));
-        assert_eq!(moved_focus(Some(12), Arrow::Down, 4, 10, false), Some(9));
-    }
-
-    #[test]
-    fn single_files_have_no_tint() {
-        assert_eq!(tint_of(0, 1), 0);
-        assert_eq!(tint_of(0, 2), 1);
-        assert_eq!(tint_of(1, 2), 2);
-    }
 }

@@ -5,8 +5,10 @@
 // carries the file's letter, with a legend in the toolbar. A toolbar of
 // page tools sits above the grid and a footer with the selection and the
 // Save button below it. Double-clicking a page shows it large over the
-// grid. Rust lays the grid out (columns, offset, cell size) and handles
-// every click and key; this file only draws.
+// grid. Pages are dragged to a new place (the page lifts, its old place
+// stays faint and an orange bar marks the drop spot); deleting shows a
+// banner with Undo over the grid. Rust lays the grid out (columns, offset,
+// cell size) and handles every click, drag and key; this file only draws.
 
 import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
@@ -131,7 +133,9 @@ component ToolGap inherits Rectangle {
 // One page in the grid: its picture fitted in the cell's page box, its
 // number under it, its file's letter and tint, and the selection and focus
 // marks. Clicks are reported with the ⌘ (`control`) and Shift keys held
-// at the press.
+// at the press. While the button is down, moves are reported with how far
+// the pointer is from the press and where it is in the cell, and the
+// release after them.
 component PageCell inherits Rectangle {
     in property <PdfPage> page;
     in property <bool> focused;
@@ -141,6 +145,8 @@ component PageCell inherits Rectangle {
     in property <length> label-height: 20px;
     callback clicked(bool, bool);
     callback double-clicked();
+    callback moved(length, length, length, length);
+    callback released();
 
     property <length> box-w: self.width - 2 * self.inset;
     property <length> box-h: self.height - self.label-height - 2 * self.inset;
@@ -272,9 +278,81 @@ component PageCell inherits Rectangle {
                 root.command = event.modifiers.control;
                 root.shift = event.modifiers.shift;
             }
+            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                root.released();
+            }
+        }
+        moved => {
+            root.moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y, self.mouse-x, self.mouse-y);
         }
         clicked => { root.clicked(root.command, root.shift); }
         double-clicked => { root.double-clicked(); }
+    }
+}
+
+// The page being dragged, lifted over the grid: drawn a little larger than
+// in its cell, with a shadow, and a count when it carries several pages.
+// It sits where the cell would be under the pointer, and lets the orange
+// bar under it show through.
+component LiftedPage inherits Rectangle {
+    in property <PdfPage> page;
+    in property <int> count;
+    in property <length> inset: 6px;
+    in property <length> label-height: 20px;
+
+    opacity: 0.85;
+
+    property <length> box-w: self.width - 2 * self.inset;
+    property <length> box-h: self.height - self.label-height - 2 * self.inset;
+    property <float> ratio: self.page.rendered && !self.page.broken && self.page.image.height > 0
+        ? self.page.image.width / self.page.image.height : 0.75;
+    property <bool> wide: self.ratio * self.box-h > self.box-w;
+    // 5% larger than in the cell, about the same centre.
+    property <length> pw: (self.wide ? self.box-w : self.box-h * self.ratio) * 1.05;
+    property <length> ph: (self.wide ? self.box-w / self.ratio : self.box-h) * 1.05;
+
+    Rectangle {
+        x: root.inset + (root.box-w - root.pw) / 2;
+        y: root.inset + (root.box-h - root.ph) / 2;
+        width: root.pw;
+        height: root.ph;
+        border-radius: 3px;
+        background: root.page.rendered && !root.page.broken ? white : Theme.surface;
+        drop-shadow-blur: 18px;
+        drop-shadow-offset-y: 8px;
+        drop-shadow-color: #000000a0;
+
+        if root.page.rendered && !root.page.broken: Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.page.image;
+            image-fit: fill;
+        }
+
+        Rectangle {
+            border-radius: parent.border-radius;
+            border-width: 2px;
+            border-color: Theme.accent;
+        }
+
+        // How many pages the drag carries, at the end of the top edge.
+        if root.count > 1: Rectangle {
+            x: Theme.rtl ? -8px : parent.width - self.width + 8px;
+            y: -8px;
+            width: max(20px, count-text.preferred-width + 10px);
+            height: 20px;
+            border-radius: 10px;
+            background: Theme.accent;
+
+            count-text := Text {
+                text: root.count;
+                font-size: 11px;
+                font-weight: 700;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
     }
 }
 
@@ -319,6 +397,19 @@ export component PdfWindow inherits Window {
     // The large view of one page, over the grid.
     in property <bool> large-open;
     in property <image> large-image;
+    // A drag of pages: the lifted page (the pressed page's row), how many
+    // pages it carries and where its cell is in the grid area (not
+    // scrolled), and where the orange bar stands in the grid's content.
+    in property <bool> dragging;
+    in property <PdfPage> lifted;
+    in property <int> lifted-count;
+    in property <length> lifted-x;
+    in property <length> lifted-y;
+    in property <length> bar-x;
+    in property <length> bar-y;
+    // The banner over the grid after pages were deleted, with Undo.
+    in property <string> banner;
+    in property <bool> banner-shown;
 
     // The grid's scroll position (0 or less) and its visible size, for Rust.
     in-out property <length> content-y <=> flick.content-y;
@@ -331,6 +422,13 @@ export component PdfWindow inherits Window {
     callback page-clicked(int, bool, bool);
     // A page was double-clicked.
     callback page-opened(int);
+    // The button is down on a page and the pointer moved: how far from the
+    // press, and where it is in the grid area (not scrolled).
+    callback page-moved(int, length, length, length, length);
+    // The button went up after a press on a page.
+    callback page-released(int);
+    // Undo in the banner.
+    callback banner-undo();
     // A click in the grid but on no page.
     callback background-clicked();
     // A click on the large view.
@@ -504,6 +602,9 @@ export component PdfWindow inherits Window {
                 vertical-stretch: 1;
 
                 flick := Flickable {
+                    // A mouse drag moves pages, not the grid; the wheel and
+                    // the trackpad still scroll.
+                    mouse-drag-pan-enabled: false;
                     content-width: self.width;
                     content-height: max(self.height,
                         2 * root.pad + root.rows * root.cell-height + max(0, root.rows - 1) * root.gap);
@@ -530,6 +631,85 @@ export component PdfWindow inherits Window {
                         focused: root.show-focus && root.focus-index == i;
                         clicked(command, shift) => { root.page-clicked(i, command, shift); }
                         double-clicked => { root.page-opened(i); }
+                        moved(dx, dy, x, y) => {
+                            root.page-moved(i, dx, dy, self.x + x, self.y + y + flick.content-y);
+                        }
+                        released => { root.page-released(i); }
+                    }
+
+                    // Where the dragged pages would land, over the page
+                    // box's height.
+                    if root.dragging: Rectangle {
+                        x: root.bar-x - 1.5px;
+                        y: root.bar-y + 6px;
+                        width: 3px;
+                        height: root.cell-height - 26px;
+                        border-radius: 1.5px;
+                        background: Theme.accent;
+                        drop-shadow-blur: 8px;
+                        drop-shadow-color: Theme.accent;
+                    }
+                }
+
+                if root.dragging: LiftedPage {
+                    x: root.lifted-x;
+                    y: root.lifted-y;
+                    width: root.cell-width;
+                    height: root.cell-height;
+                    page: root.lifted;
+                    count: root.lifted-count;
+                }
+
+                if root.banner-shown: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - self.height - 14px;
+                    width: banner-row.preferred-width;
+                    height: 36px;
+                    border-radius: 10px;
+                    border-width: 1px;
+                    border-color: #ffffff26;
+                    background: #1d1d21f2;
+
+                    banner-row := HorizontalLayout {
+                        padding-left: Theme.rtl ? 5px : 14px;
+                        padding-right: Theme.rtl ? 14px : 5px;
+                        spacing: 12px;
+
+                        Text {
+                            layout-order: Theme.rtl ? 1 : 0;
+                            text: root.banner;
+                            color: white;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+
+                        Rectangle {
+                            layout-order: Theme.rtl ? 0 : 1;
+                            width: undo-text.preferred-width + 22px;
+                            accessible-role: button;
+                            accessible-label: @tr("Undo");
+                            accessible-action-default => { root.banner-undo(); }
+
+                            Rectangle {
+                                y: 5px;
+                                height: parent.height - 10px;
+                                border-radius: 7px;
+                                background: undo-touch.pressed ? #cc5414 : (undo-touch.has-hover ? #ff8040 : #ff6a1a);
+
+                                undo-text := Text {
+                                    text: @tr("Undo");
+                                    color: white;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            undo-touch := TouchArea {
+                                clicked => { root.banner-undo(); }
+                            }
+                        }
                     }
                 }
 
