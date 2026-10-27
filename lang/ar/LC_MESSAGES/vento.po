@@ -505,7 +505,7 @@ msgstr "ك.ب"
 
 #: crates/vento/src/settings_window/mod.rs:114
 msgid "Keep Awake"
-msgstr "إبقاء الجهاز مستيقظاً"
+msgstr "إبقاء الجهاز مستيقظا"
 
 #: crates/vento/ui/settings_pages.slint:506
 msgid "Keep a copy"

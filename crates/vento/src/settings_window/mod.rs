@@ -1969,7 +1969,8 @@ mod tests {
                     "الجيب",
                     "الحافظة",
                     "النسخ من الشاشة",
-                    "إبقاء الجهاز مستيقظاً",
+                    // No tanween: a bold title's line box cuts the mark off.
+                    "إبقاء الجهاز مستيقظا",
                     "حول"
                 ]
             );
