@@ -193,9 +193,9 @@ become white when you pick JPEG or BMP. Vento never overwrites a file (you get
 
 ### PDF *(off at first)*
 
-Works on PDF files, on macOS only for now. Drag one or more PDFs, rest on
-**PDF** and let go: a window opens that shows every page. The cell is dimmed
-when nothing you are dragging is a PDF.
+Works on PDF files, on macOS only for now. Drag one or more PDFs and let go
+on **PDF**: a window opens that shows every page. The cell is dimmed when
+nothing you are dragging is a PDF.
 
 In the window you can put several files together in one (drop more PDFs on it
 or use **＋ Add PDF**), delete pages, drag pages into a new order and rotate
@@ -208,11 +208,13 @@ them. Nothing is written until you ask:
 - **To images** turns pages into PNG or JPEG pictures, at **Print** (300 DPI) or
   **Screen** (150 DPI) quality.
 
-Every result is a new file next to the original, which is never changed, and
-Vento never overwrites a file (you get `report (edited).pdf`, then
-`report (edited) (2).pdf`). Closing a window with changes asks whether to save
-them. **Undo**, on the notice or from the menu bar icon, moves what was written to
-the Trash. A PDF that is locked with a password is skipped.
+Every result is new and sits next to the original, which is never changed: a
+new file, or, for **Split…** and for **To images** with several pages, a new
+folder of files (`report split`, `report images`). Vento never overwrites a file
+(you get `report (edited).pdf`, then `report (edited) (2).pdf`). Closing a
+window with changes, or quitting Vento, asks whether to save them. **Undo**, on
+the notice or from the menu bar icon, moves what was written to the Trash. A PDF
+that is locked with a password is skipped.
 
 ### Copy path
 
