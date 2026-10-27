@@ -19,7 +19,7 @@ use vento_core::i18n::errors::clauses;
 use vento_core::i18n::{fill, tr, trn};
 use vento_platform::{quarantine_of, set_quarantine};
 
-use super::{Executor, LastOp, display_name, on_main, only_name};
+use super::{Executor, LastOp, display_name, in_english, on_main, only_name};
 use crate::archive_ui::Verb;
 
 /// Toast for a job the user cancelled.
@@ -197,6 +197,28 @@ enum ArchiveDone {
     Extracted(BatchOutcome),
 }
 
+/// The toast for a finished Archive job.
+fn archive_done_text(done: &ArchiveDone) -> String {
+    match done {
+        ArchiveDone::Compressed {
+            result: Err(ArchiveError::Cancelled),
+            ..
+        } => cancelled_text(),
+        ArchiveDone::Compressed { result: Err(e), .. } => fill(
+            &tr("Couldn't compress: {reason}"),
+            &[("reason", &e.to_string())],
+        ),
+        ArchiveDone::Compressed {
+            count,
+            result: Ok(made),
+        } => archive_toast_text(&ArchiveResult::Compressed {
+            count: *count,
+            output: display_name(&made.output),
+        }),
+        ArchiveDone::Extracted(outcome) => archive_toast_text(&ArchiveResult::Extracted(outcome)),
+    }
+}
+
 /// The worker's half of Archive: decides between compressing and
 /// extracting, has the progress window follow the job, and runs it.
 fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> ArchiveDone {
@@ -326,33 +348,21 @@ impl Executor {
     }
 
     fn archive_finished(&self, done: ArchiveDone, at: Point) {
-        let (text, made) = match done {
-            ArchiveDone::Compressed {
-                result: Err(ArchiveError::Cancelled),
-                ..
-            } => (cancelled_text(), Vec::new()),
+        let text = archive_done_text(&done);
+        // The log stays English whatever the interface language is.
+        info!("archive: {}", in_english(|| archive_done_text(&done)));
+        let made = match done {
             ArchiveDone::Compressed { result: Err(e), .. } => {
-                warn!("couldn't compress: {e}");
-                let text = fill(
-                    &tr("Couldn't compress: {reason}"),
-                    &[("reason", &e.to_string())],
-                );
-                (text, Vec::new())
+                if !matches!(e, ArchiveError::Cancelled) {
+                    warn!("couldn't compress: {}", in_english(|| e.to_string()));
+                }
+                Vec::new()
             }
             ArchiveDone::Compressed {
-                count,
-                result: Ok(made),
-            } => {
-                let output = display_name(&made.output);
-                let text = archive_toast_text(&ArchiveResult::Compressed { count, output });
-                (text, vec![made])
-            }
-            ArchiveDone::Extracted(outcome) => {
-                let text = archive_toast_text(&ArchiveResult::Extracted(&outcome));
-                (text, outcome.made)
-            }
+                result: Ok(made), ..
+            } => vec![made],
+            ArchiveDone::Extracted(outcome) => outcome.made,
         };
-        info!("archive: {text}");
         let Some(dest) = made
             .first()
             .and_then(|m| m.output.parent())
@@ -587,6 +597,31 @@ mod tests {
             ),
             "Nothing left to remove"
         );
+    }
+
+    #[test]
+    fn log_text_stays_english_in_arabic() {
+        vento_core::i18n::with_language("ar", || {
+            let done = ArchiveDone::Compressed {
+                count: 1,
+                result: Err(ArchiveError::NotEnoughSpace),
+            };
+            assert_eq!(
+                in_english(|| archive_done_text(&done)),
+                "Couldn't compress: not enough disk space"
+            );
+            assert_eq!(
+                archive_done_text(&done),
+                "تعذّر الضغط: لا توجد مساحة كافية على القرص"
+            );
+            let extracted = ArchiveDone::Extracted(extracted(vec![], vec![damaged("/d/a.zip")]));
+            assert_eq!(
+                in_english(|| archive_done_text(&extracted)),
+                "Couldn't extract a.zip: damaged archive: crc"
+            );
+            // Back in Arabic afterwards.
+            assert_eq!(vento_core::i18n::current().code, "ar");
+        });
     }
 
     #[test]

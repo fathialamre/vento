@@ -15,7 +15,7 @@ use vento_core::i18n::{fill, tr, trn};
 use vento_platform::{probe_image, write_image};
 
 use super::archive::{cancelled_text, copy_quarantine, failed_with_reason, show_progress};
-use super::{Executor, LastOp, action_error_text, only_name};
+use super::{Executor, LastOp, action_error_text, in_english, only_name};
 use crate::archive_ui::Verb;
 
 /// Toast text for a finished Convert job. Nothing made and nothing failed
@@ -157,10 +157,14 @@ impl Executor {
 
     fn convert_finished(&self, outcome: ConvertOutcome, at: Point) {
         for (path, error) in &outcome.failed {
-            warn!("cannot convert {}: {error}", path.display());
+            warn!(
+                "cannot convert {}: {}",
+                path.display(),
+                in_english(|| error.to_string())
+            );
         }
         let text = convert_toast_text(&outcome);
-        info!("convert: {text}");
+        info!("convert: {}", in_english(|| convert_toast_text(&outcome)));
         let Some(dest) = outcome
             .made
             .first()

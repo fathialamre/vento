@@ -85,7 +85,10 @@ pub fn extract_batch(
         match step {
             Step::Made(made) => outcome.made.push(made),
             Step::Failed(error) => {
-                log::warn!("could not extract {}: {error}", archive.display());
+                // The log stays English whatever the interface language is.
+                crate::i18n::with_language("en", || {
+                    log::warn!("could not extract {}: {error}", archive.display());
+                });
                 outcome.failed.push((archive.clone(), error));
             }
             Step::Skipped => outcome.skipped.push(archive.clone()),

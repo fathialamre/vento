@@ -19,7 +19,7 @@ use vento_core::fileops::{
 };
 use vento_core::geometry::Point;
 use vento_core::i18n::errors::io_reason;
-use vento_core::i18n::{fill, tr, trn};
+use vento_core::i18n::{fill, tr, trn, with_language};
 use vento_core::paths::format_paths;
 use vento_core::settings::Settings;
 use vento_platform::Platform;
@@ -66,6 +66,12 @@ fn with_notes(text: String, notes: &[String]) -> String {
     notes
         .iter()
         .fold(text, |text, note| format!("{text}{}{note}", tr(" · ")))
+}
+
+/// Runs `f` reading English: log lines stay English whatever the interface
+/// language is, so the text they print is made inside this.
+fn in_english<R>(f: impl FnOnce() -> R) -> R {
+    with_language("en", f)
 }
 
 /// The item's own name, or the whole path for one without a name (`/`).
@@ -490,7 +496,7 @@ impl Executor {
             ActionId::Convert => match format {
                 Some(format) => self.convert(paths, format, at),
                 None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
-                    self.toast_error(action, &tr("no images"), at);
+                    self.toast_error_as(action, &tr("no images"), "no images", at);
                 }
                 None => self.toast.show(&hold_for_format_text(), None, at),
             },
@@ -567,7 +573,11 @@ impl Executor {
 
     fn undo_finished(&self, record: &MoveRecord, outcome: MoveOutcome, at: Point) {
         for (path, error) in &outcome.failed {
-            warn!("cannot restore {}: {error}", path.display());
+            warn!(
+                "cannot restore {}: {}",
+                path.display(),
+                in_english(|| error.to_string())
+            );
         }
         info!("undo: restored {}", outcome.record.moved.len());
         if let Some(remainder) = undo_remainder(record, &outcome) {
@@ -729,12 +739,17 @@ impl Executor {
 
     fn move_finished(&self, outcome: MoveOutcome, at: Point) {
         for (path, error) in &outcome.failed {
-            warn!("cannot move {}: {error}", path.display());
+            warn!(
+                "cannot move {}: {}",
+                path.display(),
+                in_english(|| error.to_string())
+            );
         }
         let first_error = outcome.failed.first().map(|(_, e)| e.to_string());
+        let logged = in_english(|| outcome.failed.first().map(|(_, e)| e.to_string()));
         match after_transfer(outcome.record.moved.len(), first_error) {
             AfterTransfer::Error(reason) => {
-                self.toast_error(ActionId::Move, &reason, at);
+                self.toast_error_as(ActionId::Move, &reason, &logged.unwrap_or_default(), at);
                 return;
             }
             AfterTransfer::Nothing => {
@@ -756,12 +771,17 @@ impl Executor {
 
     fn copy_finished(&self, outcome: CopyOutcome, at: Point) {
         for (path, error) in &outcome.failed {
-            warn!("cannot copy {}: {error}", path.display());
+            warn!(
+                "cannot copy {}: {}",
+                path.display(),
+                in_english(|| error.to_string())
+            );
         }
         let first_error = outcome.failed.first().map(|(_, e)| e.to_string());
+        let logged = in_english(|| outcome.failed.first().map(|(_, e)| e.to_string()));
         match after_transfer(outcome.record.copies.len(), first_error) {
             AfterTransfer::Error(reason) => {
-                self.toast_error(ActionId::CopyTo, &reason, at);
+                self.toast_error_as(ActionId::CopyTo, &reason, &logged.unwrap_or_default(), at);
                 return;
             }
             AfterTransfer::Nothing => {
@@ -829,7 +849,12 @@ impl Executor {
                     executor.progress.close();
                     match result {
                         Ok(value) => done(executor, value),
-                        Err(_) => executor.toast_error(action, &tr("internal error"), at),
+                        Err(_) => executor.toast_error_as(
+                            action,
+                            &tr("internal error"),
+                            "internal error",
+                            at,
+                        ),
                     }
                 });
                 if let Err(e) = delivered {
@@ -841,7 +866,10 @@ impl Executor {
             Err(e) => {
                 self.busy.set(false);
                 let reason = fill(&tr("cannot start: {reason}"), &[("reason", &io_reason(&e))]);
-                self.toast_error(action, &reason, at);
+                let logged = in_english(|| {
+                    fill(&tr("cannot start: {reason}"), &[("reason", &io_reason(&e))])
+                });
+                self.toast_error_as(action, &reason, &logged, at);
             }
         }
     }
@@ -884,7 +912,13 @@ impl Executor {
     }
 
     fn toast_error(&self, action: ActionId, reason: &str, at: Point) {
-        warn!("{action:?} failed: {reason}");
+        self.toast_error_as(action, reason, reason, at);
+    }
+
+    /// Toasts `reason` and logs `logged`, the same reason in English (a
+    /// reason from the platform is English already; `toast_error` does that).
+    fn toast_error_as(&self, action: ActionId, reason: &str, logged: &str, at: Point) {
+        warn!("{action:?} failed: {logged}");
         self.toast
             .show(&action_error_text(action, reason), None, at);
     }
