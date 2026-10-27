@@ -1220,8 +1220,10 @@ export component PocketIsland inherits Window {
 
                 row := Flickable {
                     // Under Scroll, a full Pocket's strip of every item (or of
-                    // a clear's faded items while its Undo is offered).
-                    property <bool> strip: root.layout == 1 && max(root.count, root.ghosts.length) > 8;
+                    // a clear's faded items while its Undo is offered, as long
+                    // as nothing new came in: those are shown only in an empty
+                    // Pocket).
+                    property <bool> strip: root.layout == 1 && (root.count == 0 ? root.ghosts.length : root.count) > 8;
                     // The strip starts at the first item whenever the Pocket
                     // fills up or drops to eight or fewer (a clear included),
                     // or the layout changes. A collapse starts the row afresh
@@ -1235,7 +1237,7 @@ export component PocketIsland inherits Window {
                     // Pointer drags belong to the cells; the row scrolls by wheel only.
                     interactive: false;
                     content-width: root.stacks.length > 0 ? root.stacks.length * root.cell-step
-                        : max(root.cells.length, root.ghosts.length) * root.cell-step
+                        : max(root.cells.length, root.count == 0 ? root.ghosts.length : 0) * root.cell-step
                         + (root.count > root.cells.length && root.layout == 0 ? 48px : 0px);
 
                     changed full-scroll => {
