@@ -1012,9 +1012,11 @@ component PocketList inherits Rectangle {
         offset <=> list.content-y;
     }
 
+    // "Drag all" and Clear at the foot of the column, like the clipboard
+    // list's Clear.
     PocketSide {
         x: parent.width - root.pad - root.side-w;
-        y: 8px;
+        y: parent.height - self.height - 8px;
         count: root.count;
         undo-active: root.undo-active;
         undo-left: root.undo-left;
