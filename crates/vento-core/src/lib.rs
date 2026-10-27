@@ -11,6 +11,7 @@ pub mod destinations;
 pub mod durable;
 pub mod fileops;
 pub mod geometry;
+pub mod i18n;
 pub mod info;
 pub mod paths;
 pub mod pocket;
