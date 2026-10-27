@@ -97,16 +97,38 @@ impl PdfRenderer {
     /// longer side `max_px` pixels. `None` if there is no such page or it
     /// cannot be drawn.
     pub fn render(&self, page: PageRef, max_px: u32) -> Option<RgbaImage> {
+        self.render_into(page, max_px, |width, height| RgbaImage {
+            width,
+            height,
+            pixels: vec![0u8; width as usize * height as usize * 4],
+        })
+    }
+
+    /// Draws as [`render`](Self::render) does, straight into the buffer
+    /// `alloc(width, height)` makes, so the caller's image type needs no
+    /// copy of the pixels. The buffer must hold `width * height * 4` bytes
+    /// of RGBA; any other length draws nothing.
+    pub fn render_into<B: AsMut<[u8]>>(
+        &self,
+        page: PageRef,
+        max_px: u32,
+        alloc: impl FnOnce(u32, u32) -> B,
+    ) -> Option<B> {
         autoreleasepool(|_| {
             let pdf_page = page_of(self.docs.get(page.source)?, page.page)?;
             let layout = Layout::of(&pdf_page, page.turns, Scale::LongSide(max_px))?;
-            let mut pixels = vec![0u8; layout.width * layout.height * 4];
+            let mut buffer = alloc(layout.width as u32, layout.height as u32);
             {
+                let pixels = buffer.as_mut();
+                if pixels.len() != layout.width * layout.height * 4 {
+                    return None;
+                }
                 // Premultiplied RGBA, alpha last: the 8-bit RGBA layout a
                 // bitmap context accepts. The page is drawn on opaque white,
                 // so every pixel is opaque and already straight.
                 // SAFETY: `pixels` holds `height` rows of `width * 4` bytes
-                // and outlives the context, dropped at the end of this block.
+                // (checked above) and outlives the context, dropped at the
+                // end of this block.
                 let context = unsafe {
                     bitmap_context(
                         pixels.as_mut_ptr().cast(),
@@ -117,11 +139,7 @@ impl PdfRenderer {
                 }?;
                 layout.draw(&pdf_page, &context);
             }
-            Some(RgbaImage {
-                width: layout.width as u32,
-                height: layout.height as u32,
-                pixels,
-            })
+            Some(buffer)
         })
     }
 }
@@ -823,6 +841,25 @@ mod tests {
         assert_eq!((img.width, img.height), (155, 200));
         assert_eq!(img.pixels.len(), 155 * 200 * 4);
         assert_eq!(pixel(&img, 0, 0), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn render_into_draws_in_the_callers_buffer_of_the_right_size_only() {
+        let renderer = PdfRenderer::new(&[Arc::from(fixture(&[LETTER], None))]).unwrap();
+        let mut asked = None;
+        let pixels = renderer
+            .render_into(page(0, 0, 0), 200, |w, h| {
+                asked = Some((w, h));
+                vec![0u8; w as usize * h as usize * 4]
+            })
+            .unwrap();
+        assert_eq!(asked, Some((155, 200)));
+        assert_eq!(&pixels[..4], [255, 255, 255, 255]);
+        assert!(
+            renderer
+                .render_into(page(0, 0, 0), 200, |_, _| vec![0u8; 3])
+                .is_none()
+        );
     }
 
     #[test]

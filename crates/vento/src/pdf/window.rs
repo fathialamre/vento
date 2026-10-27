@@ -46,7 +46,8 @@ use vento_core::pdf::{
 use vento_platform::Platform;
 
 use super::logic::{
-    Arrow, DragEvent, footer_text, moved_focus, source_letter, sources_in_use, tint_of, title_text,
+    Arrow, DragEvent, footer_text, large_side_px, moved_focus, source_letter, sources_in_use,
+    tint_of, title_text,
 };
 use super::thumbs::{self, LARGE, Rendered, ThumbState, ThumbWorker};
 use crate::appearance;
@@ -953,13 +954,16 @@ impl PdfView {
         self.request_large();
     }
 
-    /// The longer side, in pixels, the large page needs now.
+    /// The longer side, in pixels, the large page needs now: its shape (as
+    /// the picture showing has it) fitted in the grid area, capped.
     fn large_wanted_px(&self) -> u32 {
-        let side = self
-            .window
-            .get_grid_width()
-            .max(self.window.get_grid_height());
-        self.pixels(side)
+        let size = self.window.get_large_image().size();
+        large_side_px(
+            self.window.get_grid_width(),
+            self.window.get_grid_height(),
+            Some((size.width, size.height)),
+            self.window.window().scale_factor(),
+        )
     }
 
     /// Asks for the large page drawn for the window's size now.

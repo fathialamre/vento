@@ -4,7 +4,9 @@
 //!
 //! The thread owns a [`PdfRenderer`], which is not `Send`, so it is made
 //! on the thread itself and dies with it: dropping the [`ThumbWorker`]
-//! closes its queue and the thread ends after the page it is drawing.
+//! closes its queue, and the thread ends once it has drawn the requests
+//! already queued (the window keeps at most a few in flight, and their
+//! results are dropped).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
@@ -15,7 +17,7 @@ use std::sync::mpsc::{self, Sender};
 use log::warn;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 use vento_core::pdf::{PageRef, ThumbQueue};
-use vento_platform::{PdfRenderer, RgbaImage};
+use vento_platform::PdfRenderer;
 
 /// A drawn page, ready to become a `slint::Image` on the main thread, or
 /// `None` for a page that could not be drawn.
@@ -61,18 +63,32 @@ pub fn spawn(
                     None
                 }
             };
+            let mut queue = VecDeque::new();
             // Ends when the worker is dropped and the queue is empty.
-            while let Ok(request) = rx.recv() {
+            loop {
+                if queue.is_empty() {
+                    match rx.recv() {
+                        Ok(request) => queue.push_back(request),
+                        Err(_) => break,
+                    }
+                }
+                queue.extend(rx.try_iter());
+                drop_stale_large(&mut queue);
+                let Some(request) = queue.pop_front() else {
+                    continue;
+                };
                 let drawn = renderer.as_ref().and_then(|renderer| {
                     catch_unwind(AssertUnwindSafe(|| {
-                        renderer.render(request.page, request.max_px)
+                        renderer.render_into(request.page, request.max_px, |w, h| {
+                            Canvas(SharedPixelBuffer::new(w, h))
+                        })
                     }))
                     .unwrap_or_else(|_| {
                         warn!("drawing a PDF page panicked");
                         None
                     })
                 });
-                on_thread(request.id, request.page, drawn.and_then(to_buffer));
+                on_thread(request.id, request.page, drawn.map(|canvas| canvas.0));
             }
         });
     let requests = match spawned {
@@ -99,18 +115,31 @@ impl ThumbWorker {
     }
 }
 
-/// The pixels of a drawn page as a Slint buffer, or `None` when they do not
-/// add up.
-fn to_buffer(image: RgbaImage) -> Rendered {
-    let len = image.width as usize * image.height as usize * 4;
-    if len == 0 || image.pixels.len() != len {
-        return None;
+/// A Slint pixel buffer the renderer draws a page into, so the pixels are
+/// never copied on their way to the window.
+struct Canvas(SharedPixelBuffer<Rgba8Pixel>);
+
+impl AsMut<[u8]> for Canvas {
+    /// The buffer's RGBA bytes; a new buffer is not shared, so this does
+    /// not copy.
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.make_mut_bytes()
     }
-    Some(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
-        &image.pixels,
-        image.width,
-        image.height,
-    ))
+}
+
+/// Keeps only the newest large-view request among those queued: an older
+/// one is for a window size that has gone by, and drawing it would only
+/// hold up the thumbnails behind it. Thumbnail requests stay in order.
+fn drop_stale_large(queue: &mut VecDeque<Request>) {
+    let Some(newest) = queue.iter().rposition(|r| r.id & LARGE != 0) else {
+        return;
+    };
+    let mut at = 0;
+    queue.retain(|r| {
+        let keep = r.id & LARGE == 0 || at == newest;
+        at += 1;
+        keep
+    });
 }
 
 /// `buffer` turned `quarter_turns` quarter turns clockwise (0 to 3), as
@@ -352,6 +381,41 @@ mod tests {
     /// The positions a plan asks the worker for.
     fn sent(plan: &Plan<u32>) -> Vec<usize> {
         plan.send.iter().map(|(_, p)| p.page).collect()
+    }
+
+    fn req(id: u64) -> Request {
+        Request {
+            id,
+            page: pages(1)[0],
+            max_px: 100,
+        }
+    }
+
+    fn ids(queue: &VecDeque<Request>) -> Vec<u64> {
+        queue.iter().map(|r| r.id).collect()
+    }
+
+    #[test]
+    fn a_newer_large_request_replaces_an_older_one_still_queued() {
+        let mut queue: VecDeque<Request> = [
+            req(1),
+            req(LARGE | 1),
+            req(2),
+            req(LARGE | 2),
+            req(3),
+            req(LARGE | 3),
+        ]
+        .into_iter()
+        .collect();
+        drop_stale_large(&mut queue);
+        assert_eq!(ids(&queue), [1, 2, 3, LARGE | 3]);
+    }
+
+    #[test]
+    fn thumbnails_and_a_lone_large_request_stay_queued() {
+        let mut queue: VecDeque<Request> = [req(1), req(LARGE | 5), req(2)].into_iter().collect();
+        drop_stale_large(&mut queue);
+        assert_eq!(ids(&queue), [1, LARGE | 5, 2]);
     }
 
     #[test]

@@ -133,6 +133,16 @@ impl PdfRenderer {
     pub fn render(&self, _page: PageRef, _max_px: u32) -> Option<RgbaImage> {
         None
     }
+
+    /// Never draws anything.
+    pub fn render_into<B: AsMut<[u8]>>(
+        &self,
+        _page: PageRef,
+        _max_px: u32,
+        _alloc: impl FnOnce(u32, u32) -> B,
+    ) -> Option<B> {
+        None
+    }
 }
 
 /// No open panel for PDFs here.

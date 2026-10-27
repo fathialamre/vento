@@ -51,6 +51,32 @@ pub fn closes_after_save(written: &[PageRef], now: &[PageRef], adding: bool) -> 
     !adding && written == now
 }
 
+/// The most pixels the large view draws a page's longer side with: about
+/// 64 MB of RGBA, sharp on any screen without asking for hundreds.
+pub const LARGE_MAX_PX: u32 = 4096;
+
+/// The space kept around the large page, in points (matches `pdf.slint`).
+pub const LARGE_INSET: f32 = 16.0;
+
+/// The longer side, in pixels, the large view needs for a page in a grid
+/// area `width` × `height` points at `scale` pixels per point: the page,
+/// `shape` (width, height) as its thumbnail has it, fitted inside the area
+/// less its inset, at most [`LARGE_MAX_PX`]. Without a shape the area's
+/// longer side is used.
+pub fn large_side_px(width: f32, height: f32, shape: Option<(u32, u32)>, scale: f32) -> u32 {
+    let w = (width - 2.0 * LARGE_INSET).max(1.0);
+    let h = (height - 2.0 * LARGE_INSET).max(1.0);
+    let long = match shape.filter(|&(pw, ph)| pw > 0 && ph > 0) {
+        Some((pw, ph)) => {
+            let aspect = pw as f32 / ph as f32;
+            let fit_w = w.min(h * aspect);
+            fit_w.max(fit_w / aspect)
+        }
+        None => w.max(h),
+    };
+    ((long * scale).ceil() as u32).clamp(1, LARGE_MAX_PX)
+}
+
 /// Arrow keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Arrow {
@@ -581,6 +607,37 @@ mod tests {
         assert!(sheet_save_allowed(true, false));
         assert!(!sheet_save_allowed(true, true), "a write already runs");
         assert!(!sheet_save_allowed(false, false), "nothing to write");
+    }
+
+    #[test]
+    fn the_large_page_fits_its_shape_inside_the_inset_box() {
+        // A portrait page (1:2) in a 432 × 632 pt box, inset 16 pt: the
+        // height limits it, so its long side is 600 pt.
+        assert_eq!(large_side_px(432.0, 632.0, Some((100, 200)), 1.0), 600);
+        assert_eq!(large_side_px(432.0, 632.0, Some((100, 200)), 2.0), 1200);
+        // A landscape page (2:1) in the same box: the width limits it.
+        assert_eq!(large_side_px(432.0, 632.0, Some((200, 100)), 1.0), 400);
+        // A wide window does not make a portrait page wider than it fits.
+        assert_eq!(large_side_px(3032.0, 632.0, Some((100, 200)), 1.0), 600);
+    }
+
+    #[test]
+    fn the_large_page_is_capped() {
+        // A portrait page on a maximised 5K window at 2×: its height.
+        assert_eq!(large_side_px(2560.0, 1400.0, Some((100, 141)), 2.0), 2736);
+        // A landscape page there would be 5056 pixels wide: capped.
+        assert_eq!(
+            large_side_px(2560.0, 1440.0, Some((200, 100)), 2.0),
+            LARGE_MAX_PX
+        );
+        assert_eq!(large_side_px(9000.0, 9000.0, None, 2.0), LARGE_MAX_PX);
+    }
+
+    #[test]
+    fn the_large_page_without_a_shape_uses_the_longer_side() {
+        assert_eq!(large_side_px(432.0, 632.0, None, 1.0), 600);
+        assert_eq!(large_side_px(432.0, 632.0, Some((0, 0)), 1.0), 600);
+        assert_eq!(large_side_px(10.0, 10.0, None, 1.0), 1, "never zero");
     }
 
     #[test]

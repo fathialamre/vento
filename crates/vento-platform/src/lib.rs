@@ -98,6 +98,13 @@ pub struct RgbaImage {
     pub pixels: Vec<u8>,
 }
 
+impl AsMut<[u8]> for RgbaImage {
+    /// The pixels, for drawing into.
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.pixels
+    }
+}
+
 /// Content dropped on the [`DropCatcher`].
 #[derive(Clone, PartialEq, Eq)]
 pub enum Dropped {
