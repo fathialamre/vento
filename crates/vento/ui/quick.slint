@@ -348,16 +348,52 @@ export component QuickPanel inherits Window {
                     }
                 }
 
+                // Keep Awake's times in a card of their own under a title.
                 // Always shown, so the panel keeps its height as Keep Awake
                 // starts and stops.
-                AwakeChips {
-                    on: root.awake-on;
-                    chip: root.awake-chip;
-                    until-hour <=> root.awake-until-hour;
-                    until-minute <=> root.awake-until-minute;
-                    chip-clicked(i) => { root.awake-chip-clicked(i); }
-                    until-started(hour, minute) => { root.awake-until-started(hour, minute); }
-                    stop-clicked => { root.awake-stop-clicked(); }
+                Rectangle {
+                    border-radius: 12px;
+                    background: Theme.card;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            spacing: 6px;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Image {
+                                    source: PanelIcons.awake;
+                                    width: 16px;
+                                    height: 16px;
+                                    colorize: Theme.accent;
+                                }
+                            }
+
+                            Text {
+                                text: "Keep Awake";
+                                font-size: 13px;
+                                font-weight: 600;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        AwakeChips {
+                            on: root.awake-on;
+                            chip: root.awake-chip;
+                            until-hour <=> root.awake-until-hour;
+                            until-minute <=> root.awake-until-minute;
+                            chip-clicked(i) => { root.awake-chip-clicked(i); }
+                            until-started(hour, minute) => { root.awake-until-started(hour, minute); }
+                            stop-clicked => { root.awake-stop-clicked(); }
+                        }
+                    }
                 }
 
                 if root.undo-text != "": HorizontalLayout {
