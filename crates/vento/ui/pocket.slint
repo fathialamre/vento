@@ -980,6 +980,9 @@ component PocketList inherits Rectangle {
                     background: remove-touch.has-hover ? #55555c : #3a3a40;
                     accessible-role: button;
                     accessible-label: "Remove";
+                    accessible-action-default => {
+                        root.remove(row.id);
+                    }
 
                     Image {
                         source: Icons.remove;
