@@ -50,9 +50,9 @@ trigger = "ctrl"
 shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to", "archive", "info", "convert". A file that already lists
-# `actions` must add "pocket", "copy_to", "archive", "info" or "convert" to show
-# it.
+# "terminal", "copy_to", "archive", "info", "convert", "pdf". A file that
+# already lists `actions` must add "pocket", "copy_to", "archive", "info",
+# "convert" or "pdf" to show it. "pdf" is macOS only, and is ignored elsewhere.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
 # Actions turned off in the Settings window

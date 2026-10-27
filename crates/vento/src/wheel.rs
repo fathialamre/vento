@@ -182,6 +182,7 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::Archive => icons.get_archive(),
         ActionId::Info => icons.get_info(),
         ActionId::Convert => icons.get_convert(),
+        ActionId::Pdf => icons.get_pdf(),
     }
 }
 
