@@ -22,7 +22,7 @@ const EXPANDED_MIN_W: f64 = 420.0;
 /// Room the expanded island leaves free on each side of its screen.
 const SCREEN_MARGIN: f64 = 20.0;
 /// The panel's layout, as `pocket.slint` draws it: side padding, one cell
-/// per step, the "All N" (or "+N") tile, and the gap and column of "Drag
+/// (or stack) per step, the "All N" tile, and the gap and column of "Drag
 /// all".
 const PAD: f64 = 14.0;
 const CELL_STEP: f64 = 68.0;
@@ -39,7 +39,7 @@ const CLIP_PANEL_H: f64 = 232.0;
 /// Top height when neither the menu bar nor a notch gives one.
 const FALLBACK_TOP_H: f64 = 32.0;
 /// Cells shown in the expanded island's width; the rest are reached through
-/// "All N", scrolled into view, or summed up as "+N".
+/// "All N", scrolled into view, or gathered into stacks by kind.
 pub(super) const MAX_CELLS: usize = 8;
 
 /// How many items become cells under `layout`: every one under Scroll,
@@ -58,6 +58,9 @@ pub(super) enum Panel {
     /// than [`MAX_CELLS`], with the bottom switch under them when the
     /// clipboard history is on.
     Pocket { switch: bool, layout: PocketLayout },
+    /// A full Pocket's stacks under the Stacks layout, `stacks` of them (one
+    /// per kind present), with the bottom switch when the history is on.
+    Stacks { switch: bool, stacks: usize },
     /// The clipboard history's list, always with the bottom switch.
     Clipboard,
     /// The list of every Pocket item, with the bottom switch when the
@@ -80,14 +83,20 @@ pub(super) struct Frames {
 }
 
 /// The width the panel needs to show `count` items under `layout`: the
-/// first [`MAX_CELLS`] cells, the "All N" (or "+N") tile when there are
-/// more, and the "Drag all" column. Under Scroll there is no tile: the strip
-/// stays eight cells wide and the rest scroll into view.
+/// first [`MAX_CELLS`] cells, the "All N" tile when there are more under
+/// List, and the "Drag all" column. Under Scroll there is no tile: the strip
+/// stays eight cells wide and the rest scroll into view. Under Stacks a full
+/// Pocket shows stacks instead (see [`strip_w`]).
 fn panel_w(count: usize, layout: PocketLayout) -> f64 {
-    let cells = count.min(MAX_CELLS) as f64 * CELL_STEP;
-    let tile = count > MAX_CELLS && layout != PocketLayout::Scroll;
+    let tile = count > MAX_CELLS && layout == PocketLayout::List;
+    strip_w(count.min(MAX_CELLS), tile)
+}
+
+/// The width of a panel showing `slots` cells or stacks, with the "All N"
+/// tile after them or not, and the "Drag all" column.
+fn strip_w(slots: usize, tile: bool) -> f64 {
     let overflow = if tile { OVERFLOW_W } else { 0.0 };
-    PAD + cells + overflow + SIDE_GAP + SIDE_W + PAD
+    PAD + slots as f64 * CELL_STEP + overflow + SIDE_GAP + SIDE_W + PAD
 }
 
 /// The height the island takes at the top of the screen: the menu bar, or
@@ -103,9 +112,10 @@ pub(super) fn top_height(home: &IslandHome) -> f64 {
 /// around a notch, and every shape is centred on the slot. Showing the
 /// Pocket, the expanded island widens to fit `count` items (under Scroll, no
 /// wider than eight cells), up to the screen's width less a margin; the row
-/// scrolls if that is still too narrow. Showing the Clipboard, it keeps the
-/// width of an empty Pocket and is taller. Showing the Pocket list, it is as tall as the Clipboard view and as wide as a full
-/// row of cells, so the pointer that clicked "All N" stays over it and the
+/// scrolls if that is still too narrow. Showing stacks, it fits them as it
+/// fits cells. Showing the Clipboard, it keeps the width of an empty Pocket
+/// and is taller. Showing the Pocket list, it is as tall as the Clipboard
+/// view and as wide as a full row of cells, so the pointer that clicked "All N" stays over it and the
 /// width never jumps as rows are removed.
 pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
     let screen = home.screen;
@@ -147,6 +157,10 @@ pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
     let (fit, panel_h) = match panel {
         Panel::Pocket { switch, layout } => (
             panel_w(count, layout),
+            PANEL_H + if switch { SWITCH_H } else { 0.0 },
+        ),
+        Panel::Stacks { switch, stacks } => (
+            strip_w(stacks, false),
             PANEL_H + if switch { SWITCH_H } else { 0.0 },
         ),
         Panel::Clipboard => (0.0, CLIP_PANEL_H + SWITCH_H),
@@ -448,17 +462,54 @@ mod tests {
         assert_eq!(eight.w, 634.0);
         assert_eq!(frames(&home, 12, scroll).expanded, eight);
         assert_eq!(frames(&home, 40, scroll).expanded, eight);
-        // The other layouts keep their tile beside the eighth cell.
-        let stacks = Panel::Pocket {
-            switch: false,
-            layout: PocketLayout::Stacks,
-        };
-        assert_eq!(frames(&home, 12, stacks).expanded.w, 682.0);
+        // List keeps its "All N" tile beside the eighth cell.
         assert_eq!(frames(&home, 12, OFF).expanded.w, 682.0);
         // Eight or fewer look the same in every layout.
         for n in [0, 3, 8] {
             assert_eq!(
                 frames(&home, n, scroll).expanded,
+                frames(&home, n, OFF).expanded
+            );
+        }
+    }
+
+    #[test]
+    fn stacks_size_the_island_by_the_kinds_present() {
+        let home = notched(188.0, 38.0);
+        let stacks = |n| Panel::Stacks {
+            switch: false,
+            stacks: n,
+        };
+        // A few stacks fit the minimum width, whatever the item count.
+        assert_eq!(frames(&home, 12, stacks(3)).expanded.w, 420.0);
+        assert_eq!(frames(&home, 40, stacks(3)).expanded.w, 420.0);
+        // One cell step per stack and the "Drag all" column, no tile:
+        // 14 + 7 * 68 + 10 + 52 + 14.
+        assert_eq!(
+            frames(&home, 12, stacks(7)).expanded,
+            rect(473.0, 0.0, 566.0, 150.0)
+        );
+        assert_eq!(frames(&home, 12, stacks(5)).expanded.w, 430.0);
+        // The bottom switch adds its bar, as under the cells.
+        let with = frames(
+            &home,
+            12,
+            Panel::Stacks {
+                switch: true,
+                stacks: 7,
+            },
+        )
+        .expanded;
+        assert_eq!(with.h, 150.0 + 40.0);
+        assert_eq!(with.w, 566.0);
+        // Under Stacks with eight or fewer items, the cells as in List.
+        let few = Panel::Pocket {
+            switch: false,
+            layout: PocketLayout::Stacks,
+        };
+        for n in [0, 3, 8] {
+            assert_eq!(
+                frames(&home, n, few).expanded,
                 frames(&home, n, OFF).expanded
             );
         }

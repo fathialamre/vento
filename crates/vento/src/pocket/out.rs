@@ -6,6 +6,7 @@ use std::cell::Cell;
 use log::debug;
 use slint::platform::{PointerEventButton, WindowEvent};
 use vento_core::geometry::{Point, Rect};
+use vento_core::pocket_kind::PocketKind;
 use vento_platform::RgbaImage;
 
 use super::geometry::{contains, window_pos};
@@ -58,8 +59,18 @@ pub(super) fn removes_after_drop(
     matches!(result, drag::DragResult::Dropped) && remove_after_drop && !on_island
 }
 
-/// The press target of "Drag all"; any other target is a cell's index.
-pub(super) const ALL: u32 = u32::MAX;
+/// What a press is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Press {
+    /// The cell (or Pocket list row) of the item at this place in the
+    /// Pocket.
+    Cell(u32),
+    /// "Drag all".
+    All,
+    /// The stack of this kind, under the Stacks layout.
+    Stack(PocketKind),
+}
+
 /// How far, in logical pixels, a press moves before it becomes a drag.
 const DRAG_DISTANCE: f32 = 4.0;
 
@@ -70,7 +81,7 @@ const DRAG_DISTANCE: f32 = 4.0;
 pub(super) struct PressLatch {
     /// What is pressed: set on press, cleared on release or when the press
     /// starts a drag.
-    token: Cell<Option<u32>>,
+    token: Cell<Option<Press>>,
     /// The press moved [`DRAG_DISTANCE`] or more, so its release is no click.
     far: Cell<bool>,
     /// A drag session is running; the drag callback ends it.
@@ -81,7 +92,7 @@ impl PressLatch {
     /// A new press. A session still marked running is stale (its drag
     /// callback never came, or the mouse could not be pressed again during
     /// it): it is forgotten, so this press can drag.
-    pub(super) fn press(&self, target: u32) {
+    pub(super) fn press(&self, target: Press) {
         if self.running.replace(false) {
             debug!("stale drag session; resetting");
         }
@@ -91,7 +102,7 @@ impl PressLatch {
 
     /// The target to drag, once per press, when the press has moved far
     /// enough and no session is running.
-    pub(super) fn moved(&self, dx: f32, dy: f32) -> Option<u32> {
+    pub(super) fn moved(&self, dx: f32, dy: f32) -> Option<Press> {
         if dx.hypot(dy) < DRAG_DISTANCE {
             return None;
         }
@@ -105,7 +116,7 @@ impl PressLatch {
     }
 
     /// The target clicked, if the press ends without having moved far.
-    pub(super) fn release(&self) -> Option<u32> {
+    pub(super) fn release(&self) -> Option<Press> {
         let target = self.token.take();
         if self.far.replace(false) {
             None
@@ -230,10 +241,10 @@ mod tests {
     fn one_drag_per_press() {
         let latch = PressLatch::default();
         let mut starts = 0;
-        latch.press(2);
+        latch.press(Press::Cell(2));
         for (dx, dy) in [(1.0, 1.0), (4.0, 0.0), (9.0, 3.0), (20.0, 5.0)] {
             if let Some(target) = latch.moved(dx, dy) {
-                assert_eq!(target, 2);
+                assert_eq!(target, Press::Cell(2));
                 starts += 1;
                 // The session ends at once; later moves of this press
                 // still start nothing.
@@ -247,8 +258,8 @@ mod tests {
 
         // A new press drags again; its moves start nothing more while that
         // session runs.
-        latch.press(ALL);
-        assert_eq!(latch.moved(0.0, 5.0), Some(ALL));
+        latch.press(Press::All);
+        assert_eq!(latch.moved(0.0, 5.0), Some(Press::All));
         assert_eq!(latch.moved(8.0, 0.0), None);
         latch.ended();
         assert_eq!(latch.moved(9.0, 0.0), None);
@@ -257,14 +268,14 @@ mod tests {
     #[test]
     fn a_press_resets_a_stale_session() {
         let latch = PressLatch::default();
-        latch.press(1);
-        assert_eq!(latch.moved(9.0, 0.0), Some(1));
+        latch.press(Press::Cell(1));
+        assert_eq!(latch.moved(9.0, 0.0), Some(Press::Cell(1)));
         assert!(latch.running());
         // The drag callback never came; the next press still drags.
         latch.release();
-        latch.press(2);
+        latch.press(Press::Cell(2));
         assert!(!latch.running());
-        assert_eq!(latch.moved(9.0, 0.0), Some(2));
+        assert_eq!(latch.moved(9.0, 0.0), Some(Press::Cell(2)));
         assert!(latch.running());
         latch.ended();
         assert!(!latch.running());
@@ -298,12 +309,20 @@ mod tests {
     #[test]
     fn a_short_press_is_a_click() {
         let latch = PressLatch::default();
-        latch.press(3);
+        latch.press(Press::Cell(3));
         assert_eq!(latch.moved(2.0, 2.0), None);
-        assert_eq!(latch.release(), Some(3));
+        assert_eq!(latch.release(), Some(Press::Cell(3)));
         // Released twice (up, then a cancel): one click.
         assert_eq!(latch.release(), None);
         assert_eq!(latch.release(), None);
+        // A stack's press is told apart from a cell's, as a click or a drag.
+        latch.press(Press::Stack(PocketKind::Image));
+        assert_eq!(latch.release(), Some(Press::Stack(PocketKind::Image)));
+        latch.press(Press::Stack(PocketKind::Folder));
+        assert_eq!(
+            latch.moved(0.0, 6.0),
+            Some(Press::Stack(PocketKind::Folder))
+        );
     }
 
     #[test]

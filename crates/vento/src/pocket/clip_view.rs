@@ -336,6 +336,10 @@ impl PocketController {
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
             View::Pocket if self.list_shown() => Panel::PocketList { switch },
+            View::Pocket if self.stacks_shown() => Panel::Stacks {
+                switch,
+                stacks: self.stacks.len(),
+            },
             View::Pocket => Panel::Pocket {
                 switch,
                 layout: self.layout.get(),

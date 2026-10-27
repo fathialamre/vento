@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use log::debug;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use vento_core::pocket::Pocket;
 use vento_core::pocket_kind::{PocketKind, kind_of};
 use vento_core::pocket_zone::Presence;
 
@@ -21,6 +22,7 @@ use crate::ui::{Icons, PocketChip, PocketIsland, PocketRow};
 
 use super::clip_view::{set_rows_in_place, view_index};
 use super::geometry::MAX_CELLS;
+use super::out::Press;
 use super::{PocketController, UNDO_WINDOW, View, display_name};
 
 /// The window's number for the Pocket list (0 and 1 are the Pocket's cells
@@ -30,6 +32,20 @@ const LIST_VIEW: i32 = 2;
 /// One item as the list sees it: its id, its path, whether it is a folder,
 /// and whether its file is missing.
 pub(super) type ListItem = (u64, PathBuf, bool, bool);
+
+/// Every item of `pocket` as the list and the stacks see it; `missing` is
+/// the ids of those whose file is gone. A folder is told apart by a look at
+/// its file.
+pub(super) fn list_items(pocket: &Pocket, missing: &[u64]) -> Vec<ListItem> {
+    pocket
+        .items()
+        .iter()
+        .map(|i| {
+            let gone = missing.contains(&i.id);
+            (i.id, i.path.clone(), i.path.is_dir(), gone)
+        })
+        .collect()
+}
 
 /// The ids of the items the list shows under `filter` (every item for
 /// `None`), in Pocket order. A missing item is listed like any other: its
@@ -152,7 +168,7 @@ impl PocketController {
                 pocket.items().iter().position(|i| i.id == id)
             });
             if let Some(index) = index.and_then(|i| u32::try_from(i).ok()) {
-                c.latch.press(index);
+                c.latch.press(Press::Cell(index));
             }
         });
         let c = with.clone();
@@ -250,14 +266,7 @@ impl PocketController {
         }
         let pocket = self.pocket.borrow();
         let missing = pocket.missing();
-        let items: Vec<ListItem> = pocket
-            .items()
-            .iter()
-            .map(|i| {
-                let gone = missing.contains(&i.id);
-                (i.id, i.path.clone(), i.path.is_dir(), gone)
-            })
-            .collect();
+        let items = list_items(&pocket, &missing);
         let counts = kind_counts(&items);
         let kinds: Vec<PocketKind> = counts.iter().map(|&(k, _)| k).collect();
         let filter = self.list.filter.get().filter(|k| kinds.contains(k));

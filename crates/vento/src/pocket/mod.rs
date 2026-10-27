@@ -16,7 +16,8 @@
 //! A Pocket of more than eight items is laid out as the settings say
 //! ([`PocketLayout`]); under List, its "All N" button opens the Pocket list
 //! (`list_view`); under Scroll, every item is a cell in a strip that scrolls
-//! sideways.
+//! sideways; under Stacks, one stack per kind stands in for the cells
+//! (`stacks`).
 
 mod add;
 mod clip;
@@ -27,6 +28,7 @@ mod list_view;
 mod menu;
 mod out;
 mod owned;
+mod stacks;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -65,10 +67,11 @@ use geometry::{Frames, cell_cap, frames, hits, hover_event, interactive_rect, is
 use list_view::{ListView, list_stays_open};
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
-    ALL, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
+    Press, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
 };
 use owned::{PendingTrash, trash_kept, trash_owned};
+use stacks::{Stacks, shows_stacks};
 
 /// Icon size of a cell, in points.
 const ICON_PX: u32 = 40;
@@ -158,9 +161,9 @@ fn layout_index(layout: PocketLayout) -> i32 {
     }
 }
 
-/// Cells for the items `layout` shows as cells (see [`cell_cap`]), in the
-/// Pocket's order so a cell's index is its item's; `icon` gets each item
-/// and whether its file is missing.
+/// Cells for the items `layout` shows as cells (see [`cell_cap`]; none
+/// while stacks stand in for them), in the Pocket's order so a cell's index
+/// is its item's; `icon` gets each item and whether its file is missing.
 fn build_cells(
     items: &[PocketItem],
     layout: PocketLayout,
@@ -168,9 +171,14 @@ fn build_cells(
     selected: &[u64],
     mut icon: impl FnMut(&PocketItem, bool) -> Image,
 ) -> Vec<PocketCell> {
+    let cap = if shows_stacks(layout, items.len()) {
+        0
+    } else {
+        cell_cap(layout)
+    };
     items
         .iter()
-        .take(cell_cap(layout))
+        .take(cap)
         .map(|item| {
             let gone = missing.contains(&item.id);
             PocketCell {
@@ -245,7 +253,7 @@ pub struct PocketController {
     input_shape: Cell<Option<Option<Rect>>>,
     /// Ids of the selected items, toggled by clicking their cells.
     selected: RefCell<Vec<u64>>,
-    /// Presses on the cells and on "Drag all".
+    /// Presses on the cells, the stacks and "Drag all".
     latch: PressLatch,
     /// Items taken out whose files wait to go to the Trash.
     pending: PendingTrash,
@@ -272,8 +280,10 @@ pub struct PocketController {
     clip_view: ClipView,
     /// How a Pocket of more than eight items is laid out.
     layout: Cell<PocketLayout>,
-    /// The Pocket list, opened by "All N".
+    /// The Pocket list, opened by "All N" or a stack.
     list: ListView,
+    /// The stacks of a full Pocket under the Stacks layout.
+    stacks: Stacks,
     this: Weak<Self>,
 }
 
@@ -298,6 +308,7 @@ impl PocketController {
         window.set_ghosts(ModelRc::from(ghosts.clone()));
         let clip_view = ClipView::new(&window);
         let list = ListView::new(&window);
+        let stacks = Stacks::new(&window);
         let layout = settings.borrow().pocket_layout;
         window.set_layout(layout_index(layout));
         let home = platform.pocket_home();
@@ -340,6 +351,7 @@ impl PocketController {
             clip_view,
             layout: Cell::new(layout),
             list,
+            stacks,
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -348,6 +360,7 @@ impl PocketController {
         controller.connect();
         controller.connect_clip();
         controller.connect_list();
+        controller.connect_stacks();
         MAIN_POCKET.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
         controller
     }
@@ -378,7 +391,7 @@ impl PocketController {
         let c = with.clone();
         w.on_item_pressed(move |i| {
             if let (Some(c), Ok(i)) = (c(), u32::try_from(i)) {
-                c.latch.press(i);
+                c.latch.press(Press::Cell(i));
             }
         });
         let c = with.clone();
@@ -429,7 +442,7 @@ impl PocketController {
         let c = with.clone();
         w.on_all_pressed(move || {
             if let Some(c) = c() {
-                c.latch.press(ALL);
+                c.latch.press(Press::All);
             }
         });
         let c = with.clone();
@@ -473,16 +486,19 @@ impl PocketController {
         let Some(target) = self.latch.moved(dx, dy) else {
             return;
         };
-        let pressed = if target == ALL {
-            None
-        } else {
-            match self.id_at(target as usize) {
+        let pressed = match target {
+            Press::All => None,
+            Press::Stack(kind) => {
+                self.drag_stack(kind);
+                return;
+            }
+            Press::Cell(i) => match self.id_at(i as usize) {
                 Some(id) => Some(id),
                 None => {
                     self.latch.ended();
                     return;
                 }
-            }
+            },
         };
         let ids = {
             let pocket = self.pocket.borrow();
@@ -492,11 +508,13 @@ impl PocketController {
         self.start_drag_out(ids);
     }
 
-    /// A press ended: a click on a cell toggles its selection.
+    /// A press ended: a click on a cell toggles its selection, one on a
+    /// stack opens the Pocket list on its kind.
     fn released(&self) {
         match self.latch.release() {
-            Some(target) if target != ALL => self.toggle_selected(target as usize),
-            _ => {}
+            Some(Press::Cell(i)) => self.toggle_selected(i as usize),
+            Some(Press::Stack(kind)) => self.stack_clicked(kind),
+            Some(Press::All) | None => {}
         }
     }
 
@@ -1478,6 +1496,7 @@ impl PocketController {
         if self.expanded() {
             self.refresh_cells();
         }
+        self.refresh_stacks();
         self.refresh_list();
         let count = self.item_count();
         self.window
@@ -1657,7 +1676,23 @@ mod tests {
         assert_eq!(all[11].name, "file-11.txt");
         assert!(all[11].selected);
         assert_eq!(cells(PocketLayout::List).len(), 8);
-        assert_eq!(cells(PocketLayout::Stacks).len(), 8);
+    }
+
+    #[test]
+    fn stacks_stand_in_for_the_cells_of_a_full_pocket() {
+        let items: Vec<PocketItem> = (0..12)
+            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
+            .collect();
+        let cells = |n| {
+            build_cells(&items[..n], PocketLayout::Stacks, &[], &[], |_, _| {
+                Image::default()
+            })
+        };
+        assert!(cells(12).is_empty());
+        assert!(cells(9).is_empty());
+        // Eight or fewer: every item is a cell, as in the other layouts.
+        assert_eq!(cells(8).len(), 8);
+        assert_eq!(cells(3)[2].name, "file-2.txt");
     }
 
     #[test]

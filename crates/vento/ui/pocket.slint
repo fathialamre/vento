@@ -18,6 +18,11 @@ export struct PocketRow { id: int, name: string, icon: image, missing: bool, sel
 // items it lists.
 export struct PocketChip { label: string, count: int }
 
+// One stack of a full Pocket under the Stacks layout: its kind (by place in
+// the app's fixed kind order), the kind's name and icon, and how many items
+// it holds.
+export struct PocketStack { kind: int, label: string, icon: image, count: int }
+
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
 component DashedBox inherits Rectangle {
@@ -1043,11 +1048,14 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
-    // At most eight, but every item under the Scroll layout; `count` is
-    // the total, so the rest show as "All N" (opening the Pocket list) under
-    // the List layout, "+N" under Stacks.
+    // At most eight, but every item under the Scroll layout, and none while
+    // `stacks` stand in for them; `count` is the total, so the rest show as
+    // "All N" (opening the Pocket list) under the List layout.
     in property <[PocketCell]> cells;
     in property <int> count;
+    // Under the Stacks layout, a full Pocket's stacks, one per kind present;
+    // empty otherwise.
+    in property <[PocketStack]> stacks;
     // How a Pocket of more than eight items is laid out: 0 List, 1 Scroll,
     // 2 Stacks.
     in property <int> layout;
@@ -1125,6 +1133,11 @@ export component PocketIsland inherits Window {
     callback list-remove(int);
     callback list-filter-chosen(int);
     callback list-back();
+    // A stack, by its kind: pressed, moved (from the press point) and
+    // released, as a cell is; a click opens the Pocket list on its kind.
+    callback stack-pressed(int);
+    callback stack-moved(int, length, length);
+    callback stack-released(int);
 
     width: root.panel-w;
     height: root.top-h + root.panel-h;
@@ -1221,8 +1234,9 @@ export component PocketIsland inherits Window {
                     height: 80px;
                     // Pointer drags belong to the cells; the row scrolls by wheel only.
                     interactive: false;
-                    content-width: max(root.cells.length, root.ghosts.length) * root.cell-step
-                        + (root.count > root.cells.length ? 48px : 0px);
+                    content-width: root.stacks.length > 0 ? root.stacks.length * root.cell-step
+                        : max(root.cells.length, root.ghosts.length) * root.cell-step
+                        + (root.count > root.cells.length && root.layout == 0 ? 48px : 0px);
 
                     changed full-scroll => {
                         self.content-x = 0;
@@ -1392,20 +1406,103 @@ export component PocketIsland inherits Window {
                         }
                     }
 
-                    if root.count > root.cells.length && root.layout == 2: Rectangle {
-                        x: root.cells.length * root.cell-step;
-                        width: 44px;
+                    // The Stacks layout: one stack per kind, a pile of
+                    // cards with the kind's icon, name and count.
+                    for stack[i] in root.stacks: Rectangle {
+                        x: i * root.cell-step;
+                        width: 64px;
                         height: 80px;
-                        border-radius: 12px;
-                        background: root.item-fill;
+                        accessible-role: button;
+                        accessible-label: "\{stack.label} \{stack.count}";
+                        accessible-action-default => {
+                            root.stack-pressed(stack.kind);
+                            root.stack-released(stack.kind);
+                        }
 
-                        Text {
-                            text: "+\{root.count - root.cells.length}";
-                            color: #ffffffb0;
-                            font-size: 13px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        // The cards beneath, peeking out above.
+                        Rectangle {
+                            x: 10px;
+                            y: 0px;
+                            width: 44px;
+                            height: 20px;
+                            border-radius: 8px;
+                            background: #2a2a30;
+                        }
+
+                        Rectangle {
+                            x: 5px;
+                            y: 3px;
+                            width: 54px;
+                            height: 20px;
+                            border-radius: 10px;
+                            background: #232328;
+                        }
+
+                        Rectangle {
+                            y: 7px;
+                            height: 73px;
+                            border-radius: 12px;
+                            background: stack-touch.has-hover ? #2c2c32 : root.item-fill;
+                            animate background { duration: 120ms; }
+
+                            Image {
+                                source: stack.icon;
+                                colorize: stack-touch.has-hover ? white : #ffffffd0;
+                                x: (parent.width - self.width) / 2;
+                                y: 12px;
+                                width: 28px;
+                                height: 28px;
+                            }
+
+                            Text {
+                                text: stack.label;
+                                x: 4px;
+                                y: 47px;
+                                width: 56px;
+                                height: 18px;
+                                color: white;
+                                font-size: 11px;
+                                overflow: elide;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // How many items the stack holds.
+                        Rectangle {
+                            x: parent.width - self.width - 2px;
+                            y: 9px;
+                            width: max(18px, badge-text.preferred-width + 10px);
+                            height: 18px;
+                            border-radius: 9px;
+                            background: root.accent;
+
+                            badge-text := Text {
+                                text: stack.count;
+                                color: white;
+                                font-size: 10px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        stack-touch := TouchArea {
+                            // As a cell's: a press drags the stack's items
+                            // out, a click opens the Pocket list on its kind.
+                            pointer-event(e) => {
+                                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                    root.stack-pressed(stack.kind);
+                                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                                    || e.kind == PointerEventKind.cancel {
+                                    root.stack-released(stack.kind);
+                                }
+                            }
+                            moved => {
+                                if self.pressed {
+                                    root.stack-moved(stack.kind, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                                }
+                            }
                         }
                     }
 
