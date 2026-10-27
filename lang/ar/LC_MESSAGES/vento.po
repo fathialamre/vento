@@ -661,11 +661,11 @@ msgstr "لا يوجد شيء من هذا النوع بعد"
 msgid "Nothing to convert: already {format}"
 msgstr "لا يوجد ما يُحوَّل: الصيغة {format} أصلاً"
 
-#: crates/vento/src/exec.rs:789
+#: crates/vento/src/exec.rs:788
 msgid "Nothing to copy"
 msgstr "لا يوجد شيء لنسخه"
 
-#: crates/vento/src/exec.rs:757
+#: crates/vento/src/exec.rs:756
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
 
@@ -1077,7 +1077,7 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
-#: crates/vento/src/exec.rs:868
+#: crates/vento/src/exec.rs:867
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
@@ -1093,7 +1093,7 @@ msgstr "الأرشيف تالف: {detail}"
 msgid "i/o error: {reason}"
 msgstr "خطأ في القراءة أو الكتابة: {reason}"
 
-#: crates/vento/src/exec.rs:854
+#: crates/vento/src/exec.rs:853
 msgid "internal error"
 msgstr "خطأ داخلي"
 
@@ -1133,7 +1133,7 @@ msgstr "يستخدم macOS هذا الاختصار"
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "نُقل إلى {copy}، لكن تعذّرت إزالة الأصل بالكامل: {reason}"
 
-#: crates/vento/src/exec.rs:519
+#: crates/vento-platform/src/lib.rs:218
 msgid "no folder to open"
 msgstr "لا يوجد مجلد لفتحه"
 
@@ -1149,7 +1149,7 @@ msgstr "لا يوجد اسم متاح للعنصر المحفوظ"
 msgid "no images"
 msgstr "لا توجد صور"
 
-#: crates/vento-platform/src/lib.rs:209
+#: crates/vento-platform/src/lib.rs:213
 msgid "no terminal is installed"
 msgstr "لا توجد طرفية مثبّتة"
 
@@ -1217,7 +1217,7 @@ msgstr "كلمة السر خاطئة"
 msgid "{app} (default)"
 msgstr "{app} (افتراضي)"
 
-#: crates/vento-platform/src/lib.rs:202
+#: crates/vento-platform/src/lib.rs:206
 msgid "{app} is not installed"
 msgstr "{app} غير مثبّت"
 

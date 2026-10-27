@@ -607,11 +607,11 @@ msgstr ""
 msgid "Nothing to convert: already {format}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:789
+#: crates/vento/src/exec.rs:788
 msgid "Nothing to copy"
 msgstr ""
 
-#: crates/vento/src/exec.rs:757
+#: crates/vento/src/exec.rs:756
 msgid "Nothing to move"
 msgstr ""
 
@@ -1007,7 +1007,7 @@ msgstr ""
 msgid "cannot start copying: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:868
+#: crates/vento/src/exec.rs:867
 msgid "cannot start: {reason}"
 msgstr ""
 
@@ -1023,7 +1023,7 @@ msgstr ""
 msgid "i/o error: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:854
+#: crates/vento/src/exec.rs:853
 msgid "internal error"
 msgstr ""
 
@@ -1055,7 +1055,7 @@ msgstr ""
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:519
+#: crates/vento-platform/src/lib.rs:218
 msgid "no folder to open"
 msgstr ""
 
@@ -1071,7 +1071,7 @@ msgstr ""
 msgid "no images"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:209
+#: crates/vento-platform/src/lib.rs:213
 msgid "no terminal is installed"
 msgstr ""
 
@@ -1139,7 +1139,7 @@ msgstr ""
 msgid "{app} (default)"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:202
+#: crates/vento-platform/src/lib.rs:206
 msgid "{app} is not installed"
 msgstr ""
 

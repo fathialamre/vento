@@ -516,9 +516,8 @@ impl Executor {
                             }
                         }),
                     ),
-                    None => Err(vento_platform::PlatformError::Failed(tr(
-                        "no folder to open",
-                    ))),
+                    // Worded when shown, so the log line stays English.
+                    None => Err(vento_platform::PlatformError::NoFolder),
                 };
                 self.finish(action, result, at, || {
                     format!(
@@ -1174,6 +1173,19 @@ mod tests {
                 copy_undo_toast_text(&CopyUndoOutcome::default()),
                 "لم يبقَ شيء لإزالته"
             );
+        });
+    }
+
+    #[test]
+    fn a_terminal_with_no_folder_is_toasted_in_the_language_and_logged_in_english() {
+        let error = vento_platform::PlatformError::NoFolder;
+        vento_core::i18n::with_language("ar", || {
+            // What `finish` toasts and what it logs.
+            assert_eq!(
+                action_error_text(ActionId::Terminal, &error.to_string()),
+                "تعذّر فتح الطرفية: لا يوجد مجلد لفتحه"
+            );
+            assert_eq!(in_english(|| error.to_string()), "no folder to open");
         });
     }
 

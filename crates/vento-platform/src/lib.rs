@@ -192,6 +192,10 @@ pub enum PlatformError {
     /// language.
     #[error("{}", no_terminal())]
     NoTerminal,
+    /// The items give no folder to open (the Terminal action). Worded when
+    /// shown, in the interface language.
+    #[error("{}", no_folder())]
+    NoFolder,
     #[error("unsupported on this platform")]
     Unsupported,
 }
@@ -207,6 +211,11 @@ fn not_installed(app: &str) -> String {
 /// "no terminal is installed", in the interface language.
 fn no_terminal() -> String {
     vento_core::i18n::tr("no terminal is installed")
+}
+
+/// "no folder to open", in the interface language.
+fn no_folder() -> String {
+    vento_core::i18n::tr("no folder to open")
 }
 
 /// Everything vento needs from the operating system.
@@ -705,5 +714,18 @@ mod tests {
         // The same error read again in English: a log line stays English.
         let toast = with_language("ar", || app.to_string());
         assert_ne!(toast, with_language("en", || app.to_string()));
+    }
+
+    #[test]
+    fn no_folder_to_open_is_worded_when_it_is_shown() {
+        use vento_core::i18n::with_language;
+        let error = PlatformError::NoFolder;
+        assert_eq!(error.to_string(), "no folder to open");
+        // Made in Arabic, read again in English for the log line.
+        with_language("ar", || assert_eq!(error.to_string(), "لا يوجد مجلد لفتحه"));
+        assert_eq!(
+            with_language("en", || error.to_string()),
+            "no folder to open"
+        );
     }
 }
