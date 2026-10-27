@@ -500,10 +500,14 @@ impl PocketController {
                 }
             },
         };
-        let ids = {
-            let pocket = self.pocket.borrow();
-            let all: Vec<u64> = pocket.items().iter().map(|i| i.id).collect();
-            drag_ids(pressed, &all, &self.selected.borrow(), &pocket.missing())
+        // A row's press, while the list is shown, drags only what it lists.
+        let ids = match pressed {
+            Some(id) if self.list_shown() => self.list_drag_ids(id),
+            _ => {
+                let pocket = self.pocket.borrow();
+                let all: Vec<u64> = pocket.items().iter().map(|i| i.id).collect();
+                drag_ids(pressed, &all, &self.selected.borrow(), &pocket.missing())
+            }
         };
         self.start_drag_out(ids);
     }

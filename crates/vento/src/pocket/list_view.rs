@@ -22,7 +22,7 @@ use crate::ui::{Icons, PocketChip, PocketIsland, PocketRow};
 
 use super::clip_view::{set_rows_in_place, view_index};
 use super::geometry::MAX_CELLS;
-use super::out::Press;
+use super::out::{Press, drag_ids};
 use super::{PocketController, UNDO_WINDOW, View, display_name};
 
 /// The window's number for the Pocket list (0 and 1 are the Pocket's cells
@@ -56,6 +56,23 @@ pub(super) fn list_rows(items: &[ListItem], filter: Option<PocketKind>) -> Vec<u
         .filter(|(_, path, is_dir, _)| filter.is_none_or(|k| kind_of(path, *is_dir) == k))
         .map(|(id, ..)| *id)
         .collect()
+}
+
+/// The items a press on row `pressed` drags (see [`drag_ids`]), picked
+/// only among the rows `filter` lists, so a selection never takes items the
+/// chosen chip hides. Under All, as from the cells.
+pub(super) fn listed_drag_ids(
+    pressed: u64,
+    items: &[ListItem],
+    filter: Option<PocketKind>,
+    selected: &[u64],
+) -> Vec<u64> {
+    let missing: Vec<u64> = items
+        .iter()
+        .filter(|(.., gone)| *gone)
+        .map(|(id, ..)| *id)
+        .collect();
+    drag_ids(Some(pressed), &list_rows(items, filter), selected, &missing)
 }
 
 /// How many items of each kind the Pocket holds: only the kinds present, in
@@ -229,6 +246,19 @@ impl PocketController {
         true
     }
 
+    /// The items a press on the list's row of item `pressed` drags: see
+    /// [`listed_drag_ids`].
+    pub(super) fn list_drag_ids(&self, pressed: u64) -> Vec<u64> {
+        let pocket = self.pocket.borrow();
+        let items = list_items(&pocket, &pocket.missing());
+        listed_drag_ids(
+            pressed,
+            &items,
+            self.list.filter.get(),
+            &self.selected.borrow(),
+        )
+    }
+
     /// Whether the island shows the Pocket list (it stays open, unseen,
     /// while the Clipboard view is shown).
     pub(super) fn list_shown(&self) -> bool {
@@ -363,6 +393,23 @@ mod tests {
         assert_eq!(list_rows(&items, None), [1, 2, 3, 4, 5]);
         assert_eq!(list_rows(&items, Some(PocketKind::Image)), [2, 4]);
         assert_eq!(kind_counts(&items)[0], (PocketKind::Image, 2));
+    }
+
+    #[test]
+    fn a_selection_dragged_from_a_filtered_list_takes_only_the_rows_shown() {
+        let items = sample();
+        // Under Images, a selected image drags the selected images alone,
+        // not the selected PDF the chip hides.
+        let image = Some(PocketKind::Image);
+        assert_eq!(listed_drag_ids(4, &items, image, &[1, 4, 2]), [2, 4]);
+        // A pressed row outside the selection drags itself alone.
+        assert_eq!(listed_drag_ids(2, &items, image, &[1, 4]), [2]);
+        // Under All, the whole selection, as from the cells.
+        assert_eq!(listed_drag_ids(4, &items, None, &[1, 4, 2]), [1, 2, 4]);
+        // A missing item is listed but never dragged.
+        let mut gone = sample();
+        gone[1].3 = true;
+        assert_eq!(listed_drag_ids(4, &gone, image, &[2, 4]), [4]);
     }
 
     #[test]
