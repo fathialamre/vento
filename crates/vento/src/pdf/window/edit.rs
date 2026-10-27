@@ -477,7 +477,11 @@ impl PdfView {
         *self.worker.borrow_mut() = spawn_worker(self.id, bytes);
         self.close_large();
         self.end_drag();
-        let at = insert_point(self.focus.get(), self.pages.borrow().len());
+        let at = insert_point(
+            self.focus.get(),
+            self.window.get_show_focus(),
+            self.pages.borrow().len(),
+        );
         let n = added.len();
         self.commit_edit(|pages, selection| {
             pages.insert(added, at);

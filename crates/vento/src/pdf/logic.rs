@@ -160,10 +160,11 @@ pub fn moved_focus(
     Some(moved)
 }
 
-/// Where added pages go in a list `len` long: after the focused page, or
-/// at the end when no page has the focus.
-pub fn insert_point(focused: Option<usize>, len: usize) -> usize {
-    focused.map_or(len, |i| (i + 1).min(len))
+/// Where added pages go in a list `len` long: after the focused page when
+/// its focus ring shows (`shown`), or at the end. A click moves the focus
+/// without showing it, so a page merely clicked earlier does not count.
+pub fn insert_point(focused: Option<usize>, shown: bool, len: usize) -> usize {
+    focused.filter(|_| shown).map_or(len, |i| (i + 1).min(len))
 }
 
 /// Whether the pointer, `dx` and `dy` points from where the button went
@@ -847,8 +848,15 @@ mod tests {
 
     #[test]
     fn add_goes_after_focus_or_end() {
-        assert_eq!(insert_point(Some(2), 8), 3);
-        assert_eq!(insert_point(None, 8), 8);
+        assert_eq!(insert_point(Some(2), true, 8), 3);
+        assert_eq!(insert_point(None, true, 8), 8);
+    }
+
+    #[test]
+    fn add_ignores_a_focus_that_shows_no_ring() {
+        // A click moves the focus without showing it: the pages go at the end.
+        assert_eq!(insert_point(Some(2), false, 8), 8);
+        assert_eq!(insert_point(None, false, 8), 8);
     }
 
     #[test]
@@ -859,10 +867,10 @@ mod tests {
 
     #[test]
     fn add_after_a_stale_focus_goes_to_the_end() {
-        assert_eq!(insert_point(Some(7), 8), 8);
-        assert_eq!(insert_point(Some(20), 8), 8);
-        assert_eq!(insert_point(None, 0), 0);
-        assert_eq!(insert_point(Some(0), 0), 0);
+        assert_eq!(insert_point(Some(7), true, 8), 8);
+        assert_eq!(insert_point(Some(20), true, 8), 8);
+        assert_eq!(insert_point(None, true, 0), 0);
+        assert_eq!(insert_point(Some(0), true, 0), 0);
     }
 
     #[test]
