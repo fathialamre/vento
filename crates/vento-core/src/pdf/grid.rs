@@ -95,6 +95,9 @@ impl GridMetrics {
     /// The pages on rows that intersect the vertical window
     /// `[scroll_y, scroll_y + height)`, clamped to `count`.
     pub fn rows_visible(&self, scroll_y: f32, height: f32, count: usize) -> Range<usize> {
+        if height <= 0.0 {
+            return 0..0;
+        }
         let row_stride = self.cell_h + self.gap;
         // First row whose bottom edge is below the window's top.
         let above = (scroll_y - self.pad - self.cell_h) / row_stride;
@@ -282,5 +285,7 @@ mod tests {
         assert_eq!(g.rows_visible(0.0, 100.0, 0), 0..0);
         assert_eq!(g.rows_visible(5000.0, 100.0, 6), 6..6);
         assert_eq!(g.rows_visible(0.0, 0.0, 6), 0..0);
+        assert_eq!(g.rows_visible(50.0, 0.0, 12), 0..0);
+        assert_eq!(g.rows_visible(50.0, -5.0, 12), 0..0);
     }
 }

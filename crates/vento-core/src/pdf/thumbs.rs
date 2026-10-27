@@ -4,26 +4,43 @@
 
 use std::ops::Range;
 
+/// Where a page is on its way to having a thumbnail.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum State {
+    /// Not handed out yet.
+    Waiting,
+    /// Handed out by [`ThumbQueue::next`]; the result has not come back.
+    InFlight,
+    /// The caller reported the result with [`ThumbQueue::mark_done`].
+    Done,
+}
+
 /// Tracks which page positions have a thumbnail and which to render next.
+///
+/// Every position is waiting, in flight or done. [`next`](Self::next) hands
+/// each waiting page out once and marks it in flight; the caller reports
+/// every result, a failed render included, with [`mark_done`](Self::mark_done).
+/// Only [`invalidate`](Self::invalidate), [`invalidate_all`](Self::invalidate_all)
+/// and [`resize`](Self::resize) make a page wait again.
 ///
 /// It works on grid positions, so after any edit that reorders, deletes or
 /// rotates pages the caller resizes it and invalidates everything; the
 /// caller's own cache keyed by `(source, page, turns)` makes re-queued pages
 /// that were already rendered cheap.
+#[derive(Debug)]
 pub struct ThumbQueue {
-    done: Vec<bool>,
+    state: Vec<State>,
     visible: Range<usize>,
     margin: usize,
 }
 
 impl ThumbQueue {
-    /// A queue over `count` pages that keeps `margin` pages either side of
-    /// the visible range warm. Nothing is visible until [`set_visible`].
-    ///
-    /// [`set_visible`]: Self::set_visible
+    /// A queue over `count` waiting pages that keeps `margin` pages either
+    /// side of the visible range warm. Nothing is visible until
+    /// [`set_visible`](Self::set_visible).
     pub fn new(count: usize, margin: usize) -> ThumbQueue {
         ThumbQueue {
-            done: vec![false; count],
+            state: vec![State::Waiting; count],
             visible: 0..0,
             margin,
         }
@@ -31,59 +48,69 @@ impl ThumbQueue {
 
     /// Sets the range of positions on screen, clamped to the page count.
     pub fn set_visible(&mut self, range: Range<usize>) {
-        let end = range.end.min(self.done.len());
+        let end = range.end.min(self.state.len());
         self.visible = range.start.min(end)..end;
     }
 
-    /// The next page to render, or `None` when everything visible and within
-    /// the margin is done. Visible pages come first in reading order, then
-    /// the margin pages nearest the visible range first (after the range
-    /// before the same distance before it). It does not mark the page, so
-    /// the caller reports each result with [`mark_done`]; until then the
-    /// same page is offered again.
-    ///
-    /// [`mark_done`]: Self::mark_done
+    /// Hands out the next waiting page and marks it in flight, or returns
+    /// `None` when every page that is visible or within the margin has been
+    /// handed out. Visible pages come first in reading order, then the
+    /// margin pages nearest the visible range first (after the range before
+    /// the one the same distance before it). A page is offered once, so
+    /// `while let Some(i) = q.next() { send(i) }` ends; it is offered again
+    /// only after [`invalidate`](Self::invalidate).
     // Not an `Iterator`: the queue is refilled by `set_visible` and can
     // yield again after `invalidate`.
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<usize> {
-        if self.visible.is_empty() {
+        let i = self.peek()?;
+        self.state[i] = State::InFlight;
+        Some(i)
+    }
+
+    /// The page [`next`](Self::next) would hand out.
+    fn peek(&self) -> Option<usize> {
+        let Range { start, end } = self.visible;
+        if start == end {
             return None;
         }
-        let Range { start, end } = self.visible;
-        if let Some(i) = (start..end).find(|&i| !self.done[i]) {
+        let waiting = |i: usize| self.state[i] == State::Waiting;
+        if let Some(i) = (start..end).find(|&i| waiting(i)) {
             return Some(i);
         }
-        (1..=self.margin).find_map(|d| {
-            let after = end - 1 + d;
+        // Beyond this distance both sides are off the ends of the list.
+        let reach = self.margin.min(start.max(self.state.len() - end));
+        (1..=reach).find_map(|d| {
+            let after = (end - 1).saturating_add(d);
             let before = start.checked_sub(d);
-            (after < self.done.len() && !self.done[after])
+            (after < self.state.len() && waiting(after))
                 .then_some(after)
-                .or_else(|| before.filter(|&b| !self.done[b]))
+                .or_else(|| before.filter(|&b| waiting(b)))
         })
     }
 
-    /// Records that position `i` now has a thumbnail.
+    /// Records that position `i` came back from its render, whether or not
+    /// the render worked.
     pub fn mark_done(&mut self, i: usize) {
-        if let Some(d) = self.done.get_mut(i) {
-            *d = true;
+        if let Some(s) = self.state.get_mut(i) {
+            *s = State::Done;
         }
     }
 
-    /// Forgets the thumbnail of position `i`, so it is offered again.
+    /// Forgets position `i`, in flight or done, so it is offered again.
     pub fn invalidate(&mut self, i: usize) {
-        if let Some(d) = self.done.get_mut(i) {
-            *d = false;
+        if let Some(s) = self.state.get_mut(i) {
+            *s = State::Waiting;
         }
     }
 
-    /// Forgets every thumbnail.
+    /// Forgets every position, so all are offered again.
     pub fn invalidate_all(&mut self) {
-        self.done.fill(false);
+        self.state.fill(State::Waiting);
     }
 
-    /// Finished positions further than the margin from the visible range,
-    /// ascending. The caller frees their images and calls [`invalidate`] on
+    /// Done positions (never in-flight ones) further than the margin from
+    /// the visible range, ascending. The caller frees their images and calls [`invalidate`] on
     /// each; this does not change the queue. While nothing is visible, as
     /// before the first layout, nothing is dropped.
     ///
@@ -94,15 +121,15 @@ impl ThumbQueue {
         }
         let keep = self.visible.start.saturating_sub(self.margin)
             ..self.visible.end.saturating_add(self.margin);
-        (0..self.done.len())
-            .filter(|i| self.done[*i] && !keep.contains(i))
+        (0..self.state.len())
+            .filter(|i| self.state[*i] == State::Done && !keep.contains(i))
             .collect()
     }
 
-    /// Changes the page count. Marks for positions that remain are kept; new
-    /// positions start undone.
+    /// Changes the page count. Positions that remain keep their state; new
+    /// positions wait.
     pub fn resize(&mut self, count: usize) {
-        self.done.resize(count, false);
+        self.state.resize(count, State::Waiting);
         self.set_visible(self.visible.clone());
     }
 }
@@ -141,8 +168,66 @@ mod tests {
         q.mark_done(10);
         q.mark_done(12);
         assert_eq!(q.next(), Some(11));
-        q.mark_done(11);
         assert_eq!(q.next(), Some(13));
+    }
+
+    #[test]
+    fn a_feeder_loop_ends_after_each_page_once() {
+        let mut q = ThumbQueue::new(300, 8);
+        q.set_visible(0..12);
+        let mut sent = Vec::new();
+        while let Some(i) = q.next() {
+            sent.push(i);
+        }
+        assert_eq!(sent, (0..20).collect::<Vec<_>>());
+        assert_eq!(q.next(), None);
+    }
+
+    #[test]
+    fn an_in_flight_page_is_not_offered_again() {
+        let mut q = ThumbQueue::new(10, 0);
+        q.set_visible(2..4);
+        assert_eq!(q.next(), Some(2));
+        assert_eq!(q.next(), Some(3));
+        assert_eq!(q.next(), None);
+        q.mark_done(2);
+        assert_eq!(q.next(), None);
+    }
+
+    #[test]
+    fn invalidate_offers_an_in_flight_or_done_page_again() {
+        let mut q = ThumbQueue::new(10, 0);
+        q.set_visible(2..4);
+        assert_eq!(q.next(), Some(2));
+        assert_eq!(q.next(), Some(3));
+        q.mark_done(3);
+        q.invalidate(2);
+        assert_eq!(q.next(), Some(2));
+        q.invalidate_all();
+        assert_eq!(q.next(), Some(2));
+        assert_eq!(q.next(), Some(3));
+    }
+
+    #[test]
+    fn to_drop_ignores_in_flight_pages() {
+        let mut q = ThumbQueue::new(100, 2);
+        q.set_visible(10..12);
+        q.mark_done(1);
+        q.set_visible(50..52);
+        assert_eq!(q.next(), Some(50));
+        assert_eq!(q.to_drop(), vec![1]);
+    }
+
+    #[test]
+    fn a_huge_margin_does_not_overflow() {
+        let mut q = ThumbQueue::new(6, usize::MAX);
+        q.set_visible(2..4);
+        let mut sent = Vec::new();
+        while let Some(i) = q.next() {
+            sent.push(i);
+        }
+        assert_eq!(sent, vec![2, 3, 4, 1, 5, 0]);
+        assert!(q.to_drop().is_empty());
     }
 
     #[test]
