@@ -128,6 +128,21 @@ drag them together, or use **Drag all**. The x on an item removes it and
 **Clear** empties the Pocket; both can be undone. Removing an item never deletes
 your file.
 
+With up to 8 items the Pocket shows them all in a row. Once it holds more, it
+lays them out the way you choose in **Settings → Pocket → When it holds more
+than 8 items**:
+
+- **List** (the default) shows the first 8 and an **All N** button. It opens a
+  list of every item with its icon and name, an x to remove it, and chips along
+  the top (**All**, then Images, Video, Audio and so on) to show only one kind.
+  Drag a row out like any item; **Pocket** at the top left goes back to the
+  items.
+- **Scroll** puts every item in one strip that scrolls sideways, with a thin bar
+  underneath you can drag.
+- **Stacks** groups the items by kind: **Images, Video, Audio, Documents,
+  Archives, Folders** and **Other**, each a stack with its count. Drag a stack to
+  take all its files along, or click it to open the list for just that kind.
+
 ### Copy
 
 Puts the file on the clipboard, as if you had pressed ⌘C in Finder. Paste it
@@ -260,7 +275,7 @@ changes apply right away.
 | General | The key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
 | Wheel | Honeycomb or petals layout; which actions show and in what order. |
 | Move | Pinned and recent folders for the Move ring, and how long to hold. |
-| Pocket | The Pocket shortcut, and what happens after you drag items out. |
+| Pocket | The Pocket shortcut, what happens after you drag items out, and how a full Pocket (more than 8 items) lays them out: List, Scroll or Stacks. |
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
 | Keep Awake | Whether the screen may turn off while Keep Awake runs. |
