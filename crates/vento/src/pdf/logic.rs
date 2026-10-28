@@ -356,6 +356,25 @@ pub fn sources_in_use(pages: &[PageRef], sources: usize) -> Vec<usize> {
     (0..sources).filter(|&i| used[i]).collect()
 }
 
+/// The positions of `source`'s pages in the list, in list order: what a
+/// click on its row in the files sidebar selects, and how many pages the
+/// row counts.
+pub fn pages_of_source(pages: &[PageRef], source: usize) -> Vec<usize> {
+    pages
+        .iter()
+        .enumerate()
+        .filter(|(_, page)| page.source == source)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Whether the files sidebar opens by itself: when there come to be
+/// several files where there were fewer (the window opened with several,
+/// or a file was added). Otherwise it stays as it was left.
+pub fn opens_files(before: usize, now: usize) -> bool {
+    now > 1 && now > before
+}
+
 /// The page's identity in a window: a page of a source is in the list at
 /// most once (adding a file again opens it as a new source).
 fn identity(page: &PageRef) -> (usize, usize) {
@@ -1115,6 +1134,23 @@ mod tests {
         assert_eq!(sources_in_use(&[], 2), Vec::<usize>::new());
         // A page of a source past the list is ignored.
         assert_eq!(sources_in_use(&[page(5, 0, 0)], 2), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn a_source_row_selects_its_pages_wherever_they_are() {
+        let pages = [page(1, 0, 0), page(0, 0, 0), page(1, 2, 1), page(2, 0, 0)];
+        assert_eq!(pages_of_source(&pages, 1), vec![0, 2]);
+        assert_eq!(pages_of_source(&pages, 2), vec![3]);
+        assert_eq!(pages_of_source(&pages, 4), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn the_files_sidebar_opens_when_files_come_to_be_several() {
+        assert!(!opens_files(0, 1), "one file: no sidebar");
+        assert!(opens_files(0, 3), "opened with several");
+        assert!(opens_files(1, 2), "a file was added");
+        assert!(!opens_files(2, 2), "nothing new: left as it was");
+        assert!(!opens_files(3, 2), "a file went: left as it was");
     }
 
     #[test]

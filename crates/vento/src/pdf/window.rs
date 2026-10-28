@@ -39,15 +39,15 @@ use slint::{
     SharedString, Timer, VecModel,
 };
 use vento_core::geometry::{Point, screen_for};
-use vento_core::i18n::{self, fill, tr};
+use vento_core::i18n::{self, fill, tr, trn};
 use vento_core::pdf::{
     GridMetrics, ImageKind, ImageOptions, PageList, PageRef, PdfError, Selection, Source,
 };
 use vento_platform::Platform;
 
 use super::logic::{
-    Arrow, DragEvent, footer_text, large_side_px, moved_focus, source_letter, sources_in_use,
-    tint_of, title_text,
+    Arrow, DragEvent, footer_text, large_side_px, moved_focus, opens_files, pages_of_source,
+    source_letter, sources_in_use, tint_of, title_text,
 };
 use super::thumbs::{self, LARGE, Rendered, ThumbState, ThumbWorker};
 use crate::appearance;
@@ -174,6 +174,9 @@ pub struct PdfView {
     /// Files dropped on the window, collected until the drop is whole.
     dropped: RefCell<Vec<PathBuf>>,
     drop_timer: Timer,
+    /// How many files the sidebar listed last: it opens by itself when
+    /// there come to be more of them.
+    listed: Cell<usize>,
     closed: Cell<bool>,
     ctx: ViewCtx,
     this: Weak<Self>,
@@ -244,6 +247,7 @@ impl PdfView {
             waiting: RefCell::new(Vec::new()),
             dropped: RefCell::new(Vec::new()),
             drop_timer: Timer::default(),
+            listed: Cell::new(0),
             closed: Cell::new(false),
             ctx,
             this: this.clone(),
@@ -283,6 +287,8 @@ impl PdfView {
         window.set_pad(PAD);
         window.set_pages(ModelRc::from(self.rows.clone()));
         self.connect();
+        // The Settings window's page rather than the panel's tint.
+        window.global::<Theme>().set_clean(true);
         appearance::follow(window, appearance::Look::Full);
         appearance::follow_language(self.this.clone(), |view| view.retext());
         self.pages_changed();
@@ -302,23 +308,31 @@ impl PdfView {
         }
     }
 
-    /// Names the shown files in the toolbar when there are several.
+    /// Lists the shown files in the sidebar, each with its page count; one
+    /// file alone has no letter or tint. The sidebar opens by itself when
+    /// there come to be several files.
     fn set_legend(&self, shown: &[usize]) {
-        let legend: Vec<PdfSourceTag> = if shown.len() > 1 {
+        let legend: Vec<PdfSourceTag> = {
             let sources = self.sources.borrow();
+            let pages = self.pages.borrow();
+            let several = shown.len() > 1;
             shown
                 .iter()
                 .filter_map(|&i| {
+                    let count = pages_of_source(pages.pages(), i).len();
                     Some(PdfSourceTag {
-                        letter: source_letter(i).into(),
+                        letter: if several { source_letter(i).into() } else { SharedString::new() },
                         name: file_name(sources.get(i)?).into(),
                         tint: tint_of(i, shown.len()),
+                        pages: trn("{n} page", "{n} pages", count as u64).into(),
+                        source: i32::try_from(i).unwrap_or(i32::MAX),
                     })
                 })
                 .collect()
-        } else {
-            Vec::new()
         };
+        if opens_files(self.listed.replace(legend.len()), legend.len()) {
+            self.window.set_files_shown(true);
+        }
         self.window.set_legend(ModelRc::new(VecModel::from(legend)));
     }
 
@@ -355,6 +369,15 @@ impl PdfView {
         {
             let with = with.clone();
             window.on_select_all(move || with(&|v| v.select_all()));
+        }
+        {
+            let with = with.clone();
+            window.on_source_clicked(move |source| {
+                with(&|v| {
+                    v.close_large();
+                    v.select_source(usize::try_from(source).unwrap_or(usize::MAX));
+                });
+            });
         }
         {
             let with = with.clone();
@@ -650,6 +673,8 @@ impl PdfView {
             &[("names", &names), ("meta", &meta)],
         );
         self.window.set_heading(heading.into());
+        // The page counts in the sidebar.
+        self.set_legend(&self.shown_sources());
         self.refresh_footer();
         self.refresh_cuts();
         match self.popover.get() {
@@ -793,6 +818,19 @@ impl PdfView {
         let len = self.rows.row_count();
         self.selection.borrow_mut().select_all(len);
         self.selection_changed();
+    }
+
+    /// Selects the pages of one file (a click on its row in the sidebar)
+    /// and moves the focus to the first of them, scrolled into sight.
+    fn select_source(&self, source: usize) {
+        let picked = pages_of_source(self.pages.borrow().pages(), source);
+        let first = picked.first().copied();
+        self.selection.borrow_mut().set(picked);
+        self.set_focus(first, false);
+        self.selection_changed();
+        if let Some(first) = first {
+            self.scroll_to(first);
+        }
     }
 
     /// Marks the selected rows and words the footer.

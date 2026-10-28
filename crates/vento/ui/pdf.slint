@@ -34,8 +34,10 @@ export struct PdfPage {
     broken: bool,
 }
 
-// One file in the toolbar's legend: its letter, its name and its tint.
-export struct PdfSourceTag { letter: string, name: string, tint: int }
+// One file in the files sidebar: its letter, its name, its tint, how many
+// pages it has in the list ("3 pages") and its source index. One file alone
+// has no letter.
+export struct PdfSourceTag { letter: string, name: string, tint: int, pages: string, source: int }
 
 // A cut (✂︎) in cut mode: the middle of its gap and the top of its row, in the
 // grid's content.
@@ -50,24 +52,19 @@ global PdfTints {
     }
 }
 
-// A toolbar button: a label (or symbol) on a flat chip, dimmed while it
-// cannot be used.
+// A small button: a label (or symbol) on a flat chip, dimmed while it
+// cannot be used (the Split popover's − and +).
 component ToolButton inherits Rectangle {
     in property <string> label;
     // Names the button for assistive technology when `label` is a symbol.
     in property <string> name: self.label;
     in property <bool> enabled: true;
-    // Its popover is open.
-    in property <bool> on;
-    // A symbol reads at a larger size than a word.
-    in property <length> label-size: 11px;
     callback clicked();
 
     height: 24px;
     min-width: 24px;
     border-radius: 6px;
-    background: self.on ? Theme.accent
-        : self.enabled && touch.pressed ? Theme.hover
+    background: self.enabled && touch.pressed ? Theme.hover
         : self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
     opacity: self.enabled ? 1 : 0.4;
     accessible-role: button;
@@ -85,10 +82,149 @@ component ToolButton inherits Rectangle {
 
         Text {
             text: root.label;
-            font-size: root.label-size;
-            color: root.on ? white : Theme.text;
+            font-size: 11px;
+            color: Theme.text;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A toolbar tool: an icon over a short label, dimmed while it cannot be
+// used.
+component IconTool inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    // Names the tool for assistive technology when the label is short.
+    in property <string> name: self.label;
+    in property <bool> enabled: true;
+    // Its popover is open, or what it shows is shown.
+    in property <bool> on;
+    // It removes something (Delete).
+    in property <bool> danger;
+    callback clicked();
+
+    min-width: max(46px, tool-label.preferred-width + 14px);
+    border-radius: 7px;
+    background: self.on ? Theme.accent-soft
+        : self.enabled && touch.pressed ? Theme.hover
+        : self.enabled && touch.has-hover ? Theme.surface : transparent;
+    opacity: self.enabled ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: self.name;
+    accessible-enabled: self.enabled;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+
+        HorizontalLayout {
+            alignment: center;
+
+            Image {
+                width: 18px;
+                height: 18px;
+                source: root.icon;
+                colorize: root.on ? Theme.accent : root.danger ? Theme.danger : Theme.text;
+            }
+        }
+
+        tool-label := Text {
+            text: root.label;
+            font-size: 10.5px;
+            color: root.on ? Theme.accent : Theme.muted;
+            horizontal-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A file in the sidebar: its letter on its tint (a PDF icon when it is
+// alone), its name and its page count. A click selects its pages.
+component FileRow inherits Rectangle {
+    in property <PdfSourceTag> tag;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 42px;
+    border-radius: 7px;
+    background: self.enabled && touch.pressed ? Theme.hover
+        : self.enabled && touch.has-hover ? Theme.surface : transparent;
+    accessible-role: button;
+    accessible-label: root.tag.name;
+    accessible-description: root.tag.pages;
+    accessible-action-default => {
+        if (self.enabled) {
+            self.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 9px;
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 1 : 0;
+            alignment: center;
+
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 5px;
+                background: root.tag.letter == "" ? transparent : PdfTints.of(root.tag.tint);
+
+                if root.tag.letter != "": Text {
+                    text: root.tag.letter;
+                    font-size: 10px;
+                    font-weight: 700;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if root.tag.letter == "": Image {
+                    width: 18px;
+                    height: 18px;
+                    source: @image-url("icons/file-type-pdf.svg");
+                    colorize: Theme.muted;
+                }
+            }
+        }
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 0 : 1;
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+
+            LineText {
+                text: root.tag.name;
+                font-size: 12px;
+                color: Theme.text;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            }
+
+            Text {
+                text: root.tag.pages;
+                font-size: 11px;
+                color: Theme.muted;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            }
         }
     }
 
@@ -540,6 +676,9 @@ export component PdfWindow inherits Window {
     in property <[PdfPage]> pages;
     // The files, shown in the toolbar when there are several.
     in property <[PdfSourceTag]> legend;
+    // The files sidebar shows (its button in the toolbar flips it; Rust
+    // opens it when there come to be several files).
+    in-out property <bool> files-shown;
     // The footer's text: the selection, or a hint.
     in property <string> footer;
     // Whether any page is selected: the tools that act on a selection work.
@@ -645,6 +784,8 @@ export component PdfWindow inherits Window {
     // The toolbar and the footer.
     callback add-pdf();
     callback select-all();
+    // A file's row in the sidebar: its source index.
+    callback source-clicked(int);
     callback delete-pages();
     callback extract();
     callback to-images();
@@ -690,137 +831,117 @@ export component PdfWindow inherits Window {
         VerticalLayout {
             // The toolbar.
             Rectangle {
-                height: 40px;
+                height: 56px;
 
                 HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 12px;
-                    spacing: 6px;
-                    alignment: start;
+                    padding: 6px;
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 2px;
 
-                    ToolButton {
-                        layout-order: Theme.rtl ? 20 : 0;
-                        y: (parent.height - self.height) / 2;
-                        label: @tr("＋ Add PDF");
+                    IconTool {
+                        layout-order: Theme.rtl ? 11 : 0;
+                        icon: Theme.rtl ? @image-url("icons/layout-sidebar-right.svg") : @image-url("icons/layout-sidebar.svg");
+                        label: @tr("Files");
+                        name: root.files-shown ? @tr("Hide files") : @tr("Show files");
+                        on: root.files-shown;
+                        clicked => { root.files-shown = !root.files-shown; }
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 10 : 1;
+                        alignment: center;
+                        padding-left: 4px;
+                        padding-right: 4px;
+
+                        ToolGap { }
+                    }
+
+                    IconTool {
+                        layout-order: Theme.rtl ? 9 : 2;
+                        icon: @image-url("icons/plus.svg");
+                        label: @tr("PDF window" => "Add");
                         name: @tr("Add PDF");
                         enabled: !root.locked;
                         clicked => { root.add-pdf(); }
                     }
 
-                    ToolButton {
-                        layout-order: Theme.rtl ? 19 : 1;
-                        y: (parent.height - self.height) / 2;
+                    IconTool {
+                        layout-order: Theme.rtl ? 8 : 3;
+                        icon: @image-url("icons/square-check.svg");
                         label: @tr("Select all");
                         enabled: root.has-pages && !root.locked;
                         clicked => { root.select-all(); }
                     }
 
                     VerticalLayout {
-                        layout-order: Theme.rtl ? 18 : 2;
+                        layout-order: Theme.rtl ? 7 : 4;
                         alignment: center;
+                        padding-left: 4px;
+                        padding-right: 4px;
 
                         ToolGap { }
                     }
 
-                    ToolButton {
-                        layout-order: Theme.rtl ? 17 : 3;
-                        y: (parent.height - self.height) / 2;
-                        label: @tr("Delete");
-                        enabled: root.has-selection && !root.locked;
-                        clicked => { root.delete-pages(); }
-                    }
-
-                    ToolButton {
-                        layout-order: Theme.rtl ? 16 : 4;
-                        y: (parent.height - self.height) / 2;
-                        label: @tr("PDF pages" => "Extract");
-                        enabled: root.has-selection && !root.locked;
-                        clicked => { root.extract(); }
-                    }
-
-                    images-button := ToolButton {
-                        layout-order: Theme.rtl ? 15 : 5;
-                        y: (parent.height - self.height) / 2;
-                        label: @tr("To images");
-                        enabled: root.has-pages && !root.locked;
-                        on: root.images-open;
-                        clicked => { root.to-images(); }
-                    }
-
-                    split-button := ToolButton {
-                        layout-order: Theme.rtl ? 14 : 6;
-                        y: (parent.height - self.height) / 2;
-                        label: @tr("Split…");
-                        enabled: root.has-pages && !root.locked;
-                        on: root.split-open;
-                        clicked => { root.split(); }
-                    }
-
-                    ToolButton {
-                        layout-order: Theme.rtl ? 13 : 7;
-                        y: (parent.height - self.height) / 2;
-                        label: "↺";
-                        label-size: 15px;
+                    IconTool {
+                        layout-order: Theme.rtl ? 6 : 5;
+                        icon: @image-url("icons/rotate.svg");
+                        label: @tr("Rotate" => "Left");
                         name: @tr("Rotate left");
                         enabled: root.has-selection && !root.locked;
                         clicked => { root.rotate(false); }
                     }
 
-                    ToolButton {
-                        layout-order: Theme.rtl ? 12 : 8;
-                        y: (parent.height - self.height) / 2;
-                        label: "↻";
-                        label-size: 15px;
+                    IconTool {
+                        layout-order: Theme.rtl ? 5 : 6;
+                        icon: @image-url("icons/rotate-clockwise.svg");
+                        label: @tr("Rotate" => "Right");
                         name: @tr("Rotate right");
                         enabled: root.has-selection && !root.locked;
                         clicked => { root.rotate(true); }
                     }
 
-                    // Pushes the legend to the far end.
+                    IconTool {
+                        layout-order: Theme.rtl ? 4 : 7;
+                        icon: @image-url("icons/trash.svg");
+                        label: @tr("Delete");
+                        danger: true;
+                        enabled: root.has-selection && !root.locked;
+                        clicked => { root.delete-pages(); }
+                    }
+
+                    // Pushes the tools that write files to the far end.
                     Rectangle {
-                        layout-order: Theme.rtl ? 11 : 9;
+                        layout-order: Theme.rtl ? 3 : 8;
                         horizontal-stretch: 1;
                     }
 
-                    HorizontalLayout {
-                        layout-order: Theme.rtl ? 0 : 10;
-                        spacing: 10px;
-                        horizontal-stretch: 0;
+                    IconTool {
+                        layout-order: Theme.rtl ? 2 : 9;
+                        icon: @image-url("icons/scissors.svg");
+                        label: @tr("PDF pages" => "Extract");
+                        enabled: root.has-selection && !root.locked;
+                        clicked => { root.extract(); }
+                    }
 
-                        for tag[i] in root.legend: HorizontalLayout {
-                            layout-order: Theme.rtl ? root.legend.length - i : i;
-                            spacing: 4px;
+                    images-button := IconTool {
+                        layout-order: Theme.rtl ? 1 : 10;
+                        icon: @image-url("icons/photo.svg");
+                        label: @tr("Images");
+                        name: @tr("To images");
+                        enabled: root.has-pages && !root.locked;
+                        on: root.images-open;
+                        clicked => { root.to-images(); }
+                    }
 
-                            VerticalLayout {
-                                layout-order: Theme.rtl ? 2 : 0;
-                                alignment: center;
-
-                                Rectangle {
-                                    width: tag-letter.preferred-width + 8px;
-                                    height: 14px;
-                                    border-radius: 3px;
-                                    background: PdfTints.of(tag.tint);
-
-                                    tag-letter := Text {
-                                        text: tag.letter;
-                                        font-size: 9px;
-                                        font-weight: 700;
-                                        color: white;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-
-                            LineText {
-                                layout-order: Theme.rtl ? 1 : 0;
-                                max-width: 120px;
-                                text: tag.name;
-                                font-size: 10px;
-                                color: Theme.muted;
-                                vertical-alignment: center;
-                            }
-                        }
+                    split-button := IconTool {
+                        layout-order: Theme.rtl ? 0 : 11;
+                        icon: @image-url("icons/arrows-split-2.svg");
+                        label: @tr("Split");
+                        name: @tr("Split…");
+                        enabled: root.has-pages && !root.locked;
+                        on: root.split-open;
+                        clicked => { root.split(); }
                     }
                 }
 
@@ -831,170 +952,219 @@ export component PdfWindow inherits Window {
                 }
             }
 
-            // The page grid, and the large view over it.
-            area := Rectangle {
+            // The files sidebar, and the page grid beside it.
+            HorizontalLayout {
                 vertical-stretch: 1;
 
-                flick := Flickable {
-                    // A mouse drag moves pages, not the grid; the wheel and
-                    // the trackpad still scroll.
-                    mouse-drag-pan-enabled: false;
-                    content-width: self.width;
-                    content-height: max(self.height,
-                        2 * root.pad + root.rows * root.cell-height + max(0, root.rows - 1) * root.gap);
+                Rectangle {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    width: root.files-shown ? 200px : 0px;
+                    visible: root.files-shown;
+                    background: Theme.card;
+                    clip: true;
 
-                    changed width => { root.grid-changed(); }
-                    changed height => { root.grid-changed(); }
-                    changed content-y => { root.grid-changed(); }
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 2px;
+                        alignment: start;
 
-                    // Behind the pages: a click on no page.
-                    TouchArea {
-                        width: flick.content-width;
-                        height: flick.content-height;
-                        clicked => { root.background-clicked(); }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+
+                            Text {
+                                height: 22px;
+                                text: @tr("Files");
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: Theme.muted;
+                                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        for tag in root.legend: FileRow {
+                            tag: tag;
+                            enabled: !root.cut-mode;
+                            clicked => { root.source-clicked(tag.source); }
+                        }
                     }
 
-                    for page[i] in root.pages: PageCell {
-                        x: root.grid-left + root.pad
-                            + (Theme.rtl ? root.columns - 1 - Math.mod(i, root.columns) : Math.mod(i, root.columns))
-                            * (root.cell-width + root.gap);
-                        y: root.pad + Math.floor(i / root.columns) * (root.cell-height + root.gap);
+                    // The hairline between the sidebar and the pages.
+                    Rectangle {
+                        x: Theme.rtl ? 0px : parent.width - 1px;
+                        width: 1px;
+                        background: Theme.separator;
+                    }
+                }
+
+                // The page grid, and the large view over it.
+                area := Rectangle {
+                    layout-order: Theme.rtl ? 0 : 1;
+                    horizontal-stretch: 1;
+
+                    flick := Flickable {
+                        // A mouse drag moves pages, not the grid; the wheel and
+                        // the trackpad still scroll.
+                        mouse-drag-pan-enabled: false;
+                        content-width: self.width;
+                        content-height: max(self.height,
+                            2 * root.pad + root.rows * root.cell-height + max(0, root.rows - 1) * root.gap);
+
+                        changed width => { root.grid-changed(); }
+                        changed height => { root.grid-changed(); }
+                        changed content-y => { root.grid-changed(); }
+
+                        // Behind the pages: a click on no page.
+                        TouchArea {
+                            width: flick.content-width;
+                            height: flick.content-height;
+                            clicked => { root.background-clicked(); }
+                        }
+
+                        for page[i] in root.pages: PageCell {
+                            x: root.grid-left + root.pad
+                                + (Theme.rtl ? root.columns - 1 - Math.mod(i, root.columns) : Math.mod(i, root.columns))
+                                * (root.cell-width + root.gap);
+                            y: root.pad + Math.floor(i / root.columns) * (root.cell-height + root.gap);
+                            width: root.cell-width;
+                            height: root.cell-height;
+                            page: page;
+                            plain: root.cut-mode;
+                            focused: root.show-focus && root.focus-index == i && !root.cut-mode;
+                            clicked(command, shift) => { root.page-clicked(i, command, shift); }
+                            double-clicked => { root.page-opened(i); }
+                            moved(left, dx, dy, x, y) => {
+                                root.page-moved(i, left, dx, dy, self.x + x, self.y + y + flick.content-y);
+                            }
+                            released(left) => { root.page-released(i, left); }
+                            cancelled => { root.page-cancelled(i); }
+                        }
+
+                        // Where the dragged pages would land, over the page
+                        // box's height.
+                        if root.dragging: Rectangle {
+                            x: root.bar-x - 1.5px;
+                            y: root.bar-y + 6px;
+                            width: 3px;
+                            height: root.cell-height - 26px;
+                            border-radius: 1.5px;
+                            background: Theme.accent;
+                            drop-shadow-blur: 8px;
+                            drop-shadow-color: Theme.accent;
+                        }
+
+                        // Cut mode: every click goes to Rust, which finds the
+                        // gap under it; pages cannot be clicked or dragged.
+                        if root.cut-mode: TouchArea {
+                            width: flick.content-width;
+                            height: flick.content-height;
+                            mouse-cursor: pointer;
+                            clicked => { root.cut-clicked(self.mouse-x, self.mouse-y); }
+                        }
+
+                        for mark in root.cut-marks: Rectangle {
+                            x: mark.x - 1px;
+                            y: mark.y + 6px;
+                            width: 2px;
+                            height: root.cell-height - 26px;
+                            background: Theme.accent;
+
+                            Image {
+                                x: (parent.width - self.width) / 2;
+                                y: -18px;
+                                width: 14px;
+                                height: 14px;
+                                source: @image-url("icons/scissors.svg");
+                                colorize: Theme.accent;
+                            }
+                        }
+                    }
+
+                    if root.dragging: LiftedPage {
+                        x: root.lifted-x;
+                        y: root.lifted-y;
                         width: root.cell-width;
                         height: root.cell-height;
-                        page: page;
-                        plain: root.cut-mode;
-                        focused: root.show-focus && root.focus-index == i && !root.cut-mode;
-                        clicked(command, shift) => { root.page-clicked(i, command, shift); }
-                        double-clicked => { root.page-opened(i); }
-                        moved(left, dx, dy, x, y) => {
-                            root.page-moved(i, left, dx, dy, self.x + x, self.y + y + flick.content-y);
-                        }
-                        released(left) => { root.page-released(i, left); }
-                        cancelled => { root.page-cancelled(i); }
+                        page: root.lifted;
+                        count: root.lifted-count;
                     }
 
-                    // Where the dragged pages would land, over the page
-                    // box's height.
-                    if root.dragging: Rectangle {
-                        x: root.bar-x - 1.5px;
-                        y: root.bar-y + 6px;
-                        width: 3px;
-                        height: root.cell-height - 26px;
-                        border-radius: 1.5px;
-                        background: Theme.accent;
-                        drop-shadow-blur: 8px;
-                        drop-shadow-color: Theme.accent;
-                    }
+                    if root.banner-shown: Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: parent.height - self.height - 14px;
+                        width: banner-row.preferred-width;
+                        height: 36px;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: #ffffff26;
+                        background: #1d1d21f2;
 
-                    // Cut mode: every click goes to Rust, which finds the
-                    // gap under it; pages cannot be clicked or dragged.
-                    if root.cut-mode: TouchArea {
-                        width: flick.content-width;
-                        height: flick.content-height;
-                        mouse-cursor: pointer;
-                        clicked => { root.cut-clicked(self.mouse-x, self.mouse-y); }
-                    }
+                        // Clicks on the banner stay with it, not the pages
+                        // under it.
+                        TouchArea { }
 
-                    for mark in root.cut-marks: Rectangle {
-                        x: mark.x - 1px;
-                        y: mark.y + 6px;
-                        width: 2px;
-                        height: root.cell-height - 26px;
-                        background: Theme.accent;
+                        banner-row := HorizontalLayout {
+                            padding-left: Theme.rtl ? 5px : 14px;
+                            padding-right: Theme.rtl ? 14px : 5px;
+                            spacing: 12px;
 
-                        Image {
-                            x: (parent.width - self.width) / 2;
-                            y: -18px;
-                            width: 14px;
-                            height: 14px;
-                            source: @image-url("icons/scissors.svg");
-                            colorize: Theme.accent;
-                        }
-                    }
-                }
-
-                if root.dragging: LiftedPage {
-                    x: root.lifted-x;
-                    y: root.lifted-y;
-                    width: root.cell-width;
-                    height: root.cell-height;
-                    page: root.lifted;
-                    count: root.lifted-count;
-                }
-
-                if root.banner-shown: Rectangle {
-                    x: (parent.width - self.width) / 2;
-                    y: parent.height - self.height - 14px;
-                    width: banner-row.preferred-width;
-                    height: 36px;
-                    border-radius: 10px;
-                    border-width: 1px;
-                    border-color: #ffffff26;
-                    background: #1d1d21f2;
-
-                    // Clicks on the banner stay with it, not the pages
-                    // under it.
-                    TouchArea { }
-
-                    banner-row := HorizontalLayout {
-                        padding-left: Theme.rtl ? 5px : 14px;
-                        padding-right: Theme.rtl ? 14px : 5px;
-                        spacing: 12px;
-
-                        Text {
-                            layout-order: Theme.rtl ? 1 : 0;
-                            text: root.banner;
-                            color: white;
-                            font-size: 12px;
-                            vertical-alignment: center;
-                        }
-
-                        Rectangle {
-                            layout-order: Theme.rtl ? 0 : 1;
-                            width: undo-text.preferred-width + 22px;
-                            accessible-role: button;
-                            accessible-label: root.banner-button;
-                            accessible-action-default => { root.banner-clicked(); }
+                            Text {
+                                layout-order: Theme.rtl ? 1 : 0;
+                                text: root.banner;
+                                color: white;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
 
                             Rectangle {
-                                y: 5px;
-                                height: parent.height - 10px;
-                                border-radius: 7px;
-                                background: undo-touch.pressed ? #cc5414 : (undo-touch.has-hover ? #ff8040 : #ff6a1a);
+                                layout-order: Theme.rtl ? 0 : 1;
+                                width: undo-text.preferred-width + 22px;
+                                accessible-role: button;
+                                accessible-label: root.banner-button;
+                                accessible-action-default => { root.banner-clicked(); }
 
-                                undo-text := Text {
-                                    text: root.banner-button;
-                                    color: white;
-                                    font-size: 12px;
-                                    font-weight: 600;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
+                                Rectangle {
+                                    y: 5px;
+                                    height: parent.height - 10px;
+                                    border-radius: 7px;
+                                    background: undo-touch.pressed ? #cc5414 : (undo-touch.has-hover ? #ff8040 : #ff6a1a);
+
+                                    undo-text := Text {
+                                        text: root.banner-button;
+                                        color: white;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                undo-touch := TouchArea {
+                                    clicked => { root.banner-clicked(); }
                                 }
                             }
+                        }
+                    }
 
-                            undo-touch := TouchArea {
-                                clicked => { root.banner-clicked(); }
-                            }
+                    if root.large-open: Rectangle {
+                        background: Theme.bg;
+
+                        Image {
+                            x: 16px;
+                            y: 16px;
+                            width: parent.width - 32px;
+                            height: parent.height - 32px;
+                            source: root.large-image;
+                            image-fit: contain;
+                        }
+
+                        TouchArea {
+                            clicked => { root.large-closed(); }
                         }
                     }
                 }
 
-                if root.large-open: Rectangle {
-                    background: Theme.bg;
-
-                    Image {
-                        x: 16px;
-                        y: 16px;
-                        width: parent.width - 32px;
-                        height: parent.height - 32px;
-                        source: root.large-image;
-                        image-fit: contain;
-                    }
-
-                    TouchArea {
-                        clicked => { root.large-closed(); }
-                    }
-                }
             }
 
             // The footer.
@@ -1079,7 +1249,7 @@ export component PdfWindow inherits Window {
             x: max(8px, min(root.width - self.width - 8px,
                 Theme.rtl ? split-button.absolute-position.x + split-button.width - self.width
                     : split-button.absolute-position.x));
-            y: 38px;
+            y: 52px;
 
             split-col := VerticalLayout {
                 padding: 10px;
@@ -1212,7 +1382,7 @@ export component PdfWindow inherits Window {
             x: max(8px, min(root.width - self.width - 8px,
                 Theme.rtl ? images-button.absolute-position.x + images-button.width - self.width
                     : images-button.absolute-position.x));
-            y: 38px;
+            y: 52px;
 
             images-col := VerticalLayout {
                 padding: 10px;
