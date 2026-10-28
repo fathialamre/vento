@@ -52,7 +52,7 @@ global PdfTints {
     }
 }
 
-// A small button: a label (or symbol) on a flat chip, dimmed while it
+// A small button: a symbol on a raised chip, dimmed while it
 // cannot be used (the Split popover's − and +).
 component ToolButton inherits Rectangle {
     in property <string> label;
@@ -62,10 +62,13 @@ component ToolButton inherits Rectangle {
     callback clicked();
 
     height: 24px;
-    min-width: 24px;
+    min-width: 28px;
     border-radius: 6px;
+    // Raised off the accent-tinted row it sits in, so it reads as a button.
+    border-width: 1px;
+    border-color: Theme.card-border;
     background: self.enabled && touch.pressed ? Theme.hover
-        : self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
+        : self.enabled && touch.has-hover ? Theme.surface : Theme.selected;
     opacity: self.enabled ? 1 : 0.4;
     accessible-role: button;
     accessible-label: self.name;
@@ -82,7 +85,8 @@ component ToolButton inherits Rectangle {
 
         Text {
             text: root.label;
-            font-size: 11px;
+            font-size: 15px;
+            font-weight: 600;
             color: Theme.text;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -141,8 +145,8 @@ component IconTool inherits Rectangle {
 
         tool-label := Text {
             text: root.label;
-            font-size: 10.5px;
-            color: root.on ? Theme.accent : Theme.muted;
+            font-size: 11px;
+            color: root.on ? Theme.accent : Theme.text;
             horizontal-alignment: center;
         }
     }
@@ -519,7 +523,7 @@ component ChoicePair inherits Rectangle {
                     text: second ? root.second : root.first;
                     font-size: 12px;
                     font-weight: root.second-on == second ? 600 : 400;
-                    color: root.second-on == second ? Theme.text : Theme.muted;
+                    color: Theme.text;
                     horizontal-alignment: center;
                 }
 
@@ -1457,8 +1461,6 @@ export component PdfWindow inherits Window {
 
                         ToolButton {
                             layout-order: Theme.rtl ? 1 : 0;
-                            height: 22px;
-                            min-width: 24px;
                             label: "−";
                             name: @tr("Fewer pages");
                             enabled: root.split-can-less;
@@ -1467,8 +1469,6 @@ export component PdfWindow inherits Window {
 
                         ToolButton {
                             layout-order: Theme.rtl ? 0 : 1;
-                            height: 22px;
-                            min-width: 24px;
                             label: "+";
                             name: @tr("More pages");
                             enabled: root.split-can-more;
