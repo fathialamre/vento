@@ -928,6 +928,15 @@ export component PdfWindow inherits Window {
     in property <length> bar-y;
     // The banner over the grid, with its button: Undo after pages were
     // deleted, Show in Finder after a write.
+    // What a write made, said in the footer for a while ("Saved a.pdf"),
+    // with Undo while the write can still be undone. `note-left` runs from
+    // 1 to 0 as the bar under it shortens; Rust pauses it while
+    // `note-hovered`.
+    in property <bool> note-shown;
+    in property <string> note-text;
+    in property <bool> note-can-undo;
+    in property <float> note-left;
+    out property <bool> note-hovered: note-touch.has-hover;
     in property <string> banner;
     in property <string> banner-button;
     in property <bool> banner-shown;
@@ -953,6 +962,8 @@ export component PdfWindow inherits Window {
     callback page-cancelled(int);
     // The banner's button.
     callback banner-clicked();
+    callback note-reveal();
+    callback note-undo();
     // A click in the grid but on no page.
     callback background-clicked();
     // A click on the large view.
@@ -991,6 +1002,11 @@ export component PdfWindow inherits Window {
     callback sheet-save();
     callback sheet-discard();
     callback sheet-cancel();
+
+    // The colour of a write that went well.
+    property <color> ok: Theme.dark ? #3fb96f : #1f9d55;
+    // The footer says what a write made.
+    property <bool> noting: root.note-shown && !root.progress-shown && !root.cut-mode;
 
     // The tools are held: a write runs, cut mode, or the closing question.
     property <bool> locked: root.busy || root.cut-mode || root.sheet-open;
@@ -1348,70 +1364,161 @@ export component PdfWindow inherits Window {
             // The footer.
             Rectangle {
                 height: 46px;
+                background: root.noting ? root.ok.transparentize(0.89) : transparent;
 
                 Rectangle {
                     y: 0;
                     height: 1px;
-                    background: Theme.separator;
+                    background: root.noting ? root.ok.transparentize(0.7) : Theme.separator;
                 }
 
-                HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 12px;
-                    spacing: 8px;
+                // Its hover pauses the note; clicks on nothing in it are
+                // dropped.
+                note-touch := TouchArea {
+                    if !root.noting: HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
 
-                    LineText {
-                        layout-order: Theme.rtl ? 4 : 0;
-                        horizontal-stretch: 1;
-                        horizontal-alignment: Theme.rtl ? right : left;
-                        text: root.progress-shown ? root.progress-text : root.footer;
-                        font-size: 11px;
-                        color: Theme.muted;
-                        vertical-alignment: center;
-                    }
-
-                    if root.progress-shown: VerticalLayout {
-                        layout-order: Theme.rtl ? 3 : 1;
-                        alignment: center;
-
-                        JobBar {
-                            fraction: root.progress;
-                            measured: root.progress-measured;
+                        LineText {
+                            layout-order: Theme.rtl ? 4 : 0;
+                            horizontal-stretch: 1;
+                            horizontal-alignment: Theme.rtl ? right : left;
+                            text: root.progress-shown ? root.progress-text : root.footer;
+                            font-size: 11px;
+                            color: Theme.muted;
+                            vertical-alignment: center;
                         }
-                    }
 
-                    if root.progress-shown || root.cut-mode: VerticalLayout {
-                        layout-order: Theme.rtl ? 2 : 2;
-                        alignment: center;
+                        if root.progress-shown: VerticalLayout {
+                            layout-order: Theme.rtl ? 3 : 1;
+                            alignment: center;
 
-                        PlainButton {
-                            label: @tr("Cancel");
-                            clicked => {
-                                if (root.progress-shown) {
-                                    root.cancel-job();
-                                } else {
-                                    root.cut-cancel();
+                            JobBar {
+                                fraction: root.progress;
+                                measured: root.progress-measured;
+                            }
+                        }
+
+                        if root.progress-shown || root.cut-mode: VerticalLayout {
+                            layout-order: Theme.rtl ? 2 : 2;
+                            alignment: center;
+
+                            PlainButton {
+                                label: @tr("Cancel");
+                                clicked => {
+                                    if (root.progress-shown) {
+                                        root.cancel-job();
+                                    } else {
+                                        root.cut-cancel();
+                                    }
+                                }
+                            }
+                        }
+
+                        if !root.progress-shown: VerticalLayout {
+                            layout-order: Theme.rtl ? 1 : 3;
+                            alignment: center;
+
+                            PrimaryButton {
+                                label: root.cut-mode ? root.cut-button : @tr("Save as new PDF");
+                                enabled: root.cut-mode ? !root.busy : root.can-save;
+                                clicked => {
+                                    if (root.cut-mode) {
+                                        root.cut-confirmed();
+                                    } else {
+                                        root.save();
+                                    }
                                 }
                             }
                         }
                     }
 
-                    if !root.progress-shown: VerticalLayout {
-                        layout-order: Theme.rtl ? 1 : 3;
-                        alignment: center;
+                    if root.noting: HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 10px;
 
-                        PrimaryButton {
-                            label: root.cut-mode ? root.cut-button : @tr("Save as new PDF");
-                            enabled: root.cut-mode ? !root.busy : root.can-save;
-                            clicked => {
-                                if (root.cut-mode) {
-                                    root.cut-confirmed();
-                                } else {
-                                    root.save();
+                        VerticalLayout {
+                            layout-order: Theme.rtl ? 3 : 0;
+                            alignment: center;
+
+                            Rectangle {
+                                width: 20px;
+                                height: 20px;
+                                border-radius: 10px;
+                                background: root.ok;
+
+                                Image {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    width: 12px;
+                                    height: 12px;
+                                    source: @image-url("icons/check.svg");
+                                    colorize: white;
                                 }
                             }
                         }
+
+                        LineText {
+                            layout-order: Theme.rtl ? 2 : 1;
+                            horizontal-stretch: 1;
+                            horizontal-alignment: Theme.rtl ? right : left;
+                            text: root.note-text;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                        }
+
+                        if root.note-can-undo: VerticalLayout {
+                            layout-order: Theme.rtl ? 1 : 2;
+                            alignment: center;
+
+                            Rectangle {
+                                height: 28px;
+                                width: undo-label.preferred-width + 16px;
+                                border-radius: 7px;
+                                background: undo-link.has-hover ? root.ok.transparentize(0.85) : transparent;
+                                accessible-role: button;
+                                accessible-label: undo-label.text;
+                                accessible-action-default => { root.note-undo(); }
+
+                                undo-label := Text {
+                                    text: @tr("Undo");
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    color: Theme.accent;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                undo-link := TouchArea {
+                                    clicked => { root.note-undo(); }
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            layout-order: Theme.rtl ? 0 : 3;
+                            alignment: center;
+
+                            PlainButton {
+                                height: 28px;
+                                label: @tr("Show in Finder");
+                                clicked => { root.note-reveal(); }
+                            }
+                        }
                     }
+                }
+
+                // How long the note has left, shortening towards the start.
+                if root.noting: Rectangle {
+                    x: Theme.rtl ? parent.width - self.width : 0px;
+                    y: parent.height - self.height;
+                    width: parent.width * root.note-left;
+                    height: 3px;
+                    background: root.ok;
                 }
             }
         }

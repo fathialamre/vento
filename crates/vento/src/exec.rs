@@ -414,6 +414,9 @@ pub struct Executor {
     settings: Rc<RefCell<Settings>>,
     toast: Rc<Toaster>,
     last: RefCell<Option<Last>>,
+    /// Counts the operations that became `last`: names one for
+    /// [`undo_if_last`](Self::undo_if_last).
+    last_serial: Cell<u64>,
     /// Folders recently moved or copied to; saved after each addition.
     recent: Rc<RefCell<RecentDestinations>>,
     /// Whether a move, copy, archive, convert, PDF write or undo is running on
@@ -452,6 +455,7 @@ impl Executor {
             settings,
             toast,
             last: RefCell::new(None),
+            last_serial: Cell::new(0),
             recent,
             busy: Cell::new(false),
             running: RefCell::new(None),
@@ -834,15 +838,38 @@ impl Executor {
     /// Keeps `op` as the one thing to undo and toasts `text` with an Undo
     /// button.
     fn record_undo(&self, op: LastOp, text: String, at: Point) {
+        self.remember_last(op, at);
+        self.toast_undo(&text, at);
+    }
+
+    /// Makes `op` the operation Undo undoes, without a toast.
+    fn remember_last(&self, op: LastOp, at: Point) {
+        self.last_serial.set(self.last_serial.get() + 1);
         *self.last.borrow_mut() = Some(Last { op, at });
         self.notify_undo_changed();
+    }
+
+    /// Toasts `text` with Undo for the last operation.
+    fn toast_undo(&self, text: &str, at: Point) {
         let this = self.this.clone();
         let on_undo: Box<dyn Fn()> = Box::new(move || {
             if let Some(executor) = this.upgrade() {
                 executor.undo_last();
             }
         });
-        self.toast.show(&text, Some(on_undo), at);
+        self.toast.show(text, Some(on_undo), at);
+    }
+
+    /// The serial of the operation Undo would undo now, if any.
+    pub fn last_serial(&self) -> Option<u64> {
+        self.last.borrow().is_some().then(|| self.last_serial.get())
+    }
+
+    /// Undoes the last operation only if it is still the one `serial`
+    /// names (another action, or an undo, may have come since). Returns
+    /// whether it started.
+    pub fn undo_if_last(&self, serial: u64) -> bool {
+        self.last_serial() == Some(serial) && self.undo_last()
     }
 
     /// Puts `dest` first in the recent list and saves it. A failed save is

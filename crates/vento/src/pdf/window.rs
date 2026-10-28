@@ -57,7 +57,7 @@ use crate::settings_window::centred_on;
 use crate::toast::Toaster;
 use crate::ui::{PdfPage, PdfSourceTag, PdfWindow, Theme};
 use edit::Drag;
-use write::{BannerAction, Job, Popover, SplitChoice};
+use write::{Job, Note, Popover, SplitChoice};
 
 /// A grid cell, in logical points: the page box plus the number under it
 /// (matches `PageCell` in `pdf.slint`: 6 pt inset, 20 pt label).
@@ -145,9 +145,11 @@ pub struct PdfView {
     /// A drag of pages, and the timer that scrolls the grid during it.
     drag: RefCell<Drag>,
     scroll_timer: Timer,
-    /// Hides the banner, and what its button does.
+    /// Hides the banner (Undo after a delete).
     banner_timer: Timer,
-    banner_action: RefCell<BannerAction>,
+    /// What the footer says a write made, and the timer that runs it down.
+    note: RefCell<Option<Note>>,
+    note_timer: Timer,
     /// The write running, and the timer that shows its progress.
     job: RefCell<Option<Job>>,
     job_timer: Timer,
@@ -228,7 +230,8 @@ impl PdfView {
             drag: RefCell::new(Drag::Idle),
             scroll_timer: Timer::default(),
             banner_timer: Timer::default(),
-            banner_action: RefCell::new(BannerAction::Undo),
+            note: RefCell::new(None),
+            note_timer: Timer::default(),
             job: RefCell::new(None),
             job_timer: Timer::default(),
             saved: Cell::new(false),
@@ -432,6 +435,14 @@ impl PdfView {
         }
         {
             let with = with.clone();
+            window.on_note_reveal(move || with(&|v| v.note_reveal()));
+        }
+        {
+            let with = with.clone();
+            window.on_note_undo(move || with(&|v| v.note_undo()));
+        }
+        {
+            let with = with.clone();
             window.on_save(move || with(&|v| v.save()));
         }
         {
@@ -596,6 +607,7 @@ impl PdfView {
         }
         self.scroll_timer.stop();
         self.banner_timer.stop();
+        self.note_timer.stop();
         self.drop_timer.stop();
         self.job_timer.stop();
         self.close_timer.stop();

@@ -15,7 +15,6 @@ use vento_core::i18n::{fill, tr};
 use vento_core::pdf::{PageList, PageRef, PdfError, Selection, Source, open_sources};
 use vento_platform::SystemPdf;
 
-use super::write::BannerAction;
 use super::{BANNER_TIME, DROP_BATCH, PdfView, SCROLL_TICK, live_view, spawn_worker};
 use crate::exec::pdf_open_toast_text;
 use crate::pdf::logic::{
@@ -86,7 +85,7 @@ impl PdfView {
             pages.delete(&at);
             selection.clear();
         });
-        self.show_banner(&removed_text(at.len()), BannerAction::Undo);
+        self.show_banner(&removed_text(at.len()));
     }
 
     /// Turns the selected pages a quarter turn; they stay selected.
@@ -129,16 +128,10 @@ impl PdfView {
         });
     }
 
-    /// Shows `text` in the banner over the grid for a while, with a button
-    /// that does `action`.
-    pub(super) fn show_banner(&self, text: &str, action: BannerAction) {
-        let button = match action {
-            BannerAction::Undo => tr("Undo"),
-            BannerAction::Reveal(_) => tr("Show in Finder"),
-        };
-        *self.banner_action.borrow_mut() = action;
+    /// Shows `text` in the banner over the grid for a while, with Undo.
+    pub(super) fn show_banner(&self, text: &str) {
         self.window.set_banner(text.into());
-        self.window.set_banner_button(button.into());
+        self.window.set_banner_button(tr("Undo").into());
         self.window.set_banner_shown(true);
         let this = self.this.clone();
         self.banner_timer

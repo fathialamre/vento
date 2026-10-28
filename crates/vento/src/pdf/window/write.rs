@@ -32,8 +32,12 @@ use crate::ui::PdfCutMark;
 const PROGRESS_DELAY: Duration = Duration::from_millis(500);
 /// How often the footer's progress is read while a write runs.
 const PROGRESS_TICK: Duration = Duration::from_millis(100);
-/// How long the "Saved …" banner shows before the window closes.
+/// How long a save that closes the window waits before closing it.
 const SAVED_TIME: Duration = Duration::from_millis(1500);
+/// How long the footer says what a write made (paused while the pointer is
+/// over it), and how often its bar shortens.
+const NOTE_TIME: Duration = Duration::from_secs(6);
+const NOTE_TICK: Duration = Duration::from_millis(50);
 
 /// A popover under a toolbar button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,12 +74,11 @@ impl SplitChoice {
     }
 }
 
-/// What the banner's button does.
-pub(super) enum BannerAction {
-    /// Undoes the last edit (after pages were deleted).
-    Undo,
-    /// Shows what a write made in Finder.
-    Reveal(PathBuf),
+/// What a write made, said in the footer for a while: what Show in Finder
+/// reveals, and the executor's serial for its Undo.
+pub(super) struct Note {
+    reveal: PathBuf,
+    undo: Option<u64>,
 }
 
 /// A write of this window that is running.
@@ -452,6 +455,8 @@ impl PdfView {
         if pages.is_empty() {
             return false;
         }
+        // A new write: what the last one made is no longer news.
+        self.hide_note();
         let progress = Progress::new();
         *self.job.borrow_mut() = Some(Job {
             progress: progress.clone(),
@@ -469,9 +474,8 @@ impl PdfView {
         let this = self.this.clone();
         let written = pages.clone();
         let done: PdfDone = Box::new(move |outcome| {
-            if let Some(view) = this.upgrade() {
-                view.job_done(outcome, after, &written);
-            }
+            this.upgrade()
+                .is_some_and(|view| view.job_done(outcome, after, &written))
         });
         debug!("PDF window {} writes {job:?}", self.id);
         // No borrow is held here: `done` may run before this returns.
@@ -523,10 +527,11 @@ impl PdfView {
         self.add_waiting_soon();
     }
 
-    /// How a write of the pages `written` ended (the toast has said so
-    /// already). A save marks exactly what it wrote as saved; pages added
-    /// while it ran keep the window open and edited.
-    fn job_done(&self, outcome: &PdfOutcome, after: After, written: &[PageRef]) {
+    /// How a write of the pages `written` ended. A save marks exactly what
+    /// it wrote as saved; pages added while it ran keep the window open and
+    /// edited. Returns whether the footer says what was made (the window
+    /// stays open); otherwise the executor toasts it.
+    fn job_done(&self, outcome: &PdfOutcome, after: After, written: &[PageRef]) -> bool {
         self.job_over();
         let made = (outcome.failed.is_none() && !outcome.cancelled)
             .then(|| outcome.made.first().map(|m| m.output.clone()))
@@ -538,18 +543,18 @@ impl PdfView {
         let Some(made) = made else {
             // Failed or cancelled: the window stays as it was, the closing
             // question included.
-            return;
+            return false;
         };
         if self.closed.get() {
-            return;
+            return false;
         }
         match after {
             After::Save => {
                 self.pages.borrow_mut().mark_saved_as(written);
                 self.retext();
-                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
                 if !self.closes_after_save(written) {
-                    return;
+                    self.show_note(&pdf_toast_text(outcome), made);
+                    return true;
                 }
                 self.saved.set(true);
                 self.update_locks();
@@ -560,13 +565,15 @@ impl PdfView {
                             view.close_now();
                         }
                     });
+                false
             }
             After::SaveAndClose if !self.sheet.get() => {
                 // Cancel came too late to stop the write: the file is made,
                 // so the window is saved, but it stays open as asked.
                 self.pages.borrow_mut().mark_saved_as(written);
                 self.retext();
-                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
+                self.show_note(&pdf_toast_text(outcome), made);
+                true
             }
             After::SaveAndClose => {
                 self.pages.borrow_mut().mark_saved_as(written);
@@ -574,25 +581,27 @@ impl PdfView {
                 self.window.set_sheet_open(false);
                 if self.closes_after_save(written) {
                     self.close_now();
-                    return;
+                    return false;
                 }
                 // Pages came in while it wrote and are not in the file: the
                 // window stays, edited, and whoever asked it to close (only
                 // quitting asks) hears that it did not.
                 self.update_locks();
                 self.retext();
-                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
+                self.show_note(&pdf_toast_text(outcome), made);
                 self.add_waiting_soon();
                 let answered = self.answer.borrow_mut().take();
                 if let Some(answered) = answered {
                     answered(false);
                 }
+                true
             }
             After::Write { cut } => {
                 if cut {
                     self.leave_cut_mode();
                 }
-                self.show_banner(&pdf_toast_text(outcome), BannerAction::Reveal(made));
+                self.show_note(&pdf_toast_text(outcome), made);
+                true
             }
         }
     }
@@ -602,16 +611,67 @@ impl PdfView {
         closes_after_save(written, self.pages.borrow().pages(), self.is_adding())
     }
 
-    /// The banner's button: Undo, or Show in Finder.
-    pub(super) fn banner_clicked(&self) {
-        let reveal = match &*self.banner_action.borrow() {
-            BannerAction::Undo => None,
-            BannerAction::Reveal(path) => Some(path.clone()),
-        };
-        match reveal {
-            Some(path) => self.ctx.platform.reveal_in_finder(&[path]),
-            None => self.undo(),
+    /// Says `text` in the footer for a while, with Show in Finder for
+    /// `made` and Undo for the write the executor just recorded.
+    fn show_note(&self, text: &str, made: PathBuf) {
+        let undo = self.ctx.executor.last_serial();
+        *self.note.borrow_mut() = Some(Note { reveal: made, undo });
+        let window = &self.window;
+        window.set_note_text(text.into());
+        window.set_note_can_undo(undo.is_some());
+        window.set_note_left(1.0);
+        window.set_note_shown(true);
+        let this = self.this.clone();
+        self.note_timer
+            .start(TimerMode::Repeated, NOTE_TICK, move || {
+                if let Some(view) = this.upgrade() {
+                    view.note_tick();
+                }
+            });
+    }
+
+    /// Shortens the footer's bar, unless the pointer rests on the footer;
+    /// at its end the footer is back.
+    fn note_tick(&self) {
+        if self.window.get_note_hovered() {
+            return;
         }
+        let left = self.window.get_note_left()
+            - NOTE_TICK.as_secs_f32() / NOTE_TIME.as_secs_f32();
+        if left <= 0.0 {
+            self.hide_note();
+        } else {
+            self.window.set_note_left(left);
+        }
+    }
+
+    pub(super) fn hide_note(&self) {
+        self.note_timer.stop();
+        self.note.borrow_mut().take();
+        self.window.set_note_shown(false);
+    }
+
+    /// The footer's Show in Finder.
+    pub(super) fn note_reveal(&self) {
+        let reveal = self.note.borrow().as_ref().map(|n| n.reveal.clone());
+        if let Some(path) = reveal {
+            self.ctx.platform.reveal_in_finder(&[path]);
+        }
+    }
+
+    /// The footer's Undo: undoes the write if nothing has been done (or
+    /// undone) since, and says no more about it either way.
+    pub(super) fn note_undo(&self) {
+        let serial = self.note.borrow().as_ref().and_then(|n| n.undo);
+        self.hide_note();
+        if let Some(serial) = serial {
+            self.ctx.executor.undo_if_last(serial);
+        }
+    }
+
+    /// The banner's Undo (after pages were deleted).
+    pub(super) fn banner_clicked(&self) {
+        self.undo();
     }
 
     // Closing.

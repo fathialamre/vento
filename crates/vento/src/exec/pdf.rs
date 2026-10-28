@@ -17,12 +17,14 @@ use vento_platform::{SystemPdf, quarantine_of, set_quarantine};
 use super::archive::cancelled_text;
 use super::{Executor, LastOp, display_name, in_english};
 
-/// Callback told, on the main thread, how a PDF job ended.
-pub type PdfDone = Box<dyn FnOnce(&PdfOutcome)>;
+/// Callback told, on the main thread, how a PDF job ended. It returns
+/// whether it showed the result itself (the PDF window, staying open, says
+/// it in its footer): then there is no toast.
+pub type PdfDone = Box<dyn FnOnce(&PdfOutcome) -> bool>;
 
 /// Toast text for a finished PDF write job. A file (Save, Extract, a single
 /// image) is named; a folder (Split, several images) is named with how many
-/// files it holds. The PDF window's banner says the same.
+/// files it holds. The PDF window's footer says the same.
 pub fn pdf_toast_text(outcome: &PdfOutcome) -> String {
     if outcome.cancelled || matches!(outcome.failed, Some(PdfError::Cancelled)) {
         return cancelled_text();
@@ -156,8 +158,9 @@ fn pdf_work(
 }
 
 impl Executor {
-    /// Writes `job` over the grid `pages` of `sources` on the file worker and
-    /// toasts the result with Undo; `done` then runs on the main thread. The
+    /// Writes `job` over the grid `pages` of `sources` on the file worker,
+    /// then runs `done` on the main thread and toasts the result with Undo
+    /// unless `done` showed it. The
     /// PDF window shows its own progress, so `progress` is only handed to the
     /// job (and cancelled when vento quits). Returns `false`, with a Busy
     /// toast and `done` never called, when another job is running.
@@ -212,7 +215,7 @@ impl Executor {
             .first()
             .and_then(|m| m.output.parent())
             .map(Path::to_path_buf);
-        match dest {
+        let recorded = match dest {
             Some(dest) => {
                 let record = CopyRecord {
                     dest,
@@ -222,14 +225,20 @@ impl Executor {
                         .map(|m| (m.source.clone(), m.output.clone(), m.fingerprint.clone()))
                         .collect(),
                 };
-                self.record_undo(LastOp::Pdf(record), text, at);
+                self.remember_last(LastOp::Pdf(record), at);
+                true
             }
-            None => self.toast.show(&text, None, at),
-        }
+            None => false,
+        };
         // Taken before the call, so `done` may start another job.
         let done = self.pdf_done.borrow_mut().take();
-        if let Some(done) = done {
-            done(&outcome);
+        let shown = done.is_some_and(|done| done(&outcome));
+        if !shown {
+            if recorded {
+                self.toast_undo(&text, at);
+            } else {
+                self.toast.show(&text, None, at);
+            }
         }
     }
 }
