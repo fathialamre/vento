@@ -2,16 +2,16 @@
 // the PDFs dropped on the wheel's PDF cell as a grid of thumbnails, in
 // reading order (right to left in a right-to-left language, page 1 at the
 // top right). With several files each page is tinted by its file and
-// carries the file's letter, with a legend in the toolbar. A toolbar of
+// carries the file's letter, with the files listed in a sidebar. A toolbar of
 // page tools sits above the grid and a footer with the selection and the
 // Save button below it. Double-clicking a page shows it large over the
 // grid. Pages are dragged to a new place (the page lifts, its old place
 // stays faint and an orange bar marks the drop spot); deleting shows a
 // banner with Undo over the grid. Split… and To images open small popovers
-// under their buttons; Split's "At my cuts" turns the grid into cut mode,
+// under their buttons, pointing at them; Split's "At my cuts" turns the grid into cut mode,
 // where a click in the gap between two pages places or removes a ✂︎. A
 // write that takes a while shows its progress in the footer with Cancel,
-// and closing with unsaved edits asks in a sheet over the window. Rust lays
+// and closing with unsaved edits asks in a dialog over the window. Rust lays
 // the grid out (columns, offset, cell size) and handles every click, drag
 // and key; this file only draws.
 
@@ -274,19 +274,23 @@ component PrimaryButton inherits Rectangle {
     }
 }
 
-// A plain button beside an orange one (Cancel, Discard).
+// A plain button beside an orange one (Cancel, Discard). `danger` words
+// it in red; `ghost` leaves it flat until the pointer is over it.
 component PlainButton inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
+    in property <bool> danger;
+    in property <bool> ghost;
     callback clicked();
 
     height: 26px;
     border-radius: 7px;
     // The edge keeps it visible on a card of the same colour.
-    border-width: 1px;
+    border-width: self.ghost ? 0px : 1px;
     border-color: Theme.border;
     background: self.enabled && touch.pressed ? Theme.hover
-        : self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
+        : self.enabled && touch.has-hover ? Theme.hover
+        : self.ghost ? transparent : Theme.surface;
     opacity: self.enabled ? 1 : 0.45;
     accessible-role: button;
     accessible-label: self.label;
@@ -304,7 +308,7 @@ component PlainButton inherits Rectangle {
         Text {
             text: root.label;
             font-size: 12px;
-            color: Theme.text;
+            color: root.danger ? Theme.danger : Theme.text;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -339,58 +343,192 @@ component JobBar inherits Rectangle {
     }
 }
 
-// A popover's round choice mark.
-component Radio inherits Rectangle {
-    in property <bool> on;
+// The top of a popover: its tool's icon on the accent, its heading and,
+// under it, the pages it takes.
+component PopoverHead inherits HorizontalLayout {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> subtitle;
 
-    width: 12px;
-    height: 12px;
-    border-radius: 6px;
-    border-width: 1.5px;
-    border-color: self.on ? Theme.accent : Theme.muted;
+    spacing: 10px;
 
-    if root.on: Rectangle {
-        x: 3px;
-        y: 3px;
-        width: 6px;
-        height: 6px;
-        border-radius: 3px;
-        background: Theme.accent;
+    VerticalLayout {
+        layout-order: Theme.rtl ? 1 : 0;
+        alignment: center;
+
+        Rectangle {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: Theme.accent-soft;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+                source: root.icon;
+                colorize: Theme.accent;
+            }
+        }
+    }
+
+    VerticalLayout {
+        layout-order: Theme.rtl ? 0 : 1;
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 1px;
+
+        LineText {
+            text: root.title;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.text;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        }
+
+        Text {
+            text: root.subtitle;
+            font-size: 11.5px;
+            color: Theme.muted;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        }
     }
 }
 
-// Two choices side by side, one of them on.
-component Segments inherits Rectangle {
+// A choice in a popover: a round check, its title and what it makes under
+// it, and room at the end for its own controls. Chosen, it takes the
+// accent.
+component OptionRow inherits Rectangle {
+    in property <string> title;
+    in property <string> detail;
+    in property <bool> on;
+    callback chosen();
+
+    min-height: 46px;
+    border-radius: 9px;
+    border-width: self.on ? 1.5px : 1px;
+    border-color: self.on ? Theme.accent : Theme.card-border;
+    background: self.on ? Theme.accent-soft : touch.has-hover ? Theme.surface : transparent;
+    accessible-role: radio-button;
+    accessible-checked: self.on;
+    accessible-label: self.title;
+    accessible-description: self.detail;
+    accessible-action-default => { self.chosen(); }
+
+    touch := TouchArea {
+        clicked => { root.chosen(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
+            alignment: center;
+
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                border-width: root.on ? 0px : 1.5px;
+                border-color: Theme.switch-off;
+                background: root.on ? Theme.accent : transparent;
+
+                if root.on: Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 12px;
+                    height: 12px;
+                    source: @image-url("icons/check.svg");
+                    colorize: white;
+                }
+            }
+        }
+
+        VerticalLayout {
+            // The middle one stays in the middle.
+            layout-order: Theme.rtl ? 1 : 1;
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+
+            Text {
+                text: root.title;
+                font-size: 12.5px;
+                font-weight: 500;
+                color: Theme.text;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            }
+
+            Text {
+                text: root.detail;
+                font-size: 11.5px;
+                color: Theme.muted;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            }
+        }
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 0 : 2;
+            alignment: center;
+
+            @children
+        }
+    }
+}
+
+// Two choices side by side, filling the width, each with a word under it
+// ("PNG / Lossless"); the one on is raised.
+component ChoicePair inherits Rectangle {
     in property <string> first;
+    in property <string> first-detail;
     in property <string> second;
+    in property <string> second-detail;
     in property <bool> second-on;
     callback chosen(bool);
 
-    height: 22px;
-    width: segs.preferred-width;
-    border-radius: 6px;
-    background: Theme.bg;
+    height: 42px;
+    border-radius: 8px;
+    background: Theme.surface;
 
-    segs := HorizontalLayout {
+    HorizontalLayout {
         padding: 2px;
         spacing: 2px;
 
         for second[i] in [false, true]: Rectangle {
             layout-order: Theme.rtl ? 1 - i : i;
-            width: seg-text.preferred-width + 16px;
-            border-radius: 5px;
-            background: root.second-on == second ? Theme.hover : transparent;
+            horizontal-stretch: 1;
+            border-radius: 6px;
+            background: root.second-on == second ? Theme.selected : transparent;
+            drop-shadow-blur: root.second-on == second ? 2px : 0px;
+            drop-shadow-offset-y: 1px;
+            drop-shadow-color: #0000001f;
             accessible-role: button;
-            accessible-label: seg-text.text;
+            accessible-label: second ? root.second : root.first;
+            accessible-description: second ? root.second-detail : root.first-detail;
             accessible-checked: root.second-on == second;
             accessible-action-default => { root.chosen(second); }
 
-            seg-text := Text {
-                text: second ? root.second : root.first;
-                font-size: 11px;
-                color: root.second-on == second ? Theme.text : Theme.muted;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            VerticalLayout {
+                alignment: center;
+
+                Text {
+                    text: second ? root.second : root.first;
+                    font-size: 12px;
+                    font-weight: root.second-on == second ? 600 : 400;
+                    color: root.second-on == second ? Theme.text : Theme.muted;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: second ? root.second-detail : root.first-detail;
+                    font-size: 10.5px;
+                    color: Theme.muted;
+                    horizontal-alignment: center;
+                }
             }
 
             TouchArea {
@@ -400,18 +538,49 @@ component Segments inherits Rectangle {
     }
 }
 
-// A card over the window: a popover or the closing question.
+// A small caption over a popover's control ("Format").
+component FieldLabel inherits Text {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: Theme.muted;
+    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+}
+
+// A card over the window: a popover or the closing question. A popover
+// points at its tool with an arrow at `arrow-x` along its top edge; a
+// negative `arrow-x` draws none.
 component Card inherits Rectangle {
-    border-radius: 10px;
+    in property <length> arrow-x: -1px;
+
+    border-radius: 12px;
     border-width: 1px;
     border-color: Theme.border;
-    background: Theme.card;
-    drop-shadow-blur: 24px;
-    drop-shadow-offset-y: 10px;
-    drop-shadow-color: #00000060;
+    background: Theme.dark ? Theme.card : Theme.bg;
+    drop-shadow-blur: 28px;
+    drop-shadow-offset-y: 12px;
+    drop-shadow-color: #00000045;
 
     // Clicks on the card stay with it.
     TouchArea { }
+
+    // The arrow: the card's edge colour, then its face 1px lower.
+    if root.arrow-x >= 0: Image {
+        x: root.arrow-x - 7px;
+        y: -7px;
+        width: 14px;
+        height: 7px;
+        source: @image-url("icons/popover-arrow.svg");
+        colorize: Theme.border;
+    }
+
+    if root.arrow-x >= 0: Image {
+        x: root.arrow-x - 7px;
+        y: -6px;
+        width: 14px;
+        height: 7px;
+        source: @image-url("icons/popover-arrow.svg");
+        colorize: root.background;
+    }
 
     @children
 }
@@ -701,7 +870,10 @@ export component PdfWindow inherits Window {
     // down or up, and the orange button's text.
     in property <bool> split-open;
     in property <string> split-heading;
-    in property <string> split-every-page;
+    // Under the heading: "13 pages".
+    in property <string> split-pages;
+    // What the first choice makes: "→ 13 files".
+    in property <string> split-every-page-files;
     in property <string> split-every-n;
     in property <string> split-every-n-files;
     in property <int> split-choice;
@@ -712,6 +884,8 @@ export component PdfWindow inherits Window {
     // the orange button's text.
     in property <bool> images-open;
     in property <string> images-heading;
+    // Under the heading: "Pages 3–5".
+    in property <string> images-pages;
     in property <bool> images-jpeg;
     in property <bool> images-print;
     in property <string> images-confirm;
@@ -1244,131 +1418,96 @@ export component PdfWindow inherits Window {
         }
 
         if root.split-open: Card {
-            width: 280px;
+            width: 300px;
             height: split-col.preferred-height;
             x: max(8px, min(root.width - self.width - 8px,
                 Theme.rtl ? split-button.absolute-position.x + split-button.width - self.width
                     : split-button.absolute-position.x));
-            y: 52px;
+            y: 62px;
+            arrow-x: max(16px, min(self.width - 16px,
+                split-button.absolute-position.x + split-button.width / 2 - self.x));
 
             split-col := VerticalLayout {
-                padding: 10px;
+                padding: 14px;
                 spacing: 4px;
 
-                LineText {
-                    text: root.split-heading;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: Theme.text;
-                    horizontal-alignment: Theme.rtl ? right : left;
+                PopoverHead {
+                    icon: @image-url("icons/arrows-split-2.svg");
+                    title: root.split-heading;
+                    subtitle: root.split-pages;
                 }
 
-                for choice in [0, 1, 2]: Rectangle {
-                    height: 28px;
-                    border-radius: 6px;
-                    background: root.split-choice == choice ? Theme.accent-soft : transparent;
-                    accessible-role: radio-button;
-                    accessible-checked: root.split-choice == choice;
-                    accessible-label: choice == 0 ? root.split-every-page
-                        : choice == 1 ? root.split-every-n + " " + root.split-every-n-files
-                        : @tr("At my cuts");
-                    accessible-action-default => { root.split-choose(choice); }
+                Rectangle { height: 8px; }
 
-                    TouchArea {
-                        clicked => { root.split-choose(choice); }
-                    }
+                OptionRow {
+                    title: @tr("Every page");
+                    detail: root.split-every-page-files;
+                    on: root.split-choice == 0;
+                    chosen => { root.split-choose(0); }
+                }
+
+                OptionRow {
+                    title: root.split-every-n;
+                    detail: root.split-every-n-files;
+                    on: root.split-choice == 1;
+                    chosen => { root.split-choose(1); }
 
                     HorizontalLayout {
-                        padding-left: 6px;
-                        padding-right: 6px;
-                        spacing: 8px;
+                        spacing: 3px;
 
-                        VerticalLayout {
-                            layout-order: Theme.rtl ? 4 : 0;
-                            alignment: center;
-
-                            Radio {
-                                on: root.split-choice == choice;
-                            }
+                        ToolButton {
+                            layout-order: Theme.rtl ? 1 : 0;
+                            height: 22px;
+                            min-width: 24px;
+                            label: "−";
+                            name: @tr("Fewer pages");
+                            enabled: root.split-can-less;
+                            clicked => { root.split-step(-1); }
                         }
 
-                        Text {
-                            layout-order: Theme.rtl ? 3 : 1;
-                            text: choice == 0 ? root.split-every-page
-                                : choice == 1 ? root.split-every-n
-                                : @tr("At my cuts");
-                            font-size: 12px;
-                            color: Theme.text;
-                            vertical-alignment: center;
+                        ToolButton {
+                            layout-order: Theme.rtl ? 0 : 1;
+                            height: 22px;
+                            min-width: 24px;
+                            label: "+";
+                            name: @tr("More pages");
+                            enabled: root.split-can-more;
+                            clicked => { root.split-step(1); }
                         }
+                    }
+                }
 
-                        if choice == 2: VerticalLayout {
-                            layout-order: Theme.rtl ? 2 : 2;
-                            alignment: center;
+                OptionRow {
+                    title: @tr("At my cuts");
+                    detail: @tr("You pick where to cut");
+                    on: root.split-choice == 2;
+                    chosen => { root.split-choose(2); }
+                }
 
-                            Image {
-                                width: 13px;
-                                height: 13px;
-                                source: @image-url("icons/scissors.svg");
-                                colorize: Theme.accent;
-                            }
-                        }
+                Rectangle {
+                    height: 21px;
 
-                        if choice == 1: HorizontalLayout {
-                            layout-order: Theme.rtl ? 2 : 2;
-                            spacing: 3px;
-
-                            ToolButton {
-                                layout-order: Theme.rtl ? 1 : 0;
-                                y: (parent.height - self.height) / 2;
-                                height: 20px;
-                                min-width: 20px;
-                                label: "−";
-                                name: @tr("Fewer pages");
-                                enabled: root.split-can-less;
-                                clicked => { root.split-step(-1); }
-                            }
-
-                            ToolButton {
-                                layout-order: Theme.rtl ? 0 : 1;
-                                y: (parent.height - self.height) / 2;
-                                height: 20px;
-                                min-width: 20px;
-                                label: "+";
-                                name: @tr("More pages");
-                                enabled: root.split-can-more;
-                                clicked => { root.split-step(1); }
-                            }
-                        }
-
-                        if choice == 1: Text {
-                            layout-order: Theme.rtl ? 1 : 3;
-                            text: root.split-every-n-files;
-                            font-size: 12px;
-                            color: Theme.muted;
-                            vertical-alignment: center;
-                        }
-
-                        Rectangle {
-                            layout-order: Theme.rtl ? 0 : 4;
-                            horizontal-stretch: 1;
-                        }
+                    Rectangle {
+                        y: 10px;
+                        height: 1px;
+                        background: Theme.separator;
                     }
                 }
 
                 HorizontalLayout {
-                    padding-top: 6px;
-                    spacing: 6px;
+                    spacing: 8px;
                     alignment: Theme.rtl ? start : end;
 
                     PlainButton {
                         layout-order: Theme.rtl ? 1 : 0;
+                        height: 28px;
                         label: @tr("Cancel");
                         clicked => { root.popover-cancel(); }
                     }
 
                     PrimaryButton {
                         layout-order: Theme.rtl ? 0 : 1;
+                        height: 28px;
                         label: root.split-confirm;
                         clicked => { root.split-confirmed(); }
                     }
@@ -1377,90 +1516,79 @@ export component PdfWindow inherits Window {
         }
 
         if root.images-open: Card {
-            width: 260px;
+            width: 290px;
             height: images-col.preferred-height;
             x: max(8px, min(root.width - self.width - 8px,
                 Theme.rtl ? images-button.absolute-position.x + images-button.width - self.width
                     : images-button.absolute-position.x));
-            y: 52px;
+            y: 62px;
+            arrow-x: max(16px, min(self.width - 16px,
+                images-button.absolute-position.x + images-button.width / 2 - self.x));
 
             images-col := VerticalLayout {
-                padding: 10px;
-                spacing: 6px;
+                padding: 14px;
+                spacing: 5px;
 
-                Text {
-                    text: root.images-heading;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: Theme.text;
-                    horizontal-alignment: Theme.rtl ? right : left;
+                PopoverHead {
+                    icon: @image-url("icons/photo.svg");
+                    title: root.images-heading;
+                    subtitle: root.images-pages;
+                }
+
+                Rectangle { height: 8px; }
+
+                FieldLabel {
+                    text: @tr("Format");
+                }
+
+                ChoicePair {
+                    first: "PNG";
+                    first-detail: @tr("Lossless");
+                    second: "JPEG";
+                    second-detail: @tr("Smaller file");
+                    second-on: root.images-jpeg;
+                    chosen(jpeg) => { root.images-format(jpeg); }
+                }
+
+                Rectangle { height: 6px; }
+
+                FieldLabel {
+                    text: @tr("Quality");
+                }
+
+                ChoicePair {
+                    first: @tr("Screen");
+                    first-detail: "150 DPI";
+                    second: @tr("Print");
+                    second-detail: "300 DPI";
+                    second-on: root.images-print;
+                    chosen(print) => { root.images-quality(print); }
+                }
+
+                Rectangle {
+                    height: 21px;
+
+                    Rectangle {
+                        y: 10px;
+                        height: 1px;
+                        background: Theme.separator;
+                    }
                 }
 
                 HorizontalLayout {
-                    padding-left: 6px;
-                    padding-right: 6px;
-                    alignment: space-between;
-
-                    Text {
-                        layout-order: Theme.rtl ? 2 : 0;
-                        text: @tr("Format");
-                        font-size: 12px;
-                        color: Theme.text;
-                        vertical-alignment: center;
-                    }
-
-                    Segments {
-                        layout-order: Theme.rtl ? 0 : 2;
-                        first: "PNG";
-                        second: "JPEG";
-                        second-on: root.images-jpeg;
-                        chosen(jpeg) => { root.images-format(jpeg); }
-                    }
-                }
-
-                HorizontalLayout {
-                    padding-left: 6px;
-                    padding-right: 6px;
-                    alignment: space-between;
-
-                    Text {
-                        layout-order: Theme.rtl ? 2 : 0;
-                        text: @tr("Quality");
-                        font-size: 12px;
-                        color: Theme.text;
-                        vertical-alignment: center;
-                    }
-
-                    Segments {
-                        layout-order: Theme.rtl ? 0 : 2;
-                        first: @tr("Screen");
-                        second: @tr("Print");
-                        second-on: root.images-print;
-                        chosen(print) => { root.images-quality(print); }
-                    }
-                }
-
-                Text {
-                    x: 6px;
-                    text: @tr("Print = 300 DPI, Screen = 150 DPI");
-                    font-size: 10px;
-                    color: Theme.muted;
-                    horizontal-alignment: Theme.rtl ? right : left;
-                }
-
-                HorizontalLayout {
-                    padding-top: 4px;
-                    spacing: 6px;
+                    spacing: 8px;
                     alignment: Theme.rtl ? start : end;
 
                     PlainButton {
                         layout-order: Theme.rtl ? 1 : 0;
+                        height: 28px;
                         label: @tr("Cancel");
                         clicked => { root.popover-cancel(); }
                     }
 
                     PrimaryButton {
                         layout-order: Theme.rtl ? 0 : 1;
+                        height: 28px;
                         label: root.images-confirm;
                         clicked => { root.images-confirmed(); }
                     }
@@ -1482,55 +1610,75 @@ export component PdfWindow inherits Window {
 
             Card {
                 x: (parent.width - self.width) / 2;
-                y: 48px;
-                width: min(320px, parent.width - 32px);
+                y: max(24px, (parent.height - self.height) / 3);
+                width: min(300px, parent.width - 32px);
                 height: sheet-col.preferred-height;
 
                 sheet-col := VerticalLayout {
-                    padding: 14px;
+                    padding: 20px;
+                    padding-bottom: 16px;
                     spacing: 6px;
+
+                    HorizontalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 46px;
+                            height: 46px;
+                            border-radius: 12px;
+                            background: Theme.accent-soft;
+
+                            Image {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                width: 24px;
+                                height: 24px;
+                                source: @image-url("icons/file-download.svg");
+                                colorize: Theme.accent;
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 4px; }
 
                     Text {
                         text: @tr("Save your changes as a new PDF?");
-                        font-size: 13px;
+                        font-size: 13.5px;
                         font-weight: 600;
                         color: Theme.text;
                         wrap: word-wrap;
-                        horizontal-alignment: Theme.rtl ? right : left;
+                        horizontal-alignment: center;
                     }
 
                     Text {
                         text: @tr("The original stays as it is.");
-                        font-size: 11px;
+                        font-size: 12px;
                         color: Theme.muted;
                         wrap: word-wrap;
-                        horizontal-alignment: Theme.rtl ? right : left;
+                        horizontal-alignment: center;
                     }
 
-                    HorizontalLayout {
-                        padding-top: 8px;
-                        spacing: 6px;
-                        alignment: Theme.rtl ? start : end;
+                    Rectangle { height: 8px; }
 
-                        PlainButton {
-                            layout-order: Theme.rtl ? 2 : 0;
-                            label: @tr("Discard");
-                            clicked => { root.sheet-discard(); }
-                        }
+                    PrimaryButton {
+                        height: 32px;
+                        label: @tr("Save");
+                        enabled: root.sheet-can-save;
+                        clicked => { root.sheet-save(); }
+                    }
 
-                        PlainButton {
-                            // The middle one stays in the middle.
-                            layout-order: Theme.rtl ? 1 : 1;
-                            label: @tr("Cancel");
-                            clicked => { root.sheet-cancel(); }
-                        }
+                    PlainButton {
+                        height: 32px;
+                        label: @tr("Discard");
+                        danger: true;
+                        clicked => { root.sheet-discard(); }
+                    }
 
-                        PrimaryButton {
-                            layout-order: Theme.rtl ? 0 : 2;
-                            label: @tr("Save");
-                            enabled: root.sheet-can-save;
-                            clicked => { root.sheet-save(); }
-                        }
+                    PlainButton {
+                        height: 32px;
+                        label: @tr("Cancel");
+                        ghost: true;
+                        clicked => { root.sheet-cancel(); }
                     }
                 }
             }

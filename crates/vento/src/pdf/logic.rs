@@ -519,15 +519,6 @@ pub fn split_heading(name: &str) -> String {
     fill(&tr("Split {name}"), &[("name", name)])
 }
 
-/// The Split popover's first choice: "Every page → 8 files".
-pub fn every_page_text(count: usize) -> String {
-    trn(
-        "Every page → {n} file",
-        "Every page → {n} files",
-        count as u64,
-    )
-}
-
 /// The Split popover's second choice, before its number's buttons:
 /// "Every 2 pages".
 pub fn every_n_text(n: usize) -> String {
@@ -537,6 +528,15 @@ pub fn every_n_text(n: usize) -> String {
 /// What a choice makes, after it: "→ 4 files".
 pub fn files_text(files: usize) -> String {
     trn("→ {n} file", "→ {n} files", files as u64)
+}
+
+/// The pages a write takes, under its popover's heading: "Pages 3–5" for
+/// the positions (from 0) given, in order.
+pub fn pages_text(positions: &[usize]) -> String {
+    fill(
+        &trn("Page {pages}", "Pages {pages}", positions.len() as u64),
+        &[("pages", &page_ranges(positions))],
+    )
 }
 
 /// The To images popover's heading ("3 pages to images") and its button
@@ -803,11 +803,16 @@ mod tests {
         assert_eq!(split_n_range(2), (2, 2));
         assert_eq!(split_n_range(1), (2, 2));
         assert_eq!(split_heading("report.pdf"), "Split report.pdf");
-        assert_eq!(every_page_text(8), "Every page → 8 files");
-        assert_eq!(every_page_text(1), "Every page → 1 file");
         assert_eq!(every_n_text(2), "Every 2 pages");
         assert_eq!(files_text(4), "→ 4 files");
         assert_eq!(files_text(1), "→ 1 file");
+    }
+
+    #[test]
+    fn popovers_name_the_pages_they_take() {
+        assert_eq!(pages_text(&[2, 3, 4]), "Pages 3–5");
+        assert_eq!(pages_text(&[0, 2]), "Pages 1, 3");
+        assert_eq!(pages_text(&[6]), "Page 7");
     }
 
     #[test]
@@ -850,7 +855,7 @@ mod tests {
             assert!(!button.starts_with("Split"));
             assert!(button.contains('3'));
             assert!(!cut_footer("1–8").starts_with("Click"));
-            assert!(!every_page_text(8).starts_with("Every"));
+            assert!(!pages_text(&[2, 3, 4]).starts_with("Pages"));
             assert!(!every_n_text(2).starts_with("Every"));
             assert!(!files_text(4).contains("files"));
             assert!(!images_texts(3).0.contains("pages"));

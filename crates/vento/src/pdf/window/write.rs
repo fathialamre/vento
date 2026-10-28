@@ -16,14 +16,14 @@ use log::{debug, warn};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, TimerMode, VecModel};
 use vento_core::archive::Progress;
-use vento_core::i18n::{fill, tr};
+use vento_core::i18n::{fill, tr, trn};
 use vento_core::pdf::{ImageKind, ImageOptions, PageRef, PdfJob, PdfOutcome, SplitMode};
 
 use super::{Answered, PdfView, file_name};
 use crate::exec::{PdfDone, pdf_toast_text};
 use crate::pdf::logic::{
-    closes_after_save, cut_at, cut_footer, cut_marker, cut_summary, every_n_text, every_page_text,
-    files_text, format_key, image_options, images_texts, job_fraction, replace_answer,
+    closes_after_save, cut_at, cut_footer, cut_marker, cut_summary, every_n_text,
+    files_text, format_key, image_options, images_texts, job_fraction, pages_text, replace_answer,
     sheet_save_allowed, split_heading, split_n_range, toggle_cut,
 };
 use crate::ui::PdfCutMark;
@@ -200,7 +200,8 @@ impl PdfView {
         self.split_n.set(n);
         let window = &self.window;
         window.set_split_heading(split_heading(&self.anchor_name()).into());
-        window.set_split_every_page(every_page_text(count).into());
+        window.set_split_pages(trn("{n} page", "{n} pages", count as u64).into());
+        window.set_split_every_page_files(files_text(count).into());
         window.set_split_every_n(every_n_text(n).into());
         window.set_split_every_n_files(files_text(count.div_ceil(n)).into());
         window.set_split_can_less(n > low);
@@ -282,9 +283,15 @@ impl PdfView {
             positions.len()
         };
         let (heading, confirm) = images_texts(n);
+        let taken: Vec<usize> = if positions.is_empty() {
+            (0..n).collect()
+        } else {
+            positions
+        };
         let opts = self.image_opts.get();
         let window = &self.window;
         window.set_images_heading(heading.into());
+        window.set_images_pages(pages_text(&taken).into());
         window.set_images_confirm(confirm.into());
         window.set_images_jpeg(opts.kind == ImageKind::Jpeg);
         window.set_images_print(opts.dpi == 300);

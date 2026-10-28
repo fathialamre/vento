@@ -53,7 +53,7 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:864
+#: crates/vento/ui/pdf.slint:1038
 msgid "Add PDF"
 msgstr ""
 
@@ -91,7 +91,7 @@ msgstr ""
 msgid "Archives"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1274
+#: crates/vento/ui/pdf.slint:1481
 msgid "At my cuts"
 msgstr ""
 
@@ -375,11 +375,11 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:907
+#: crates/vento/ui/pdf.slint:1081
 msgid "Delete"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1517
+#: crates/vento/ui/pdf.slint:1672
 msgid "Discard"
 msgstr ""
 
@@ -403,13 +403,11 @@ msgstr ""
 msgid "Empty folder"
 msgstr ""
 
-#: crates/vento/src/pdf/logic.rs:524
-msgid "Every page → {n} file"
-msgid_plural "Every page → {n} files"
-msgstr[0] ""
-msgstr[1] ""
+#: crates/vento/ui/pdf.slint:1443
+msgid "Every page"
+msgstr ""
 
-#: crates/vento/src/pdf/logic.rs:534
+#: crates/vento/src/pdf/logic.rs:525
 msgid "Every {n} page"
 msgid_plural "Every {n} pages"
 msgstr[0] ""
@@ -441,11 +439,11 @@ msgstr ""
 msgid "Extracting {name}…"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1327
+#: crates/vento/ui/pdf.slint:1463
 msgid "Fewer pages"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:845
+#: crates/vento/ui/pdf.slint:1019
 msgid "Files"
 msgstr ""
 
@@ -453,7 +451,7 @@ msgstr ""
 msgid "Folders"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1406
+#: crates/vento/ui/pdf.slint:1541
 msgid "Format"
 msgstr ""
 
@@ -469,7 +467,7 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:846
+#: crates/vento/ui/pdf.slint:1020
 msgid "Hide files"
 msgstr ""
 
@@ -571,6 +569,10 @@ msgstr ""
 msgid "List"
 msgstr ""
 
+#: crates/vento/ui/pdf.slint:1546
+msgid "Lossless"
+msgstr ""
+
 #: crates/vento-core/src/info.rs:22
 msgid "MB"
 msgstr ""
@@ -587,7 +589,7 @@ msgstr ""
 msgid "Modified"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1338
+#: crates/vento/ui/pdf.slint:1473
 msgid "More pages"
 msgstr ""
 
@@ -725,6 +727,12 @@ msgstr ""
 msgid "PDF"
 msgstr ""
 
+#: crates/vento/src/pdf/logic.rs:537
+msgid "Page {pages}"
+msgid_plural "Pages {pages}"
+msgstr[0] ""
+msgstr[1] ""
+
 #: crates/vento/ui/archive.slint:264
 msgid "Password"
 msgstr ""
@@ -753,7 +761,7 @@ msgstr ""
 msgid "Pinned"
 msgstr ""
 
-#: crates/vento/src/pdf/window/write.rs:211
+#: crates/vento/src/pdf/window/write.rs:212
 msgid "Place cuts"
 msgstr ""
 
@@ -773,15 +781,11 @@ msgstr ""
 msgid "Press a shortcut…"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1437
+#: crates/vento/ui/pdf.slint:1562
 msgid "Print"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1445
-msgid "Print = 300 DPI, Screen = 150 DPI"
-msgstr ""
-
-#: crates/vento/ui/pdf.slint:1428
+#: crates/vento/ui/pdf.slint:1556
 msgid "Quality"
 msgstr ""
 
@@ -837,19 +841,19 @@ msgstr[1] ""
 msgid "Resume"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:890
+#: crates/vento/ui/pdf.slint:1064
 msgid "Rotate left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:899
+#: crates/vento/ui/pdf.slint:1073
 msgid "Rotate right"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1530
+#: crates/vento/ui/pdf.slint:1665
 msgid "Save"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1226
+#: crates/vento/ui/pdf.slint:1400
 msgid "Save as new PDF"
 msgstr ""
 
@@ -859,7 +863,7 @@ msgid_plural "Save images"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1494
+#: crates/vento/ui/pdf.slint:1645
 msgid "Save your changes as a new PDF?"
 msgstr ""
 
@@ -879,7 +883,7 @@ msgid_plural "Saved {n} images in {folder}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1436
+#: crates/vento/ui/pdf.slint:1560
 msgid "Screen"
 msgstr ""
 
@@ -887,7 +891,7 @@ msgstr ""
 msgid "Scroll"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:872
+#: crates/vento/ui/pdf.slint:1046
 msgid "Select all"
 msgstr ""
 
@@ -911,7 +915,7 @@ msgstr ""
 msgid "Shortcut"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:846
+#: crates/vento/ui/pdf.slint:1020
 msgid "Show files"
 msgstr ""
 
@@ -927,11 +931,15 @@ msgstr ""
 msgid "Size"
 msgstr ""
 
+#: crates/vento/ui/pdf.slint:1548
+msgid "Smaller file"
+msgstr ""
+
 #: crates/vento-core/src/info.rs:270
 msgid "Some items could not be read"
 msgstr ""
 
-#: crates/vento/src/pdf/window/write.rs:213
+#: crates/vento/src/pdf/window/write.rs:214
 msgid "Split"
 msgstr ""
 
@@ -945,7 +953,7 @@ msgstr[1] ""
 msgid "Split {name}"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:941
+#: crates/vento/ui/pdf.slint:1115
 msgid "Split…"
 msgstr ""
 
@@ -997,7 +1005,7 @@ msgstr ""
 msgid "The Pocket uses this shortcut"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1503
+#: crates/vento/ui/pdf.slint:1654
 msgid "The original stays as it is."
 msgstr ""
 
@@ -1013,7 +1021,7 @@ msgstr ""
 msgid "Those items are no longer there"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:931
+#: crates/vento/ui/pdf.slint:1105
 msgid "To images"
 msgstr ""
 
@@ -1125,16 +1133,20 @@ msgstr ""
 msgid "Where"
 msgstr ""
 
-#: crates/vento/src/pdf/window/write.rs:496
+#: crates/vento/src/pdf/window/write.rs:503
 msgid "Writing {name}…"
 msgstr ""
 
-#: crates/vento/src/pdf/window/write.rs:494
+#: crates/vento/src/pdf/window/write.rs:501
 msgid "Writing…"
 msgstr ""
 
 #: crates/vento/ui/archive.slint:298
 msgid "Wrong password"
+msgstr ""
+
+#: crates/vento/ui/pdf.slint:1482
+msgid "You pick where to cut"
 msgstr ""
 
 #: crates/vento/src/awake.rs:20
@@ -1531,28 +1543,28 @@ msgid_plural "{} {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/pdf/logic.rs:539
+#: crates/vento/src/pdf/logic.rs:530
 msgid "→ {n} file"
 msgid_plural "→ {n} files"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:922
+#: crates/vento/ui/pdf.slint:1096
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:863
+#: crates/vento/ui/pdf.slint:1037
 msgctxt "PDF window"
 msgid "Add"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:889
+#: crates/vento/ui/pdf.slint:1063
 msgctxt "Rotate"
 msgid "Left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:898
+#: crates/vento/ui/pdf.slint:1072
 msgctxt "Rotate"
 msgid "Right"
 msgstr ""
