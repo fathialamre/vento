@@ -2,6 +2,10 @@
 
 use crate::i18n::tr;
 
+/// Whether this build is for macOS, the only platform with the system
+/// services some actions need.
+const ON_MACOS: bool = cfg!(target_os = "macos");
+
 /// An action that can be placed on the wheel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionId {
@@ -50,10 +54,7 @@ impl ActionId {
     /// PDF engine and sharing needs its sharing services, which only macOS has
     /// so far; the other platforms never offer those actions.
     pub fn available(self) -> bool {
-        match self {
-            ActionId::Pdf | ActionId::Share => cfg!(target_os = "macos"),
-            _ => true,
-        }
+        ON_MACOS || !matches!(self, ActionId::Pdf | ActionId::Share)
     }
 
     /// Whether the action opens the folder ring when the pointer rests on its
