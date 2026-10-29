@@ -89,7 +89,7 @@ msgstr[5] "الكل {n}"
 msgid "Appearance"
 msgstr "المظهر"
 
-#: crates/vento-core/src/actions.rs:87
+#: crates/vento-core/src/actions.rs:94
 msgid "Archive"
 msgstr "أرشفة"
 
@@ -141,7 +141,7 @@ msgstr "العودة إلى الجيب"
 msgid "Biggest inside"
 msgstr "الأكبر بالداخل"
 
-#: crates/vento/src/exec.rs:298
+#: crates/vento/src/exec.rs:299
 msgid "Busy — still working"
 msgstr "مشغول، العمل جارٍ"
 
@@ -185,7 +185,7 @@ msgstr "سجل الحافظة"
 msgid "Clipboard shortcut"
 msgstr "اختصار الحافظة"
 
-#: crates/vento/src/wheel.rs:199
+#: crates/vento/src/wheel.rs:200
 msgid "Compress"
 msgstr "ضغط"
 
@@ -211,11 +211,11 @@ msgstr "جارٍ ضغط {name}…"
 msgid "Contains"
 msgstr "يحتوي"
 
-#: crates/vento-core/src/actions.rs:89
+#: crates/vento-core/src/actions.rs:96
 msgid "Convert"
 msgstr "تحويل"
 
-#: crates/vento/src/wheel.rs:258
+#: crates/vento/src/wheel.rs:259
 msgid "Convert to"
 msgstr "تحويل إلى"
 
@@ -259,7 +259,7 @@ msgstr[3] "تم نسخ {n} عناصر إلى {dest}"
 msgstr[4] "تم نسخ {n} عنصراً إلى {dest}"
 msgstr[5] "تم نسخ {n} عنصر إلى {dest}"
 
-#: crates/vento-core/src/actions.rs:82
+#: crates/vento-core/src/actions.rs:89
 msgid "Copy"
 msgstr "نسخ"
 
@@ -279,7 +279,7 @@ msgstr "اختصار النسخ من الشاشة"
 msgid "Copy from screen uses this shortcut"
 msgstr "النسخ من الشاشة يستخدم هذا الاختصار"
 
-#: crates/vento-core/src/actions.rs:84
+#: crates/vento-core/src/actions.rs:91
 msgid "Copy path"
 msgstr "نسخ المسار"
 
@@ -291,7 +291,7 @@ msgstr "انسخ أي شيء وسيظهر هنا"
 msgid "Copy text"
 msgstr "نسخ النص"
 
-#: crates/vento-core/src/actions.rs:86
+#: crates/vento-core/src/actions.rs:93
 msgid "Copy to"
 msgstr "نسخ إلى"
 
@@ -393,6 +393,10 @@ msgstr "تعذّر حفظ الجيب: {error}"
 msgid "Couldn't save: {reason}"
 msgstr "تعذّر الحفظ: {reason}"
 
+#: crates/vento/src/exec.rs:245
+msgid "Couldn't share: {reason}"
+msgstr "تعذّرت المشاركة: {reason}"
+
 #: crates/vento/src/exec.rs:242
 msgid "Couldn't show info: {reason}"
 msgstr "تعذّر عرض المعلومات: {reason}"
@@ -447,7 +451,7 @@ msgstr[3] "كل {n} صفحات"
 msgstr[4] "كل {n} صفحة"
 msgstr[5] "كل {n} صفحة"
 
-#: crates/vento/src/wheel.rs:198
+#: crates/vento/src/wheel.rs:199
 msgid "Extract"
 msgstr "فك الضغط"
 
@@ -509,7 +513,7 @@ msgstr "عام"
 msgid "Hide files"
 msgstr "إخفاء الملفات"
 
-#: crates/vento/src/exec.rs:303
+#: crates/vento/src/exec.rs:304
 msgid "Hold on Convert to pick a format"
 msgstr "اضغط مطوّلاً على «تحويل» لاختيار الصيغة"
 
@@ -537,7 +541,7 @@ msgstr "صورة {w}×{h}"
 msgid "Images"
 msgstr "صور"
 
-#: crates/vento-core/src/actions.rs:88
+#: crates/vento-core/src/actions.rs:95
 msgid "Info"
 msgstr "معلومات"
 
@@ -639,11 +643,11 @@ msgstr "صفحات أكثر"
 msgid "More {}"
 msgstr "أكثر: {}"
 
-#: crates/vento-core/src/actions.rs:83
+#: crates/vento-core/src/actions.rs:90
 msgid "Move"
 msgstr "نقل"
 
-#: crates/vento/src/wheel.rs:259
+#: crates/vento/src/wheel.rs:260
 msgid "Move to"
 msgstr "نقل إلى"
 
@@ -731,11 +735,11 @@ msgstr "لا شيء محدد"
 msgid "Nothing to convert: already {format}"
 msgstr "لا يوجد ما يُحوَّل: الصيغة {format} أصلاً"
 
-#: crates/vento/src/exec.rs:823
+#: crates/vento/src/exec.rs:825
 msgid "Nothing to copy"
 msgstr "لا يوجد شيء لنسخه"
 
-#: crates/vento/src/exec.rs:791
+#: crates/vento/src/exec.rs:793
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
 
@@ -785,7 +789,7 @@ msgstr[5] "تم فتح {n} ملف PDF؛ تم تخطي {m}: {reason}"
 msgid "Other"
 msgstr "أخرى"
 
-#: crates/vento-core/src/actions.rs:90
+#: crates/vento-core/src/actions.rs:97
 msgid "PDF"
 msgstr "‏PDF"
 
@@ -835,7 +839,7 @@ msgstr "وضع علامات القطع"
 msgid "Plain"
 msgstr "عادي"
 
-#: crates/vento-core/src/actions.rs:81
+#: crates/vento-core/src/actions.rs:88
 msgid "Pocket"
 msgstr "الجيب"
 
@@ -1001,6 +1005,10 @@ msgstr "عدة مجلدات"
 msgid "Shake to open"
 msgstr "الهز للفتح"
 
+#: crates/vento-core/src/actions.rs:98
+msgid "Share"
+msgstr "مشاركة"
+
 #: crates/vento/ui/settings_pages.slint:683
 msgid "Shell-quoted"
 msgstr "بعلامات اقتباس للطرفية"
@@ -1087,7 +1095,7 @@ msgstr "النظام"
 msgid "TB"
 msgstr "ت.ب"
 
-#: crates/vento-core/src/actions.rs:85
+#: crates/vento-core/src/actions.rs:92
 msgid "Terminal"
 msgstr "الطرفية"
 
@@ -1135,23 +1143,23 @@ msgstr "المفتاح المشغّل"
 msgid "Undo"
 msgstr "تراجع"
 
-#: crates/vento/src/exec.rs:282
+#: crates/vento/src/exec.rs:283
 msgid "Undo last PDF"
 msgstr "تراجع عن آخر ملف PDF"
 
-#: crates/vento/src/exec.rs:280
+#: crates/vento/src/exec.rs:281
 msgid "Undo last archive"
 msgstr "تراجع عن آخر أرشفة"
 
-#: crates/vento/src/exec.rs:281
+#: crates/vento/src/exec.rs:282
 msgid "Undo last convert"
 msgstr "تراجع عن آخر تحويل"
 
-#: crates/vento/src/exec.rs:279
+#: crates/vento/src/exec.rs:280
 msgid "Undo last copy"
 msgstr "تراجع عن آخر نسخ"
 
-#: crates/vento/src/exec.rs:283
+#: crates/vento/src/exec.rs:284
 msgid "Undo last move"
 msgstr "تراجع عن آخر نقل"
 
@@ -1303,7 +1311,7 @@ msgstr "تعذّر البدء"
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
-#: crates/vento/src/exec.rs:925
+#: crates/vento/src/exec.rs:927
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
@@ -1331,7 +1339,7 @@ msgstr "الأرشيف تالف: {detail}"
 msgid "i/o error: {reason}"
 msgstr "خطأ في القراءة أو الكتابة: {reason}"
 
-#: crates/vento/src/exec.rs:911
+#: crates/vento/src/exec.rs:913
 msgid "internal error"
 msgstr "خطأ داخلي"
 
@@ -1395,7 +1403,7 @@ msgstr "لا يوجد اسم متاح للعنصر المنقول"
 msgid "no free name for the saved item"
 msgstr "لا يوجد اسم متاح للعنصر المحفوظ"
 
-#: crates/vento/src/exec.rs:524
+#: crates/vento/src/exec.rs:526
 msgid "no images"
 msgstr "لا توجد صور"
 
@@ -1511,7 +1519,7 @@ msgstr "{ms} م.ث"
 msgid "{m} min"
 msgstr "{m} د"
 
-#: crates/vento/src/pdf/window.rs:684
+#: crates/vento/src/pdf/window.rs:688
 msgid "{names} — {meta}"
 msgstr "‏{names} — ‏{meta}"
 

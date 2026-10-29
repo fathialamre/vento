@@ -1166,7 +1166,7 @@ mod tests {
         assert_eq!(s.action_rows().last(), Some(&last_action_row()));
     }
 
-    /// The last row the Wheel page offers on this platform: PDF where it is
+    /// The last row the Wheel page offers on this platform: Share where it is
     /// available, Convert elsewhere.
     fn last_action_row() -> (ActionId, bool) {
         let last = ActionId::ALL.iter().rev().find(|a| a.available());
@@ -1174,13 +1174,13 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_actions_are_dropped() {
+    fn macos_only_actions_are_dropped_elsewhere() {
         let (_dir, p) = write_temp(
-            "actions = [\"copy\", \"pdf\"]\nhidden_actions = [\"pdf\"]\naction_order = [\"pdf\", \"copy\"]\n",
+            "actions = [\"copy\", \"pdf\", \"share\"]\nhidden_actions = [\"pdf\"]\naction_order = [\"pdf\", \"copy\"]\n",
         );
         let s = Settings::load(&p);
         if cfg!(target_os = "macos") {
-            assert_eq!(s.actions, [ActionId::Copy, ActionId::Pdf]);
+            assert_eq!(s.actions, [ActionId::Copy, ActionId::Pdf, ActionId::Share]);
         } else {
             assert_eq!(s.actions, [ActionId::Copy]);
             assert!(s.hidden_actions.is_empty());
@@ -1271,6 +1271,9 @@ mod tests {
         if ActionId::Pdf.available() {
             expected.push((ActionId::Pdf, false));
         }
+        if ActionId::Share.available() {
+            expected.push((ActionId::Share, false));
+        }
         assert_eq!(Settings::load(&p).action_rows(), expected);
     }
 
@@ -1292,6 +1295,9 @@ mod tests {
         ];
         if ActionId::Pdf.available() {
             rows.push((ActionId::Pdf, false));
+        }
+        if ActionId::Share.available() {
+            rows.push((ActionId::Share, false));
         }
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);

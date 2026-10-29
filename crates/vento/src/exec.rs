@@ -242,6 +242,7 @@ fn action_error_text(action: ActionId, reason: &str) -> String {
         ActionId::Info => tr("Couldn't show info: {reason}"),
         ActionId::Convert => tr("Couldn't convert: {reason}"),
         ActionId::Pdf => tr("Couldn't open the PDF: {reason}"),
+        ActionId::Share => tr("Couldn't share: {reason}"),
     };
     fill(&template, &[("reason", reason)])
 }
@@ -518,6 +519,7 @@ impl Executor {
             ActionId::Archive => self.archive(paths, at),
             ActionId::Info => warn!("Info is handled by the info controller"),
             ActionId::Pdf => warn!("PDF is handled by the PDF controller"),
+            ActionId::Share => warn!("share not wired yet"),
             ActionId::Convert => match format {
                 Some(format) => self.convert(paths, format, at),
                 None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
@@ -1265,6 +1267,7 @@ mod tests {
                 "Couldn't show info: no folder to open",
                 "Couldn't convert: no folder to open",
                 "Couldn't open the PDF: no folder to open",
+                "Couldn't share: no folder to open",
             ]
         );
         vento_core::i18n::with_language("ar", || {

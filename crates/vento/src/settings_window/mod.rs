@@ -1590,8 +1590,11 @@ mod tests {
                 ActionId::Archive,
                 ActionId::Info,
                 ActionId::Convert,
-                ActionId::Pdf
-            ][..5 + usize::from(ActionId::Pdf.available())]
+                ActionId::Pdf,
+                ActionId::Share
+            ][..5
+                + usize::from(ActionId::Pdf.available())
+                + usize::from(ActionId::Share.available())]
         );
         move_action(&mut s, 5, 1);
         assert_eq!(
@@ -1602,12 +1605,15 @@ mod tests {
                 ActionId::Archive,
                 ActionId::Info,
                 ActionId::Convert,
-                ActionId::Pdf
-            ][..5 + usize::from(ActionId::Pdf.available())]
+                ActionId::Pdf,
+                ActionId::Share
+            ][..5
+                + usize::from(ActionId::Pdf.available())
+                + usize::from(ActionId::Share.available())]
         );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();
-        move_action(&mut s, 10, 0);
+        move_action(&mut s, 11, 0);
         assert_eq!(s, before);
     }
 

@@ -188,6 +188,7 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::Info => icons.get_info(),
         ActionId::Convert => icons.get_convert(),
         ActionId::Pdf => icons.get_pdf(),
+        ActionId::Share => icons.get_share(),
     }
 }
 
