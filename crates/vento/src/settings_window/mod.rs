@@ -1150,7 +1150,7 @@ fn open_link(url: &'static str) {
 
 /// The top-left corner that centres a `w` × `h` window on `screen`; a
 /// window larger than the screen starts at its top-left corner.
-fn centred_on(screen: &Rect, w: f64, h: f64) -> (f64, f64) {
+pub(crate) fn centred_on(screen: &Rect, w: f64, h: f64) -> (f64, f64) {
     (
         screen.x + ((screen.w - w) / 2.0).max(0.0),
         screen.y + ((screen.h - h) / 2.0).max(0.0),
@@ -1548,7 +1548,7 @@ mod tests {
         show_action(&mut s, 0, false);
         assert_eq!(s, before);
         // Out of range: nothing either.
-        show_action(&mut s, 9, true);
+        show_action(&mut s, 99, true);
         assert_eq!(s, before);
         // Showing another one keeps its row's place.
         let copy_to = s
@@ -1589,8 +1589,9 @@ mod tests {
                 ActionId::CopyTo,
                 ActionId::Archive,
                 ActionId::Info,
-                ActionId::Convert
-            ]
+                ActionId::Convert,
+                ActionId::Pdf
+            ][..5 + usize::from(ActionId::Pdf.available())]
         );
         move_action(&mut s, 5, 1);
         assert_eq!(
@@ -1600,8 +1601,9 @@ mod tests {
                 ActionId::Pocket,
                 ActionId::Archive,
                 ActionId::Info,
-                ActionId::Convert
-            ]
+                ActionId::Convert,
+                ActionId::Pdf
+            ][..5 + usize::from(ActionId::Pdf.available())]
         );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();

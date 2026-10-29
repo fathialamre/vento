@@ -111,7 +111,7 @@ files, like the wheel itself; turn it off with **Shake to open** in the
 ## The actions
 
 The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
-**Copy to, Archive, Convert** and **Info** are off until you switch them on in
+**Copy to, Archive, Convert, Info** and **PDF** are off until you switch them on in
 the **Wheel** page of the Settings window, where you can also change the order.
 
 ### Pocket
@@ -190,6 +190,34 @@ Vento reads the picture itself, not the file name, so a `.png` that is really a
 JPEG still works. Photos stay upright, colours are kept, and transparent areas
 become white when you pick JPEG or BMP. Vento never overwrites a file (you get
 `photo (2).jpg` instead), and **Undo** moves what it made to the Trash.
+
+### PDF *(off at first)*
+
+Works on PDF files, on macOS only for now. Drag one or more PDFs and let go
+on **PDF**: a window opens that shows every page. The cell is dimmed when
+nothing you are dragging is a PDF.
+
+In the window you can put several files together in one (drop more PDFs on it
+or use **Add**), delete pages, drag pages into a new order and rotate them. The
+files are listed in a sidebar (**Files** hides or shows it); click one to select
+its pages. Nothing is written until you ask:
+
+- **Save as new PDF** (⌘S) writes the pages as they now stand.
+- **Extract** writes only the pages you selected.
+- **Split** cuts the file into several: every page, every N pages, or at the
+  places you click between pages.
+- **Images** turns pages into PNG or JPEG pictures, at **Print** (300 DPI) or
+  **Screen** (150 DPI) quality.
+
+Every result is new and sits next to the original, which is never changed: a
+new file, or, for **Split** and for **Images** with several pages, a new
+folder of files (`report split`, `report images`). Vento never overwrites a file
+(you get `report (edited).pdf`, then `report (edited) (2).pdf`). Closing a
+window with changes, or quitting Vento, asks whether to save them. The window's
+footer says what was written, with **Show in Finder** and **Undo**; **Undo**
+there, on the notice once the window has closed, or from the menu bar icon,
+moves what was written to the Trash. A PDF that is locked with a password is
+skipped.
 
 ### Copy path
 

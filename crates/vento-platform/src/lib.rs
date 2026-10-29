@@ -22,6 +22,10 @@ mod macos;
 mod webp;
 #[cfg(target_os = "macos")]
 pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
+#[cfg(target_os = "macos")]
+pub use macos::{PdfRenderer, SystemPdf};
+#[cfg(not(target_os = "macos"))]
+pub use stub::{PdfRenderer, SystemPdf};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -92,6 +96,13 @@ pub struct RgbaImage {
     pub height: u32,
     /// `width * height * 4` bytes.
     pub pixels: Vec<u8>,
+}
+
+impl AsMut<[u8]> for RgbaImage {
+    /// The pixels, for drawing into.
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.pixels
+    }
 }
 
 /// Content dropped on the [`DropCatcher`].
@@ -408,6 +419,13 @@ pub trait Platform {
     /// when the system ends it (log out, shut down). Replaces any earlier
     /// `f`.
     fn on_terminate(&self, f: Box<dyn Fn()>);
+    /// Run `f` instead of quitting when the user quits from the app menu
+    /// (⌘Q on macOS), so vento's own quit can ask about unsaved edits. The
+    /// system ending vento (log out, shut down) is not held back. Replaces
+    /// any earlier `f`. Main thread, once the event loop exists.
+    fn on_quit_request(&self, f: Box<dyn Fn()>) {
+        let _ = f;
+    }
     /// Run `f` when vento is launched again while it runs (the app grid,
     /// a second start at login). Main thread only.
     fn on_reopen(&self, f: Box<dyn Fn()>) {
@@ -718,6 +736,20 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         stub::write_image(src, dst, format)
+    }
+}
+
+/// Asks the user for PDF files with the system's open panel, starting in
+/// `start`; several can be chosen. Empty when cancelled. Main thread only.
+/// Always empty where unsupported.
+pub fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::pick_pdfs(start)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::pick_pdfs(start)
     }
 }
 

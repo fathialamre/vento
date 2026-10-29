@@ -14,6 +14,7 @@ pub mod geometry;
 pub mod i18n;
 pub mod info;
 pub mod paths;
+pub mod pdf;
 pub mod pocket;
 pub mod pocket_content;
 pub mod pocket_kind;

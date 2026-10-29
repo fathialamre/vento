@@ -1,11 +1,14 @@
 //! Platform used where vento has no real implementation yet.
 
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use vento_core::clip::ClipSnapshot;
 use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
+use vento_core::pdf::{ImageOptions, PageRef, PdfBackend, PdfError, Source};
 use vento_core::screen_text::{Selection, TextBox};
 use vento_core::trigger::{InputSample, Modifiers};
 
@@ -73,6 +76,78 @@ pub(crate) fn read_screen_text(_sel: &Selection) -> Result<Vec<TextBox>, Platfor
 /// No text reader here.
 #[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
 pub(crate) fn screen_text_languages() -> Vec<String> {
+    Vec::new()
+}
+
+/// Message of the PDF stubs.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+const NO_PDF: &str = "not supported";
+
+/// The PDF backend where there is none: every call fails.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SystemPdf;
+
+impl PdfBackend for SystemPdf {
+    fn inspect(&self, _bytes: &[u8]) -> Result<usize, PdfError> {
+        Err(PdfError::Backend(NO_PDF.into()))
+    }
+
+    fn write_pdf(
+        &self,
+        _sources: &[Source],
+        _pages: &[PageRef],
+        _dst: &Path,
+    ) -> Result<(), PdfError> {
+        Err(PdfError::Backend(NO_PDF.into()))
+    }
+
+    fn write_image(
+        &self,
+        _source: &Source,
+        _page: PageRef,
+        _opts: &ImageOptions,
+        _dst: &Path,
+    ) -> Result<(), PdfError> {
+        Err(PdfError::Backend(NO_PDF.into()))
+    }
+}
+
+/// The page renderer where there is none: it never opens.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[derive(Debug)]
+pub struct PdfRenderer {
+    /// Not `Send`, like the macOS renderer, so code that builds here builds
+    /// there too.
+    _not_send: PhantomData<*const ()>,
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+impl PdfRenderer {
+    /// Always fails: nothing here reads PDFs.
+    pub fn new(_sources: &[Arc<[u8]>]) -> Result<PdfRenderer, PdfError> {
+        Err(PdfError::Backend(NO_PDF.into()))
+    }
+
+    /// Never draws anything.
+    pub fn render(&self, _page: PageRef, _max_px: u32) -> Option<RgbaImage> {
+        None
+    }
+
+    /// Never draws anything.
+    pub fn render_into<B: AsMut<[u8]>>(
+        &self,
+        _page: PageRef,
+        _max_px: u32,
+        _alloc: impl FnOnce(u32, u32) -> B,
+    ) -> Option<B> {
+        None
+    }
+}
+
+/// No open panel for PDFs here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn pick_pdfs(_start: Option<&Path>) -> Vec<PathBuf> {
     Vec::new()
 }
 
