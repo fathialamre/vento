@@ -198,23 +198,26 @@ on **PDF**: a window opens that shows every page. The cell is dimmed when
 nothing you are dragging is a PDF.
 
 In the window you can put several files together in one (drop more PDFs on it
-or use **＋ Add PDF**), delete pages, drag pages into a new order and rotate
-them. Nothing is written until you ask:
+or use **Add**), delete pages, drag pages into a new order and rotate them. The
+files are listed in a sidebar (**Files** hides or shows it); click one to select
+its pages. Nothing is written until you ask:
 
 - **Save as new PDF** (⌘S) writes the pages as they now stand.
 - **Extract** writes only the pages you selected.
-- **Split…** cuts the file into several: every page, every N pages, or at the
+- **Split** cuts the file into several: every page, every N pages, or at the
   places you click between pages.
-- **To images** turns pages into PNG or JPEG pictures, at **Print** (300 DPI) or
+- **Images** turns pages into PNG or JPEG pictures, at **Print** (300 DPI) or
   **Screen** (150 DPI) quality.
 
 Every result is new and sits next to the original, which is never changed: a
-new file, or, for **Split…** and for **To images** with several pages, a new
+new file, or, for **Split** and for **Images** with several pages, a new
 folder of files (`report split`, `report images`). Vento never overwrites a file
 (you get `report (edited).pdf`, then `report (edited) (2).pdf`). Closing a
-window with changes, or quitting Vento, asks whether to save them. **Undo**, on
-the notice or from the menu bar icon, moves what was written to the Trash. A PDF
-that is locked with a password is skipped.
+window with changes, or quitting Vento, asks whether to save them. The window's
+footer says what was written, with **Show in Finder** and **Undo**; **Undo**
+there, on the notice once the window has closed, or from the menu bar icon,
+moves what was written to the Trash. A PDF that is locked with a password is
+skipped.
 
 ### Copy path
 

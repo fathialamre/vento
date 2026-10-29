@@ -124,11 +124,11 @@ clipboard_shortcut = "ctrl+alt+v"
 # ("ctrl+alt+o" on Linux, where GNOME opens a terminal on Ctrl+Alt+T)
 screen_text_shortcut = "ctrl+alt+t"
 
-# PDF window, To images: the format last picked, "png" or "jpeg" (JPEG is
+# PDF window, Images: the format last picked, "png" or "jpeg" (JPEG is
 # drawn on white); any other value means "png". macOS only for now
 pdf_image_format = "png"
 
-# PDF window, To images: the quality last picked, in dots per inch: 300
+# PDF window, Images: the quality last picked, in dots per inch: 300
 # (Print) or 150 (Screen); any other value means 300
 pdf_image_dpi = 300
 ```
