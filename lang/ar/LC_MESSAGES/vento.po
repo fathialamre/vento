@@ -63,6 +63,10 @@ msgstr "إضافة PDF"
 msgid "Add folder"
 msgstr "إضافة مجلد"
 
+#: crates/vento-core/src/share.rs:66
+msgid "Add to Notes"
+msgstr "أضف إلى الملاحظات"
+
 #: crates/vento/ui/pocket.slint:657
 msgid "Add to Pocket"
 msgstr "إضافة إلى الجيب"
@@ -70,6 +74,10 @@ msgstr "إضافة إلى الجيب"
 #: crates/vento/ui/screen_access.slint:125
 msgid "After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again."
 msgstr "بعد تفعيله قد يطلب منك macOS إعادة فتح Vento. بعد كل تحديث لـ Vento فعّله من جديد؛ وإذا لم يتغير شيء، احذف Vento بزر الطرح ثم أضفه مرة أخرى."
+
+#: crates/vento-core/src/share.rs:51
+msgid "AirDrop"
+msgstr "‏AirDrop"
 
 #: crates/vento/src/pocket/list_view.rs:307
 msgid "All"
@@ -623,6 +631,14 @@ msgstr "بدون فقد"
 msgid "MB"
 msgstr "م.ب"
 
+#: crates/vento-core/src/share.rs:53
+msgid "Mail"
+msgstr "البريد"
+
+#: crates/vento-core/src/share.rs:52
+msgid "Messages"
+msgstr "الرسائل"
+
 #: crates/vento/ui/controls.slint:825
 msgid "Minute"
 msgstr "الدقيقة"
@@ -639,9 +655,17 @@ msgstr "آخر تعديل"
 msgid "More pages"
 msgstr "صفحات أكثر"
 
+#: crates/vento-core/src/share.rs:67
+msgid "More ways to share"
+msgstr "طرق مشاركة أخرى"
+
 #: crates/vento/ui/controls.slint:528
 msgid "More {}"
 msgstr "أكثر: {}"
+
+#: crates/vento-core/src/share.rs:55
+msgid "More…"
+msgstr "المزيد…"
 
 #: crates/vento-core/src/actions.rs:90
 msgid "Move"
@@ -718,6 +742,10 @@ msgstr "لم يُعثر على نص"
 #: crates/vento/ui/controls.slint:195
 msgid "None found"
 msgstr "لا يوجد شيء"
+
+#: crates/vento-core/src/share.rs:54
+msgid "Notes"
+msgstr "الملاحظات"
 
 #: crates/vento/src/exec.rs:133
 msgid "Nothing left to remove"
@@ -993,6 +1021,14 @@ msgstr "تمرير"
 msgid "Select all"
 msgstr "تحديد الكل"
 
+#: crates/vento-core/src/share.rs:65
+msgid "Send with Mail"
+msgstr "أرسل بالبريد"
+
+#: crates/vento-core/src/share.rs:64
+msgid "Send with Messages"
+msgstr "أرسل بالرسائل"
+
 #: crates/vento/src/tray.rs:257
 msgid "Settings…"
 msgstr "الإعدادات…"
@@ -1008,6 +1044,14 @@ msgstr "الهز للفتح"
 #: crates/vento-core/src/actions.rs:98
 msgid "Share"
 msgstr "مشاركة"
+
+#: crates/vento-core/src/share.rs:63
+msgid "Share with AirDrop"
+msgstr "شارك عبر AirDrop"
+
+#: crates/vento-core/src/share.rs:98
+msgid "Share…"
+msgstr "مشاركة…"
 
 #: crates/vento/ui/settings_pages.slint:683
 msgid "Shell-quoted"

@@ -23,5 +23,6 @@ pub mod ring;
 pub mod screen_text;
 pub mod settings;
 pub mod shake;
+pub mod share;
 pub mod sizes;
 pub mod trigger;

@@ -61,12 +61,20 @@ msgstr ""
 msgid "Add folder"
 msgstr ""
 
+#: crates/vento-core/src/share.rs:66
+msgid "Add to Notes"
+msgstr ""
+
 #: crates/vento/ui/pocket.slint:657
 msgid "Add to Pocket"
 msgstr ""
 
 #: crates/vento/ui/screen_access.slint:125
 msgid "After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again."
+msgstr ""
+
+#: crates/vento-core/src/share.rs:51
+msgid "AirDrop"
 msgstr ""
 
 #: crates/vento/src/pocket/list_view.rs:307
@@ -581,6 +589,14 @@ msgstr ""
 msgid "MB"
 msgstr ""
 
+#: crates/vento-core/src/share.rs:53
+msgid "Mail"
+msgstr ""
+
+#: crates/vento-core/src/share.rs:52
+msgid "Messages"
+msgstr ""
+
 #: crates/vento/ui/controls.slint:825
 msgid "Minute"
 msgstr ""
@@ -597,8 +613,16 @@ msgstr ""
 msgid "More pages"
 msgstr ""
 
+#: crates/vento-core/src/share.rs:67
+msgid "More ways to share"
+msgstr ""
+
 #: crates/vento/ui/controls.slint:528
 msgid "More {}"
+msgstr ""
+
+#: crates/vento-core/src/share.rs:55
+msgid "More…"
 msgstr ""
 
 #: crates/vento-core/src/actions.rs:90
@@ -659,6 +683,10 @@ msgstr ""
 
 #: crates/vento/ui/controls.slint:195
 msgid "None found"
+msgstr ""
+
+#: crates/vento-core/src/share.rs:54
+msgid "Notes"
 msgstr ""
 
 #: crates/vento/src/exec.rs:133
@@ -899,6 +927,14 @@ msgstr ""
 msgid "Select all"
 msgstr ""
 
+#: crates/vento-core/src/share.rs:65
+msgid "Send with Mail"
+msgstr ""
+
+#: crates/vento-core/src/share.rs:64
+msgid "Send with Messages"
+msgstr ""
+
 #: crates/vento/src/tray.rs:257
 msgid "Settings…"
 msgstr ""
@@ -913,6 +949,14 @@ msgstr ""
 
 #: crates/vento-core/src/actions.rs:98
 msgid "Share"
+msgstr ""
+
+#: crates/vento-core/src/share.rs:63
+msgid "Share with AirDrop"
+msgstr ""
+
+#: crates/vento-core/src/share.rs:98
+msgid "Share…"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:683
