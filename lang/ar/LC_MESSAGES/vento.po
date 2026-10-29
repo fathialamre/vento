@@ -7,7 +7,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
 
-#: crates/vento/src/exec.rs:70
+#: crates/vento/src/exec.rs:71
 msgid " · "
 msgstr " · "
 
@@ -15,7 +15,7 @@ msgstr " · "
 msgid "\"{name}\" is protected"
 msgstr "‏«{name}» محمي بكلمة سر"
 
-#: crates/vento-platform/src/lib.rs:254
+#: crates/vento-platform/src/lib.rs:255
 msgid ", "
 msgstr "، "
 
@@ -149,7 +149,7 @@ msgstr "العودة إلى الجيب"
 msgid "Biggest inside"
 msgstr "الأكبر بالداخل"
 
-#: crates/vento/src/exec.rs:299
+#: crates/vento/src/exec.rs:300
 msgid "Busy — still working"
 msgstr "مشغول، العمل جارٍ"
 
@@ -193,7 +193,7 @@ msgstr "سجل الحافظة"
 msgid "Clipboard shortcut"
 msgstr "اختصار الحافظة"
 
-#: crates/vento/src/wheel.rs:200
+#: crates/vento/src/wheel.rs:209
 msgid "Compress"
 msgstr "ضغط"
 
@@ -223,7 +223,7 @@ msgstr "يحتوي"
 msgid "Convert"
 msgstr "تحويل"
 
-#: crates/vento/src/wheel.rs:259
+#: crates/vento/src/wheel.rs:292
 msgid "Convert to"
 msgstr "تحويل إلى"
 
@@ -257,7 +257,7 @@ msgstr "جارٍ تحويل {name}…"
 msgid "Copied text"
 msgstr "تم نسخ النص"
 
-#: crates/vento/src/exec.rs:113
+#: crates/vento/src/exec.rs:114
 msgid "Copied {n} item to {dest}"
 msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "لم يُنسخ أي عنصر إلى {dest}"
@@ -303,7 +303,7 @@ msgstr "نسخ النص"
 msgid "Copy to"
 msgstr "نسخ إلى"
 
-#: crates/vento/src/exec.rs:212
+#: crates/vento/src/exec.rs:213
 msgid "Copying {n} item…"
 msgid_plural "Copying {n} items…"
 msgstr[0] "جارٍ نسخ {n} عنصر…"
@@ -313,11 +313,11 @@ msgstr[3] "جارٍ نسخ {n} عناصر…"
 msgstr[4] "جارٍ نسخ {n} عنصراً…"
 msgstr[5] "جارٍ نسخ {n} عنصر…"
 
-#: crates/vento/src/exec.rs:235
+#: crates/vento/src/exec.rs:236
 msgid "Couldn't add to Pocket: {reason}"
 msgstr "تعذّرت الإضافة إلى الجيب: {reason}"
 
-#: crates/vento/src/exec.rs:241
+#: crates/vento/src/exec.rs:242
 msgid "Couldn't archive: {reason}"
 msgstr "تعذّرت الأرشفة: {reason}"
 
@@ -339,19 +339,19 @@ msgstr[3] "تعذّر تحويل {n} صور: {reason}"
 msgstr[4] "تعذّر تحويل {n} صورة: {reason}"
 msgstr[5] "تعذّر تحويل {n} صورة: {reason}"
 
-#: crates/vento/src/exec.rs:243
+#: crates/vento/src/exec.rs:244
 msgid "Couldn't convert: {reason}"
 msgstr "تعذّر التحويل: {reason}"
 
-#: crates/vento/src/exec.rs:238
+#: crates/vento/src/exec.rs:239
 msgid "Couldn't copy the path: {reason}"
 msgstr "تعذّر نسخ المسار: {reason}"
 
-#: crates/vento/src/exec.rs:240
+#: crates/vento/src/exec.rs:241
 msgid "Couldn't copy to the folder: {reason}"
 msgstr "تعذّر النسخ إلى المجلد: {reason}"
 
-#: crates/vento/src/exec.rs:236
+#: crates/vento/src/exec.rs:237
 msgid "Couldn't copy: {reason}"
 msgstr "تعذّر النسخ: {reason}"
 
@@ -369,15 +369,15 @@ msgstr[3] "تعذّر فك ضغط {n} أرشيفات: {reason}"
 msgstr[4] "تعذّر فك ضغط {n} أرشيفاً: {reason}"
 msgstr[5] "تعذّر فك ضغط {n} أرشيف: {reason}"
 
-#: crates/vento/src/exec.rs:237
+#: crates/vento/src/exec.rs:238
 msgid "Couldn't move: {reason}"
 msgstr "تعذّر النقل: {reason}"
 
-#: crates/vento/src/exec.rs:244
+#: crates/vento/src/exec.rs:245
 msgid "Couldn't open the PDF: {reason}"
 msgstr "تعذّر فتح ملف PDF: {reason}"
 
-#: crates/vento/src/exec.rs:239
+#: crates/vento/src/exec.rs:240
 msgid "Couldn't open the terminal: {reason}"
 msgstr "تعذّر فتح الطرفية: {reason}"
 
@@ -401,11 +401,15 @@ msgstr "تعذّر حفظ الجيب: {error}"
 msgid "Couldn't save: {reason}"
 msgstr "تعذّر الحفظ: {reason}"
 
-#: crates/vento/src/exec.rs:245
+#: crates/vento/src/exec/share.rs:33
+msgid "Couldn't share with {target}: {reason}"
+msgstr "تعذّرت المشاركة عبر {target}: {reason}"
+
+#: crates/vento/src/exec.rs:246
 msgid "Couldn't share: {reason}"
 msgstr "تعذّرت المشاركة: {reason}"
 
-#: crates/vento/src/exec.rs:242
+#: crates/vento/src/exec.rs:243
 msgid "Couldn't show info: {reason}"
 msgstr "تعذّر عرض المعلومات: {reason}"
 
@@ -459,7 +463,7 @@ msgstr[3] "كل {n} صفحات"
 msgstr[4] "كل {n} صفحة"
 msgstr[5] "كل {n} صفحة"
 
-#: crates/vento/src/wheel.rs:199
+#: crates/vento/src/wheel.rs:208
 msgid "Extract"
 msgstr "فك الضغط"
 
@@ -521,7 +525,7 @@ msgstr "عام"
 msgid "Hide files"
 msgstr "إخفاء الملفات"
 
-#: crates/vento/src/exec.rs:304
+#: crates/vento/src/exec.rs:305
 msgid "Hold on Convert to pick a format"
 msgstr "اضغط مطوّلاً على «تحويل» لاختيار الصيغة"
 
@@ -671,7 +675,7 @@ msgstr "المزيد…"
 msgid "Move"
 msgstr "نقل"
 
-#: crates/vento/src/wheel.rs:260
+#: crates/vento/src/wheel.rs:294
 msgid "Move to"
 msgstr "نقل إلى"
 
@@ -689,7 +693,7 @@ msgstr[3] "تم نقل {n} عناصر إلى سلة المهملات"
 msgstr[4] "تم نقل {n} عنصراً إلى سلة المهملات"
 msgstr[5] "تم نقل {n} عنصر إلى سلة المهملات"
 
-#: crates/vento/src/exec.rs:100
+#: crates/vento/src/exec.rs:101
 msgid "Moved {n} item to {dest}"
 msgid_plural "Moved {n} items to {dest}"
 msgstr[0] "لم يُنقل أي عنصر إلى {dest}"
@@ -699,11 +703,11 @@ msgstr[3] "تم نقل {n} عناصر إلى {dest}"
 msgstr[4] "تم نقل {n} عنصراً إلى {dest}"
 msgstr[5] "تم نقل {n} عنصر إلى {dest}"
 
-#: crates/vento/src/exec.rs:222
+#: crates/vento/src/exec.rs:223
 msgid "Moving {name} to the Trash…"
 msgstr "جارٍ نقل {name} إلى سلة المهملات…"
 
-#: crates/vento/src/exec.rs:223
+#: crates/vento/src/exec.rs:224
 msgid "Moving {n} item to the Trash…"
 msgid_plural "Moving {n} items to the Trash…"
 msgstr[0] "جارٍ نقل {n} عنصر إلى سلة المهملات…"
@@ -713,7 +717,7 @@ msgstr[3] "جارٍ نقل {n} عناصر إلى سلة المهملات…"
 msgstr[4] "جارٍ نقل {n} عنصراً إلى سلة المهملات…"
 msgstr[5] "جارٍ نقل {n} عنصر إلى سلة المهملات…"
 
-#: crates/vento/src/exec.rs:211
+#: crates/vento/src/exec.rs:212
 msgid "Moving {n} item…"
 msgid_plural "Moving {n} items…"
 msgstr[0] "جارٍ نقل {n} عنصر…"
@@ -747,7 +751,11 @@ msgstr "لا يوجد شيء"
 msgid "Notes"
 msgstr "الملاحظات"
 
-#: crates/vento/src/exec.rs:133
+#: crates/vento/src/exec/share.rs:22
+msgid "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
+msgstr "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ Archive أولًا."
+
+#: crates/vento/src/exec.rs:134
 msgid "Nothing left to remove"
 msgstr "لم يبقَ شيء لإزالته"
 
@@ -763,11 +771,11 @@ msgstr "لا شيء محدد"
 msgid "Nothing to convert: already {format}"
 msgstr "لا يوجد ما يُحوَّل: الصيغة {format} أصلاً"
 
-#: crates/vento/src/exec.rs:825
+#: crates/vento/src/exec.rs:827
 msgid "Nothing to copy"
 msgstr "لا يوجد شيء لنسخه"
 
-#: crates/vento/src/exec.rs:793
+#: crates/vento/src/exec.rs:795
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
 
@@ -911,7 +919,7 @@ msgstr "الإزالة بعد السحب للخارج"
 msgid "Remove from Pocket"
 msgstr "إزالة من الجيب"
 
-#: crates/vento/src/exec.rs:135
+#: crates/vento/src/exec.rs:136
 msgid "Removed {n} copy"
 msgid_plural "Removed {n} copies"
 msgstr[0] "لم تتم إزالة أي نسخة"
@@ -921,7 +929,7 @@ msgstr[3] "تمت إزالة {n} نسخ"
 msgstr[4] "تمت إزالة {n} نسخة"
 msgstr[5] "تمت إزالة {n} نسخة"
 
-#: crates/vento/src/exec.rs:214
+#: crates/vento/src/exec.rs:215
 msgid "Removing {n} copy…"
 msgid_plural "Removing {n} copies…"
 msgstr[0] "جارٍ إزالة {n} نسخة…"
@@ -931,7 +939,7 @@ msgstr[3] "جارٍ إزالة {n} نسخ…"
 msgstr[4] "جارٍ إزالة {n} نسخة…"
 msgstr[5] "جارٍ إزالة {n} نسخة…"
 
-#: crates/vento/src/exec.rs:189
+#: crates/vento/src/exec.rs:190
 msgid "Restored {n} item"
 msgid_plural "Restored {n} items"
 msgstr[0] "لم تتم استعادة أي عنصر"
@@ -941,7 +949,7 @@ msgstr[3] "تمت استعادة {n} عناصر"
 msgstr[4] "تمت استعادة {n} عنصراً"
 msgstr[5] "تمت استعادة {n} عنصر"
 
-#: crates/vento/src/exec.rs:213
+#: crates/vento/src/exec.rs:214
 msgid "Restoring {n} item…"
 msgid_plural "Restoring {n} items…"
 msgstr[0] "جارٍ استعادة {n} عنصر…"
@@ -1187,23 +1195,23 @@ msgstr "المفتاح المشغّل"
 msgid "Undo"
 msgstr "تراجع"
 
-#: crates/vento/src/exec.rs:283
+#: crates/vento/src/exec.rs:284
 msgid "Undo last PDF"
 msgstr "تراجع عن آخر ملف PDF"
 
-#: crates/vento/src/exec.rs:281
+#: crates/vento/src/exec.rs:282
 msgid "Undo last archive"
 msgstr "تراجع عن آخر أرشفة"
 
-#: crates/vento/src/exec.rs:282
+#: crates/vento/src/exec.rs:283
 msgid "Undo last convert"
 msgstr "تراجع عن آخر تحويل"
 
-#: crates/vento/src/exec.rs:280
+#: crates/vento/src/exec.rs:281
 msgid "Undo last copy"
 msgstr "تراجع عن آخر نسخ"
 
-#: crates/vento/src/exec.rs:284
+#: crates/vento/src/exec.rs:285
 msgid "Undo last move"
 msgstr "تراجع عن آخر نقل"
 
@@ -1355,15 +1363,15 @@ msgstr "تعذّر البدء"
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
-#: crates/vento/src/exec.rs:927
+#: crates/vento/src/exec.rs:929
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
-#: crates/vento-platform/src/lib.rs:224
+#: crates/vento-platform/src/lib.rs:225
 msgid "clipboard rejected the files"
 msgstr "رفضت الحافظة الملفات"
 
-#: crates/vento-platform/src/lib.rs:220
+#: crates/vento-platform/src/lib.rs:221
 msgid "clipboard rejected the text"
 msgstr "رفضت الحافظة النص"
 
@@ -1371,7 +1379,7 @@ msgstr "رفضت الحافظة النص"
 msgid "copy could not be verified; source left untouched"
 msgstr "تعذّر التحقق من النسخة؛ لم يُلمس الأصل"
 
-#: crates/vento-platform/src/lib.rs:268
+#: crates/vento-platform/src/lib.rs:269
 msgid "could not run {program}: {reason}"
 msgstr "تعذّر تشغيل {program}: {reason}"
 
@@ -1383,7 +1391,7 @@ msgstr "الأرشيف تالف: {detail}"
 msgid "i/o error: {reason}"
 msgstr "خطأ في القراءة أو الكتابة: {reason}"
 
-#: crates/vento/src/exec.rs:913
+#: crates/vento/src/exec.rs:915
 msgid "internal error"
 msgstr "خطأ داخلي"
 
@@ -1395,11 +1403,15 @@ msgstr "توقّف قبل أن يكتمل"
 msgid "invalid shortcut \"{spec}\""
 msgstr "اختصار غير صالح \"{spec}\""
 
+#: crates/vento/src/exec/share.rs:26
+msgid "it won't take these items"
+msgstr "لا يقبل هذه العناصر"
+
 #: crates/vento/src/exec/archive.rs:159
 msgid "kept {name}: changed since it was made"
 msgstr "أُبقي {name}: تغيّر بعد إنشائه"
 
-#: crates/vento/src/exec.rs:143
+#: crates/vento/src/exec.rs:144
 msgid "kept {n} changed"
 msgid_plural "kept {n} changed"
 msgstr[0] "لم يتم إبقاء أي عنصر لأنه تغيّر"
@@ -1431,11 +1443,11 @@ msgstr "يستخدم macOS هذا الاختصار"
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "نُقل إلى {copy}، لكن تعذّرت إزالة الأصل بالكامل: {reason}"
 
-#: crates/vento-platform/src/lib.rs:253
+#: crates/vento-platform/src/lib.rs:254
 msgid "no app opened {names}"
 msgstr "لا يوجد تطبيق يفتح {names}"
 
-#: crates/vento-platform/src/lib.rs:313
+#: crates/vento-platform/src/lib.rs:314
 msgid "no folder to open"
 msgstr "لا يوجد مجلد لفتحه"
 
@@ -1447,11 +1459,11 @@ msgstr "لا يوجد اسم متاح للعنصر المنقول"
 msgid "no free name for the saved item"
 msgstr "لا يوجد اسم متاح للعنصر المحفوظ"
 
-#: crates/vento/src/exec.rs:526
+#: crates/vento/src/exec.rs:528
 msgid "no images"
 msgstr "لا توجد صور"
 
-#: crates/vento-platform/src/lib.rs:308
+#: crates/vento-platform/src/lib.rs:309
 msgid "no terminal is installed"
 msgstr "لا توجد طرفية مثبّتة"
 
@@ -1470,6 +1482,10 @@ msgstr "لا توجد مساحة كافية على القرص"
 #: crates/vento-core/src/i18n/errors.rs:25
 msgid "not found"
 msgstr "غير موجود"
+
+#: crates/vento/src/exec/share.rs:65
+msgid "nothing to share"
+msgstr "لا شيء للمشاركة"
 
 #: crates/vento-core/src/pdf/jobs.rs:308
 msgid "nothing to write"
@@ -1527,11 +1543,11 @@ msgstr "كلمة السر خاطئة"
 msgid "{app} (default)"
 msgstr "‏{app} (افتراضي)"
 
-#: crates/vento-platform/src/lib.rs:261
+#: crates/vento-platform/src/lib.rs:262
 msgid "{app} is no longer there"
 msgstr "‏{app} لم يعد موجوداً"
 
-#: crates/vento-platform/src/lib.rs:301
+#: crates/vento-platform/src/lib.rs:302
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
@@ -1605,7 +1621,7 @@ msgstr[3] "{n} بايت"
 msgstr[4] "{n} بايت"
 msgstr[5] "{n} بايت"
 
-#: crates/vento/src/exec.rs:53
+#: crates/vento/src/exec.rs:54
 msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] "لم تتعذّر معالجة أي عنصر"
@@ -1655,7 +1671,7 @@ msgstr[3] "{n} عناصر"
 msgstr[4] "{n} عنصراً"
 msgstr[5] "{n} عنصر"
 
-#: crates/vento/src/exec.rs:147
+#: crates/vento/src/exec.rs:148
 msgid "{n} no longer there"
 msgid_plural "{n} no longer there"
 msgstr[0] "لا شيء مفقود"
@@ -1675,7 +1691,7 @@ msgstr[3] "تم تخطي {n} عناصر ليست صوراً"
 msgstr[4] "تم تخطي {n} عنصراً ليست صوراً"
 msgstr[5] "تم تخطي {n} عنصر ليست صوراً"
 
-#: crates/vento/src/exec.rs:56
+#: crates/vento/src/exec.rs:57
 msgid "{n} original couldn't be removed"
 msgid_plural "{n} originals couldn't be removed"
 msgstr[0] "لم تتعذّر إزالة أي أصل"
@@ -1747,15 +1763,15 @@ msgstr "{n} د"
 msgid "{pages} · edited"
 msgstr "‏{pages} · معدّل"
 
-#: crates/vento-platform/src/lib.rs:278
+#: crates/vento-platform/src/lib.rs:279
 msgid "{program} exited with code {code}"
 msgstr "‏{program} انتهى برمز الخروج {code}"
 
-#: crates/vento-platform/src/lib.rs:282
+#: crates/vento-platform/src/lib.rs:283
 msgid "{program} was stopped by a signal"
 msgstr "‏{program} أوقفته إشارة"
 
-#: crates/vento-platform/src/lib.rs:293
+#: crates/vento-platform/src/lib.rs:294
 msgid "{program}: {reason}"
 msgstr "‏{program}: {reason}"
 

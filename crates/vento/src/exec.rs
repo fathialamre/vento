@@ -31,6 +31,7 @@ use crate::wheel::WheelDrop;
 mod archive;
 mod convert;
 mod pdf;
+mod share;
 
 use archive::archive_undo_toast_text;
 pub use pdf::{PdfDone, pdf_open_toast_text, pdf_toast_text};
@@ -480,7 +481,7 @@ impl Executor {
             at,
             dest,
             format,
-            target: _,
+            target,
         } = drop;
         if paths.is_empty() {
             debug!("{action:?} with no files");
@@ -520,7 +521,7 @@ impl Executor {
             ActionId::Archive => self.archive(paths, at),
             ActionId::Info => warn!("Info is handled by the info controller"),
             ActionId::Pdf => warn!("PDF is handled by the PDF controller"),
-            ActionId::Share => warn!("share not wired yet"),
+            ActionId::Share => self.share(paths, target, at),
             ActionId::Convert => match format {
                 Some(format) => self.convert(paths, format, at),
                 None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
