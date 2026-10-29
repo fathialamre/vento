@@ -324,7 +324,11 @@ impl PdfView {
                 .filter_map(|&i| {
                     let count = pages_of_source(pages.pages(), i).len();
                     Some(PdfSourceTag {
-                        letter: if several { source_letter(i).into() } else { SharedString::new() },
+                        letter: if several {
+                            source_letter(i).into()
+                        } else {
+                            SharedString::new()
+                        },
                         name: file_name(sources.get(i)?).into(),
                         tint: tint_of(i, shown.len()),
                         pages: trn("{n} page", "{n} pages", count as u64).into(),

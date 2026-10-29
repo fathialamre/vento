@@ -22,8 +22,8 @@ use vento_core::pdf::{ImageKind, ImageOptions, PageRef, PdfJob, PdfOutcome, Spli
 use super::{Answered, PdfView, file_name};
 use crate::exec::{PdfDone, pdf_toast_text};
 use crate::pdf::logic::{
-    closes_after_save, cut_at, cut_footer, cut_marker, cut_summary, every_n_text,
-    files_text, format_key, image_options, images_texts, job_fraction, pages_text, replace_answer,
+    closes_after_save, cut_at, cut_footer, cut_marker, cut_summary, every_n_text, files_text,
+    format_key, image_options, images_texts, job_fraction, pages_text, replace_answer,
     sheet_save_allowed, split_heading, split_n_range, toggle_cut,
 };
 use crate::ui::PdfCutMark;
@@ -636,8 +636,7 @@ impl PdfView {
         if self.window.get_note_hovered() {
             return;
         }
-        let left = self.window.get_note_left()
-            - NOTE_TICK.as_secs_f32() / NOTE_TIME.as_secs_f32();
+        let left = self.window.get_note_left() - NOTE_TICK.as_secs_f32() / NOTE_TIME.as_secs_f32();
         if left <= 0.0 {
             self.hide_note();
         } else {
