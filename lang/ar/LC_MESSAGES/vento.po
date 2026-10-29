@@ -753,7 +753,7 @@ msgstr "الملاحظات"
 
 #: crates/vento/src/exec/share.rs:29
 msgid "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
-msgstr "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ Archive أولًا."
+msgstr "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ«أرشفة» أولًا."
 
 #: crates/vento/src/exec.rs:134
 msgid "Nothing left to remove"

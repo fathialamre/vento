@@ -193,7 +193,7 @@ mod tests {
             );
             assert_eq!(
                 refused_text(ShareTarget::Notes, true),
-                "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ Archive أولًا."
+                "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ«أرشفة» أولًا."
             );
             assert_eq!(
                 refused_text(ShareTarget::Mail, false),
