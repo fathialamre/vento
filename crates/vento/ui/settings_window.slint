@@ -175,7 +175,7 @@ export component SettingsWindow inherits Window {
     callback awake-screen-off-toggled(bool);
     // A page's How to card opened (true) or closed, by page id.
     callback how-to-toggled(int, bool);
-    // About's "Open settings file" and "View licenses".
+    // About's Settings file and Licenses buttons.
     callback open-settings-file();
     callback open-licenses();
     // The Pocket's, the Clipboard's or Copy from screen's shortcut field
@@ -340,12 +340,6 @@ export component SettingsWindow inherits Window {
                         text: root.notice;
                     }
 
-                    if root.how-to-steps(root.page-id).length > 0: HowTo {
-                        steps: root.how-to-steps(root.page-id);
-                        open: !root.how-to-closed[root.page-id];
-                        toggled(open) => { root.how-to-toggled(root.page-id, open); }
-                    }
-
                     if root.page-id == 0: GeneralPage {
                         language-names: root.language-names;
                         language: root.language;
@@ -428,6 +422,13 @@ export component SettingsWindow inherits Window {
                         version: root.version;
                         open-settings-file => { root.open-settings-file(); }
                         open-licenses => { root.open-licenses(); }
+                    }
+
+                    // Below the settings, so they come first.
+                    if root.how-to-steps(root.page-id).length > 0: HowTo {
+                        steps: root.how-to-steps(root.page-id);
+                        open: !root.how-to-closed[root.page-id];
+                        toggled(open) => { root.how-to-toggled(root.page-id, open); }
                     }
                 }
             }

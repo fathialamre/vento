@@ -10,7 +10,6 @@ export global PanelIcons {
     out property <image> pause: @image-url("icons/player-pause.svg");
     out property <image> resume: @image-url("icons/player-play.svg");
     out property <image> quit: @image-url("icons/power.svg");
-    out property <image> petals: @image-url("icons/circles.svg");
     out property <image> grip: @image-url("icons/grip-vertical.svg");
     out property <image> add: @image-url("icons/plus.svg");
     out property <image> folder: @image-url("icons/folder.svg");
@@ -32,6 +31,144 @@ export component SectionHeading inherits Text {
 export component Separator inherits Rectangle {
     height: 1px;
     background: Theme.separator;
+}
+
+// Text that wraps at its width and is as tall as its lines. A wrapping Text
+// laid out beside something else can be given the height of fewer lines
+// than it wraps into, which cuts its lines off; this one asks for its
+// wrapped height.
+export component WrapText {
+    in property <string> text;
+    in property <length> font-size;
+    in property <int> font-weight;
+    in property <brush> color;
+
+    min-height: lines.preferred-height;
+
+    lines := Text {
+        width: root.width;
+        height: root.height;
+        text: root.text;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        color: root.color;
+        wrap: word-wrap;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+}
+
+// Settings that belong together, on a rounded card. The page puts a
+// `Separator` between its rows.
+export component Group inherits Rectangle {
+    border-radius: 10px;
+    background: Theme.card;
+
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+
+        @children
+    }
+}
+
+// The heading over a `Group`, with anything given to it (a button, a
+// note) at the end of the line.
+export component GroupHeading inherits HorizontalLayout {
+    in property <string> text;
+
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 4px;
+    spacing: 8px;
+
+    SectionHeading {
+        layout-order: Theme.rtl ? 2 : 0;
+        text: root.text;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+
+    HorizontalLayout {
+        layout-order: Theme.rtl ? 1 : 0;
+        horizontal-stretch: 0;
+
+        @children
+    }
+}
+
+// One setting in a `Group`: its name, and under it what it does when
+// `description` is set, at the start of the line; its control (the
+// children) at the end. A setting that is not `enabled` shows its name
+// dimmed.
+export component SettingRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> description;
+    in property <bool> enabled: true;
+
+    min-height: 44px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    spacing: 12px;
+
+    VerticalLayout {
+        layout-order: Theme.rtl ? 2 : 0;
+        alignment: center;
+        spacing: 2px;
+        horizontal-stretch: 1;
+
+        WrapText {
+            text: root.label;
+            font-size: 13px;
+            color: root.enabled ? Theme.text : Theme.muted;
+        }
+
+        if root.description != "": WrapText {
+            text: root.description;
+            font-size: 11px;
+            color: Theme.muted;
+        }
+    }
+
+    VerticalLayout {
+        layout-order: Theme.rtl ? 1 : 0;
+        alignment: center;
+        horizontal-stretch: 0;
+
+        @children
+    }
+}
+
+// A button in a setting's row, drawn like the fields beside it. A
+// `danger` one says so in red. `name` is what assistive technology calls
+// it, where the word alone would not say what it acts on.
+export component RowButton inherits Rectangle {
+    in property <string> label;
+    in property <string> name: self.label;
+    in property <bool> danger;
+    callback clicked();
+
+    height: 26px;
+    min-width: label.preferred-width + 20px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.field-hover : Theme.field;
+    border-width: Theme.dark ? 0px : 1px;
+    border-color: Theme.separator;
+    accessible-role: button;
+    accessible-label: self.name;
+    accessible-action-default => { self.clicked(); }
+
+    label := Text {
+        text: root.label;
+        font-size: 12px;
+        color: root.danger ? Theme.danger : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
 }
 
 // An on/off switch. It shows `on` as given and asks for the other state
@@ -75,37 +212,6 @@ export component Switch inherits Rectangle {
     }
 }
 
-// A setting's name at the start of the line and its switch at the end.
-export component SwitchRow inherits HorizontalLayout {
-    in property <string> label;
-    in property <bool> on;
-    callback toggled(bool);
-
-    height: 28px;
-    spacing: 8px;
-
-    Text {
-        layout-order: Theme.rtl ? 2 : 0;
-        horizontal-alignment: Theme.rtl ? right : left;
-        text: root.label;
-        font-size: 13px;
-        color: Theme.text;
-        vertical-alignment: center;
-        horizontal-stretch: 1;
-    }
-
-    VerticalLayout {
-        layout-order: Theme.rtl ? 1 : 0;
-        alignment: center;
-
-        Switch {
-            on: root.on;
-            label: root.label;
-            toggled(on) => { root.toggled(on); }
-        }
-    }
-}
-
 // A row-height segmented control: a rounded track with the chosen item
 // raised on a pill. The first item is at the start of the line.
 export component Segmented inherits Rectangle {
@@ -121,9 +227,9 @@ export component Segmented inherits Rectangle {
         Theme.rtl ? root.items.length - 1 - i : i
     }
 
-    height: 28px;
-    border-radius: 8px;
-    background: Theme.surface;
+    height: 26px;
+    border-radius: 7px;
+    background: Theme.track;
     accessible-role: radio-group;
 
     Rectangle {
@@ -131,7 +237,7 @@ export component Segmented inherits Rectangle {
         y: root.pad;
         width: root.item-w;
         height: root.height - 2 * root.pad;
-        border-radius: 6px;
+        border-radius: 5px;
         background: Theme.selected;
         drop-shadow-blur: 3px;
         drop-shadow-offset-y: 1px;
@@ -178,9 +284,11 @@ export component MenuField inherits Rectangle {
     property <length> item-h: 26px;
     property <bool> valid: self.current >= 0 && self.current < self.items.length;
 
-    height: 28px;
-    border-radius: 8px;
-    background: touch.has-hover ? Theme.hover : Theme.surface;
+    height: 26px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.field-hover : Theme.field;
+    border-width: Theme.dark ? 0px : 1px;
+    border-color: Theme.separator;
     accessible-role: combobox;
     accessible-label: self.label;
     accessible-value: self.valid ? self.items[self.current] : "";
@@ -287,54 +395,6 @@ export component MenuField inherits Rectangle {
                 }
             }
         }
-    }
-}
-
-// One wheel layout to choose: its icon above its name, outlined in orange
-// when chosen.
-export component LayoutCard inherits Rectangle {
-    in property <image> icon;
-    in property <string> label;
-    in property <bool> chosen;
-    callback clicked();
-
-    height: 64px;
-    border-radius: 10px;
-    background: Theme.surface;
-    border-width: self.chosen ? 2px : 0px;
-    border-color: Theme.accent;
-    accessible-role: radio-button;
-    accessible-label: self.label;
-    accessible-checkable: true;
-    accessible-checked: self.chosen;
-    accessible-action-default => { self.clicked(); }
-
-    VerticalLayout {
-        alignment: center;
-        spacing: 6px;
-
-        HorizontalLayout {
-            alignment: center;
-
-            Image {
-                source: root.icon;
-                width: 22px;
-                height: 22px;
-                colorize: root.chosen ? Theme.accent : Theme.muted;
-            }
-        }
-
-        Text {
-            text: root.label;
-            font-size: 12px;
-            font-weight: root.chosen ? 600 : 400;
-            color: Theme.text;
-            horizontal-alignment: center;
-        }
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
     }
 }
 
@@ -466,7 +526,9 @@ component StepButton inherits Rectangle {
     width: 24px;
     height: 24px;
     border-radius: 6px;
-    background: self.enabled && touch.has-hover ? Theme.hover : Theme.surface;
+    background: self.enabled && touch.has-hover ? Theme.field-hover : Theme.field;
+    border-width: Theme.dark ? 0px : 1px;
+    border-color: Theme.separator;
     accessible-role: button;
     accessible-label: self.label;
     accessible-enabled: self.enabled;
@@ -547,11 +609,11 @@ export component ShortcutField inherits Rectangle {
     callback started();
     callback cancelled();
 
-    height: 28px;
-    border-radius: 8px;
-    background: self.recording || (self.enabled && touch.has-hover) ? Theme.hover : Theme.surface;
-    border-width: self.recording ? 2px : 0px;
-    border-color: Theme.accent;
+    height: 26px;
+    border-radius: 6px;
+    background: self.recording || (self.enabled && touch.has-hover) ? Theme.field-hover : Theme.field;
+    border-width: self.recording ? 2px : Theme.dark ? 0px : 1px;
+    border-color: self.recording ? Theme.accent : Theme.separator;
     accessible-role: button;
     accessible-label: self.label;
     accessible-value: self.recording ? @tr("Press a shortcut…") : self.text;

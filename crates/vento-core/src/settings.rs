@@ -347,13 +347,13 @@ impl From<RawSettings> for Settings {
             }
         }
         pinned_folders.truncate(MAX_PINNED);
-        // Round to the nearest 100 (halves up), then keep within bounds.
         let mut closed_how_to: Vec<String> = Vec::new();
         for page in raw.closed_how_to {
             if !closed_how_to.contains(&page) {
                 closed_how_to.push(page);
             }
         }
+        // Round to the nearest 100 (halves up), then keep within bounds.
         let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
             .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
         Settings {

@@ -5,8 +5,8 @@
 import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
-    PanelIcons, SectionHeading, Separator, Switch, SwitchRow, Segmented, MenuField, LayoutCard,
-    TextButton, IconButton, Stepper, ShortcutField, ReorderRow, DragGrip,
+    PanelIcons, Separator, Switch, Segmented, MenuField, TextButton, IconButton, Stepper,
+    ShortcutField, ReorderRow, DragGrip, WrapText, Group, GroupHeading, SettingRow, RowButton,
 } from "controls.slint";
 
 // One action in the Wheel page's list, shown on the wheel or not.
@@ -52,7 +52,7 @@ export component Notice inherits Rectangle {
     }
 }
 
-// How to use a page's feature, above its settings: a header that opens and
+// How to use a page's feature, below its settings: a header that opens and
 // closes it, and while open the steps, numbered. It shows `open` as given
 // and asks for the other state when clicked; the window keeps it.
 export component HowTo inherits Rectangle {
@@ -60,11 +60,11 @@ export component HowTo inherits Rectangle {
     in property <bool> open;
     callback toggled(bool);
 
-    border-radius: 8px;
-    background: Theme.surface;
+    border-radius: 10px;
+    background: Theme.card;
 
     VerticalLayout {
-        padding: 10px;
+        padding: 12px;
         spacing: 8px;
 
         header := Rectangle {
@@ -147,16 +147,12 @@ export component HowTo inherits Rectangle {
                     }
                 }
 
-                Text {
+                WrapText {
                     layout-order: Theme.rtl ? 1 : 0;
-                    horizontal-alignment: Theme.rtl ? right : left;
                     text: step;
                     font-size: 12px;
                     color: Theme.text;
-                    wrap: word-wrap;
-                    vertical-alignment: center;
                     horizontal-stretch: 1;
-                    min-height: 18px;
                 }
             }
         }
@@ -265,45 +261,43 @@ export component WheelPage inherits VerticalLayout {
 
     spacing: 8px;
 
-    SectionHeading {
-        text: @tr("Layout");
-    }
+    Group {
+        SettingRow {
+            label: @tr("Layout");
+            description: @tr("How the actions sit around the pointer");
 
-    HorizontalLayout {
-        spacing: 8px;
-
-        LayoutCard {
-            layout-order: Theme.rtl ? 2 : 0;
-            preferred-width: 100px;
-            horizontal-stretch: 1;
-            icon: PanelIcons.wheel;
-            label: @tr("Honeycomb");
-            chosen: root.wheel-layout == 0;
-            clicked => { root.layout-chosen(0); }
-        }
-
-        LayoutCard {
-            layout-order: Theme.rtl ? 1 : 0;
-            preferred-width: 100px;
-            horizontal-stretch: 1;
-            icon: PanelIcons.petals;
-            label: @tr("Petals");
-            chosen: root.wheel-layout == 1;
-            clicked => { root.layout-chosen(1); }
+            Segmented {
+                width: 180px;
+                items: [@tr("Honeycomb"), @tr("Petals")];
+                current: root.wheel-layout;
+                chosen(i) => { root.layout-chosen(i); }
+            }
         }
     }
 
-    Separator { }
-
-    SectionHeading {
+    GroupHeading {
         text: @tr("Actions");
+
+        Text {
+            text: @tr("Drag to reorder");
+            font-size: 11px;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
     }
 
-    ActionList {
-        rows: root.actions;
-        shown-count: root.shown-actions;
-        toggled(i, on) => { root.action-toggled(i, on); }
-        moved(from, to) => { root.action-moved(from, to); }
+    Group {
+        VerticalLayout {
+            padding-top: 4px;
+            padding-bottom: 4px;
+
+            ActionList {
+                rows: root.actions;
+                shown-count: root.shown-actions;
+                toggled(i, on) => { root.action-toggled(i, on); }
+                moved(from, to) => { root.action-moved(from, to); }
+            }
+        }
     }
 }
 
@@ -451,16 +445,10 @@ export component MovePage inherits VerticalLayout {
 
     spacing: 8px;
 
-    HorizontalLayout {
-        SectionHeading {
-            layout-order: Theme.rtl ? 2 : 0;
-            text: @tr("Pinned");
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-        }
+    GroupHeading {
+        text: @tr("Pinned");
 
         TextButton {
-            layout-order: Theme.rtl ? 1 : 0;
             label: root.pinned-full ? @tr("Up to 7 folders") : @tr("Add folder");
             icon: PanelIcons.add;
             has-icon: !root.pinned-full;
@@ -469,95 +457,87 @@ export component MovePage inherits VerticalLayout {
         }
     }
 
-    if root.pinned.length == 0: EmptyLine {
-        text: @tr("No pinned folders");
-    }
+    Group {
+        VerticalLayout {
+            padding-top: 4px;
+            padding-bottom: 4px;
 
-    if root.pinned.length > 0: PinnedList {
-        rows: root.pinned;
-        moved(from, to) => { root.pinned-moved(from, to); }
-        unpinned(i) => { root.unpinned(i); }
-    }
+            if root.pinned.length == 0: EmptyLine {
+                text: @tr("No pinned folders");
+            }
 
-    Separator { }
-
-    HorizontalLayout {
-        SectionHeading {
-            layout-order: Theme.rtl ? 2 : 0;
-            text: @tr("Recent");
-            vertical-alignment: center;
-            horizontal-stretch: 1;
+            if root.pinned.length > 0: PinnedList {
+                rows: root.pinned;
+                moved(from, to) => { root.pinned-moved(from, to); }
+                unpinned(i) => { root.unpinned(i); }
+            }
         }
+    }
+
+    GroupHeading {
+        text: @tr("Recent");
 
         TextButton {
-            layout-order: Theme.rtl ? 1 : 0;
             label: @tr("Clear");
             enabled: root.has-history;
             clicked => { root.recent-cleared(); }
         }
     }
 
-    if root.recent.length == 0: EmptyLine {
-        text: @tr("No recent folders");
-    }
+    Group {
+        VerticalLayout {
+            padding-top: 4px;
+            padding-bottom: 4px;
 
-    if root.recent.length > 0: VerticalLayout {
-        for row[i] in root.recent: Rectangle {
-            height: 30px;
-            accessible-role: list-item;
-            accessible-label: row.name;
+            if root.recent.length == 0: EmptyLine {
+                text: @tr("No recent folders");
+            }
 
-            HorizontalLayout {
-                padding-left: 2px;
-                padding-right: 2px;
-                spacing: 8px;
+            for row[i] in root.recent: Rectangle {
+                height: 30px;
+                accessible-role: list-item;
+                accessible-label: row.name;
 
-                FolderLabel {
-                    layout-order: Theme.rtl ? 2 : 0;
-                    folder: row;
-                    horizontal-stretch: 1;
-                }
+                HorizontalLayout {
+                    padding-left: 2px;
+                    padding-right: 2px;
+                    spacing: 8px;
 
-                VerticalLayout {
-                    layout-order: Theme.rtl ? 1 : 0;
-                    alignment: center;
+                    FolderLabel {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        folder: row;
+                        horizontal-stretch: 1;
+                    }
 
-                    IconButton {
-                        icon: Icons.pin;
-                        label: @tr("Pin {}", row.name);
-                        enabled: root.can-pin;
-                        clicked => { root.recent-pinned(i); }
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        alignment: center;
+
+                        IconButton {
+                            icon: Icons.pin;
+                            label: @tr("Pin {}", row.name);
+                            enabled: root.can-pin;
+                            clicked => { root.recent-pinned(i); }
+                        }
                     }
                 }
             }
         }
     }
 
-    Separator { }
-
-    HorizontalLayout {
-        spacing: 8px;
-
-        Text {
-            layout-order: Theme.rtl ? 2 : 0;
-            horizontal-alignment: Theme.rtl ? right : left;
-            text: @tr("Hold on Move");
-            font-size: 13px;
-            color: Theme.text;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-        }
-
-        // At its own width beside the label, however wide the page.
-        Stepper {
-            layout-order: Theme.rtl ? 1 : 0;
-            horizontal-stretch: 0;
-            text: root.hold;
+    Group {
+        SettingRow {
             label: @tr("Hold on Move");
-            can-decrease: root.hold-can-decrease;
-            can-increase: root.hold-can-increase;
-            decrease => { root.hold-stepped(-1); }
-            increase => { root.hold-stepped(1); }
+            description: @tr("How long to rest on Move, Copy to or Convert before its ring opens");
+
+            Stepper {
+                text: root.hold;
+                label: @tr("Hold on Move");
+                can-decrease: root.hold-can-decrease;
+                can-increase: root.hold-can-increase;
+                decrease => { root.hold-stepped(-1); }
+                increase => { root.hold-stepped(1); }
+            }
         }
     }
 }
@@ -580,19 +560,23 @@ export component PocketPage inherits VerticalLayout {
 
     spacing: 8px;
 
-    SectionHeading {
-        text: @tr("Shortcut");
-    }
+    Group {
+        SettingRow {
+            label: @tr("Shortcut");
+            description: @tr("Opens the island on the Pocket");
 
-    ShortcutField {
-        text: root.shortcut;
-        label: @tr("Pocket shortcut");
-        recording <=> root.recording;
-        started => {
-            root.shortcut-error = "";
-            root.recording-started();
+            ShortcutField {
+                width: 150px;
+                text: root.shortcut;
+                label: @tr("Pocket shortcut");
+                recording <=> root.recording;
+                started => {
+                    root.shortcut-error = "";
+                    root.recording-started();
+                }
+                cancelled => { root.recording-cancelled(); }
+            }
         }
-        cancelled => { root.recording-cancelled(); }
     }
 
     if root.shortcut-error != "": Text {
@@ -603,30 +587,44 @@ export component PocketPage inherits VerticalLayout {
         wrap: word-wrap;
     }
 
-    Separator { }
+    Group {
+        SettingRow {
+            label: @tr("Remove after drag-out");
+            description: @tr("An item leaves the Pocket once you drop it somewhere");
 
-    SwitchRow {
-        label: @tr("Remove after drag-out");
-        on: root.remove-after-drop;
-        toggled(on) => { root.remove-after-drop-toggled(on); }
+            Switch {
+                label: @tr("Remove after drag-out");
+                on: root.remove-after-drop;
+                toggled(on) => { root.remove-after-drop-toggled(on); }
+            }
+        }
+
+        Separator { }
+
+        SettingRow {
+            label: @tr("Keep a copy");
+            description: @tr("Vento keeps its own copy of each file, not only a link to it");
+
+            Switch {
+                label: @tr("Keep a copy");
+                on: root.keep-copies;
+                toggled(on) => { root.keep-copies-toggled(on); }
+            }
+        }
     }
 
-    SwitchRow {
-        label: @tr("Keep a copy");
-        on: root.keep-copies;
-        toggled(on) => { root.keep-copies-toggled(on); }
-    }
+    Group {
+        SettingRow {
+            label: @tr("When it holds more than 8 items");
 
-    Separator { }
-
-    SectionHeading {
-        text: @tr("When it holds more than 8 items");
-    }
-
-    Segmented {
-        items: [@tr("List"), @tr("Scroll"), @tr("Stacks")];
-        current: root.pocket-layout;
-        chosen(i) => { root.pocket-layout-chosen(i); }
+            MenuField {
+                width: 130px;
+                label: @tr("When it holds more than 8 items");
+                items: [@tr("List"), @tr("Scroll"), @tr("Stacks")];
+                current: root.pocket-layout;
+                chosen(i) => { root.pocket-layout-chosen(i); }
+            }
+        }
     }
 }
 
@@ -644,30 +642,43 @@ export component ClipboardPage inherits VerticalLayout {
     callback recording-cancelled();
     callback history-cleared();
 
+    // "Clear…" was clicked: the row asks to confirm.
+    property <bool> confirming;
+
     spacing: 8px;
 
-    SwitchRow {
-        label: @tr("Clipboard history");
-        on: root.history;
-        toggled(on) => { root.history-toggled(on); }
-    }
+    Group {
+        SettingRow {
+            label: @tr("Clipboard history");
+            description: @tr("Remember what you copy");
 
-    Separator { }
-
-    SectionHeading {
-        text: @tr("Shortcut");
-    }
-
-    ShortcutField {
-        text: root.shortcut;
-        label: @tr("Clipboard shortcut");
-        enabled: root.history;
-        recording <=> root.recording;
-        started => {
-            root.shortcut-error = "";
-            root.recording-started();
+            Switch {
+                label: @tr("Clipboard history");
+                on: root.history;
+                toggled(on) => { root.history-toggled(on); }
+            }
         }
-        cancelled => { root.recording-cancelled(); }
+
+        Separator { }
+
+        SettingRow {
+            label: @tr("Shortcut");
+            description: @tr("Opens the clipboard history");
+            enabled: root.history;
+
+            ShortcutField {
+                width: 150px;
+                text: root.shortcut;
+                label: @tr("Clipboard shortcut");
+                enabled: root.history;
+                recording <=> root.recording;
+                started => {
+                    root.shortcut-error = "";
+                    root.recording-started();
+                }
+                cancelled => { root.recording-cancelled(); }
+            }
+        }
     }
 
     if root.shortcut-error != "": Text {
@@ -678,14 +689,38 @@ export component ClipboardPage inherits VerticalLayout {
         wrap: word-wrap;
     }
 
-    Separator { }
-
-    HorizontalLayout {
-        alignment: Theme.rtl ? end : start;
-
-        TextButton {
+    // Clearing has no Undo, so it asks first, in its own row.
+    Group {
+        SettingRow {
             label: @tr("Clear history");
-            clicked => { root.history-cleared(); }
+            description: @tr("Pinned copies stay");
+
+            if !root.confirming: RowButton {
+                label: @tr("Clear…");
+                name: @tr("Clear history");
+                clicked => { root.confirming = true; }
+            }
+
+            if root.confirming: HorizontalLayout {
+                spacing: 6px;
+
+                RowButton {
+                    layout-order: Theme.rtl ? 2 : 0;
+                    label: @tr("Cancel");
+                    clicked => { root.confirming = false; }
+                }
+
+                RowButton {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    label: @tr("Clear");
+                    name: @tr("Clear history");
+                    danger: true;
+                    clicked => {
+                        root.confirming = false;
+                        root.history-cleared();
+                    }
+                }
+            }
         }
     }
 }
@@ -719,81 +754,104 @@ export component GeneralPage inherits VerticalLayout {
 
     spacing: 8px;
 
-    SectionHeading {
-        text: @tr("Language");
+    Group {
+        SettingRow {
+            label: @tr("Language");
+
+            MenuField {
+                width: 210px;
+                label: @tr("Language");
+                items: root.language-names;
+                current: root.language;
+                chosen(i) => { root.language-chosen(i); }
+            }
+        }
+
+        Separator { }
+
+        SettingRow {
+            label: @tr("Appearance");
+
+            Segmented {
+                width: 210px;
+                items: [@tr("System"), @tr("Light"), @tr("Dark")];
+                current: root.appearance;
+                chosen(i) => { root.appearance-chosen(i); }
+            }
+        }
+
+        Separator { }
+
+        SettingRow {
+            label: @tr("Theme");
+            description: @tr("Colours of the Quick panel and this window");
+
+            MenuField {
+                width: 210px;
+                label: @tr("Theme");
+                items: root.theme-names;
+                current: root.theme;
+                chosen(i) => { root.theme-chosen(i); }
+            }
+        }
     }
 
-    MenuField {
-        label: @tr("Language");
-        items: root.language-names;
-        current: root.language;
-        chosen(i) => { root.language-chosen(i); }
+    Group {
+        SettingRow {
+            label: @tr("Trigger");
+            description: @tr("Press it while dragging a file to open the wheel");
+
+            MenuField {
+                width: 210px;
+                label: @tr("Trigger");
+                items: root.trigger-names;
+                current: root.trigger;
+                chosen(i) => { root.trigger-chosen(i); }
+            }
+        }
+
+        Separator { }
+
+        SettingRow {
+            label: @tr("Shake to open");
+            description: @tr("Shake the pointer while dragging to open the wheel");
+
+            Switch {
+                label: @tr("Shake to open");
+                on: root.shake-to-open;
+                toggled(on) => { root.shake-to-open-toggled(on); }
+            }
+        }
     }
 
-    Separator { }
+    Group {
+        SettingRow {
+            label: @tr("Terminal");
+            description: @tr("Where the Terminal action opens");
 
-    SectionHeading {
-        text: @tr("Appearance");
-    }
+            MenuField {
+                width: 210px;
+                label: @tr("Terminal");
+                items: root.terminals;
+                current: root.terminal;
+                chosen(i) => { root.terminal-chosen(i); }
+            }
+        }
 
-    Segmented {
-        items: [@tr("System"), @tr("Light"), @tr("Dark")];
-        current: root.appearance;
-        chosen(i) => { root.appearance-chosen(i); }
-    }
+        Separator { }
 
-    SectionHeading {
-        text: @tr("Theme");
-    }
+        SettingRow {
+            label: @tr("Copy path");
+            description: @tr("How Copy path writes the path");
 
-    MenuField {
-        label: @tr("Theme");
-        items: root.theme-names;
-        current: root.theme;
-        chosen(i) => { root.theme-chosen(i); }
-    }
-
-    Separator { }
-
-    SectionHeading {
-        text: @tr("Trigger");
-    }
-
-    Segmented {
-        items: root.trigger-names;
-        current: root.trigger;
-        chosen(i) => { root.trigger-chosen(i); }
-    }
-
-    SwitchRow {
-        label: @tr("Shake to open");
-        on: root.shake-to-open;
-        toggled(on) => { root.shake-to-open-toggled(on); }
-    }
-
-    Separator { }
-
-    SectionHeading {
-        text: @tr("Terminal");
-    }
-
-    MenuField {
-        label: @tr("Terminal");
-        items: root.terminals;
-        current: root.terminal;
-        chosen(i) => { root.terminal-chosen(i); }
-    }
-
-    Separator { }
-
-    SectionHeading {
-        text: @tr("Copy path");
-    }
-
-    Segmented {
-        items: [@tr("Plain"), @tr("Shell-quoted")];
-        current: root.path-format;
-        chosen(i) => { root.path-format-chosen(i); }
+            MenuField {
+                width: 210px;
+                label: @tr("Copy path");
+                items: [@tr("Plain"), @tr("Shell-quoted")];
+                current: root.path-format;
+                chosen(i) => { root.path-format-chosen(i); }
+            }
+        }
     }
 }
 
@@ -809,19 +867,23 @@ export component CopyFromScreenPage inherits VerticalLayout {
 
     spacing: 8px;
 
-    SectionHeading {
-        text: @tr("Shortcut");
-    }
+    Group {
+        SettingRow {
+            label: @tr("Shortcut");
+            description: @tr("Dims the screen so you can pick the text to copy");
 
-    ShortcutField {
-        text: root.shortcut;
-        label: @tr("Copy from screen shortcut");
-        recording <=> root.recording;
-        started => {
-            root.shortcut-error = "";
-            root.recording-started();
+            ShortcutField {
+                width: 150px;
+                text: root.shortcut;
+                label: @tr("Copy from screen shortcut");
+                recording <=> root.recording;
+                started => {
+                    root.shortcut-error = "";
+                    root.recording-started();
+                }
+                cancelled => { root.recording-cancelled(); }
+            }
         }
-        cancelled => { root.recording-cancelled(); }
     }
 
     if root.shortcut-error != "": Text {
@@ -840,10 +902,17 @@ export component KeepAwakePage inherits VerticalLayout {
 
     spacing: 8px;
 
-    SwitchRow {
-        label: @tr("Let the screen turn off");
-        on: root.screen-off;
-        toggled(on) => { root.screen-off-toggled(on); }
+    Group {
+        SettingRow {
+            label: @tr("Let the screen turn off");
+            description: @tr("Only the computer stays awake; the screen dims and locks as usual");
+
+            Switch {
+                label: @tr("Let the screen turn off");
+                on: root.screen-off;
+                toggled(on) => { root.screen-off-toggled(on); }
+            }
+        }
     }
 }
 
@@ -856,48 +925,64 @@ export component AboutPage inherits VerticalLayout {
 
     spacing: 8px;
 
-    Text {
-        horizontal-alignment: Theme.rtl ? right : left;
-        text: "Vento";
-        font-size: 15px;
-        font-weight: 600;
-        color: Theme.text;
-    }
+    VerticalLayout {
+        padding-top: 4px;
+        padding-bottom: 8px;
+        spacing: 4px;
 
-    Text {
-        horizontal-alignment: Theme.rtl ? right : left;
-        text: @tr("Version {}", root.version);
-        font-size: 12px;
-        color: Theme.muted;
-    }
+        HorizontalLayout {
+            alignment: center;
 
-    Separator { }
+            Image {
+                source: @image-url("../../../brand/svg/app-icon.svg");
+                width: 64px;
+                height: 64px;
+            }
+        }
 
-    HorizontalLayout {
-        alignment: Theme.rtl ? end : start;
+        Text {
+            horizontal-alignment: center;
+            text: "Vento";
+            font-size: 15px;
+            font-weight: 600;
+            color: Theme.text;
+        }
 
-        TextButton {
-            label: @tr("Open settings file");
-            clicked => { root.open-settings-file(); }
+        Text {
+            horizontal-alignment: center;
+            text: @tr("Version {}", root.version);
+            font-size: 12px;
+            color: Theme.muted;
         }
     }
 
-    Separator { }
+    Group {
+        SettingRow {
+            label: @tr("Settings file");
 
-    Text {
-        horizontal-alignment: Theme.rtl ? right : left;
+            RowButton {
+                label: @tr("Open");
+                name: @tr("Open settings file");
+                clicked => { root.open-settings-file(); }
+            }
+        }
+
+        Separator { }
+
+        SettingRow {
+            label: @tr("Licenses");
+
+            RowButton {
+                label: @tr("View");
+                name: @tr("View licenses");
+                clicked => { root.open-licenses(); }
+            }
+        }
+    }
+
+    WrapText {
         text: @tr("GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed.");
-        font-size: 12px;
+        font-size: 11px;
         color: Theme.muted;
-        wrap: word-wrap;
-    }
-
-    HorizontalLayout {
-        alignment: Theme.rtl ? end : start;
-
-        TextButton {
-            label: @tr("View licenses");
-            clicked => { root.open-licenses(); }
-        }
     }
 }
