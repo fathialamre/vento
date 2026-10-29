@@ -11,6 +11,7 @@ use vento_core::clip::ClipSnapshot;
 use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
 use vento_core::screen_text::{Selection, TextBox};
+use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
 mod stub;
@@ -516,6 +517,45 @@ pub trait Platform {
         at: Point,
         entries: &[MenuEntry],
     ) -> Option<u32>;
+    /// The services [`Platform::share`] can hand items to on this machine:
+    /// those of AirDrop, Messages, Mail and Notes that exist, in that order.
+    /// Never [`ShareTarget::More`], which [`Platform::share_picker`] shows.
+    /// Empty where unsupported. Main thread only.
+    fn share_targets(&self) -> Vec<ShareTarget> {
+        Vec::new()
+    }
+    /// Whether `target`'s service takes all of `paths` (Notes takes no
+    /// folder together with files). Always true for [`ShareTarget::More`];
+    /// false where unsupported or when the service is missing. Main thread
+    /// only.
+    fn can_share(&self, target: ShareTarget, paths: &[PathBuf]) -> bool {
+        let _ = (target, paths);
+        false
+    }
+    /// Hand `paths` to `target`'s service, which shows its own window, and
+    /// return. `on_done` is called once, later, on the main thread, with how
+    /// the share ended; focus has gone back to the app that had it by then.
+    /// [`ShareTarget::More`] is an error (it is [`Platform::share_picker`]),
+    /// and so is a call while another share or the share popover is open.
+    /// Main thread only.
+    fn share(
+        &self,
+        target: ShareTarget,
+        paths: &[PathBuf],
+        on_done: Box<dyn Fn(ShareOutcome)>,
+    ) -> Result<(), PlatformError> {
+        let _ = (target, paths, on_done);
+        Err(PlatformError::Unsupported)
+    }
+    /// Show the system's share popover for `paths`, pointing at `at` (global
+    /// logical point, top-left origin), and return. The popover closes
+    /// itself; a service picked from it runs on its own and reports nothing.
+    /// A call while a share or another popover is open is an error. Main
+    /// thread only.
+    fn share_picker(&self, paths: &[PathBuf], at: Point) -> Result<(), PlatformError> {
+        let _ = (paths, at);
+        Err(PlatformError::Unsupported)
+    }
 }
 
 /// What Copy from screen needs from the operating system, apart from

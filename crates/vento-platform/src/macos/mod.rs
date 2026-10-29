@@ -13,6 +13,7 @@ use objc2_app_kit::{
 };
 use vento_core::clip::ClipSnapshot;
 use vento_core::geometry::{Point, Rect};
+use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
 use crate::{
@@ -39,6 +40,7 @@ mod quit;
 mod screen_text;
 mod screens;
 mod select;
+mod share;
 mod terminal;
 mod thumbnail;
 mod trash;
@@ -61,8 +63,9 @@ pub struct MacPlatform {
     /// Listens for screen changes and termination while vento runs.
     _observer: Retained<notify::AppObserver>,
     /// The app that was in front when vento last brought itself forward,
-    /// given focus back by [`Platform::deactivate_app`].
-    previous_app: RefCell<Option<Retained<NSRunningApplication>>>,
+    /// given focus back by [`Platform::deactivate_app`], or when a share
+    /// ends. Shared with the closure that waits for that.
+    previous_app: Rc<RefCell<Option<Retained<NSRunningApplication>>>>,
     /// The menu bar taken away by [`Platform::suspend_app_menu`]: `Some`
     /// while it is away, holding the menu to put back (`None` if there was
     /// none).
@@ -71,6 +74,8 @@ pub struct MacPlatform {
     outside_clicks: RefCell<Option<clicks::ClickMonitor>>,
     /// Keep Awake's power assertion.
     awake: awake::Assertion,
+    /// The share in flight, see [`Platform::share`].
+    share: share::ShareState,
 }
 
 impl Default for MacPlatform {
@@ -85,10 +90,11 @@ impl MacPlatform {
             drag: input::DragPasteboardCache::default(),
             catcher: OnceCell::new(),
             _observer: notify::AppObserver::install(),
-            previous_app: RefCell::new(None),
+            previous_app: Rc::new(RefCell::new(None)),
             suspended_menu: RefCell::new(None),
             outside_clicks: RefCell::new(None),
             awake: awake::Assertion::default(),
+            share: share::ShareState::default(),
         }
     }
 }
@@ -269,23 +275,7 @@ impl Platform for MacPlatform {
             log::warn!("deactivate_app called off the main thread; ignored");
             return;
         };
-        let app = NSApplication::sharedApplication(mtm);
-        let previous = self.previous_app.borrow_mut().take();
-        // The user already went to another app (clicked outside): leave
-        // focus where it is.
-        if !app.isActive() {
-            return;
-        }
-        // Not `hide`: that would also hide the Pocket island and keep the
-        // wheel from showing until vento is next activated.
-        match previous {
-            Some(previous) if !previous.isTerminated() => {
-                if !previous.activateWithOptions(NSApplicationActivationOptions::empty()) {
-                    app.deactivate();
-                }
-            }
-            _ => app.deactivate(),
-        }
+        hand_focus_back(mtm, &self.previous_app);
     }
 
     fn suspend_app_menu(&self) {
@@ -381,6 +371,85 @@ impl Platform for MacPlatform {
         entries: &[MenuEntry],
     ) -> Option<u32> {
         menu::context_menu(window, at, entries)
+    }
+
+    fn share_targets(&self) -> Vec<ShareTarget> {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("share_targets called off the main thread; ignored");
+            return Vec::new();
+        };
+        share::targets(mtm)
+    }
+
+    fn can_share(&self, target: ShareTarget, paths: &[PathBuf]) -> bool {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("can_share called off the main thread; ignored");
+            return false;
+        };
+        share::can_share(target, paths, mtm)
+    }
+
+    /// AirDrop's, Messages' and Notes' windows bring vento to the front by
+    /// themselves and leave it there, with no window, once they close; Mail
+    /// takes the front itself. So vento activates first, which remembers
+    /// who had focus, and hands it back when the outcome arrives.
+    fn share(
+        &self,
+        target: ShareTarget,
+        paths: &[PathBuf],
+        on_done: Box<dyn Fn(ShareOutcome)>,
+    ) -> Result<(), PlatformError> {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("share called off the main thread; ignored");
+            return Err(PlatformError::Failed("not on the main thread".into()));
+        };
+        let previous_app = Rc::clone(&self.previous_app);
+        let on_done: Box<dyn Fn(ShareOutcome)> = Box::new(move |outcome| {
+            hand_focus_back(mtm, &previous_app);
+            on_done(outcome);
+        });
+        share::share(
+            &self.share,
+            target,
+            paths,
+            on_done,
+            || self.activate_app(),
+            mtm,
+        )
+    }
+
+    fn share_picker(&self, paths: &[PathBuf], at: Point) -> Result<(), PlatformError> {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("share_picker called off the main thread; ignored");
+            return Err(PlatformError::Failed("not on the main thread".into()));
+        };
+        share::picker(&self.share, paths, at, mtm)
+    }
+}
+
+/// Hands focus back to the app in `previous_app`, taking it, as
+/// [`Platform::deactivate_app`] does: nothing happens when another app
+/// already took focus.
+fn hand_focus_back(
+    mtm: MainThreadMarker,
+    previous_app: &RefCell<Option<Retained<NSRunningApplication>>>,
+) {
+    let app = NSApplication::sharedApplication(mtm);
+    let previous = previous_app.borrow_mut().take();
+    // The user already went to another app (clicked outside): leave
+    // focus where it is.
+    if !app.isActive() {
+        return;
+    }
+    // Not `hide`: that would also hide the Pocket island and keep the
+    // wheel from showing until vento is next activated.
+    match previous {
+        Some(previous) if !previous.isTerminated() => {
+            if !previous.activateWithOptions(NSApplicationActivationOptions::empty()) {
+                app.deactivate();
+            }
+        }
+        _ => app.deactivate(),
     }
 }
 
