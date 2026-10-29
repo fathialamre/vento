@@ -58,64 +58,42 @@ export component WrapText {
     }
 }
 
-// The line between a `Group`'s rows, which `Separator` is too faint for
-// on a group in the dark.
+// The line between the rows of the Settings window's panel.
 export component RowSeparator inherits Rectangle {
     height: 1px;
-    background: Theme.group-line;
+    background: Theme.panel-line;
 }
 
-// Settings that belong together, on a rounded card. The page puts a
-// `RowSeparator` between its rows.
-export component Group inherits Rectangle {
-    border-radius: 10px;
-    background: Theme.group;
+// The one panel a Settings page shows its rows on, with a `RowSeparator`
+// between them. It reaches the panel's edges, so each row pads itself.
+export component Panel inherits Rectangle {
+    border-radius: 12px;
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.panel-border;
 
     VerticalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
+        padding: 1px;
 
         @children
     }
 }
 
-// The heading over a `Group`, with anything given to it (a button, a
-// note) at the end of the line.
-export component GroupHeading inherits HorizontalLayout {
-    in property <string> text;
-
-    padding-left: 4px;
-    padding-right: 4px;
-    padding-top: 4px;
-    spacing: 8px;
-
-    SectionHeading {
-        layout-order: Theme.rtl ? 2 : 0;
-        text: root.text;
-        vertical-alignment: center;
-        horizontal-stretch: 1;
-    }
-
-    HorizontalLayout {
-        layout-order: Theme.rtl ? 1 : 0;
-        horizontal-stretch: 0;
-
-        @children
-    }
-}
-
-// One setting in a `Group`: its name, and under it what it does when
-// `description` is set, at the start of the line; its control (the
-// children) at the end. A setting that is not `enabled` shows its name
-// dimmed.
+// One row of the panel: its name, and under it what it does when
+// `description` is set, at the start of the line; anything given to it (a
+// control, a button) at the end. A row that is not `enabled` shows its
+// name dimmed. A row with more below it (a `RowBody`) passes a smaller
+// `padding-bottom`.
 export component SettingRow inherits HorizontalLayout {
     in property <string> label;
     in property <string> description;
     in property <bool> enabled: true;
 
-    min-height: 44px;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    min-height: 52px;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
     spacing: 12px;
 
     VerticalLayout {
@@ -127,12 +105,13 @@ export component SettingRow inherits HorizontalLayout {
         WrapText {
             text: root.label;
             font-size: 13px;
+            font-weight: 500;
             color: root.enabled ? Theme.text : Theme.muted;
         }
 
         if root.description != "": WrapText {
             text: root.description;
-            font-size: 11px;
+            font-size: 12px;
             color: Theme.muted;
         }
     }
@@ -143,6 +122,31 @@ export component SettingRow inherits HorizontalLayout {
         horizontal-stretch: 0;
 
         @children
+    }
+}
+
+// What a `SettingRow` shows below its name and description when it does
+// not fit at the end of the line: a list, pictures to pick from.
+export component RowBody inherits VerticalLayout {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 14px;
+
+    @children
+}
+
+// Why a shortcut a row recorded was refused, under that row.
+export component RowError inherits VerticalLayout {
+    in property <string> text;
+
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 12px;
+
+    WrapText {
+        text: root.text;
+        font-size: 12px;
+        color: Theme.danger;
     }
 }
 
