@@ -32,6 +32,7 @@ use vento_core::i18n::tr;
 use vento_core::pdf::looks_like_pdf;
 use vento_core::ring::{Hover, RingEvent, RingTracker};
 use vento_core::settings::Settings;
+use vento_core::share::{ShareTarget, centre_text, ring_targets};
 use vento_core::trigger::{InputSample, TriggerEvent, TriggerMachine};
 use vento_platform::{Platform, RgbaImage};
 
@@ -88,6 +89,10 @@ struct State {
     /// cell is drawn dimmed (a drop on it still goes to the PDF window,
     /// which says there is nothing to open).
     pdf_dimmed: bool,
+    /// The share services this machine has, as the platform reported them
+    /// when the wheel was made or its settings last changed; empty unless
+    /// Share is on the wheel.
+    share_targets: Vec<ShareTarget>,
 }
 
 /// The destination ring around one action.
@@ -99,10 +104,12 @@ struct OpenRing {
     items: RingItems,
 }
 
-/// What a ring holds: folders for Move and Copy to, image formats for Convert.
+/// What a ring holds: folders for Move and Copy to, image formats for
+/// Convert, share targets for Share.
 enum RingItems {
     Folders(Vec<Destination>),
     Formats(Vec<ImageFormat>),
+    Targets(Vec<ShareTarget>),
 }
 
 impl RingItems {
@@ -110,6 +117,7 @@ impl RingItems {
         match self {
             RingItems::Folders(dests) => dests.len(),
             RingItems::Formats(formats) => formats.len(),
+            RingItems::Targets(targets) => targets.len(),
         }
     }
 
@@ -117,6 +125,7 @@ impl RingItems {
         match self {
             RingItems::Folders(dests) => dests.truncate(len),
             RingItems::Formats(formats) => formats.truncate(len),
+            RingItems::Targets(targets) => targets.truncate(len),
         }
     }
 }
@@ -202,6 +211,16 @@ fn action_text(action: ActionId, extracting: bool) -> String {
     }
 }
 
+/// The text at the wheel's centre while the pointer rests on `action`: what
+/// its cell says, except that Share names what a release on it does with the
+/// services in `share_targets`.
+fn centre_text_for(action: ActionId, extracting: bool, share_targets: &[ShareTarget]) -> String {
+    match action {
+        ActionId::Share => centre_text(share_targets),
+        other => action_text(other, extracting),
+    }
+}
+
 /// Whether the PDF cell is dimmed for `paths`: none of them is named like a
 /// PDF. A name check only, so it fits the wheel's opening budget.
 fn pdf_cell_dimmed(paths: &[PathBuf]) -> bool {
@@ -239,6 +258,16 @@ fn ring_tracker(settings: &Settings) -> RingTracker {
     )
 }
 
+/// The share services to keep for `settings`: those `platform` reports when
+/// Share is on the wheel, none otherwise. Main thread only.
+fn share_targets_for(platform: &dyn Platform, settings: &Settings) -> Vec<ShareTarget> {
+    if settings.actions.contains(&ActionId::Share) {
+        platform.share_targets()
+    } else {
+        Vec::new()
+    }
+}
+
 /// What a drop on the wheel asks for.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WheelDrop {
@@ -250,13 +279,18 @@ pub struct WheelDrop {
     pub dest: Option<PathBuf>,
     /// The ring format dropped on; `Some` only for a drop on a Convert ring cell.
     pub format: Option<ImageFormat>,
+    /// The ring share target dropped on; `Some` only for a drop on a Share
+    /// ring cell.
+    pub target: Option<ShareTarget>,
 }
 
-/// The verb in front of the ring cell under the cursor.
+/// The verb in front of the ring cell under the cursor; none for Share,
+/// whose targets read as whole sentences.
 fn ring_verb(action: ActionId) -> String {
     match action {
         ActionId::CopyTo => tr("Copy to"),
         ActionId::Convert => tr("Convert to"),
+        ActionId::Share => String::new(),
         _ => tr("Move to"),
     }
 }
@@ -267,6 +301,27 @@ fn format_label(format: ImageFormat) -> CellLabel {
         line1: format.name().to_string(),
         line2: Some(format!(".{}", format.extension())),
         line2_dim: true,
+    }
+}
+
+/// The icon on the ring cell of `target`. AirDrop is never on the ring; it
+/// would show the Share icon.
+fn target_icon(icons: &Icons<'_>, target: ShareTarget) -> Image {
+    match target {
+        ShareTarget::Messages => icons.get_messages(),
+        ShareTarget::Mail => icons.get_mail(),
+        ShareTarget::Notes => icons.get_notes(),
+        ShareTarget::More => icons.get_more(),
+        ShareTarget::AirDrop => icons.get_share(),
+    }
+}
+
+/// The text on the ring cell of `target`: its name, on one line.
+fn target_label(target: ShareTarget) -> CellLabel {
+    CellLabel {
+        line1: target.name(),
+        line2: None,
+        line2_dim: false,
     }
 }
 
@@ -410,6 +465,7 @@ impl WheelController {
         let geometry = WheelGeometry::new(settings.layout, settings.actions.len());
         let machine = TriggerMachine::new(settings.trigger).with_shake(settings.shake_to_open);
         let tracker = ring_tracker(&settings);
+        let share_targets = share_targets_for(platform.as_ref(), &settings);
         let controller = Rc::new_cyclic(|this| Self {
             platform,
             window,
@@ -437,6 +493,7 @@ impl WheelController {
                 ring_hot: None,
                 extracting: false,
                 pdf_dimmed: false,
+                share_targets,
             }),
             paused: Cell::new(false),
             poll: Timer::default(),
@@ -510,10 +567,12 @@ impl WheelController {
         if self.machine.borrow().is_open() {
             self.dismiss();
         }
+        let share_targets = share_targets_for(self.platform.as_ref(), &settings);
         {
             let mut state = self.state.borrow_mut();
             state.geometry = WheelGeometry::new(settings.layout, settings.actions.len());
             state.tracker = ring_tracker(&settings);
+            state.share_targets = share_targets;
             state.settings = settings;
         }
         self.reset_trigger();
@@ -746,7 +805,11 @@ impl WheelController {
         if state.highlighted != action {
             state.highlighted = action;
             let label = action.map_or_else(String::new, |i| {
-                action_text(state.settings.actions[i], state.extracting)
+                centre_text_for(
+                    state.settings.actions[i],
+                    state.extracting,
+                    &state.share_targets,
+                )
             });
             self.window.set_highlighted(action.map_or(-1, |i| i as i32));
             self.window.set_center_text(label.into());
@@ -775,6 +838,14 @@ impl WheelController {
                 self.window.set_dest_path("".into());
                 self.window
                     .set_dest_icon(self.window.global::<Icons>().get_photo());
+                self.window.set_dest_icon_tint(true);
+            }
+            RingItems::Targets(targets) => {
+                let target = targets[d];
+                self.window.set_dest_name(target.hover_text().into());
+                self.window.set_dest_path("".into());
+                self.window
+                    .set_dest_icon(target_icon(&self.window.global::<Icons>(), target));
                 self.window.set_dest_icon_tint(true);
             }
         }
@@ -930,18 +1001,18 @@ impl WheelController {
     }
 
     /// Opens the ring around the action at `source`: formats for Convert,
-    /// folders otherwise. With nothing to show, or no room for it, the wheel
-    /// stays as it is (a drop on a folder action still opens the folder
-    /// picker).
+    /// share targets for Share, folders otherwise. With nothing to show, or
+    /// no room for it, the wheel stays as it is (a drop on a folder action
+    /// still opens the folder picker).
     fn open_ring(&self, source: usize) {
-        let is_convert = self.state.borrow().settings.actions[source] == ActionId::Convert;
-        let mut items = if is_convert {
-            RingItems::Formats(ring_formats(
+        let action = self.state.borrow().settings.actions[source];
+        let mut items = match action {
+            ActionId::Convert => RingItems::Formats(ring_formats(
                 &self.platform.drag_paths(),
                 &vento_platform::convert_targets(),
-            ))
-        } else {
-            RingItems::Folders(self.destinations())
+            )),
+            ActionId::Share => RingItems::Targets(ring_targets(&self.state.borrow().share_targets)),
+            _ => RingItems::Folders(self.destinations()),
         };
         if items.len() == 0 {
             debug!("nothing for the ring");
@@ -1002,6 +1073,13 @@ impl WheelController {
                     .map(|&f| (photo.clone(), format_label(f), false))
                     .collect()
             }
+            RingItems::Targets(targets) => {
+                let icons = self.window.global::<Icons>();
+                targets
+                    .iter()
+                    .map(|&t| (target_icon(&icons, t), target_label(t), false))
+                    .collect()
+            }
         };
         let cells: Vec<RingCell> = ring
             .cells()
@@ -1016,7 +1094,7 @@ impl WheelController {
                 line2: label.line2.unwrap_or_default().into(),
                 line2_dim: label.line2_dim,
                 pinned,
-                tint: matches!(items, RingItems::Formats(_)),
+                tint: matches!(items, RingItems::Formats(_) | RingItems::Targets(_)),
             })
             .collect();
         self.set_covered(Some(&ring));
@@ -1123,7 +1201,7 @@ impl WheelController {
     }
 
     fn finish_drop(&self) {
-        let (paths, target, center, on_centre) = {
+        let (paths, hit, center, on_centre) = {
             let mut state = self.state.borrow_mut();
             let on_ring = state
                 .ring
@@ -1133,34 +1211,36 @@ impl WheelController {
                     let action = state.settings.actions.get(ring.source).copied()?;
                     Some(match &ring.items {
                         RingItems::Folders(dests) => {
-                            (action, Some(dests.get(d)?.path.clone()), None)
+                            (action, Some(dests.get(d)?.path.clone()), None, None)
                         }
-                        RingItems::Formats(formats) => (action, None, Some(*formats.get(d)?)),
+                        RingItems::Formats(formats) => (action, None, Some(*formats.get(d)?), None),
+                        RingItems::Targets(targets) => (action, None, None, Some(*targets.get(d)?)),
                     })
                 });
-            let target = on_ring.or_else(|| {
+            let hit = on_ring.or_else(|| {
                 state
                     .highlighted
                     .and_then(|i| state.settings.actions.get(i).copied())
-                    .map(|action| (action, None, None))
+                    .map(|action| (action, None, None, None))
             });
             let centre_r = centre_radius(state.settings.layout);
             let on_centre = state.last_offset.x.hypot(state.last_offset.y) < centre_r;
             (
                 std::mem::take(&mut state.dropped),
-                target,
+                hit,
                 state.center,
                 on_centre,
             )
         };
         self.dismiss();
-        match target {
-            Some((action, dest, format)) => (self.on_drop)(WheelDrop {
+        match hit {
+            Some((action, dest, format, target)) => (self.on_drop)(WheelDrop {
                 action,
                 paths,
                 at: center,
                 dest,
                 format,
+                target,
             }),
             None if on_centre => debug!("dropped on centre"),
             None => debug!("dropped outside cells"),
@@ -1277,6 +1357,18 @@ mod tests {
     }
 
     #[test]
+    fn target_cell_label() {
+        assert_eq!(
+            target_label(ShareTarget::Mail),
+            CellLabel {
+                line1: "Mail".into(),
+                line2: None,
+                line2_dim: false,
+            }
+        );
+    }
+
+    #[test]
     fn folder_check_skips_missing_folders_and_icons_in_hand() {
         let dir = tempfile::tempdir().unwrap();
         let (a, b, gone) = (
@@ -1320,6 +1412,24 @@ mod tests {
         assert_eq!(ring_verb(ActionId::Move), "Move to");
         assert_eq!(ring_verb(ActionId::CopyTo), "Copy to");
         assert_eq!(ring_verb(ActionId::Convert), "Convert to");
+        assert_eq!(ring_verb(ActionId::Share), "");
+    }
+
+    #[test]
+    fn share_centre_text_without_airdrop() {
+        let centre = |targets: &[ShareTarget]| centre_text_for(ActionId::Share, false, targets);
+        assert_eq!(centre(&[ShareTarget::Mail]), "Share…");
+        assert_eq!(
+            centre(&[ShareTarget::AirDrop, ShareTarget::Mail]),
+            "Share with AirDrop"
+        );
+        // Every other action reads as its cell does.
+        let airdrop = [ShareTarget::AirDrop];
+        assert_eq!(
+            centre_text_for(ActionId::Archive, true, &airdrop),
+            "Extract"
+        );
+        assert_eq!(centre_text_for(ActionId::Move, false, &airdrop), "Move");
     }
 
     #[test]
@@ -1354,6 +1464,7 @@ mod tests {
             assert_eq!(action_text(ActionId::Archive, true), "فك الضغط");
             assert_eq!(action_text(ActionId::Move, true), "نقل");
             assert_eq!(action_text(ActionId::CopyPath, false), "نسخ المسار");
+            assert_eq!(action_text(ActionId::Share, false), "مشاركة");
         });
     }
 

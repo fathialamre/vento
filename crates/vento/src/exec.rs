@@ -480,6 +480,7 @@ impl Executor {
             at,
             dest,
             format,
+            target: _,
         } = drop;
         if paths.is_empty() {
             debug!("{action:?} with no files");

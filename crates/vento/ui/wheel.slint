@@ -13,8 +13,9 @@ export enum WheelLayout { honeycomb, petals }
 // a drop on it still works.
 export struct WheelCell { x: length, y: length, r: length, label: string, icon: image, covered: bool, dimmed: bool }
 
-// One folder (or image format) on the ring; `line2` is empty for a one-line
-// label. `tint`: the icon is a monochrome symbol, drawn white like the wheel's.
+// One folder (or image format, or share target) on the ring; `line2` is
+// empty for a one-line label. `tint`: the icon is a monochrome symbol,
+// drawn white like the wheel's.
 export struct RingCell {
     x: length,
     y: length,
@@ -52,6 +53,10 @@ export global Icons {
     out property <image> convert: @image-url("icons/transform.svg");
     out property <image> pdf: @image-url("icons/file-type-pdf.svg");
     out property <image> share: @image-url("icons/share.svg");
+    out property <image> messages: @image-url("icons/message-circle.svg");
+    out property <image> mail: @image-url("icons/mail.svg");
+    out property <image> notes: @image-url("icons/note.svg");
+    out property <image> more: @image-url("icons/dots.svg");
     out property <image> clipboard: @image-url("icons/clipboard.svg");
     out property <image> photo: @image-url("icons/photo.svg");
     out property <image> text: @image-url("icons/align-left.svg");
@@ -362,9 +367,11 @@ export component Wheel inherits Window {
                 spacing: 1px;
                 horizontal-stretch: 1;
 
+                // A share target reads as a whole sentence, with no verb
+                // and so no space in front of it.
                 HorizontalLayout {
                     spacing: 4px;
-                    Text {
+                    if root.dest-verb != "": Text {
                         text: root.dest-verb;
                         color: #ffffffb0;
                         font-size: 12px;
@@ -379,7 +386,8 @@ export component Wheel inherits Window {
                     }
                 }
 
-                // Formats have no path; the line would still reserve its height.
+                // Formats and share targets have no path; the line would
+                // still reserve its height.
                 if root.dest-path != "": LineText {
                     text: root.dest-path;
                     color: #ffffff8c;
