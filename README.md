@@ -222,19 +222,21 @@ skipped.
 
 ### Share *(off at first)*
 
-Sends what you dragged with the Mac's own sharing, on macOS only for now. Let go
+Sends what you dragged with the Mac's own sharing (macOS only for now). Let go
 on **Share** and AirDrop opens with your files in it, ready for you to pick a
 device. On a Mac without AirDrop, the system's share menu opens instead.
 
 **Hold** on Share for a moment and a ring opens: **Messages, Mail, Notes** and
 **More…**. Let go on one and its window opens with your files in it. **More…**
 opens the system's share menu, which lists every app that can share, such as
-WhatsApp or Telegram when their share extensions are on.
+WhatsApp or Telegram when their share extensions are on. A Mac without
+Messages, Mail or Notes simply has fewer cells on the ring.
 
-Everything goes as it is, folders too. AirDrop sends a folder, and Mail attaches
-it as a zip that Mail makes itself. When a service cannot take what you dropped,
-a notice says so. Notes cannot take a folder together with files: drop the
-folder on its own, or zip it with **Archive** first.
+Everything goes as it is, folders too. AirDrop sends a folder, and Mail zips it
+itself. When a service cannot take what you dropped, a notice says so. Notes
+cannot take a folder together with files: drop the folder on its own, or zip it
+with **Archive** first (switch Archive on in **Settings → Wheel** if it is not
+on the wheel).
 
 Share writes nothing, so there is nothing to **Undo**, and it asks for no
 permission. A notice appears only when something goes wrong; otherwise the
