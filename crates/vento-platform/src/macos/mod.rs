@@ -261,10 +261,7 @@ impl Platform for MacPlatform {
         // Remember who had focus. When that is vento itself (already in
         // front), whatever was remembered stays; `deactivate_app` always
         // takes it, so nothing is handed focus twice.
-        let me = NSRunningApplication::currentApplication().processIdentifier();
-        if let Some(front) = NSWorkspace::sharedWorkspace().frontmostApplication()
-            && front.processIdentifier() != me
-        {
+        if let Some(front) = frontmost_other_app() {
             *self.previous_app.borrow_mut() = Some(front);
         }
         screens::activate_app(mtm);
@@ -418,13 +415,33 @@ impl Platform for MacPlatform {
         )
     }
 
+    /// The popover itself needs no activation. A service picked from it may
+    /// show its window in vento (AirDrop's, Notes'), which brings vento to
+    /// the front and leaves it there: when that service reports back, focus
+    /// goes to the app in front now. That app is kept apart from the one
+    /// [`Platform::activate_app`] remembers, which stays another window's to
+    /// hand back.
     fn share_picker(&self, paths: &[PathBuf], at: Point) -> Result<(), PlatformError> {
         let Some(mtm) = MainThreadMarker::new() else {
             log::warn!("share_picker called off the main thread; ignored");
             return Err(PlatformError::Failed("not on the main thread".into()));
         };
-        share::picker(&self.share, paths, at, mtm)
+        let previous_app = RefCell::new(frontmost_other_app());
+        let hand_back: Box<dyn Fn(ShareOutcome)> = Box::new(move |_| {
+            if previous_app.borrow().is_some() {
+                hand_focus_back(mtm, &previous_app);
+            }
+        });
+        share::picker(&self.share, paths, at, hand_back, mtm)
     }
+}
+
+/// The app in front, unless that is vento itself.
+fn frontmost_other_app() -> Option<Retained<NSRunningApplication>> {
+    let me = NSRunningApplication::currentApplication().processIdentifier();
+    NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .filter(|front| front.processIdentifier() != me)
 }
 
 /// Hands focus back to the app in `previous_app`, taking it, as

@@ -526,18 +526,20 @@ pub trait Platform {
     }
     /// Whether `target`'s service takes all of `paths` (Notes takes no
     /// folder together with files). Always true for [`ShareTarget::More`];
-    /// false where unsupported or when the service is missing. Main thread
-    /// only.
+    /// false where unsupported, when `paths` is empty or when the service is
+    /// missing. Main thread only.
     fn can_share(&self, target: ShareTarget, paths: &[PathBuf]) -> bool {
         let _ = (target, paths);
         false
     }
     /// Hand `paths` to `target`'s service, which shows its own window, and
-    /// return. `on_done` is called once, later, on the main thread, with how
-    /// the share ended; focus has gone back to the app that had it by then.
+    /// return. `on_done` is called at most once, on the main thread, when
+    /// the service reports back how the share ended, with focus already back
+    /// with the app that had it; a service may never report back.
     /// [`ShareTarget::More`] is an error (it is [`Platform::share_picker`]),
-    /// and so is a call while another share or the share popover is open.
-    /// Main thread only.
+    /// as are a service that cannot take `paths` (see
+    /// [`Platform::can_share`]) and a call while another share or the share
+    /// popover is open. Main thread only.
     fn share(
         &self,
         target: ShareTarget,
@@ -549,9 +551,10 @@ pub trait Platform {
     }
     /// Show the system's share popover for `paths`, pointing at `at` (global
     /// logical point, top-left origin), and return. The popover closes
-    /// itself; a service picked from it runs on its own and reports nothing.
-    /// A call while a share or another popover is open is an error. Main
-    /// thread only.
+    /// itself. A service picked from it runs on its own and reports nothing
+    /// to the caller; focus goes back to the app that had it when that
+    /// service reports back. Until then, or until the popover is dismissed,
+    /// this and [`Platform::share`] are errors. Main thread only.
     fn share_picker(&self, paths: &[PathBuf], at: Point) -> Result<(), PlatformError> {
         let _ = (paths, at);
         Err(PlatformError::Unsupported)

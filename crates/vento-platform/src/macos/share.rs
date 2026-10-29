@@ -4,8 +4,10 @@
 //!
 //! Everything here runs on the main thread. One share at a time: what a
 //! share needs kept alive (AppKit holds its delegates only weakly) lives in
-//! [`ShareState`] from [`share`] or [`picker`] until the delegate hears how
-//! it ended, and a call meanwhile is refused.
+//! [`ShareState`] from [`share`] or [`picker`] until the share is over, and
+//! a call meanwhile is refused. A direct share is over when its service
+//! reports back; the popover when it is dismissed, or when the service
+//! picked from it reports back.
 
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -46,21 +48,22 @@ const SERVICES: [ShareTarget; 4] = [
     ShareTarget::Notes,
 ];
 
-/// What [`share`] calls once, with how the share ended.
+/// What [`share`] and [`picker`] call once, with how the share ended.
 type Done = Box<dyn Fn(ShareOutcome)>;
 
 /// The share in flight, if any: a service's window or the share popover.
 #[derive(Default)]
 pub(super) struct ShareState {
-    /// The service whose window is on screen, and its delegate. Emptied by
-    /// the delegate once the outcome is delivered.
+    /// The service whose window is on screen, and its delegate. Emptied once
+    /// the service reports back.
     sheet: Rc<RefCell<Option<SheetParts>>>,
-    /// The share popover on screen, emptied by its delegate when it closes.
+    /// The share popover, then the service picked from it. Emptied when the
+    /// popover is dismissed, or when that service reports back.
     picker: Rc<RefCell<Option<PickerParts>>>,
 }
 
 impl ShareState {
-    /// Whether a service's window or the popover is still open.
+    /// Whether a share is still in flight.
     fn busy(&self) -> bool {
         self.sheet.borrow().is_some() || self.picker.borrow().is_some()
     }
@@ -73,12 +76,40 @@ struct SheetParts {
     delegate: Retained<ShareDelegate>,
 }
 
+impl SheetParts {
+    /// Lets go of the parts once the call AppKit is making into vento is
+    /// over, as it may be the service's call to this very delegate: the run
+    /// loop's autorelease pool releases them then.
+    fn release(self) {
+        let _ = Retained::autorelease_ptr(self.delegate);
+        let _ = Retained::autorelease_ptr(self.service);
+    }
+}
+
 /// The share popover: AppKit holds the picker's delegate only weakly, and
-/// the popover points at the anchor panel.
+/// the popover points at the anchor panel. Once a service is picked, the
+/// panel is closed and the service runs as `chosen`.
 struct PickerParts {
     panel: Retained<NSPanel>,
     picker: Retained<NSSharingServicePicker>,
     delegate: Retained<PickerDelegate>,
+    /// The service picked from the popover, while it runs, and the delegate
+    /// vento gave it.
+    chosen: Option<SheetParts>,
+}
+
+impl PickerParts {
+    /// Lets go of the parts as [`SheetParts::release`] does, taking the
+    /// anchor off screen first in case the popover never said it closed.
+    fn release(self) {
+        self.panel.orderOut(None);
+        let _ = Retained::autorelease_ptr(self.picker);
+        let _ = Retained::autorelease_ptr(self.delegate);
+        let _ = Retained::autorelease_ptr(self.panel);
+        if let Some(chosen) = self.chosen {
+            chosen.release();
+        }
+    }
 }
 
 define_class!(
@@ -95,9 +126,9 @@ define_class!(
     unsafe impl NSObjectProtocol for ShareDelegate {}
 
     // SAFETY: the signatures match the protocol's. Neither method can panic:
-    // the closure `share` gives runs the caller's under `catch_unwind`. The
-    // items AppKit passes are `NSItemProvider`s by then, not the URLs, and
-    // are not looked at.
+    // the closure it holds (from `finishing`) runs the caller's under
+    // `catch_unwind`. The items AppKit passes are `NSItemProvider`s by then,
+    // not the URLs, and are not looked at.
     unsafe impl NSSharingServiceDelegate for ShareDelegate {
         /// The service took the items. AirDrop also says so after its
         /// Cancel.
@@ -137,6 +168,15 @@ impl ShareDelegate {
     }
 }
 
+/// What a [`PickerDelegate`] holds.
+struct PickerIvars {
+    /// [`ShareState::picker`].
+    slot: Weak<RefCell<Option<PickerParts>>>,
+    /// Given to the service picked from the popover, and called when that
+    /// service reports back; taken when it is picked.
+    on_done: RefCell<Option<Done>>,
+}
+
 define_class!(
     // SAFETY:
     // - NSObject has no subclassing requirements.
@@ -144,47 +184,122 @@ define_class!(
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
     #[name = "VentoSharePickerDelegate"]
-    #[ivars = Weak<RefCell<Option<PickerParts>>>]
+    #[ivars = PickerIvars]
     struct PickerDelegate;
 
     // SAFETY: `NSObjectProtocol` has no safety requirements.
     unsafe impl NSObjectProtocol for PickerDelegate {}
 
-    // SAFETY: the signature matches the protocol's. It cannot panic: the
-    // state is only borrowed with `try_borrow_mut`.
+    // SAFETY: the signatures match the protocol's. Neither method can panic:
+    // the state is only borrowed with `try_borrow` and `try_borrow_mut`.
     unsafe impl NSSharingServicePickerDelegate for PickerDelegate {
-        /// The popover closed: `service` is the one picked, which then runs
-        /// on its own, or `None` when the popover was dismissed. Either way
-        /// the anchor goes and the next share may start.
+        /// The popover closed, and the anchor goes. Dismissed (`service` is
+        /// `None`): the share is over. A service picked: the share stays in
+        /// flight until that service reports back to the delegate
+        /// `delegate_for` gives it.
         #[unsafe(method(sharingServicePicker:didChooseSharingService:))]
         fn did_choose(&self, _picker: &NSSharingServicePicker, service: Option<&NSSharingService>) {
             log::debug!("share popover closed: chose {}", service.is_some());
-            let Some(parts) = take(self.ivars()) else {
-                return;
-            };
-            parts.panel.close();
-            // AppKit is still inside the picker's call to this delegate: the
-            // run loop's autorelease pool releases them once that is over.
-            let _ = Retained::autorelease_ptr(parts.picker);
-            let _ = Retained::autorelease_ptr(parts.delegate);
-            let _ = Retained::autorelease_ptr(parts.panel);
+            if service.is_some() {
+                self.close_anchor();
+            } else if let Some(parts) = take(&self.ivars().slot) {
+                parts.panel.close();
+                parts.release();
+            }
+        }
+
+        /// The service picked, about to run. Its delegate hands focus back
+        /// and ends the share when the service reports back.
+        #[unsafe(method_id(sharingServicePicker:delegateForSharingService:))]
+        fn delegate_for(
+            &self,
+            _picker: &NSSharingServicePicker,
+            service: &NSSharingService,
+        ) -> Option<Retained<ProtocolObject<dyn NSSharingServiceDelegate>>> {
+            self.chosen(service).map(ProtocolObject::from_retained)
         }
     }
 );
 
 impl PickerDelegate {
-    /// A delegate that empties `slot` when the popover closes.
-    fn new(slot: Weak<RefCell<Option<PickerParts>>>, mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(slot);
+    /// A delegate that ends the share in `slot` when the popover is
+    /// dismissed, or gives `on_done` to the service picked from it.
+    fn new(
+        slot: Weak<RefCell<Option<PickerParts>>>,
+        on_done: Done,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let ivars = PickerIvars {
+            slot,
+            on_done: RefCell::new(Some(on_done)),
+        };
+        let this = Self::alloc(mtm).set_ivars(ivars);
         // SAFETY: `init` is NSObject's designated initializer.
         unsafe { msg_send![super(this), init] }
     }
+
+    /// Closes the anchor panel and keeps the rest of the popover's parts.
+    fn close_anchor(&self) {
+        let Some(slot) = self.ivars().slot.upgrade() else {
+            return;
+        };
+        let panel = match slot.try_borrow() {
+            Ok(parts) => parts.as_ref().map(|p| p.panel.clone()),
+            Err(_) => {
+                log::warn!("share state in use; the share anchor stays");
+                None
+            }
+        };
+        if let Some(panel) = panel {
+            panel.close();
+        }
+    }
+
+    /// A delegate for `service`, picked from the popover, kept in the
+    /// popover's parts: it calls `on_done`, then ends the share. `None` when
+    /// the share is already over, or a delegate was given before.
+    fn chosen(&self, service: &NSSharingService) -> Option<Retained<ShareDelegate>> {
+        let ivars = self.ivars();
+        let on_done = ivars.on_done.try_borrow_mut().ok()?.take()?;
+        let slot = ivars.slot.upgrade()?;
+        let Ok(mut held) = slot.try_borrow_mut() else {
+            log::warn!("share state in use; the picked service is not followed");
+            return None;
+        };
+        let parts = held.as_mut()?;
+        let delegate = ShareDelegate::new(
+            finishing(on_done, ivars.slot.clone(), PickerParts::release),
+            self.mtm(),
+        );
+        parts.chosen = Some(SheetParts {
+            service: service.retain(),
+            delegate: delegate.clone(),
+        });
+        Some(delegate)
+    }
+}
+
+/// The closure a [`ShareDelegate`] holds: calls `on_done` with the outcome,
+/// never letting a panic unwind into AppKit, then empties `slot` and lets
+/// go of what it held with `release`, so the next share may start.
+fn finishing<T: 'static>(on_done: Done, slot: Weak<RefCell<Option<T>>>, release: fn(T)) -> Done {
+    Box::new(move |outcome| {
+        if catch_unwind(AssertUnwindSafe(|| on_done(outcome))).is_err() {
+            log::error!("share callback panicked");
+        }
+        if let Some(parts) = take(&slot) {
+            release(parts);
+        }
+    })
 }
 
 /// Empties `slot`, if it still exists and is not borrowed.
 fn take<T>(slot: &Weak<RefCell<Option<T>>>) -> Option<T> {
     let slot = slot.upgrade()?;
-    let mut held = slot.try_borrow_mut().ok()?;
+    let Ok(mut held) = slot.try_borrow_mut() else {
+        log::warn!("share state in use; the share stays in flight");
+        return None;
+    };
     held.take()
 }
 
@@ -223,6 +338,12 @@ fn items(paths: &[PathBuf]) -> Result<Retained<NSArray>, PlatformError> {
     Ok(NSArray::from_retained_slice(&urls))
 }
 
+/// Whether `service` takes all of `items`, an array from [`items`].
+fn takes(service: &NSSharingService, items: &NSArray) -> bool {
+    // SAFETY: the items are NSURLs, which a service takes.
+    unsafe { service.canPerformWithItems(Some(items)) }
+}
+
 /// How a failed share ended: the window's Cancel (`NSUserCancelledError` in
 /// `NSCocoaErrorDomain`), or a failure the error's own text explains.
 fn outcome_of(error: &NSError) -> ShareOutcome {
@@ -243,25 +364,26 @@ pub(super) fn targets(mtm: MainThreadMarker) -> Vec<ShareTarget> {
         .collect()
 }
 
-/// Whether `target`'s service takes all of `paths`: always for More, never
-/// when the service is missing or a path is not valid UTF-8.
+/// Whether `target`'s service takes all of `paths`: always for More; never
+/// when `paths` is empty, a path is not valid UTF-8 or the service is
+/// missing.
 pub(super) fn can_share(target: ShareTarget, paths: &[PathBuf], mtm: MainThreadMarker) -> bool {
     if target == ShareTarget::More {
         return true;
     }
-    let (Some(service), Ok(items)) = (service(target, mtm), items(paths)) else {
+    let Ok(items) = items(paths) else {
         return false;
     };
-    // SAFETY: the items are NSURLs, which a service takes.
-    unsafe { service.canPerformWithItems(Some(&items)) }
+    service(target, mtm).is_some_and(|service| takes(&service, &items))
 }
 
 /// Hands `paths` to `target`'s service, which shows its own window, and
 /// returns. `activate` runs once the share is sure to start, just before
-/// the hand-off. `on_done` is called once, later, on the main thread, with
-/// how the share ended; `state` is emptied right after, so the next share
-/// may start. More is an error (it is [`picker`]), as is a call while
-/// another share is in flight.
+/// the hand-off. `on_done` is called at most once, on the main thread, when
+/// the service reports back how the share ended, which it may never do;
+/// `state` is emptied right after, so the next share may start. More is an
+/// error (it is [`picker`]), as are a service that cannot take `paths` (see
+/// [`can_share`]) and a call while another share is in flight.
 pub(super) fn share(
     state: &ShareState,
     target: ShareTarget,
@@ -283,20 +405,16 @@ pub(super) fn share(
             target.key()
         )));
     };
-    let slot = Rc::downgrade(&state.sheet);
+    // Handed items it cannot take, a service may never report back, which
+    // would keep the share in flight and vento in front.
+    if !takes(&service, &items) {
+        return Err(PlatformError::Failed(format!(
+            "the {} service cannot take these items",
+            target.key()
+        )));
+    }
     let delegate = ShareDelegate::new(
-        Box::new(move |outcome| {
-            if catch_unwind(AssertUnwindSafe(|| on_done(outcome))).is_err() {
-                log::error!("share callback panicked");
-            }
-            if let Some(sheet) = take(&slot) {
-                // AppKit is still inside the service's call to this
-                // delegate: the run loop's autorelease pool releases both
-                // once that is over.
-                let _ = Retained::autorelease_ptr(sheet.delegate);
-                let _ = Retained::autorelease_ptr(sheet.service);
-            }
-        }),
+        finishing(on_done, Rc::downgrade(&state.sheet), SheetParts::release),
         mtm,
     );
     service.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -313,12 +431,17 @@ pub(super) fn share(
 
 /// Shows the system's share popover for `paths`, pointing at `at` (global
 /// logical point, top-left origin), and returns. The popover closes itself
-/// and takes its anchor with it; a call while it or a share is open is an
-/// error. Needs no activation: the anchor never takes focus.
+/// and takes its anchor with it. A service picked from it runs on its own;
+/// `on_done` is called at most once, on the main thread, when that service
+/// reports back, which it may never do, and never when the popover is
+/// dismissed. Until then, or until the popover is dismissed, the share is
+/// in flight, and a call meanwhile is an error. Needs no activation: the
+/// anchor never takes focus.
 pub(super) fn picker(
     state: &ShareState,
     paths: &[PathBuf],
     at: Point,
+    on_done: Done,
     mtm: MainThreadMarker,
 ) -> Result<(), PlatformError> {
     if state.busy() {
@@ -332,12 +455,13 @@ pub(super) fn picker(
     // SAFETY: the items are NSURLs, which the picker takes.
     let picker =
         unsafe { NSSharingServicePicker::initWithItems(NSSharingServicePicker::alloc(), &items) };
-    let delegate = PickerDelegate::new(Rc::downgrade(&state.picker), mtm);
+    let delegate = PickerDelegate::new(Rc::downgrade(&state.picker), on_done, mtm);
     picker.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     *state.picker.borrow_mut() = Some(PickerParts {
         panel: panel.clone(),
         picker: picker.clone(),
         delegate,
+        chosen: None,
     });
     panel.orderFrontRegardless();
     log::debug!("share popover for {} items", paths.len());
@@ -418,5 +542,32 @@ mod tests {
             outcome_of(&elsewhere),
             ShareOutcome::Failed("Could not send.".into())
         );
+    }
+
+    #[test]
+    fn nothing_to_share_is_refused() {
+        // SAFETY: empty paths are refused before any AppKit call; no main
+        // thread is needed.
+        let mtm = unsafe { MainThreadMarker::new_unchecked() };
+        let state = ShareState::default();
+        assert!(!can_share(ShareTarget::Mail, &[], mtm));
+        let shared = share(
+            &state,
+            ShareTarget::Mail,
+            &[],
+            Box::new(|_| panic!("nothing was shared")),
+            || panic!("vento activated for nothing"),
+            mtm,
+        );
+        assert!(matches!(shared, Err(PlatformError::Failed(_))));
+        let shown = picker(
+            &state,
+            &[],
+            Point { x: 10.0, y: 10.0 },
+            Box::new(|_| panic!("nothing was shared")),
+            mtm,
+        );
+        assert!(matches!(shown, Err(PlatformError::Failed(_))));
+        assert!(!state.busy());
     }
 }
