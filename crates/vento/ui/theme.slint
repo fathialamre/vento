@@ -111,12 +111,17 @@ export global Theme {
     // The chosen item of a segmented control, a dropdown's list, a row
     // being dragged: raised above `surface`.
     out property <color> selected: root.use-system ? (root.system-dark ? root.tint(0.2) : root.system-bg) : root.use-clean ? root.pal.selected : root.dark ? #3a3a40 : #ffffff;
-    // A field or button in a Settings group, raised over `card`, and the
+    // A Settings group: `card`, and in the dark a shade lighter, so it does
+    // not sit heavy on the page.
+    out property <color> group: root.dark ? root.card.mix(root.text, 0.93) : root.card;
+    // The line between a Settings group's rows.
+    out property <color> group-line: root.dark ? root.group.mix(root.text, 0.92) : root.separator;
+    // A field or button in a Settings group, raised over `group`, and the
     // same under the pointer.
-    out property <color> field: root.selected;
+    out property <color> field: root.dark ? root.group.mix(root.text, 0.9) : root.selected;
     out property <color> field-hover: root.dark ? root.field.brighter(0.15) : root.field.darker(0.04);
     // The track of a segmented control in a Settings group, sunk below
-    // `card`.
+    // `group`.
     out property <color> track: root.use-clean ? (root.dark ? root.pal.bg : root.pal.line) : root.surface;
     out property <color> text: root.use-system ? root.system-text : root.use-clean ? root.pal.text : root.dark ? #f2f2f3 : #1d1d1f;
     out property <color> muted: root.use-system ? root.tint(0.6) : root.use-clean ? root.pal.muted : root.dark ? #9a9aa2 : #6e6e73;

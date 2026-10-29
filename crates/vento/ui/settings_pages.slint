@@ -5,7 +5,7 @@
 import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
-    PanelIcons, Separator, Switch, Segmented, MenuField, TextButton, IconButton, Stepper,
+    PanelIcons, RowSeparator, Switch, Segmented, MenuField, TextButton, IconButton, Stepper,
     ShortcutField, ReorderRow, DragGrip, WrapText, Group, GroupHeading, SettingRow, RowButton,
 } from "controls.slint";
 
@@ -61,7 +61,7 @@ export component HowTo inherits Rectangle {
     callback toggled(bool);
 
     border-radius: 10px;
-    background: Theme.card;
+    background: Theme.group;
 
     VerticalLayout {
         padding: 12px;
@@ -599,7 +599,7 @@ export component PocketPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Keep a copy");
@@ -659,7 +659,7 @@ export component ClipboardPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Shortcut");
@@ -767,7 +767,7 @@ export component GeneralPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Appearance");
@@ -780,7 +780,7 @@ export component GeneralPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Theme");
@@ -810,7 +810,7 @@ export component GeneralPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Shake to open");
@@ -838,7 +838,7 @@ export component GeneralPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Copy path");
@@ -967,7 +967,7 @@ export component AboutPage inherits VerticalLayout {
             }
         }
 
-        Separator { }
+        RowSeparator { }
 
         SettingRow {
             label: @tr("Licenses");

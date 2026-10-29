@@ -58,11 +58,18 @@ export component WrapText {
     }
 }
 
+// The line between a `Group`'s rows, which `Separator` is too faint for
+// on a group in the dark.
+export component RowSeparator inherits Rectangle {
+    height: 1px;
+    background: Theme.group-line;
+}
+
 // Settings that belong together, on a rounded card. The page puts a
-// `Separator` between its rows.
+// `RowSeparator` between its rows.
 export component Group inherits Rectangle {
     border-radius: 10px;
-    background: Theme.card;
+    background: Theme.group;
 
     VerticalLayout {
         padding-left: 12px;
