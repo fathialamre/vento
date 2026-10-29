@@ -371,7 +371,7 @@ msgstr ""
 msgid "Couldn't save: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec/share.rs:40
+#: crates/vento/src/exec/share.rs:50
 msgid "Couldn't share with {target}: {reason}"
 msgstr ""
 
@@ -564,6 +564,12 @@ msgstr ""
 #: crates/vento/ui/settings_pages.slint:158
 msgid "Layout"
 msgstr ""
+
+#: crates/vento/src/exec/share.rs:40
+msgid "Left out {n} item that no longer exists"
+msgid_plural "Left out {n} items that no longer exist"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/vento/ui/controls.slint:508
 msgid "Less {}"
@@ -1381,7 +1387,7 @@ msgstr ""
 msgid "not found"
 msgstr ""
 
-#: crates/vento/src/exec/share.rs:72
+#: crates/vento/src/exec/share.rs:82
 msgid "nothing to share"
 msgstr ""
 

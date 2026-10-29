@@ -401,7 +401,7 @@ msgstr "تعذّر حفظ الجيب: {error}"
 msgid "Couldn't save: {reason}"
 msgstr "تعذّر الحفظ: {reason}"
 
-#: crates/vento/src/exec/share.rs:40
+#: crates/vento/src/exec/share.rs:50
 msgid "Couldn't share with {target}: {reason}"
 msgstr "تعذّرت المشاركة عبر {target}: {reason}"
 
@@ -606,6 +606,16 @@ msgstr "اللغة"
 #: crates/vento/ui/settings_pages.slint:158
 msgid "Layout"
 msgstr "الشكل"
+
+#: crates/vento/src/exec/share.rs:40
+msgid "Left out {n} item that no longer exists"
+msgid_plural "Left out {n} items that no longer exist"
+msgstr[0] "لا توجد عناصر لم تعد موجودة"
+msgstr[1] "تم تخطي عنصر واحد لم يعد موجوداً"
+msgstr[2] "تم تخطي عنصرين لم يعودا موجودين"
+msgstr[3] "تم تخطي {n} عناصر لم تعد موجودة"
+msgstr[4] "تم تخطي {n} عنصراً لم تعد موجودة"
+msgstr[5] "تم تخطي {n} عنصر لم تعد موجودة"
 
 #: crates/vento/ui/controls.slint:508
 msgid "Less {}"
@@ -1487,7 +1497,7 @@ msgstr "لا توجد مساحة كافية على القرص"
 msgid "not found"
 msgstr "غير موجود"
 
-#: crates/vento/src/exec/share.rs:72
+#: crates/vento/src/exec/share.rs:82
 msgid "nothing to share"
 msgstr "لا شيء للمشاركة"
 
