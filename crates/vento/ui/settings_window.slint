@@ -3,7 +3,7 @@
 // the chosen page beside it under its name. It follows the Appearance setting through `Theme`.
 
 import { LineText, Theme } from "theme.slint";
-import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
+import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
 // One row of the sidebar. `id` names the page whatever its label says:
@@ -141,6 +141,8 @@ export component SettingsWindow inherits Window {
     in property <bool> awake-screen-off;
     // The running version, for About.
     in property <string> version;
+    // By page id: the user closed that page's How to card.
+    in property <[bool]> how-to-closed;
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
@@ -171,6 +173,8 @@ export component SettingsWindow inherits Window {
     // "Clear history": the history empties at once, with no Undo.
     callback clip-history-cleared();
     callback awake-screen-off-toggled(bool);
+    // A page's How to card opened (true) or closed, by page id.
+    callback how-to-toggled(int, bool);
     // About's "Open settings file" and "View licenses".
     callback open-settings-file();
     callback open-licenses();
@@ -191,6 +195,61 @@ export component SettingsWindow inherits Window {
     property <int> page-id: root.page < root.pages.length ? root.pages[root.page].id : -1;
 
     forward-focus: keys;
+
+    // How to use the feature of the page with id `id`, a step a line; none
+    // for About. Shortcuts and the trigger are the ones set now.
+    pure function how-to-steps(id: int) -> [string] {
+        if id == 0 {
+            return [
+                @tr("Start dragging a file, then press {} while still dragging.", root.trigger-names[root.trigger]),
+                @tr("Or shake the pointer quickly back and forth while dragging, if Shake to open is on."),
+                @tr("Let go on an action in the wheel, or anywhere else to drop the file as usual."),
+            ];
+        }
+        if id == 1 {
+            return [
+                @tr("Switch an action on to show it on the wheel, or off to hide it."),
+                @tr("Drag a row by its grip to change where the action sits."),
+                @tr("Hold on Move, Copy to or Convert for a moment to open a ring of choices."),
+            ];
+        }
+        if id == 2 {
+            return [
+                @tr("Let go on Move in the wheel and pick a folder."),
+                @tr("Or hold on Move for a moment: a ring of your pinned and recent folders opens. Let go on one."),
+                @tr("Changed your mind? Click Undo on the notice."),
+            ];
+        }
+        if id == 3 {
+            return [
+                @tr("Let go on Pocket in the wheel: the file waits in the island at the top of the screen."),
+                @tr("Press {} to open the island at any time, and drop more files on it.", root.shortcut),
+                @tr("Drag items from the island into any folder or app. Removing one never deletes your file."),
+            ];
+        }
+        if id == 4 {
+            return [
+                @tr("Copy as usual: Vento remembers what you copy."),
+                @tr("Press {} to open the history.", root.clip-shortcut),
+                @tr("Click a copy to put it back on the clipboard, then paste it anywhere."),
+            ];
+        }
+        if id == 5 {
+            return [
+                @tr("Press {}: the screen dims.", root.screen-shortcut),
+                @tr("Drag a rectangle over the text you want and let go."),
+                @tr("The text is on your clipboard, ready to paste. Esc cancels."),
+            ];
+        }
+        if id == 6 {
+            return [
+                @tr("Click the Vento icon, then the Keep Awake tile, to start or stop it."),
+                @tr("Pick how long under the tile, or leave it on until you stop it."),
+                @tr("While it runs, a small cup shows beside the Vento icon."),
+            ];
+        }
+        return [];
+    }
 
     // Ends a shortcut recording without a change and gives the keyboard
     // back to the window.
@@ -279,6 +338,12 @@ export component SettingsWindow inherits Window {
 
                     if root.notice != "": Notice {
                         text: root.notice;
+                    }
+
+                    if root.how-to-steps(root.page-id).length > 0: HowTo {
+                        steps: root.how-to-steps(root.page-id);
+                        open: !root.how-to-closed[root.page-id];
+                        toggled(open) => { root.how-to-toggled(root.page-id, open); }
                     }
 
                     if root.page-id == 0: GeneralPage {

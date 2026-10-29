@@ -123,6 +123,11 @@ clipboard_shortcut = "ctrl+alt+v"
 # Global shortcut for Copy from screen; same form as pocket_shortcut
 # ("ctrl+alt+o" on Linux, where GNOME opens a terminal on Ctrl+Alt+T)
 screen_text_shortcut = "ctrl+alt+t"
+
+# Settings window pages whose How to card you closed: any of "general",
+# "wheel", "move", "pocket", "clipboard", "copy_from_screen", "keep_awake".
+# The other pages open with it showing
+closed_how_to = []
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the
