@@ -1176,15 +1176,28 @@ mod tests {
     #[test]
     fn macos_only_actions_are_dropped_elsewhere() {
         let (_dir, p) = write_temp(
-            "actions = [\"copy\", \"pdf\", \"share\"]\nhidden_actions = [\"pdf\"]\naction_order = [\"pdf\", \"copy\"]\n",
+            "actions = [\"copy\", \"pdf\", \"share\"]\naction_order = [\"pdf\", \"share\", \"copy\"]\n",
         );
-        let s = Settings::load(&p);
+        let shown = Settings::load(&p);
+        // Hidden in a file of their own: an action both shown and hidden
+        // counts as shown.
+        let (_hidden_dir, hidden_p) =
+            write_temp("actions = [\"copy\"]\nhidden_actions = [\"pdf\", \"share\"]\n");
+        let hidden = Settings::load(&hidden_p);
         if cfg!(target_os = "macos") {
-            assert_eq!(s.actions, [ActionId::Copy, ActionId::Pdf, ActionId::Share]);
+            assert_eq!(
+                shown.actions,
+                [ActionId::Copy, ActionId::Pdf, ActionId::Share]
+            );
+            assert_eq!(
+                shown.action_order,
+                [ActionId::Pdf, ActionId::Share, ActionId::Copy]
+            );
+            assert_eq!(hidden.hidden_actions, [ActionId::Pdf, ActionId::Share]);
         } else {
-            assert_eq!(s.actions, [ActionId::Copy]);
-            assert!(s.hidden_actions.is_empty());
-            assert!(!s.action_order.contains(&ActionId::Pdf));
+            assert_eq!(shown.actions, [ActionId::Copy]);
+            assert_eq!(shown.action_order, [ActionId::Copy]);
+            assert!(hidden.hidden_actions.is_empty());
         }
     }
 
