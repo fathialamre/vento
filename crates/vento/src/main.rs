@@ -21,7 +21,11 @@ mod panel;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pause;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod pdf;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod pocket;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod quit;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod screen_text;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -107,9 +111,16 @@ fn main() -> Result<(), slint::PlatformError> {
     // Pocket's window is the first. Text made before this is English.
     appearance::apply_language(language_code(&hub.current().language));
     let info = info::InfoController::new(platform.clone(), toaster.clone());
+    let pdf = pdf::PdfController::new(
+        platform.clone(),
+        toaster.clone(),
+        executor.clone(),
+        hub.clone(),
+    );
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
     let drop_info = info.clone();
+    let drop_pdf = pdf.clone();
     let controller = wheel::WheelController::new(
         platform.clone(),
         hub.current(),
@@ -117,6 +128,7 @@ fn main() -> Result<(), slint::PlatformError> {
         Box::new(move |drop: wheel::WheelDrop| match drop.action {
             ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
             ActionId::Info => drop_info.open(drop.paths, drop.at),
+            ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
             _ => drop_executor.run(drop),
         }),
     );
@@ -219,6 +231,7 @@ fn main() -> Result<(), slint::PlatformError> {
             hub.clone(),
             Rc::downgrade(&pocket),
             executor.clone(),
+            pdf.clone(),
             supported,
             Box::new(move |paused| pause.set(paused)),
         )
@@ -259,9 +272,22 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let pdf = Rc::downgrade(&pdf);
         settings.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
+                || pdf.upgrade().is_some_and(|p| p.has_windows())
+        }));
+    }
+    // The last PDF window to close leaves the focus with another vento
+    // window that is open.
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let settings = Rc::downgrade(&settings);
+        pdf.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
+                || settings.upgrade().is_some_and(|s| s.is_open())
         }));
     }
     {
@@ -287,6 +313,16 @@ fn main() -> Result<(), slint::PlatformError> {
             pocket.flush_pending();
         }
     }));
+    // Quit from the app menu (⌘Q in a vento window) goes the tray's way:
+    // PDF windows with unsaved edits ask first.
+    {
+        let (exec, pdf) = (Rc::downgrade(&executor), Rc::downgrade(&pdf));
+        platform.on_quit_request(Box::new(move || {
+            if let (Some(exec), Some(pdf)) = (exec.upgrade(), pdf.upgrade()) {
+                quit::quit(&exec, &pdf);
+            }
+        }));
+    }
     // Launched again while running: the Settings window.
     let reopened = Rc::downgrade(&settings);
     platform.on_reopen(Box::new(move || {
@@ -395,6 +431,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let keep = tray_handle.clone();
     let tray_info = info.clone();
     let tray_settings = settings.clone();
+    let tray_pdf = pdf.clone();
     let (open_clipboard, open_pocket) = (
         open_on(pocket::View::Clipboard),
         open_on(pocket::View::Pocket),
@@ -406,6 +443,7 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_screen_shortcut(&settings);
         *keep.borrow_mut() = Some(tray::install_tray(tray::TrayDeps {
             exec: executor,
+            pdf: tray_pdf,
             platform,
             keep_awake: panel.keep_awake(),
             on_open_panel: Box::new(move |icon| {

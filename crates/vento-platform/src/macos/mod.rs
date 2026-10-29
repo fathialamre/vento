@@ -33,7 +33,9 @@ mod menu;
 mod notify;
 mod overlay;
 mod patch;
+mod pdf;
 mod quarantine;
+mod quit;
 mod screen_text;
 mod screens;
 mod select;
@@ -45,6 +47,8 @@ pub(crate) use icons::file_icon_at;
 pub(crate) use image_io::{probe_image, write_image};
 pub(crate) use info::{block_cloud_downloads_on_this_thread, is_package, volume_scope};
 pub use menu::set_ns_menu_direction;
+pub(crate) use pdf::pick_pdfs;
+pub use pdf::{PdfRenderer, SystemPdf};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 pub use screen_text::MacScreenText;
 pub(crate) use screen_text::{read_screen_text, screen_text_languages};
@@ -237,6 +241,10 @@ impl Platform for MacPlatform {
 
     fn on_terminate(&self, f: Box<dyn Fn()>) {
         notify::on_terminate(f);
+    }
+
+    fn on_quit_request(&self, f: Box<dyn Fn()>) {
+        quit::on_quit_request(f);
     }
 
     fn activate_app(&self) {

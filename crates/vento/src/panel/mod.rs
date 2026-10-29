@@ -30,7 +30,9 @@ use crate::appearance::{self, show_menu_colors};
 use crate::awake::KeepAwake;
 use crate::exec::{Executor, undo_menu_text};
 use crate::lazy_window::LazyWindow;
+use crate::pdf::PdfController;
 use crate::pocket::{PocketController, View};
+use crate::quit::quit;
 use crate::settings_hub::SettingsHub;
 use crate::settings_window::{notice_text, shortcut_text};
 use crate::ui::{QuickPanel, Theme};
@@ -72,6 +74,8 @@ pub struct PanelController {
     pocket: Weak<PocketController>,
     /// What the Undo row offers to undo, and undoes.
     exec: Rc<Executor>,
+    /// The PDF windows, which Quit asks about when they hold unsaved edits.
+    pdf: Rc<PdfController>,
     /// The panel's window while it is open, and for a while after it
     /// closes. Use [`PanelController::window`] or
     /// [`PanelController::existing`].
@@ -103,6 +107,7 @@ impl PanelController {
         hub: Rc<SettingsHub>,
         pocket: Weak<PocketController>,
         exec: Rc<Executor>,
+        pdf: Rc<PdfController>,
         screen_text_supported: bool,
         on_pause: Box<dyn Fn(bool)>,
     ) -> Rc<Self> {
@@ -113,6 +118,7 @@ impl PanelController {
             keep_awake,
             pocket,
             exec,
+            pdf,
             window: LazyWindow::new(),
             paused: Cell::new(false),
             screen_text_supported,
@@ -226,9 +232,10 @@ impl PanelController {
                 panel.exec.undo_last();
             }
         });
-        window.on_quit_clicked(|| {
-            if let Err(e) = slint::quit_event_loop() {
-                warn!("cannot quit: {e}");
+        let this = self.this.clone();
+        window.on_quit_clicked(move || {
+            if let Some(panel) = this.upgrade() {
+                quit(&panel.exec, &panel.pdf);
             }
         });
         let this = self.this.clone();

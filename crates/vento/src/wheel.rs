@@ -29,6 +29,7 @@ use vento_core::geometry::{
     WheelGeometry, place_center, rounded_hex_path, screen_for,
 };
 use vento_core::i18n::tr;
+use vento_core::pdf::looks_like_pdf;
 use vento_core::ring::{Hover, RingEvent, RingTracker};
 use vento_core::settings::Settings;
 use vento_core::trigger::{InputSample, TriggerEvent, TriggerMachine};
@@ -83,6 +84,10 @@ struct State {
     /// Whether the files being dragged all look like archives, so the
     /// Archive cell reads "Extract" rather than "Compress".
     extracting: bool,
+    /// Whether none of the files being dragged looks like a PDF, so the PDF
+    /// cell is drawn dimmed (a drop on it still goes to the PDF window,
+    /// which says there is nothing to open).
+    pdf_dimmed: bool,
 }
 
 /// The destination ring around one action.
@@ -182,6 +187,7 @@ pub fn action_icon(icons: &Icons<'_>, action: ActionId) -> Image {
         ActionId::Archive => icons.get_archive(),
         ActionId::Info => icons.get_info(),
         ActionId::Convert => icons.get_convert(),
+        ActionId::Pdf => icons.get_pdf(),
     }
 }
 
@@ -193,6 +199,17 @@ fn action_text(action: ActionId, extracting: bool) -> String {
         ActionId::Archive => tr("Compress"),
         other => other.label(),
     }
+}
+
+/// Whether the PDF cell is dimmed for `paths`: none of them is named like a
+/// PDF. A name check only, so it fits the wheel's opening budget.
+fn pdf_cell_dimmed(paths: &[PathBuf]) -> bool {
+    !paths.iter().any(|path| looks_like_pdf(path))
+}
+
+/// Whether the cell of `action` is drawn dimmed, given `pdf_dimmed`.
+fn cell_dimmed(action: ActionId, pdf_dimmed: bool) -> bool {
+    pdf_dimmed && action == ActionId::Pdf
 }
 
 /// The icon `action` shows on the wheel, matching [`action_text`].
@@ -418,6 +435,7 @@ impl WheelController {
                 ring: None,
                 ring_hot: None,
                 extracting: false,
+                pdf_dimmed: false,
             }),
             paused: Cell::new(false),
             poll: Timer::default(),
@@ -537,23 +555,39 @@ impl WheelController {
                 y: cell.center.y,
                 r: cell.radius,
                 covered: false,
+                dimmed: cell_dimmed(*action, state.pdf_dimmed),
                 label: action_text(*action, state.extracting).into(),
                 icon: wheel_icon(&icons, *action, state.extracting),
             })
             .collect()
     }
 
-    /// Names the Archive cell after the files being dragged, reading their
-    /// paths from the drag pasteboard (names only, no file I/O).
-    fn label_archive_cell(&self) {
+    /// Labels the Archive cell and dims the PDF cell after the files being
+    /// dragged, reading their paths from the drag pasteboard once (names
+    /// only, no file I/O). The cells are rebuilt only when either changed.
+    fn label_cells(&self) {
         let changed = {
             let mut state = self.state.borrow_mut();
-            if !state.settings.actions.contains(&ActionId::Archive) {
+            let actions = &state.settings.actions;
+            let (archive, pdf) = (
+                actions.contains(&ActionId::Archive),
+                actions.contains(&ActionId::Pdf),
+            );
+            if !archive && !pdf {
                 return;
             }
-            let extracting = looks_like_archives(&self.platform.drag_paths());
-            let changed = state.extracting != extracting;
-            state.extracting = extracting;
+            let paths = self.platform.drag_paths();
+            let mut changed = false;
+            if archive {
+                let extracting = looks_like_archives(&paths);
+                changed |= state.extracting != extracting;
+                state.extracting = extracting;
+            }
+            if pdf {
+                let dimmed = pdf_cell_dimmed(&paths);
+                changed |= state.pdf_dimmed != dimmed;
+                state.pdf_dimmed = dimmed;
+            }
             changed
         };
         if changed {
@@ -676,7 +710,7 @@ impl WheelController {
             state.dropped.clear();
             extent
         };
-        self.label_archive_cell();
+        self.label_cells();
         // `dismiss` already cleared the highlight with animation off.
         self.window.set_animate_hover(true);
         self.centre_window(extent);
@@ -1285,6 +1319,19 @@ mod tests {
         assert_eq!(ring_verb(ActionId::Move), "Move to");
         assert_eq!(ring_verb(ActionId::CopyTo), "Copy to");
         assert_eq!(ring_verb(ActionId::Convert), "Convert to");
+    }
+
+    #[test]
+    fn cells_dim_pdf_without_pdfs() {
+        let png = [PathBuf::from("/d/a.png")];
+        let pdf = [PathBuf::from("/d/a.png"), PathBuf::from("/d/b.PDF")];
+        assert!(pdf_cell_dimmed(&png));
+        assert!(pdf_cell_dimmed(&[]));
+        assert!(!pdf_cell_dimmed(&pdf));
+        let actions = [ActionId::Copy, ActionId::Pdf];
+        let dim = |dimmed| actions.map(|a| cell_dimmed(a, dimmed));
+        assert_eq!(dim(true), [false, true], "only the PDF cell dims");
+        assert_eq!(dim(false), [false, false]);
     }
 
     #[test]

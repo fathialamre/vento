@@ -149,6 +149,12 @@ pub struct Settings {
     /// key (`"general"`, `"pocket"`, ...; unique). A page's card is open
     /// until then.
     pub closed_how_to: Vec<String>,
+    /// The PDF window's To images format: `"png"` or `"jpeg"`. Any other
+    /// value reads as `"png"`.
+    pub pdf_image_format: String,
+    /// The PDF window's To images resolution in DPI: 300 (Print) or 150
+    /// (Screen). Any other value reads as 300.
+    pub pdf_image_dpi: u32,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -214,6 +220,8 @@ impl Default for Settings {
             hidden_actions: Vec::new(),
             action_order: Vec::new(),
             closed_how_to: Vec::new(),
+            pdf_image_format: "png".to_owned(),
+            pdf_image_dpi: 300,
         }
     }
 }
@@ -245,6 +253,8 @@ struct RawSettings {
     hidden_actions: Vec<String>,
     action_order: Vec<String>,
     closed_how_to: Vec<String>,
+    pdf_image_format: String,
+    pdf_image_dpi: u32,
 }
 
 impl Default for RawSettings {
@@ -282,6 +292,8 @@ impl From<&Settings> for RawSettings {
                 .collect(),
             action_order: s.action_order.iter().map(|a| a.key().to_owned()).collect(),
             closed_how_to: s.closed_how_to.clone(),
+            pdf_image_format: s.pdf_image_format.clone(),
+            pdf_image_dpi: s.pdf_image_dpi,
         }
     }
 }
@@ -289,7 +301,12 @@ impl From<&Settings> for RawSettings {
 impl From<RawSettings> for Settings {
     fn from(raw: RawSettings) -> Self {
         let mut actions: Vec<ActionId> = Vec::new();
-        for id in raw.actions.iter().filter_map(|k| ActionId::from_key(k)) {
+        for id in raw
+            .actions
+            .iter()
+            .filter_map(|k| ActionId::from_key(k))
+            .filter(|a| a.available())
+        {
             if !actions.contains(&id) {
                 actions.push(id);
             }
@@ -304,6 +321,7 @@ impl From<RawSettings> for Settings {
             .hidden_actions
             .iter()
             .filter_map(|k| ActionId::from_key(k))
+            .filter(|a| a.available())
         {
             if !actions.contains(&id) && !hidden_actions.contains(&id) {
                 hidden_actions.push(id);
@@ -315,6 +333,7 @@ impl From<RawSettings> for Settings {
             .action_order
             .iter()
             .filter_map(|k| ActionId::from_key(k))
+            .filter(|a| a.available())
         {
             if !action_order.contains(&id) {
                 action_order.push(id);
@@ -360,6 +379,12 @@ impl From<RawSettings> for Settings {
             hidden_actions,
             action_order,
             closed_how_to,
+            pdf_image_format: if raw.pdf_image_format == "jpeg" {
+                raw.pdf_image_format
+            } else {
+                "png".to_owned()
+            },
+            pdf_image_dpi: if raw.pdf_image_dpi == 150 { 150 } else { 300 },
         }
     }
 }
@@ -467,7 +492,8 @@ impl Settings {
         } else {
             self.actions.iter().map(|a| (*a, true)).collect()
         };
-        for id in self.hidden_actions.iter().chain(&ActionId::ALL) {
+        let offered = ActionId::ALL.iter().filter(|a| a.available());
+        for id in self.hidden_actions.iter().chain(offered) {
             if !rows.iter().any(|(a, _)| a == id) {
                 rows.push((*id, false));
             }
@@ -643,6 +669,43 @@ mod tests {
         // The system's own words are shown as they are.
         let refused = ShortcutError::Refused("in use".into());
         assert_eq!(with_language("ar", || refused.to_string()), "in use");
+    }
+
+    /// Settings read from `text`, as a settings file would be.
+    fn parse(text: &str) -> Settings {
+        Settings::from(toml::from_str::<RawSettings>(text).unwrap())
+    }
+
+    #[test]
+    fn image_settings_default_and_clamp() {
+        let s = parse("pdf_image_dpi = 600");
+        assert_eq!(s.pdf_image_dpi, 300);
+        assert_eq!(Settings::default().pdf_image_format, "png");
+    }
+
+    #[test]
+    fn image_settings_keep_the_two_choices_and_nothing_else() {
+        let s = parse("pdf_image_format = \"jpeg\"\npdf_image_dpi = 150");
+        assert_eq!(s.pdf_image_format, "jpeg");
+        assert_eq!(s.pdf_image_dpi, 150);
+        let s = parse("pdf_image_format = \"tiff\"\npdf_image_dpi = 0");
+        assert_eq!(s.pdf_image_format, "png");
+        assert_eq!(s.pdf_image_dpi, 300);
+        let s = parse("");
+        assert_eq!((s.pdf_image_format.as_str(), s.pdf_image_dpi), ("png", 300));
+    }
+
+    #[test]
+    fn image_settings_survive_a_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            pdf_image_format: "jpeg".into(),
+            pdf_image_dpi: 150,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::try_load(&p).unwrap(), s);
     }
 
     #[test]
@@ -1130,7 +1193,37 @@ mod tests {
         assert!(s.pinned_folders.is_empty());
         assert_eq!(s.move_hold_ms, 400);
         assert!(s.hidden_actions.is_empty());
-        assert_eq!(s.action_rows().last(), Some(&(ActionId::Convert, false)));
+        assert_eq!(s.action_rows().last(), Some(&last_action_row()));
+    }
+
+    /// The last row the Wheel page offers on this platform: PDF where it is
+    /// available, Convert elsewhere.
+    fn last_action_row() -> (ActionId, bool) {
+        let last = ActionId::ALL.iter().rev().find(|a| a.available());
+        (*last.unwrap(), false)
+    }
+
+    #[test]
+    fn unavailable_actions_are_dropped() {
+        let (_dir, p) = write_temp(
+            "actions = [\"copy\", \"pdf\"]\nhidden_actions = [\"pdf\"]\naction_order = [\"pdf\", \"copy\"]\n",
+        );
+        let s = Settings::load(&p);
+        if cfg!(target_os = "macos") {
+            assert_eq!(s.actions, [ActionId::Copy, ActionId::Pdf]);
+        } else {
+            assert_eq!(s.actions, [ActionId::Copy]);
+            assert!(s.hidden_actions.is_empty());
+            assert!(!s.action_order.contains(&ActionId::Pdf));
+        }
+    }
+
+    #[test]
+    fn not_yet_placed_actions_are_only_available_ones() {
+        let rows = Settings::default().action_rows();
+        let has_pdf = rows.iter().any(|(a, _)| *a == ActionId::Pdf);
+        assert_eq!(has_pdf, cfg!(target_os = "macos"));
+        assert!(rows.iter().all(|(a, _)| a.available()));
     }
 
     #[test]
@@ -1143,7 +1236,7 @@ mod tests {
     #[test]
     fn convert_is_off_by_default() {
         let rows = Settings::default().action_rows();
-        assert_eq!(rows.last(), Some(&(ActionId::Convert, false)));
+        assert!(rows.contains(&(ActionId::Convert, false)));
         assert!(!Settings::default().actions.contains(&ActionId::Convert));
     }
 
@@ -1194,20 +1287,21 @@ mod tests {
     fn action_rows_shown_then_hidden_then_new() {
         let (_dir, p) =
             write_temp("actions = [\"move\", \"copy\"]\nhidden_actions = [\"terminal\"]\n");
-        assert_eq!(
-            Settings::load(&p).action_rows(),
-            [
-                (ActionId::Move, true),
-                (ActionId::Copy, true),
-                (ActionId::Terminal, false),
-                (ActionId::Pocket, false),
-                (ActionId::CopyPath, false),
-                (ActionId::CopyTo, false),
-                (ActionId::Archive, false),
-                (ActionId::Info, false),
-                (ActionId::Convert, false),
-            ]
-        );
+        let mut expected = vec![
+            (ActionId::Move, true),
+            (ActionId::Copy, true),
+            (ActionId::Terminal, false),
+            (ActionId::Pocket, false),
+            (ActionId::CopyPath, false),
+            (ActionId::CopyTo, false),
+            (ActionId::Archive, false),
+            (ActionId::Info, false),
+            (ActionId::Convert, false),
+        ];
+        if ActionId::Pdf.available() {
+            expected.push((ActionId::Pdf, false));
+        }
+        assert_eq!(Settings::load(&p).action_rows(), expected);
     }
 
     #[test]
@@ -1215,7 +1309,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("settings.toml");
         let mut s = Settings::default();
-        let rows = [
+        let mut rows = vec![
             (ActionId::Terminal, true),
             (ActionId::Move, true),
             (ActionId::Copy, true),
@@ -1226,6 +1320,9 @@ mod tests {
             (ActionId::Info, false),
             (ActionId::Convert, false),
         ];
+        if ActionId::Pdf.available() {
+            rows.push((ActionId::Pdf, false));
+        }
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);
         s.save(&p).unwrap();

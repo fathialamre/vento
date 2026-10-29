@@ -23,12 +23,14 @@ pub enum ActionId {
     Info,
     /// Convert the dragged images to another format, chosen from a ring.
     Convert,
+    /// Open a window to merge, split, reorder or export the dragged PDFs.
+    Pdf,
 }
 
 impl ActionId {
     /// Every action, in the order the settings list offers the ones not yet
     /// placed.
-    pub const ALL: [ActionId; 9] = [
+    pub const ALL: [ActionId; 10] = [
         ActionId::Pocket,
         ActionId::Copy,
         ActionId::Move,
@@ -38,7 +40,18 @@ impl ActionId {
         ActionId::Archive,
         ActionId::Info,
         ActionId::Convert,
+        ActionId::Pdf,
     ];
+
+    /// Whether this platform can run the action. PDF pages need the system's
+    /// PDF engine, which only macOS has so far; the other platforms never
+    /// offer the action.
+    pub fn available(self) -> bool {
+        match self {
+            ActionId::Pdf => cfg!(target_os = "macos"),
+            _ => true,
+        }
+    }
 
     /// Whether the action opens the folder ring when the pointer rests on its
     /// cell.
@@ -58,6 +71,7 @@ impl ActionId {
             ActionId::Archive => "archive",
             ActionId::Info => "info",
             ActionId::Convert => "convert",
+            ActionId::Pdf => "pdf",
         }
     }
 
@@ -73,6 +87,7 @@ impl ActionId {
             ActionId::Archive => tr("Archive"),
             ActionId::Info => tr("Info"),
             ActionId::Convert => tr("Convert"),
+            ActionId::Pdf => tr("PDF"),
         }
     }
 
@@ -88,6 +103,7 @@ impl ActionId {
             "archive" => Some(ActionId::Archive),
             "info" => Some(ActionId::Info),
             "convert" => Some(ActionId::Convert),
+            "pdf" => Some(ActionId::Pdf),
             _ => None,
         }
     }
@@ -149,7 +165,26 @@ mod tests {
         assert_eq!(ActionId::Convert.label(), "Convert");
         assert_eq!(ActionId::from_key("convert"), Some(ActionId::Convert));
         assert!(ActionId::Convert.takes_ring());
-        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Convert));
+    }
+
+    #[test]
+    fn pdf_key_label_and_no_ring() {
+        assert_eq!(ActionId::Pdf.key(), "pdf");
+        assert_eq!(ActionId::Pdf.label(), "PDF");
+        assert_eq!(ActionId::from_key("pdf"), Some(ActionId::Pdf));
+        assert!(!ActionId::Pdf.takes_ring());
+        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Pdf));
+    }
+
+    #[test]
+    fn pdf_only_available_on_macos() {
+        assert_eq!(ActionId::Pdf.available(), cfg!(target_os = "macos"));
+        assert!(
+            ActionId::ALL
+                .iter()
+                .filter(|a| **a != ActionId::Pdf)
+                .all(|a| a.available())
+        );
     }
 
     #[test]
@@ -167,7 +202,8 @@ mod tests {
                     "نسخ إلى",
                     "أرشفة",
                     "معلومات",
-                    "تحويل"
+                    "تحويل",
+                    "\u{200f}PDF"
                 ]
             );
             assert_eq!(ActionId::Move.label(), "نقل");

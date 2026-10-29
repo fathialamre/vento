@@ -18,6 +18,8 @@ use vento_platform::Platform;
 use crate::awake::{KeepAwake, keep_awake_menu_text};
 use crate::exec::{Executor, UndoKind, undo_menu_text};
 use crate::pause::PauseSwitch;
+use crate::pdf::PdfController;
+use crate::quit;
 use crate::settings_hub::SettingsHub;
 
 /// The white mark, for GNOME's dark top bar, at two sizes; the host shows
@@ -246,6 +248,8 @@ impl TrayHandle {
 /// What the tray needs to act on clicks; the same as on macOS.
 pub struct TrayDeps {
     pub exec: Rc<Executor>,
+    /// The PDF windows, which Quit asks about when they hold unsaved edits.
+    pub pdf: Rc<PdfController>,
     /// Places the panel under the icon.
     pub platform: Rc<dyn Platform>,
     /// Shows its cup in the top bar while it holds the computer awake.
@@ -273,6 +277,7 @@ pub struct TrayDeps {
 pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     let TrayDeps {
         exec,
+        pdf,
         platform,
         keep_awake,
         on_open_panel,
@@ -371,11 +376,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             Action::Pause(paused) => pause.set(paused),
             Action::OpenSettingsFile => open_settings_file(&*platform),
             Action::Quit => {
-                // A job still running would leave its partial output behind.
-                exec.shutdown();
-                if let Err(e) = slint::quit_event_loop() {
-                    warn!("cannot quit: {e}");
-                }
+                quit::quit(&exec, &pdf);
             }
         }));
     });
