@@ -74,7 +74,8 @@ pub struct MacPlatform {
     outside_clicks: RefCell<Option<clicks::ClickMonitor>>,
     /// Keep Awake's power assertion.
     awake: awake::Assertion,
-    /// The share in flight, see [`Platform::share`].
+    /// The share in flight, and the service last picked from the share
+    /// popover; see [`Platform::share`] and [`Platform::share_picker`].
     share: share::ShareState,
 }
 

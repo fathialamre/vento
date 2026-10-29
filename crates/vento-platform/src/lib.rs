@@ -542,8 +542,9 @@ pub trait Platform {
     /// with the app that had it; a service may never report back.
     /// [`ShareTarget::More`] is an error (it is [`Platform::share_picker`]),
     /// as are a service that cannot take `paths` (see
-    /// [`Platform::can_share`]) and a call while another share or the share
-    /// popover is open. Main thread only.
+    /// [`Platform::can_share`]) and a call while another call's service has
+    /// not reported back or the share popover is open (a service picked from
+    /// the popover does not count). Main thread only.
     fn share(
         &self,
         target: ShareTarget,
@@ -557,8 +558,9 @@ pub trait Platform {
     /// logical point, top-left origin), and return. The popover closes
     /// itself. A service picked from it runs on its own and reports nothing
     /// to the caller; focus goes back to the app that had it when that
-    /// service reports back. Until then, or until the popover is dismissed,
-    /// this and [`Platform::share`] are errors. Main thread only.
+    /// service reports back. While the popover is on screen, this and
+    /// [`Platform::share`] are errors; once a service is picked from it, they
+    /// work again, even if that service never reports back. Main thread only.
     fn share_picker(&self, paths: &[PathBuf], at: Point) -> Result<(), PlatformError> {
         let _ = (paths, at);
         Err(PlatformError::Unsupported)
