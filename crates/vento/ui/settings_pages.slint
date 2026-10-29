@@ -459,13 +459,13 @@ export component PocketPage inherits VerticalLayout {
     in-out property <bool> recording;
     in property <bool> remove-after-drop;
     in property <bool> keep-copies;
-    // 0 List, 1 Scroll, 2 Stacks.
-    in property <int> pocket-layout;
+    // What the Pocket view opens on: 0 its kinds, 1 the list.
+    in property <int> pocket-view;
     callback recording-started();
     callback recording-cancelled();
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
-    callback pocket-layout-chosen(int);
+    callback pocket-view-chosen(int);
 
     spacing: 8px;
 
@@ -509,13 +509,13 @@ export component PocketPage inherits VerticalLayout {
     Separator { }
 
     SectionHeading {
-        text: @tr("When it holds more than 8 items");
+        text: @tr("When the Pocket opens, show");
     }
 
     Segmented {
-        items: [@tr("List"), @tr("Scroll"), @tr("Stacks")];
-        current: root.pocket-layout;
-        chosen(i) => { root.pocket-layout-chosen(i); }
+        items: [@tr("By kind"), @tr("List")];
+        current: root.pocket-view;
+        chosen(i) => { root.pocket-view-chosen(i); }
     }
 }
 

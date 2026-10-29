@@ -66,23 +66,21 @@ impl ThemeName {
     }
 }
 
-/// How a full Pocket (more than eight items) lays its items out. With eight
-/// or fewer it looks the same in every layout.
+/// What the island's Pocket view opens on. Its bottom bar switches between
+/// the two while it is open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PocketLayout {
-    /// The first eight items, with a button for the rest.
+pub enum PocketView {
+    /// The items grouped by kind, a row of tiles per kind.
     #[default]
+    Kinds,
+    /// Every item, one row each.
     List,
-    /// Every item, in a strip of cells that scrolls sideways.
-    Scroll,
-    /// The items grouped by kind, each group a stack to open.
-    Stacks,
 }
 
-impl PocketLayout {
-    /// Every layout, in the order the Settings window lists them.
-    pub const ALL: [Self; 3] = [Self::List, Self::Scroll, Self::Stacks];
+impl PocketView {
+    /// Every view, in the order the Settings window lists them.
+    pub const ALL: [Self; 2] = [Self::Kinds, Self::List];
 }
 
 /// User-configurable behaviour of the wheel.
@@ -111,8 +109,8 @@ pub struct Settings {
     pub pocket_remove_after_drop: bool,
     /// Whether the Pocket keeps its own copy of each dropped-in file.
     pub pocket_keep_copies: bool,
-    /// How the Pocket lays its items out once it holds more than eight.
-    pub pocket_layout: PocketLayout,
+    /// What the Pocket view opens on.
+    pub pocket_view: PocketView,
     /// The language of the interface: the code of one of the languages
     /// Vento has (`"en"`, the default, or `"ar"`), or `"auto"` to follow the
     /// system's. Any other value means English; see `i18n::resolve`.
@@ -204,7 +202,7 @@ impl Default for Settings {
             terminal: None,
             pocket_remove_after_drop: false,
             pocket_keep_copies: false,
-            pocket_layout: PocketLayout::List,
+            pocket_view: PocketView::Kinds,
             language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
@@ -236,7 +234,7 @@ struct RawSettings {
     terminal: Option<String>,
     pocket_remove_after_drop: bool,
     pocket_keep_copies: bool,
-    pocket_layout: PocketLayout,
+    pocket_view: PocketView,
     language: String,
     pocket_shortcut: String,
     clipboard_history: bool,
@@ -270,7 +268,7 @@ impl From<&Settings> for RawSettings {
             terminal: s.terminal.clone(),
             pocket_remove_after_drop: s.pocket_remove_after_drop,
             pocket_keep_copies: s.pocket_keep_copies,
-            pocket_layout: s.pocket_layout,
+            pocket_view: s.pocket_view,
             language: s.language.clone(),
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
@@ -354,7 +352,7 @@ impl From<RawSettings> for Settings {
             terminal: raw.terminal,
             pocket_remove_after_drop: raw.pocket_remove_after_drop,
             pocket_keep_copies: raw.pocket_keep_copies,
-            pocket_layout: raw.pocket_layout,
+            pocket_view: raw.pocket_view,
             language: raw.language,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
@@ -851,25 +849,26 @@ mod tests {
     }
 
     #[test]
-    fn the_pocket_lists_its_items_unless_saved_otherwise() {
-        assert_eq!(Settings::default().pocket_layout, PocketLayout::List);
+    fn the_pocket_opens_on_its_kinds_unless_saved_otherwise() {
+        assert_eq!(Settings::default().pocket_view, PocketView::Kinds);
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("settings.toml");
         let s = Settings {
-            pocket_layout: PocketLayout::Stacks,
+            pocket_view: PocketView::List,
             ..Settings::default()
         };
         s.save(&p).unwrap();
         assert!(
             std::fs::read_to_string(&p)
                 .unwrap()
-                .contains("pocket_layout = \"stacks\"")
+                .contains("pocket_view = \"list\"")
         );
         assert_eq!(Settings::load(&p), s);
-        let (_dir, old) = write_temp("trigger = \"ctrl\"\n");
+        // The old layout key is let go: the Pocket opens on its kinds.
+        let (_dir, old) = write_temp("pocket_layout = \"stacks\"\n");
         assert_eq!(
-            Settings::try_load(&old).unwrap().pocket_layout,
-            PocketLayout::List
+            Settings::try_load(&old).unwrap().pocket_view,
+            PocketView::Kinds
         );
     }
 

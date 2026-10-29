@@ -1,5 +1,6 @@
 //! The island's Clipboard view: the history's rows as the window draws them,
-//! what a row and its buttons do, and the bottom switch between the views.
+//! what a row, its buttons and its peek do, and the bottom bar's tabs
+//! between the views.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -7,15 +8,15 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use log::debug;
+use log::{debug, warn};
 use slint::{Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 use vento_core::clip_history::ClipEntry;
 
-use crate::ui::{ClipRow, PocketIsland};
+use crate::ui::{ClipRow, PeekLine, PocketIsland};
 
-use super::clip::{ClipKind, ClipRowData, now_unix};
-use super::geometry::{Panel, Row};
-use super::{PocketController, Undo, View};
+use super::clip::{ClipKind, ClipRowData, PEEK_PICTURE_PX, is_web, now_unix};
+use super::geometry::Panel;
+use super::{PocketController, Undo, View, to_image};
 
 /// How long the island stays open after a switch button, wherever the
 /// pointer is.
@@ -84,8 +85,17 @@ fn filter_counts(rows: &[ClipRowData]) -> Vec<i32> {
         .collect()
 }
 
-/// The rows the Clipboard view shows, the filter choosing them, and the
-/// image thumbnails already made for them.
+/// What the open peek shows, made once for its entry: its text, picture
+/// and lines.
+struct PeekShown {
+    id: u64,
+    text: String,
+    picture: Image,
+    lines: Vec<PeekLine>,
+}
+
+/// The rows the Clipboard view shows, the filter choosing them, the image
+/// thumbnails already made for them, and the open peek.
 pub(super) struct ClipView {
     rows: Rc<VecModel<ClipRow>>,
     /// Each filter's count, in the window's order.
@@ -94,6 +104,11 @@ pub(super) struct ClipView {
     /// Thumbnails by entry id, made once; an empty image when the picture
     /// could not be read.
     thumbs: RefCell<HashMap<u64, Image>>,
+    /// The entry whose peek is open.
+    peek: Cell<Option<u64>>,
+    /// What it shows, once made.
+    peek_shown: RefCell<Option<PeekShown>>,
+    peek_lines: Rc<VecModel<PeekLine>>,
 }
 
 impl ClipView {
@@ -103,19 +118,26 @@ impl ClipView {
         window.set_clip_rows(ModelRc::from(rows.clone()));
         let counts = Rc::new(VecModel::from(vec![0; FILTERS.len()]));
         window.set_clip_filter_counts(ModelRc::from(counts.clone()));
+        let peek_lines = Rc::new(VecModel::default());
+        window.set_clip_peek_lines(ModelRc::from(peek_lines.clone()));
         Self {
             rows,
             counts,
             filter: Cell::new(ClipFilter::All),
             thumbs: RefCell::new(HashMap::new()),
+            peek: Cell::new(None),
+            peek_shown: RefCell::new(None),
+            peek_lines,
         }
     }
 
     /// Shows the rows of `data` the filter admits, touching only the rows
     /// that changed so hover stays where it is, and gives `window` the
     /// filter and each filter's count. Thumbnails of entries that left the
-    /// history are dropped.
-    pub(super) fn show(&self, window: &PocketIsland, data: &[ClipRowData]) {
+    /// history are dropped. Returns the place among the rows shown of the
+    /// entry whose peek is open, closing a peek whose entry is no longer
+    /// listed.
+    pub(super) fn show(&self, window: &PocketIsland, data: &[ClipRowData]) -> Option<usize> {
         let filter = self.filter.get();
         window.set_clip_filter(filter.index());
         set_rows_in_place(&self.counts, filter_counts(data));
@@ -128,13 +150,29 @@ impl ClipView {
             .map(|d| {
                 let thumb = match &d.thumb {
                     Some(path) => thumb_for(&mut thumbs, d.id, path),
-                    None => no_thumb(),
+                    None => no_picture(),
                 };
                 clip_row(d, thumb)
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let open = self.peek.get().and_then(|id| {
+            let id = i32::try_from(id).ok()?;
+            rows.iter().position(|r| r.id == id)
+        });
+        if open.is_none() {
+            self.peek.set(None);
+        }
         set_rows_in_place(&self.rows, rows);
+        open
     }
+}
+
+/// A larger picture of the file at `path` for a peek, or `None` when it
+/// can't be read.
+pub(super) fn peek_picture(path: &Path) -> Option<Image> {
+    vento_platform::picture_thumbnail(path, PEEK_PICTURE_PX, 4)
+        .as_ref()
+        .and_then(to_image)
 }
 
 /// Makes `model` hold `rows` without rebuilding it: rows are added or
@@ -161,7 +199,7 @@ fn thumb_for(thumbs: &mut HashMap<u64, Image>, id: u64, path: &Path) -> Image {
         return t.clone();
     }
     if !path.exists() {
-        return no_thumb();
+        return no_picture();
     }
     let t = thumbnail(path);
     thumbs.insert(id, t.clone());
@@ -173,13 +211,13 @@ fn thumb_for(thumbs: &mut HashMap<u64, Image>, id: u64, path: &Path) -> Image {
 fn thumbnail(path: &Path) -> Image {
     Image::load_from_path(path).unwrap_or_else(|_| {
         debug!("clipboard: no thumbnail at {}", path.display());
-        no_thumb()
+        no_picture()
     })
 }
 
-/// The thumbnail of a row that has none: empty, and equal to every other
-/// one, so an unchanged row compares equal.
-fn no_thumb() -> Image {
+/// The thumbnail of a row that has none (or a peek's missing picture):
+/// empty, and equal to every other one, so an unchanged row compares equal.
+pub(super) fn no_picture() -> Image {
     Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::new(0, 0))
 }
 
@@ -195,10 +233,12 @@ fn clip_row(d: &ClipRowData, thumb: Image) -> ClipRow {
             ClipKind::Image => 3,
         },
         label: d.label.as_str().into(),
-        age: d.age.as_str().into(),
+        meta: d.meta.as_str().into(),
         missing: d.missing,
         thumb,
         pinned: d.pinned,
+        files: d.files,
+        web: d.web,
     }
 }
 
@@ -212,11 +252,7 @@ impl PocketController {
         let c = with.clone();
         w.on_view_chosen(move |v| {
             if let Some(c) = c() {
-                c.choose_view(if v == 1 {
-                    View::Clipboard
-                } else {
-                    View::Pocket
-                });
+                c.choose_view(v);
             }
         });
         let c = with.clone();
@@ -244,6 +280,31 @@ impl PocketController {
             if let (Some(c), Some(f)) = (c(), ClipFilter::from_index(i)) {
                 c.clip_view.filter.set(f);
                 c.refresh_clip();
+            }
+        });
+        let c = with.clone();
+        w.on_clip_peek(move |id| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id)) {
+                let open = c.clip_view.peek.get() != Some(id);
+                c.clip_view.peek.set(open.then_some(id));
+                c.refresh_clip();
+            }
+        });
+        let c = with.clone();
+        w.on_clip_open(move |id| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id))
+                && let Some(url) = c.clip.link(id).filter(|u| is_web(u))
+            {
+                open_link(&url);
+            }
+        });
+        let c = with.clone();
+        w.on_clip_reveal(move |id| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id)) {
+                let files = c.clip.files(id);
+                if !files.is_empty() {
+                    c.platform.reveal_in_finder(&files);
+                }
             }
         });
         let c = with.clone();
@@ -281,11 +342,22 @@ impl PocketController {
         });
     }
 
-    /// A switch button was clicked. Going to the shorter Pocket view leaves
-    /// the pointer below the island, so it stays open a moment to be
-    /// reached again.
-    fn choose_view(&self, v: View) {
-        self.set_view(v);
+    /// A tab or the Pocket's look toggle was clicked, for the window's view
+    /// `v` (0 the kinds, 1 the Clipboard, 2 the list). Going to a shorter
+    /// view leaves the pointer below the island, so it stays open a moment
+    /// to be reached again.
+    fn choose_view(&self, v: i32) {
+        match v {
+            1 => self.set_view(View::Clipboard),
+            2 => {
+                self.set_view(View::Pocket);
+                self.open_pocket_list(None);
+            }
+            _ if self.shown_view() == View::Pocket => {
+                self.close_pocket_list();
+            }
+            _ => self.set_view(View::Pocket),
+        }
         self.hold_open_briefly();
     }
 
@@ -301,7 +373,7 @@ impl PocketController {
     /// Offers Undo for entries just taken out of the history.
     fn offer_clip_undo(&self, removed: Vec<ClipEntry>) {
         if !removed.is_empty() {
-            self.offer_undo(Undo::Clip(removed), Vec::new());
+            self.offer_undo(Undo::Clip(removed));
         }
     }
 
@@ -332,26 +404,18 @@ impl PocketController {
 
     /// What the expanded island holds below the menu bar.
     pub(super) fn panel(&self) -> Panel {
-        let switch = self.clip.enabled();
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
-            View::Pocket if self.list_shown() => Panel::PocketList {
-                switch,
-                row: if self.stacks_shown() {
-                    Row::Stacks(self.stacks.len())
-                } else {
-                    Row::Cells(self.layout.get())
-                },
-            },
-            View::Pocket if self.stacks_shown() => Panel::Stacks {
-                switch,
-                stacks: self.stacks.len(),
-            },
-            View::Pocket => Panel::Pocket {
-                switch,
-                layout: self.layout.get(),
+            View::Pocket if self.list_shown() => Panel::List,
+            View::Pocket => Panel::Kinds {
+                groups: self.kinds.len(),
             },
         }
+    }
+
+    /// Closes the Clipboard view's peek; false if none was open.
+    pub(super) fn close_clip_peek(&self) -> bool {
+        self.clip_view.peek.take().is_some()
     }
 
     /// Pushes the history's size, the switch and the view into the window,
@@ -362,15 +426,74 @@ impl PocketController {
         let on = self.clip.enabled();
         if !on {
             self.clip_view.show(&self.window, &[]);
+            self.show_clip_peek(None);
         } else if self.expanded() && self.shown_view() == View::Clipboard {
-            self.clip_view
+            let open = self
+                .clip_view
                 .show(&self.window, &self.clip.rows(now_unix()));
+            self.show_clip_peek(open);
         }
         let w = &self.window;
         w.set_clip_count(i32::try_from(self.clip.len()).unwrap_or(i32::MAX));
         w.set_show_switch(on);
         w.set_view(self.window_view());
         w.set_clip_wing(on && !self.clip.is_empty() && self.pocket.borrow().is_empty());
+    }
+
+    /// Gives the window the open peek: the place of its row among those
+    /// shown (`open`, `None` for no peek) and what it shows, read from the
+    /// entry once while it stays open.
+    fn show_clip_peek(&self, open: Option<usize>) {
+        let id = open.and(self.clip_view.peek.get());
+        let mut shown = self.clip_view.peek_shown.borrow_mut();
+        if shown.as_ref().map(|p| p.id) != id {
+            *shown = id.map(|id| {
+                let peek = self.clip.peek(id).unwrap_or_default();
+                PeekShown {
+                    id,
+                    text: peek.text,
+                    picture: peek
+                        .picture
+                        .as_ref()
+                        .and_then(to_image)
+                        .unwrap_or_else(no_picture),
+                    lines: peek
+                        .lines
+                        .into_iter()
+                        .map(|(label, value)| PeekLine {
+                            label: label.into(),
+                            value: value.into(),
+                        })
+                        .collect(),
+                }
+            });
+        }
+        let w = &self.window;
+        match shown.as_ref() {
+            Some(p) => {
+                w.set_clip_peek_text(p.text.as_str().into());
+                w.set_clip_peek_picture(p.picture.clone());
+                set_rows_in_place(&self.clip_view.peek_lines, p.lines.clone());
+            }
+            None => {
+                w.set_clip_peek_text("".into());
+                w.set_clip_peek_picture(no_picture());
+                set_rows_in_place(&self.clip_view.peek_lines, Vec::new());
+            }
+        }
+        w.set_clip_peek_index(open.map_or(-1, |i| i32::try_from(i).unwrap_or(-1)));
+    }
+}
+
+/// Opens `url` (a web link) in the default browser.
+fn open_link(url: &str) {
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(not(target_os = "macos"))]
+    let opener = "xdg-open";
+    match std::process::Command::new(opener).arg(url).spawn() {
+        Ok(_) => debug!("clipboard: opened a link"),
+        Err(e) => warn!("cannot open a link: {e}"),
     }
 }
 
@@ -392,6 +515,9 @@ mod tests {
             kind,
             label: "a".into(),
             age: "now".into(),
+            meta: "Text · now".into(),
+            files: false,
+            web: false,
             missing: false,
             thumb: None,
             pinned: false,
@@ -441,20 +567,20 @@ mod tests {
         let rows: Vec<ClipRow> = kinds
             .iter()
             .zip(1..)
-            .map(|(&k, id)| clip_row(&data(id, k), no_thumb()))
+            .map(|(&k, id)| clip_row(&data(id, k), no_picture()))
             .collect();
         let got: Vec<(i32, i32)> = rows.iter().map(|r| (r.id, r.kind)).collect();
         assert_eq!(got, [(1, 0), (2, 1), (3, 2), (4, 3)]);
         // An id the window can't hold takes no action.
-        let big = clip_row(&data(u64::MAX, ClipKind::Text), no_thumb());
+        let big = clip_row(&data(u64::MAX, ClipKind::Text), no_picture());
         assert_eq!(big.id, -1);
     }
 
     #[test]
     fn rows_without_thumbnails_compare_equal() {
         // So refreshing an unchanged list touches no row.
-        let a = clip_row(&data(7, ClipKind::Text), no_thumb());
-        let b = clip_row(&data(7, ClipKind::Text), no_thumb());
+        let a = clip_row(&data(7, ClipKind::Text), no_picture());
+        let b = clip_row(&data(7, ClipKind::Text), no_picture());
         assert_eq!(a, b);
         assert_eq!(a.thumb.size().width, 0);
     }

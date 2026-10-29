@@ -124,24 +124,25 @@ from the island into any folder or app.
 
 Other ways to add to the Pocket: drop onto the island, or press **⌃⌥P**
 (Control-Option-P). Click items to select several and
-drag them together, or use **Drag all**. The x on an item removes it and
-**Clear** empties the Pocket; both can be undone. Removing an item never deletes
-your file.
+drag them together, or use **Drag all** at the bottom right. The x on an item
+removes it and **Clear** empties the Pocket; both can be undone. Removing an item
+never deletes your file.
 
-With up to 8 items the Pocket shows them all in a row. Once it holds more, it
-lays them out the way you choose in **Settings → Pocket → When it holds more
-than 8 items**:
+The Pocket has two looks, switched with the two buttons beside **Drag all**:
 
-- **List** (the default) shows the first 8 and an **All N** button. It opens a
-  list of every item with its icon and name, an x to remove it, and chips along
-  the top (**All**, then Images, Video, Audio and so on) to show only one kind.
-  Drag a row out like any item; **Pocket** at the top left goes back to the
-  items.
-- **Scroll** puts every item in one strip that scrolls sideways, with a thin bar
-  underneath you can drag.
-- **Stacks** groups the items by kind: **Images, Video, Audio, Documents,
-  Archives, Folders** and **Other**, each a stack with its count. Drag a stack to
-  take all its files along, or click it to open the list for just that kind.
+- **By kind** (the default) groups the items: **Images, Video, Audio,
+  Documents, Archives, Folders** and **Other**, each a row of tiles. Pictures
+  show as pictures. **Drag N** beside a group takes all its files along; its
+  name, or the **+N** tile at the end of a full row, opens the list on just that
+  kind.
+- **List** shows every item as a row with what it is, its size and its folder,
+  and chips along the top to show only one kind. Hover a row for **Show in
+  Finder**, **Copy path** and **x**; the arrow at its end opens a preview under
+  it: the picture, what a folder holds, or the item's kind, size, place and when
+  it came in. **Kinds** at the top left goes back.
+
+Drag a tile or a row out like any item. Which look the island opens on is set
+in **Settings → Pocket**.
 
 ### Copy
 
@@ -240,13 +241,16 @@ the three biggest things inside it.
 
 Vento remembers what you copy, so you can copy several things in one place and
 paste them one by one somewhere else. Open the island and switch to the
-**Clipboard** with the buttons at its bottom left, or press **⌃⌥V**
+**Clipboard** with the tabs at its bottom left, or press **⌃⌥V**
 (Control-Option-V). Copying never opens the island by itself.
 
 - **Click a copy** to put it back on the clipboard exactly as it was, formatting
   included (spreadsheet cells paste as cells), then press ⌘V anywhere.
 - **Hover a copy** for three buttons: the **pin** keeps it until you remove it,
   the **Pocket** button adds it to the Pocket, and **x** removes it.
+- **The arrow** at the end of a copy opens a preview under it: the whole text,
+  the picture, a link's site and address, or the files' names, with **Copy**,
+  **Open in browser** or **Show in Finder**, and **Remove**.
 - **Filters** along the top show everything, pinned copies only, or only
   text, links, pictures or files. Pictures copied in Finder show as pictures.
 - **Clear**, at the bottom right, removes everything except pinned copies, and
@@ -304,7 +308,7 @@ changes apply right away.
 | General | The **Language** (English or العربية, or follow the system), the key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
 | Wheel | Honeycomb or petals layout; which actions show and in what order. |
 | Move | Pinned and recent folders for the Move ring, and how long to hold. |
-| Pocket | The Pocket shortcut, what happens after you drag items out, and how a full Pocket (more than 8 items) lays them out: List, Scroll or Stacks. |
+| Pocket | The Pocket shortcut, what happens after you drag items out, and which look it opens on: By kind or List. |
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
 | Keep Awake | Whether the screen may turn off while Keep Awake runs. |

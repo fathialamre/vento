@@ -5,7 +5,6 @@ use slint::LogicalPosition;
 use slint::platform::WindowEvent;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket_zone::{IslandInputs, Presence, ZONE_MARGIN};
-use vento_core::settings::PocketLayout;
 use vento_platform::IslandHome;
 
 /// Width of each wing beside the notch.
@@ -16,66 +15,37 @@ const PILL_H: f64 = 28.0;
 /// Gap between the menu bar and the pill.
 const PILL_GAP: f64 = 4.0;
 /// The expanded island is the notch plus this, but never narrower than
-/// [`EXPANDED_MIN_W`], and wide enough for its cells (see [`panel_w`]).
+/// [`ISLAND_W`]: every view has the same width, so switching between them
+/// only changes the height.
 const EXPANDED_EXTRA_W: f64 = 96.0;
-const EXPANDED_MIN_W: f64 = 420.0;
+const ISLAND_W: f64 = 560.0;
 /// Room the expanded island leaves free on each side of its screen.
 const SCREEN_MARGIN: f64 = 20.0;
-/// The panel's layout, as `pocket.slint` draws it: side padding, one cell
-/// (or stack) per step, the "All N" tile, and the gap and column of "Drag
-/// all" (only without the bottom switch, whose bar holds it otherwise).
-const PAD: f64 = 14.0;
-const CELL_STEP: f64 = 68.0;
-const OVERFLOW_W: f64 = 48.0;
-const SIDE_GAP: f64 = 10.0;
-const SIDE_W: f64 = 52.0;
-/// Height of the Pocket view's item panel below the menu bar.
-const PANEL_H: f64 = 112.0;
-/// Height of the bar under either view that switches between them.
-const SWITCH_H: f64 = 40.0;
-/// Height of the Clipboard view's list, and of the Pocket list: six 36 pt
-/// rows and 8 pt above and below.
-const CLIP_PANEL_H: f64 = 232.0;
+/// Height of the bar under every view: the switch between the views (with
+/// the clipboard history on) and the shown view's own controls.
+const BAR_H: f64 = 44.0;
+/// Height of the Clipboard view and of the Pocket list, above the bar.
+const LIST_H: f64 = 408.0;
+/// One kind's group in the Pocket view, as `pocket.slint` draws it: its
+/// header, its row of tiles and the gap under it; and the room above the
+/// first.
+pub(super) const GROUP_H: f64 = 92.0;
+const GROUPS_TOP: f64 = 8.0;
+/// Groups in sight at once; more scroll.
+pub(super) const GROUPS_SHOWN: usize = 3;
 /// Top height when neither the menu bar nor a notch gives one.
 const FALLBACK_TOP_H: f64 = 32.0;
-/// Cells shown in the expanded island's width; the rest are reached through
-/// "All N", scrolled into view, or gathered into stacks by kind.
-pub(super) const MAX_CELLS: usize = 8;
-
-/// How many items become cells under `layout`: every one under Scroll,
-/// whose strip scrolls through them, else the first [`MAX_CELLS`].
-pub(super) fn cell_cap(layout: PocketLayout) -> usize {
-    match layout {
-        PocketLayout::Scroll => usize::MAX,
-        PocketLayout::List | PocketLayout::Stacks => MAX_CELLS,
-    }
-}
 
 /// What the expanded island shows below the menu bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Panel {
-    /// The Pocket's cells, laid out as `layout` says once there are more
-    /// than [`MAX_CELLS`], with the bottom switch under them when the
-    /// clipboard history is on.
-    Pocket { switch: bool, layout: PocketLayout },
-    /// A full Pocket's stacks under the Stacks layout, `stacks` of them (one
-    /// per kind present), with the bottom switch when the history is on.
-    Stacks { switch: bool, stacks: usize },
-    /// The clipboard history's list, always with the bottom switch.
+    /// The Pocket's items grouped by kind, `groups` kinds of them (none for
+    /// an empty Pocket, which shows where to drop).
+    Kinds { groups: usize },
+    /// The list of the Pocket's items.
+    List,
+    /// The clipboard history's list.
     Clipboard,
-    /// The list of every Pocket item, standing for `row`, with the bottom
-    /// switch when the clipboard history is on.
-    PocketList { switch: bool, row: Row },
-}
-
-/// The row of the Pocket view the Pocket list stands for: the one its back
-/// control returns to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Row {
-    /// The cells, laid out as `layout` says.
-    Cells(PocketLayout),
-    /// This many stacks.
-    Stacks(usize),
 }
 
 /// The island's rects for one home, in logical top-left global coordinates.
@@ -92,26 +62,6 @@ pub(super) struct Frames {
     pub(super) expanded: Rect,
 }
 
-/// The width the panel needs to show `count` items under `layout`: the
-/// first [`MAX_CELLS`] cells, the "All N" tile when there are more under
-/// List, and the "Drag all" column unless the bottom switch shows (`switch`).
-/// Under Scroll there is no tile: the strip stays eight cells wide and the
-/// rest scroll into view. Under Stacks a full Pocket shows stacks instead (see
-/// [`strip_w`]).
-fn panel_w(count: usize, layout: PocketLayout, switch: bool) -> f64 {
-    let tile = count > MAX_CELLS && layout == PocketLayout::List;
-    strip_w(count.min(MAX_CELLS), tile, switch)
-}
-
-/// The width of a panel showing `slots` cells or stacks, with the "All N"
-/// tile after them or not, and the "Drag all" column, which the bottom
-/// switch's bar takes in when it shows (`switch`).
-fn strip_w(slots: usize, tile: bool, switch: bool) -> f64 {
-    let overflow = if tile { OVERFLOW_W } else { 0.0 };
-    let side = if switch { 0.0 } else { SIDE_GAP + SIDE_W };
-    PAD + slots as f64 * CELL_STEP + overflow + side + PAD
-}
-
 /// The height the island takes at the top of the screen: the menu bar, or
 /// the notch if taller (the menu bar reports 0 when it auto-hides).
 pub(super) fn top_height(home: &IslandHome) -> f64 {
@@ -122,19 +72,12 @@ pub(super) fn top_height(home: &IslandHome) -> f64 {
 /// Every shape is centred on the screen, as the window is; the notch sits in
 /// the middle of its screen (to within half a point). With room kept for it
 /// in the menu bar (a slot), the island fills that room as it would sit
-/// around a notch, and every shape is centred on the slot. Showing the
-/// Pocket, the expanded island widens to fit `count` items (under Scroll, no
-/// wider than eight cells), up to the screen's width less a margin; the row
-/// scrolls if that is still too narrow. Showing stacks, it fits them as it
-/// fits cells. Showing the Clipboard, it keeps the width of an empty Pocket
-/// and is taller. Showing the Pocket list, it is as tall as the Clipboard
-/// view and as wide as the row it stands for (the cells and "All N", or the
-/// stacks), so the pointer that opened it stays over it, and so does the
-/// pointer on its back control as the island returns to that row: removing
-/// rows narrows it only as that row narrows. With the bottom switch, whose
-/// bar holds "Drag all" and Clear, each of these rows is that column
-/// narrower.
-pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
+/// around a notch, and every shape is centred on the slot. Expanded, the
+/// island is as wide in every view (up to the screen's width less a
+/// margin), so the pointer stays over it as it switches; its height is the
+/// view's above the bottom bar: the Pocket's groups (up to
+/// [`GROUPS_SHOWN`]; more scroll), or the taller lists.
+pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
     let screen = home.screen;
     let top_h = top_height(home);
     let (mid, notch_w, notch_style) = match home.slot {
@@ -171,33 +114,14 @@ pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
         w: collapsed.w + 2.0 * ZONE_MARGIN,
         h: collapsed.h + ZONE_MARGIN,
     };
-    let (fit, panel_h) = match panel {
-        Panel::Pocket { switch, layout } => (
-            panel_w(count, layout, switch),
-            PANEL_H + if switch { SWITCH_H } else { 0.0 },
-        ),
-        Panel::Stacks { switch, stacks } => (
-            strip_w(stacks, false, switch),
-            PANEL_H + if switch { SWITCH_H } else { 0.0 },
-        ),
-        Panel::Clipboard => (0.0, CLIP_PANEL_H + SWITCH_H),
-        Panel::PocketList { switch, row } => (
-            match row {
-                Row::Cells(layout) => panel_w(count, layout, switch),
-                Row::Stacks(stacks) => strip_w(stacks, false, switch),
-            },
-            CLIP_PANEL_H + if switch { SWITCH_H } else { 0.0 },
-        ),
-    };
     let w = (notch_w + EXPANDED_EXTRA_W)
-        .max(EXPANDED_MIN_W)
-        .max(fit)
+        .max(ISLAND_W)
         .min(screen.w - 2.0 * SCREEN_MARGIN);
     let expanded = Rect {
         x: mid - w / 2.0,
         y: screen.y,
         w,
-        h: top_h + panel_h,
+        h: top_h + panel_h(panel),
     };
     Frames {
         notch_style,
@@ -207,6 +131,16 @@ pub(super) fn frames(home: &IslandHome, count: usize, panel: Panel) -> Frames {
         zone,
         expanded,
     }
+}
+
+/// Height of what the expanded island draws below the menu bar for
+/// `panel`, the bottom bar included.
+fn panel_h(panel: Panel) -> f64 {
+    let view = match panel {
+        Panel::Kinds { groups } => GROUPS_TOP + groups.clamp(1, GROUPS_SHOWN) as f64 * GROUP_H,
+        Panel::List | Panel::Clipboard => LIST_H,
+    };
+    view + BAR_H
 }
 
 /// The smallest rect holding both.
@@ -301,11 +235,8 @@ pub(super) fn hover_event(
 mod tests {
     use super::*;
 
-    /// The Pocket view without the switch, as before the clipboard history.
-    const OFF: Panel = Panel::Pocket {
-        switch: false,
-        layout: PocketLayout::List,
-    };
+    /// The Pocket view with two kinds of items.
+    const TWO: Panel = Panel::Kinds { groups: 2 };
 
     fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }
@@ -336,7 +267,7 @@ mod tests {
             slot: Some(rect(1060.0, 0.0, 96.0, 32.0)),
             ..plain(32.0)
         };
-        let f = frames(&home, 2, OFF);
+        let f = frames(&home, TWO);
         assert!(f.notch_style);
         assert_eq!(f.notch_w, 8.0);
         assert_eq!(f.collapsed, rect(1060.0, 0.0, 96.0, 32.0));
@@ -347,7 +278,7 @@ mod tests {
 
     #[test]
     fn island_frame_on_notch_screen() {
-        let f = frames(&notched(188.0, 38.0), 2, OFF);
+        let f = frames(&notched(188.0, 38.0), TWO);
         assert!(f.notch_style);
         assert_eq!(f.collapsed, rect(618.0, 0.0, 276.0, 38.0));
         // Grown by ZONE_MARGIN on the left, right and bottom, not the top.
@@ -356,7 +287,7 @@ mod tests {
 
     #[test]
     fn island_frame_without_notch() {
-        let f = frames(&plain(24.0), 2, OFF);
+        let f = frames(&plain(24.0), TWO);
         assert!(!f.notch_style);
         assert_eq!(f.collapsed, rect(660.0, 28.0, 120.0, 28.0));
         // Off-origin screens keep the pill centred on their own screen.
@@ -364,19 +295,20 @@ mod tests {
         home.screen.x = -1440.0;
         home.screen.y = -300.0;
         assert_eq!(
-            frames(&home, 2, OFF).collapsed,
+            frames(&home, TWO).collapsed,
             rect(-780.0, -272.0, 120.0, 28.0)
         );
     }
 
     #[test]
-    fn expanded_frame_min_width_420() {
+    fn expanded_frame_is_560_wide_unless_the_notch_needs_more() {
+        // 38 + 8 + 2 * 92 + 44 below the top.
         assert_eq!(
-            frames(&notched(188.0, 38.0), 2, OFF).expanded,
-            rect(546.0, 0.0, 420.0, 150.0)
+            frames(&notched(188.0, 38.0), TWO).expanded,
+            rect(476.0, 0.0, 560.0, 274.0)
         );
-        assert_eq!(frames(&plain(24.0), 2, OFF).expanded.w, 420.0);
-        assert_eq!(frames(&notched(360.0, 38.0), 2, OFF).expanded.w, 456.0);
+        assert_eq!(frames(&plain(24.0), TWO).expanded.w, 560.0);
+        assert_eq!(frames(&notched(500.0, 38.0), TWO).expanded.w, 596.0);
     }
 
     #[test]
@@ -389,7 +321,7 @@ mod tests {
 
     #[test]
     fn only_the_drawn_shape_takes_the_pointer() {
-        let f = frames(&notched(188.0, 38.0), 2, OFF);
+        let f = frames(&notched(188.0, 38.0), TWO);
         assert_eq!(interactive_rect(&f, Presence::Hidden), None);
         assert_eq!(interactive_rect(&f, Presence::Collapsed), Some(f.collapsed));
         assert_eq!(
@@ -444,261 +376,51 @@ mod tests {
     }
 
     #[test]
-    fn expanded_widens_to_fit_every_cell() {
+    fn every_view_is_as_wide_and_only_its_height_changes() {
         let home = notched(188.0, 38.0);
-        // Up to four cells fit the minimum width.
-        assert_eq!(frames(&home, 4, OFF).expanded.w, 420.0);
-        // Five cells and the "Drag all" column: 14 + 5 * 68 + 10 + 52 + 14.
+        let views = [
+            Panel::Kinds { groups: 0 },
+            Panel::Kinds { groups: 7 },
+            Panel::List,
+            Panel::Clipboard,
+        ];
+        let first = frames(&home, views[0]).expanded;
+        for v in views {
+            let f = frames(&home, v).expanded;
+            assert_eq!((f.x, f.y, f.w), (first.x, first.y, first.w));
+        }
+        // The lists: 408 and the bar.
+        assert_eq!(frames(&home, Panel::List).expanded.h, 38.0 + 408.0 + 44.0);
         assert_eq!(
-            frames(&home, 5, OFF).expanded,
-            rect(541.0, 0.0, 430.0, 150.0)
+            frames(&home, Panel::Clipboard).expanded,
+            frames(&home, Panel::List).expanded
         );
-        assert_eq!(frames(&home, 8, OFF).expanded.w, 634.0);
-        // More than eight: eight cells and the "+N" tile.
-        assert_eq!(frames(&home, 9, OFF).expanded.w, 682.0);
-        assert_eq!(frames(&home, 40, OFF).expanded.w, 682.0);
+        // The collapsed shape doesn't change with the view.
+        assert_eq!(
+            frames(&home, Panel::Clipboard).collapsed,
+            frames(&home, TWO).collapsed
+        );
         // Never wider than the screen less 20 pt a side.
         let mut small = plain(24.0);
-        small.screen.w = 600.0;
-        let f = frames(&small, 9, OFF);
-        assert_eq!(f.expanded, rect(20.0, 0.0, 560.0, 136.0));
-        // The collapsed shape doesn't change with the count.
+        small.screen.w = 500.0;
         assert_eq!(
-            frames(&home, 9, OFF).collapsed,
-            frames(&home, 1, OFF).collapsed
+            frames(&small, Panel::List).expanded,
+            rect(20.0, 0.0, 460.0, 24.0 + 408.0 + 44.0)
         );
     }
 
     #[test]
-    fn scroll_keeps_a_full_pocket_eight_cells_wide_with_no_overflow_tile() {
+    fn the_pocket_is_as_tall_as_its_groups_up_to_three() {
         let home = notched(188.0, 38.0);
-        let scroll = Panel::Pocket {
-            switch: false,
-            layout: PocketLayout::Scroll,
-        };
-        // Eight cells and the "Drag all" column, however many items: the
-        // rest scroll into view.
-        let eight = frames(&home, 8, scroll).expanded;
-        assert_eq!(eight.w, 634.0);
-        assert_eq!(frames(&home, 12, scroll).expanded, eight);
-        assert_eq!(frames(&home, 40, scroll).expanded, eight);
-        // List keeps its "All N" tile beside the eighth cell.
-        assert_eq!(frames(&home, 12, OFF).expanded.w, 682.0);
-        // Eight or fewer look the same in every layout.
-        for n in [0, 3, 8] {
-            assert_eq!(
-                frames(&home, n, scroll).expanded,
-                frames(&home, n, OFF).expanded
-            );
-        }
-    }
-
-    #[test]
-    fn stacks_size_the_island_by_the_kinds_present() {
-        let home = notched(188.0, 38.0);
-        let stacks = |n| Panel::Stacks {
-            switch: false,
-            stacks: n,
-        };
-        // A few stacks fit the minimum width, whatever the item count.
-        assert_eq!(frames(&home, 12, stacks(3)).expanded.w, 420.0);
-        assert_eq!(frames(&home, 40, stacks(3)).expanded.w, 420.0);
-        // One cell step per stack and the "Drag all" column, no tile:
-        // 14 + 7 * 68 + 10 + 52 + 14.
-        assert_eq!(
-            frames(&home, 12, stacks(7)).expanded,
-            rect(473.0, 0.0, 566.0, 150.0)
-        );
-        assert_eq!(frames(&home, 12, stacks(5)).expanded.w, 430.0);
-        // The bottom switch adds its bar, as under the cells.
-        let with = frames(
-            &home,
-            12,
-            Panel::Stacks {
-                switch: true,
-                stacks: 7,
-            },
-        )
-        .expanded;
-        assert_eq!(with.h, 150.0 + 40.0);
-        // Its bar takes in the "Drag all" column: 14 + 7 * 68 + 14.
-        assert_eq!(with.w, 504.0);
-        // Under Stacks with eight or fewer items, the cells as in List.
-        let few = Panel::Pocket {
-            switch: false,
-            layout: PocketLayout::Stacks,
-        };
-        for n in [0, 3, 8] {
-            assert_eq!(
-                frames(&home, n, few).expanded,
-                frames(&home, n, OFF).expanded
-            );
-        }
-    }
-
-    #[test]
-    fn only_scroll_shows_every_item_as_a_cell() {
-        assert_eq!(cell_cap(PocketLayout::List), MAX_CELLS);
-        assert_eq!(cell_cap(PocketLayout::Stacks), MAX_CELLS);
-        assert_eq!(cell_cap(PocketLayout::Scroll), usize::MAX);
-    }
-
-    #[test]
-    fn clipboard_panel_is_taller_and_fixed_width() {
-        let home = notched(188.0, 38.0);
-        let clip = frames(&home, 7, Panel::Clipboard).expanded;
-        assert_eq!(clip.h, 38.0 + 232.0 + 40.0);
-        // As wide as the Pocket view with nothing in it, whatever the count.
-        let pocket = frames(
-            &home,
-            0,
-            Panel::Pocket {
-                switch: true,
-                layout: PocketLayout::List,
-            },
-        )
-        .expanded;
-        assert_eq!(clip.w, pocket.w);
-        assert_eq!(clip.x, pocket.x);
-        // Capped by the screen like the Pocket view.
-        let mut small = plain(24.0);
-        small.screen.w = 400.0;
-        assert_eq!(frames(&small, 0, Panel::Clipboard).expanded.w, 360.0);
-    }
-
-    #[test]
-    fn pocket_list_is_as_tall_as_the_clipboard_and_as_wide_as_the_row_it_stands_for() {
-        let home = notched(188.0, 38.0);
-        let list =
-            |count, row| frames(&home, count, Panel::PocketList { switch: false, row }).expanded;
-        let cells = Row::Cells(PocketLayout::List);
-        let full = list(12, cells);
-        assert_eq!(full.h, 38.0 + 232.0);
-        // Opened from a full row: eight cells, the "All N" tile and the
-        // "Drag all" column, as wide as the row so the pointer that clicked
-        // "All N" stays over it.
-        assert_eq!(full.w, 682.0);
-        assert_eq!(full.w, frames(&home, 12, OFF).expanded.w);
-        // Always as wide as the panel its back control returns to, so the
-        // pointer on "‹ Pocket" stays over the island: the cells once
-        // removals leave eight or fewer, never narrower than the minimum.
-        for n in [9, 8, 5, 3, 1] {
-            assert_eq!(list(n, cells).w, frames(&home, n, OFF).expanded.w);
-        }
-        assert_eq!(list(8, cells).w, 634.0);
-        assert_eq!(list(3, cells).w, 420.0);
-        // Opened from stacks: as wide as the stacks row.
-        for n in [1, 3, 5, 7] {
-            let stacks = Panel::Stacks {
-                switch: false,
-                stacks: n,
-            };
-            assert_eq!(
-                list(12, Row::Stacks(n)).w,
-                frames(&home, 12, stacks).expanded.w
-            );
-        }
-        assert_eq!(list(12, Row::Stacks(3)).w, 420.0);
-        assert_eq!(list(12, Row::Stacks(7)).w, 566.0);
-        // The bottom switch adds its bar, as under the cells.
-        let with = frames(
-            &home,
-            12,
-            Panel::PocketList {
-                switch: true,
-                row: cells,
-            },
-        )
-        .expanded;
-        assert_eq!(with.h, full.h + 40.0);
-        // Its bar takes in the "Drag all" column, as under the cells:
-        // 14 + 8 * 68 + 48 + 14.
-        assert_eq!(with.w, 620.0);
-        let pocket = Panel::Pocket {
-            switch: true,
-            layout: PocketLayout::List,
-        };
-        assert_eq!(with.w, frames(&home, 12, pocket).expanded.w);
-        // Opened from stacks with the switch: as wide as that stacks row.
-        let stacks = Panel::Stacks {
-            switch: true,
-            stacks: 7,
-        };
-        let row = Row::Stacks(7);
-        assert_eq!(
-            frames(&home, 12, Panel::PocketList { switch: true, row })
-                .expanded
-                .w,
-            frames(&home, 12, stacks).expanded.w
-        );
-        // Capped by the screen like the other views.
-        let mut small = plain(24.0);
-        small.screen.w = 600.0;
-        let f = frames(
-            &small,
-            12,
-            Panel::PocketList {
-                switch: true,
-                row: cells,
-            },
-        );
-        assert_eq!(f.expanded.w, 560.0);
-    }
-
-    #[test]
-    fn switch_adds_bar_height_to_pocket() {
-        let home = notched(188.0, 38.0);
-        let without = frames(&home, 3, OFF).expanded;
-        let with = frames(
-            &home,
-            3,
-            Panel::Pocket {
-                switch: true,
-                layout: PocketLayout::List,
-            },
-        )
-        .expanded;
-        assert_eq!(with.h, without.h + 40.0);
-        assert_eq!(with.w, without.w);
-    }
-
-    #[test]
-    fn switch_bar_takes_in_the_drag_all_column() {
-        let home = notched(188.0, 38.0);
-        let w = |count, panel| frames(&home, count, panel).expanded.w;
-        let pocket = |switch, layout| Panel::Pocket { switch, layout };
-        let stacks = |switch| Panel::Stacks { switch, stacks: 7 };
-        let list = |switch| Panel::PocketList {
-            switch,
-            row: Row::Cells(PocketLayout::List),
-        };
-        // Every Pocket row is the column and its gap narrower with the bar.
-        for (count, off, on) in [
-            (
-                8,
-                pocket(false, PocketLayout::List),
-                pocket(true, PocketLayout::List),
-            ),
-            (
-                12,
-                pocket(false, PocketLayout::List),
-                pocket(true, PocketLayout::List),
-            ),
-            (
-                40,
-                pocket(false, PocketLayout::Scroll),
-                pocket(true, PocketLayout::Scroll),
-            ),
-            (12, stacks(false), stacks(true)),
-            (12, list(false), list(true)),
-        ] {
-            assert_eq!(w(count, on), w(count, off) - (SIDE_GAP + SIDE_W));
-        }
-        assert_eq!(w(8, pocket(true, PocketLayout::List)), 572.0);
-        // Never narrower than the minimum: five cells need 430 pt with the
-        // column, 368 pt without it.
-        assert_eq!(w(5, OFF), 430.0);
-        assert_eq!(w(5, pocket(true, PocketLayout::List)), 420.0);
+        let h = |groups| frames(&home, Panel::Kinds { groups }).expanded.h;
+        // Empty: room for one group, where the drop hint goes.
+        assert_eq!(h(0), 38.0 + 8.0 + 92.0 + 44.0);
+        assert_eq!(h(1), h(0));
+        assert_eq!(h(2), h(1) + 92.0);
+        assert_eq!(h(3), 38.0 + 8.0 + 3.0 * 92.0 + 44.0);
+        // More scroll.
+        assert_eq!(h(7), h(3));
+        assert!(h(3) < frames(&home, Panel::List).expanded.h);
     }
 
     #[test]
@@ -706,7 +428,7 @@ mod tests {
         use std::time::{Duration, Instant};
         use vento_core::pocket_zone::IslandState;
 
-        let f = frames(&notched(188.0, 38.0), 2, OFF);
+        let f = frames(&notched(188.0, 38.0), TWO);
         // In the drop zone, under the wings and beside them: menus and
         // toolbars of the app below.
         let under = Point { x: 700.0, y: 80.0 };
