@@ -303,9 +303,10 @@ fn take<T>(slot: &Weak<RefCell<Option<T>>>) -> Option<T> {
     held.take()
 }
 
-/// The error a call gets while a share is in flight.
+/// The error a call gets while a share is in flight. Shown in a toast, so it
+/// is worded in the interface language.
 fn in_flight() -> PlatformError {
-    PlatformError::Failed("another share is still open".into())
+    PlatformError::ShareOpen
 }
 
 /// The built-in service behind `target`, or `None` for More or when this

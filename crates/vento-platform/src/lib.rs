@@ -243,6 +243,10 @@ pub enum PlatformError {
         program: String,
         error: std::io::Error,
     },
+    /// Another share, or the share popover, is still open. Worded when
+    /// shown, in the interface language.
+    #[error("{}", vento_core::i18n::tr("another share is still open"))]
+    ShareOpen,
     #[error("unsupported on this platform")]
     Unsupported,
 }
@@ -919,6 +923,21 @@ mod tests {
             assert_eq!(text.to_string(), "رفضت الحافظة النص");
             assert_eq!(files.to_string(), "رفضت الحافظة الملفات");
         });
+    }
+
+    #[test]
+    fn a_share_still_open_is_worded_when_shown() {
+        use vento_core::i18n::with_language;
+        let open = PlatformError::ShareOpen;
+        assert_eq!(open.to_string(), "another share is still open");
+        with_language("ar", || {
+            assert_eq!(open.to_string(), "هناك مشاركة أخرى مفتوحة");
+        });
+        // Made in Arabic, read again in English for the log line.
+        assert_eq!(
+            with_language("ar", || with_language("en", || open.to_string())),
+            "another share is still open"
+        );
     }
 
     #[test]

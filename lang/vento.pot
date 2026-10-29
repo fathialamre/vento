@@ -13,7 +13,7 @@ msgstr ""
 msgid "\"{name}\" is protected"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:255
+#: crates/vento-platform/src/lib.rs:259
 msgid ", "
 msgstr ""
 
@@ -371,7 +371,7 @@ msgstr ""
 msgid "Couldn't save: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec/share.rs:33
+#: crates/vento/src/exec/share.rs:40
 msgid "Couldn't share with {target}: {reason}"
 msgstr ""
 
@@ -693,7 +693,7 @@ msgstr ""
 msgid "Notes"
 msgstr ""
 
-#: crates/vento/src/exec/share.rs:22
+#: crates/vento/src/exec/share.rs:29
 msgid "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
 msgstr ""
 
@@ -1233,6 +1233,10 @@ msgstr ""
 msgid "already exists"
 msgstr ""
 
+#: crates/vento-platform/src/lib.rs:248
+msgid "another share is still open"
+msgstr ""
+
 #: crates/vento-core/src/archive/job.rs:59
 msgid "archive is empty"
 msgstr ""
@@ -1281,7 +1285,7 @@ msgstr ""
 msgid "copy could not be verified; source left untouched"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:269
+#: crates/vento-platform/src/lib.rs:273
 msgid "could not run {program}: {reason}"
 msgstr ""
 
@@ -1305,7 +1309,7 @@ msgstr ""
 msgid "invalid shortcut \"{spec}\""
 msgstr ""
 
-#: crates/vento/src/exec/share.rs:26
+#: crates/vento/src/exec/share.rs:33
 msgid "it won't take these items"
 msgstr ""
 
@@ -1337,11 +1341,11 @@ msgstr ""
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:254
+#: crates/vento-platform/src/lib.rs:258
 msgid "no app opened {names}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:314
+#: crates/vento-platform/src/lib.rs:318
 msgid "no folder to open"
 msgstr ""
 
@@ -1357,7 +1361,7 @@ msgstr ""
 msgid "no images"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:309
+#: crates/vento-platform/src/lib.rs:313
 msgid "no terminal is installed"
 msgstr ""
 
@@ -1377,7 +1381,7 @@ msgstr ""
 msgid "not found"
 msgstr ""
 
-#: crates/vento/src/exec/share.rs:65
+#: crates/vento/src/exec/share.rs:72
 msgid "nothing to share"
 msgstr ""
 
@@ -1437,11 +1441,11 @@ msgstr ""
 msgid "{app} (default)"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:262
+#: crates/vento-platform/src/lib.rs:266
 msgid "{app} is no longer there"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:302
+#: crates/vento-platform/src/lib.rs:306
 msgid "{app} is not installed"
 msgstr ""
 
@@ -1593,15 +1597,15 @@ msgstr ""
 msgid "{pages} · edited"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:279
+#: crates/vento-platform/src/lib.rs:283
 msgid "{program} exited with code {code}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:283
+#: crates/vento-platform/src/lib.rs:287
 msgid "{program} was stopped by a signal"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:294
+#: crates/vento-platform/src/lib.rs:298
 msgid "{program}: {reason}"
 msgstr ""
 

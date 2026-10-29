@@ -14,11 +14,18 @@ use vento_core::share::{
 
 use super::{Executor, in_english};
 
-/// The toast for `target`'s service refusing `paths`, shown before anything
-/// opens. Notes refusing a folder together with files gets a sentence of its
-/// own, which says how to get around it.
-pub(super) fn refused_text(target: ShareTarget, paths: &[PathBuf]) -> String {
-    if target == ShareTarget::Notes && mixes_folders_and_files(paths) {
+/// Whether `target` is Notes and `paths` hold a folder together with files,
+/// which Notes refuses. Reads the disk, so a refusal asks it once.
+pub(super) fn notes_mix(target: ShareTarget, paths: &[PathBuf]) -> bool {
+    target == ShareTarget::Notes && mixes_folders_and_files(paths)
+}
+
+/// The toast for `target`'s service refusing the dropped items, shown before
+/// anything opens. `notes_mix` is what [`notes_mix`] says of them: Notes
+/// refusing a folder together with files gets a sentence of its own, which
+/// says how to get around it.
+pub(super) fn refused_text(target: ShareTarget, notes_mix: bool) -> String {
+    if notes_mix {
         tr(
             "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first.",
         )
@@ -74,12 +81,13 @@ impl Executor {
             return;
         }
         if !self.platform.can_share(target, &paths) {
+            let mix = notes_mix(target, &paths);
             warn!(
                 "share {} refused: {}",
                 target.key(),
-                in_english(|| refused_text(target, &paths))
+                in_english(|| refused_text(target, mix))
             );
-            self.toast.show(&refused_text(target, &paths), None, at);
+            self.toast.show(&refused_text(target, mix), None, at);
             return;
         }
         let this = self.this.clone();
@@ -129,12 +137,15 @@ mod tests {
     #[test]
     fn notes_refusal_names_the_mix() {
         let (_dir, both) = file_and_folder();
+        assert!(notes_mix(ShareTarget::Notes, &both));
+        assert!(!notes_mix(ShareTarget::Mail, &both));
+        assert!(!notes_mix(ShareTarget::Notes, &both[..1]));
         assert_eq!(
-            refused_text(ShareTarget::Notes, &both),
+            refused_text(ShareTarget::Notes, true),
             "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
         );
         assert_eq!(
-            refused_text(ShareTarget::Mail, &both),
+            refused_text(ShareTarget::Mail, false),
             "Couldn't share with Mail: it won't take these items"
         );
     }
@@ -165,22 +176,27 @@ mod tests {
             action_error_text(ActionId::Share, &tr("nothing to share")),
             "Couldn't share: nothing to share"
         );
+        with_language("ar", || {
+            assert_eq!(
+                action_error_text(ActionId::Share, &tr("nothing to share")),
+                "تعذّرت المشاركة: لا شيء للمشاركة"
+            );
+        });
     }
 
     #[test]
     fn share_toasts_read_in_arabic() {
-        let (_dir, both) = file_and_folder();
         with_language("ar", || {
             assert_eq!(
                 failed_text(ShareTarget::Mail, "x"),
                 "تعذّرت المشاركة عبر البريد: x"
             );
             assert_eq!(
-                refused_text(ShareTarget::Notes, &both),
+                refused_text(ShareTarget::Notes, true),
                 "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ Archive أولًا."
             );
             assert_eq!(
-                refused_text(ShareTarget::Mail, &both),
+                refused_text(ShareTarget::Mail, false),
                 "تعذّرت المشاركة عبر البريد: لا يقبل هذه العناصر"
             );
         });

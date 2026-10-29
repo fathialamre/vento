@@ -15,7 +15,7 @@ msgstr " · "
 msgid "\"{name}\" is protected"
 msgstr "‏«{name}» محمي بكلمة سر"
 
-#: crates/vento-platform/src/lib.rs:255
+#: crates/vento-platform/src/lib.rs:259
 msgid ", "
 msgstr "، "
 
@@ -401,7 +401,7 @@ msgstr "تعذّر حفظ الجيب: {error}"
 msgid "Couldn't save: {reason}"
 msgstr "تعذّر الحفظ: {reason}"
 
-#: crates/vento/src/exec/share.rs:33
+#: crates/vento/src/exec/share.rs:40
 msgid "Couldn't share with {target}: {reason}"
 msgstr "تعذّرت المشاركة عبر {target}: {reason}"
 
@@ -751,7 +751,7 @@ msgstr "لا يوجد شيء"
 msgid "Notes"
 msgstr "الملاحظات"
 
-#: crates/vento/src/exec/share.rs:22
+#: crates/vento/src/exec/share.rs:29
 msgid "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
 msgstr "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت المجلد وحده، أو اضغطه بـ Archive أولًا."
 
@@ -1331,6 +1331,10 @@ msgstr "صفر بايت"
 msgid "already exists"
 msgstr "موجود مسبقاً"
 
+#: crates/vento-platform/src/lib.rs:248
+msgid "another share is still open"
+msgstr "هناك مشاركة أخرى مفتوحة"
+
 #: crates/vento-core/src/archive/job.rs:59
 msgid "archive is empty"
 msgstr "الأرشيف فارغ"
@@ -1379,7 +1383,7 @@ msgstr "رفضت الحافظة النص"
 msgid "copy could not be verified; source left untouched"
 msgstr "تعذّر التحقق من النسخة؛ لم يُلمس الأصل"
 
-#: crates/vento-platform/src/lib.rs:269
+#: crates/vento-platform/src/lib.rs:273
 msgid "could not run {program}: {reason}"
 msgstr "تعذّر تشغيل {program}: {reason}"
 
@@ -1403,7 +1407,7 @@ msgstr "توقّف قبل أن يكتمل"
 msgid "invalid shortcut \"{spec}\""
 msgstr "اختصار غير صالح \"{spec}\""
 
-#: crates/vento/src/exec/share.rs:26
+#: crates/vento/src/exec/share.rs:33
 msgid "it won't take these items"
 msgstr "لا يقبل هذه العناصر"
 
@@ -1443,11 +1447,11 @@ msgstr "يستخدم macOS هذا الاختصار"
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "نُقل إلى {copy}، لكن تعذّرت إزالة الأصل بالكامل: {reason}"
 
-#: crates/vento-platform/src/lib.rs:254
+#: crates/vento-platform/src/lib.rs:258
 msgid "no app opened {names}"
 msgstr "لا يوجد تطبيق يفتح {names}"
 
-#: crates/vento-platform/src/lib.rs:314
+#: crates/vento-platform/src/lib.rs:318
 msgid "no folder to open"
 msgstr "لا يوجد مجلد لفتحه"
 
@@ -1463,7 +1467,7 @@ msgstr "لا يوجد اسم متاح للعنصر المحفوظ"
 msgid "no images"
 msgstr "لا توجد صور"
 
-#: crates/vento-platform/src/lib.rs:309
+#: crates/vento-platform/src/lib.rs:313
 msgid "no terminal is installed"
 msgstr "لا توجد طرفية مثبّتة"
 
@@ -1483,7 +1487,7 @@ msgstr "لا توجد مساحة كافية على القرص"
 msgid "not found"
 msgstr "غير موجود"
 
-#: crates/vento/src/exec/share.rs:65
+#: crates/vento/src/exec/share.rs:72
 msgid "nothing to share"
 msgstr "لا شيء للمشاركة"
 
@@ -1543,11 +1547,11 @@ msgstr "كلمة السر خاطئة"
 msgid "{app} (default)"
 msgstr "‏{app} (افتراضي)"
 
-#: crates/vento-platform/src/lib.rs:262
+#: crates/vento-platform/src/lib.rs:266
 msgid "{app} is no longer there"
 msgstr "‏{app} لم يعد موجوداً"
 
-#: crates/vento-platform/src/lib.rs:302
+#: crates/vento-platform/src/lib.rs:306
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
@@ -1763,15 +1767,15 @@ msgstr "{n} د"
 msgid "{pages} · edited"
 msgstr "‏{pages} · معدّل"
 
-#: crates/vento-platform/src/lib.rs:279
+#: crates/vento-platform/src/lib.rs:283
 msgid "{program} exited with code {code}"
 msgstr "‏{program} انتهى برمز الخروج {code}"
 
-#: crates/vento-platform/src/lib.rs:283
+#: crates/vento-platform/src/lib.rs:287
 msgid "{program} was stopped by a signal"
 msgstr "‏{program} أوقفته إشارة"
 
-#: crates/vento-platform/src/lib.rs:294
+#: crates/vento-platform/src/lib.rs:298
 msgid "{program}: {reason}"
 msgstr "‏{program}: {reason}"
 
