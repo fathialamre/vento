@@ -1,30 +1,42 @@
 // The Pocket island: a black, frameless window at the top centre of the
-// screen. The window always has the expanded size; the collapsed wings (or
-// the pill on screens without a notch) are drawn inside it, and everything
-// outside the drawn shape is transparent. In a right-to-left language
+// screen. The window always has the expanded size (kept a moment longer as
+// the island shrinks); the collapsed wings (or the pill on screens without a
+// notch) are drawn inside it, and everything outside the drawn shape is
+// transparent. In a right-to-left language
 // everything inside the island is mirrored (the island itself stays where
 // it is on the screen); its colours stay its own, whatever the theme.
 
 import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
 
-export struct PocketCell { name: string, icon: image, missing: bool, selected: bool }
-
 // One entry of the clipboard history. `kind`: 0 text, 1 files, 2 link,
-// 3 image; `thumb` is an image's thumbnail, empty when it can't be shown.
-export struct ClipRow { id: int, kind: int, label: string, age: string, missing: bool, thumb: image, pinned: bool }
+// 3 image; `thumb` is an image's thumbnail, empty when it can't be shown;
+// `meta` the line under its label (what it is and when it was copied);
+// `files`, it names files that can be shown in Finder; `web`, it is a link
+// a browser opens.
+export struct ClipRow { id: int, kind: int, label: string, meta: string, missing: bool, thumb: image, pinned: bool, files: bool, web: bool }
 
-// One item of the Pocket list, by item id; `icon` is the one its cell shows.
-export struct PocketRow { id: int, name: string, icon: image, missing: bool, selected: bool }
+// One line of a peek: a label and its value side by side, or a value alone
+// when the label is empty.
+export struct PeekLine { label: string, value: string }
 
-// One filter chip of the Pocket list: "All" or a kind's name, and how many
-// items it lists.
+// One kind's group in the Pocket view: its kind (by place in the app's
+// fixed kind order), name and item count; whether its tiles are the wide
+// ones with a name (or picture thumbnails), and how many of them fit its
+// row (the rest are reached through its "+N" tile).
+export struct PocketGroup { kind: int, label: string, count: int, wide: bool, shown: int }
+
+// One tile of the Pocket view: the item's place in the Pocket (`index`, as
+// the presses report it), the group it sits in and its place in that row;
+// `thumb`, `icon` is the picture itself rather than its Finder icon.
+export struct PocketTile { index: int, group: int, slot: int, name: string, meta: string, icon: image, thumb: bool, missing: bool, selected: bool, wide: bool }
+
+// One item of the Pocket list, by item id; `meta` is the line under its
+// name, `thumb` as for a tile.
+export struct PocketRow { id: int, name: string, meta: string, icon: image, thumb: bool, missing: bool, selected: bool }
+
+// One filter chip: "All" or a kind's name, and how many items it lists.
 export struct PocketChip { label: string, count: int }
-
-// One stack of a full Pocket under the Stacks layout: its kind (by place in
-// the app's fixed kind order), the kind's name and icon, and how many items
-// it holds.
-export struct PocketStack { kind: int, label: string, icon: image, count: int }
 
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
@@ -183,62 +195,6 @@ component UndoRing inherits Rectangle {
     }
 }
 
-// One button of the bottom switch: an icon and a count, filled with the
-// accent while its view is shown. `label` names it for VoiceOver only.
-component SwitchButton inherits Rectangle {
-    in property <image> icon;
-    in property <string> label;
-    in property <int> count;
-    in property <bool> current;
-    callback clicked();
-
-    property <color> item-fill: #1d1d21;
-    property <color> accent: #ff6a1a;
-
-    height: 28px;
-    border-radius: 14px;
-    background: root.current ? root.accent : touch.has-hover ? #2c2c32 : root.item-fill;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => {
-        root.clicked();
-    }
-
-    HorizontalLayout {
-        padding-left: 11px;
-        padding-right: 11px;
-        spacing: 6px;
-
-        VerticalLayout {
-            layout-order: Theme.rtl ? 2 : 0;
-            alignment: center;
-
-            Image {
-                source: root.icon;
-                colorize: root.current ? white : #ffffffa8;
-                width: 14px;
-                height: 14px;
-            }
-        }
-
-        Text {
-            layout-order: Theme.rtl ? 1 : 0;
-            horizontal-alignment: Theme.rtl ? right : left;
-            text: root.count;
-            color: root.current ? #ffffffb8 : #ffffff70;
-            font-size: 12px;
-            font-weight: 500;
-            vertical-alignment: center;
-        }
-    }
-
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
 // A scrollbar for a list that overflows (its Flickable's `content-h` and
 // `offset`, as tall as the bar): the thumb shows how much is in view and
 // where, and can be dragged.
@@ -275,103 +231,6 @@ component ListScrollbar inherits Rectangle {
                         root.drag-from + (self.mouse-y - self.pressed-y) * root.overflow / root.travel));
                 }
             }
-        }
-    }
-}
-
-// The same bar lying under a strip that scrolls sideways (its Flickable's
-// `content-w` and `offset`, as wide as the bar). The offset is only read:
-// a drag reports where it wants the strip with `scrolled`, so the strip's
-// own position keeps no binding and its Flickable keeps it in bounds as
-// items come and go.
-component StripScrollbar inherits Rectangle {
-    in property <length> content-w;
-    in property <length> offset;
-    callback scrolled(length);
-
-    property <length> overflow: root.content-w - root.width;
-    property <length> thumb-w: max(24px, root.width * root.width / root.content-w);
-    property <length> travel: root.width - root.thumb-w;
-    property <length> drag-from;
-
-    height: 4px;
-
-    Rectangle {
-        x: root.overflow > 0 ? -root.offset / root.overflow * root.travel : 0;
-        width: root.thumb-w;
-        height: parent.height;
-        border-radius: 2px;
-        background: thumb.pressed || thumb.has-hover ? #ffffff73 : #ffffff38;
-
-        thumb := TouchArea {
-            // A little taller than the thumb, so it is easy to grab.
-            y: -4px;
-            height: parent.height + 8px;
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    root.drag-from = -root.offset;
-                }
-            }
-            moved => {
-                if self.pressed && root.travel > 0 {
-                    root.scrolled(-max(0px, min(root.overflow,
-                        root.drag-from + (self.mouse-x - self.pressed-x) * root.overflow / root.travel)));
-                }
-            }
-        }
-    }
-}
-
-// One filter of the Clipboard view: an icon and how many rows it lists,
-// filled with the accent while it is chosen. `label` names it for VoiceOver
-// only.
-component FilterButton inherits Rectangle {
-    in property <image> icon;
-    in property <string> label;
-    in property <int> count;
-    in property <bool> current;
-    callback clicked();
-
-    height: 24px;
-    border-radius: 12px;
-    background: root.current ? #ff6a1a : touch.has-hover ? #2c2c32 : #1d1d21;
-    accessible-role: button;
-    accessible-label: @tr("{} {n}" | "{} {n}" % root.count, root.label);
-    accessible-action-default => {
-        root.clicked();
-    }
-
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 5px;
-
-        VerticalLayout {
-            layout-order: Theme.rtl ? 2 : 0;
-            alignment: center;
-
-            Image {
-                source: root.icon;
-                colorize: root.current ? white : #ffffffa8;
-                width: 12px;
-                height: 12px;
-            }
-        }
-
-        Text {
-            layout-order: Theme.rtl ? 1 : 0;
-            horizontal-alignment: Theme.rtl ? right : left;
-            text: root.count;
-            color: root.current ? white : #ffffff80;
-            font-size: 11px;
-            font-weight: 600;
-            vertical-alignment: center;
-        }
-    }
-
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
         }
     }
 }
@@ -428,6 +287,8 @@ component ChipRow inherits Rectangle {
         content-width: chips-layout.preferred-width;
 
         TouchArea {
+            x: 0px;
+            y: 0px;
             width: flick.span;
             height: flick.height;
             scroll-event(e) => {
@@ -478,355 +339,8 @@ component ClearButton inherits Rectangle {
     }
 }
 
-// The Clipboard view: the filters in a row on top, and under them the
-// history as a list, pinned entries first, then newest on top. Clear (or
-// Undo) is in the bottom bar under it.
-component ClipList inherits Rectangle {
-    // The rows the chosen filter lists.
-    in property <[ClipRow]> rows;
-    // The chosen filter (0 All, 1 Pinned, 2 Text, 3 Links, 4 Images,
-    // 5 Files) and how many rows each lists; the first is the whole history.
-    in property <int> filter;
-    in property <[int]> counts;
-    // All by entry id.
-    callback pressed(int);
-    callback pocket(int);
-    callback pin(int, bool);
-    callback remove(int);
-    callback filter-chosen(int);
-
-    property <color> item-fill: #1d1d21;
-    property <color> accent: #ff6a1a;
-    property <length> pad: 14px;
-    property <length> row-h: 36px;
-    property <length> head-h: 24px;
-    // The filters' names, in the order of `counts`, for VoiceOver.
-    property <[string]> filter-names: [@tr("All"), @tr("Pinned"), @tr("Text"), @tr("Links"), @tr("Images"), @tr("Files")];
-
-    ChipRow {
-        x: root.pad;
-        y: 8px;
-        width: parent.width - 2 * root.pad;
-        height: root.head-h;
-
-        for f[i] in [Icons.clipboard, Icons.pin, Icons.text, Icons.copy-path, Icons.photo, Icons.file]: FilterButton {
-            layout-order: Theme.rtl ? -i : 0;
-            icon: f;
-            label: root.filter-names[i];
-            count: root.counts[i];
-            current: root.filter == i;
-            clicked => {
-                root.filter-chosen(i);
-            }
-        }
-    }
-
-    list := Flickable {
-        x: root.pad;
-        y: 8px + root.head-h + 6px;
-        width: parent.width - 2 * root.pad;
-        height: parent.height - self.y - 8px;
-        // Presses belong to the rows; the list scrolls by wheel only.
-        interactive: false;
-        content-height: root.rows.length * root.row-h;
-
-        for row[i] in root.rows: Rectangle {
-            y: i * root.row-h;
-            height: root.row-h;
-            width: list.width;
-            border-radius: 10px;
-            background: touch.has-hover && !row.missing ? root.item-fill : transparent;
-
-            touch := TouchArea {
-                // A missing entry has nothing to put back.
-                clicked => {
-                    if !row.missing {
-                        root.pressed(row.id);
-                    }
-                }
-
-                Rectangle {
-                    opacity: row.missing ? 0.4 : 1.0;
-
-                    Rectangle {
-                        x: Theme.rtl ? parent.width - self.width - 4px : 4px;
-                        y: (parent.height - self.height) / 2;
-                        width: 28px;
-                        height: 28px;
-                        border-radius: 7px;
-                        background: touch.has-hover && !row.missing ? #2c2c32 : root.item-fill;
-                        clip: true;
-
-                        // An image's thumbnail, once it could be loaded.
-                        if row.kind == 3 && row.thumb.width > 0: Image {
-                            source: row.thumb;
-                            width: parent.width;
-                            height: parent.height;
-                            image-fit: cover;
-                        }
-
-                        if row.kind != 3 || row.thumb.width == 0: Image {
-                            source: row.kind == 0 ? Icons.text : row.kind == 1 ? Icons.file : row.kind == 2 ? Icons.copy-path : Icons.photo;
-                            colorize: #ffffffc0;
-                            width: 16px;
-                            height: 16px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                        }
-                    }
-
-                    LineText {
-                        // Room left at the end for the age (and pin), or the buttons.
-                        property <length> end-room: touch.has-hover ? actions.width + 12px : row.pinned ? 70px : 50px;
-                        x: Theme.rtl ? self.end-room : 42px;
-                        width: parent.width - 42px - self.end-room;
-                        horizontal-alignment: Theme.rtl ? right : left;
-                        text: row.label;
-                        color: #e6e6e6;
-                        font-size: 13px;
-                        wrap: no-wrap;
-                        vertical-alignment: center;
-                    }
-
-                    if !touch.has-hover: Text {
-                        x: Theme.rtl ? 8px : parent.width - self.width - 8px;
-                        width: 36px;
-                        text: row.age;
-                        color: #ffffff70;
-                        font-size: 11px;
-                        horizontal-alignment: Theme.rtl ? left : right;
-                        vertical-alignment: center;
-                    }
-
-                    // Pinned: a pin beside the age. On hover the pin button
-                    // takes its place.
-                    if !touch.has-hover && row.pinned: Image {
-                        source: Icons.pin;
-                        colorize: root.accent;
-                        width: 13px;
-                        height: 13px;
-                        x: Theme.rtl ? 8px + 36px + 6px : parent.width - 8px - 36px - 6px - self.width;
-                        y: (parent.height - self.height) / 2;
-                    }
-                }
-
-                // Children of the row's TouchArea, so hovering them keeps the
-                // row hovered, and they take the press before it does.
-                actions := Rectangle {
-                    x: Theme.rtl ? 6px : parent.width - self.width - 6px;
-                    y: (parent.height - self.height) / 2;
-                    width: row.missing ? 54px : 84px;
-                    height: 24px;
-                    visible: touch.has-hover;
-
-                    // Pins the entry (kept until removed by hand) or unpins
-                    // it; filled with the accent while pinned.
-                    Rectangle {
-                        x: Theme.rtl ? parent.width - self.width : 0px;
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 12px;
-                        background: row.pinned
-                            ? (pin-touch.has-hover ? #ff8a45 : root.accent)
-                            : (pin-touch.has-hover ? #55555c : #3a3a40);
-
-                        Image {
-                            source: Icons.pin;
-                            colorize: white;
-                            width: 12px;
-                            height: 12px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                        }
-
-                        pin-touch := TouchArea {
-                            clicked => {
-                                root.pin(row.id, !row.pinned);
-                            }
-                        }
-                    }
-
-                    // Adds the entry to the Pocket.
-                    if !row.missing: Rectangle {
-                        x: Theme.rtl ? parent.width - self.width - 30px : 30px;
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 12px;
-                        background: pocket-touch.has-hover ? #55555c : #3a3a40;
-                        accessible-role: button;
-                        accessible-label: @tr("Add to Pocket");
-
-                        Image {
-                            source: Icons.pocket;
-                            colorize: white;
-                            width: 12px;
-                            height: 12px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                        }
-
-                        pocket-touch := TouchArea {
-                            clicked => {
-                                root.pocket(row.id);
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        x: Theme.rtl ? 0px : parent.width - self.width;
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 12px;
-                        background: remove-touch.has-hover ? #55555c : #3a3a40;
-
-                        Image {
-                            source: Icons.remove;
-                            colorize: white;
-                            width: 10px;
-                            height: 10px;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                        }
-
-                        remove-touch := TouchArea {
-                            clicked => {
-                                root.remove(row.id);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // A scrollbar in the gap beside the list, once the rows overflow it.
-    if list.content-height > list.height: ListScrollbar {
-        x: Theme.rtl ? list.x - 3px - self.width : list.x + list.width + 3px;
-        y: list.y;
-        height: list.height;
-        content-h: list.content-height;
-        offset <=> list.content-y;
-    }
-
-    if root.rows.length == 0: Text {
-        x: list.x;
-        y: list.y;
-        width: list.width;
-        height: list.height;
-        text: root.filter == 0
-            ? @tr("Copy something and it shows up here")
-            : root.filter == 1 ? @tr("Pin a copy to keep it here") : @tr("Nothing of this kind yet");
-        color: #ffffff66;
-        font-size: 13px;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-}
-
-// The Pocket's column beside its items: "Drag all" with the item count and
-// Clear below it, or, after a removal or a clear, Undo with the time left.
-// `compact`, the same side by side and smaller, at the end of the bottom
-// bar.
-component PocketSide inherits Rectangle {
-    in property <bool> compact;
-    in property <int> count;
-    in property <bool> undo-active;
-    in property <float> undo-left;
-    in property <int> undo-secs;
-    // `all-moved` offsets are measured from the press point.
-    callback all-pressed();
-    callback all-moved(length, length);
-    callback all-released();
-    callback clear();
-    callback undo();
-
-    property <color> accent: #ff6a1a;
-    property <length> clear-d: root.compact ? 28px : 30px;
-
-    width: root.compact ? 80px : 52px;
-    height: root.compact ? 28px : 80px;
-
-    if root.count > 0 && !root.undo-active: Rectangle {
-        Rectangle {
-            x: !root.compact ? (parent.width - self.width) / 2
-                : (Theme.rtl ? root.clear-d + 6px : parent.width - root.clear-d - 6px - self.width);
-            y: 0px;
-            width: root.compact ? 28px : 42px;
-            height: self.width;
-            border-radius: self.width / 2;
-            background: all-touch.pressed ? #e55a10 : root.accent;
-
-            Image {
-                source: Icons.grab;
-                colorize: white;
-                width: root.compact ? 14px : 20px;
-                height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-            }
-
-            Rectangle {
-                width: root.count > 99 ? self.height + 10px : root.count > 9 ? self.height + 6px : self.height;
-                height: root.compact ? 14px : 18px;
-                // The count, on the button's top corner at the end.
-                x: Theme.rtl ? -(root.compact ? 3px : 4px) : parent.width - self.width + (root.compact ? 3px : 4px);
-                y: root.compact ? -3px : -4px;
-                border-radius: self.height / 2;
-                background: white;
-
-                Text {
-                    text: root.count > 99 ? "99+" : root.count;
-                    color: black;
-                    font-size: root.compact ? 9px : 11px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
-
-            all-touch := TouchArea {
-                pointer-event(e) => {
-                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                        root.all-pressed();
-                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
-                        || e.kind == PointerEventKind.cancel {
-                        root.all-released();
-                    }
-                }
-                moved => {
-                    if self.pressed {
-                        root.all-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                    }
-                }
-            }
-        }
-
-        ClearButton {
-            x: !root.compact ? (parent.width - self.width) / 2 : (Theme.rtl ? 0px : parent.width - self.width);
-            y: root.compact ? 0px : 50px;
-            width: root.clear-d;
-            icon-size: root.compact ? 14px : 16px;
-            clicked => {
-                root.clear();
-            }
-        }
-    }
-
-    if root.undo-active: UndoRing {
-        y: root.compact ? 0px : 6px;
-        width: parent.width;
-        compact: root.compact;
-        left: root.undo-left;
-        secs: root.undo-secs;
-        clicked => {
-            root.undo();
-        }
-    }
-}
-
-// One filter chip of the Pocket list: "All" or a kind's name, and how many
-// items it lists, filled with the accent while it is chosen.
+// One filter chip: a name and how many items or entries it lists, filled
+// with the accent while it is chosen.
 component KindChip inherits Rectangle {
     in property <string> label;
     in property <int> count;
@@ -875,74 +389,1044 @@ component KindChip inherits Rectangle {
     }
 }
 
-// The Pocket list: every item the Pocket holds, one row each in Pocket
-// order, with a back control and the filter chips above it and the Pocket's
-// column ("Drag all" and Clear, or Undo) beside it unless the bottom bar
-// holds those (`side` off).
+// A round button with an icon, `width` across (28 pt unless set); `on`
+// fills it with the accent. `label` names it for VoiceOver only.
+component RoundButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> on;
+    in property <length> icon-size: 13px;
+    callback clicked();
+
+    width: 28px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: root.on
+        ? (touch.has-hover ? #ff8a45 : #ff6a1a)
+        : (touch.has-hover ? #55555c : #3a3a40);
+    animate background { duration: 160ms; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    Image {
+        source: root.icon;
+        colorize: white;
+        width: root.icon-size;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The arrow at the end of a row that opens its peek under it, and closes
+// it again: a chevron down, turning into one up on the accent while open.
+component PeekButton inherits Rectangle {
+    in property <bool> open;
+    callback clicked();
+
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    background: root.open
+        ? (touch.has-hover ? #ff8a45 : #ff6a1a)
+        : (touch.has-hover ? #3a3a40 : #2c2c32);
+    animate background { duration: 220ms; }
+    accessible-role: button;
+    accessible-label: root.open ? @tr("Close preview") : @tr("Preview");
+    accessible-expanded: root.open;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    for down in [true, false]: Image {
+        source: down ? Icons.expand : Icons.collapse;
+        colorize: root.open ? white : #ffffffc0;
+        width: 14px;
+        height: 14px;
+        x: (parent.width - self.width) / 2;
+        // Each chevron slides in from where the other points.
+        y: (parent.height - self.height) / 2 + (down == root.open ? (down ? -3px : 3px) : 0px);
+        opacity: down == root.open ? 0 : 1;
+        animate opacity, y { duration: 220ms; easing: ease-out; }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// A button with a label, 28 pt tall and as wide as it needs: `primary`
+// filled with the accent, `danger` tinted red, otherwise grey; with an icon
+// before the label when `icon` is set.
+component PillButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> primary;
+    in property <bool> danger;
+    callback clicked();
+
+    height: 28px;
+    width: content.preferred-width;
+    border-radius: 14px;
+    background: root.primary
+        ? (touch.pressed ? #e55a10 : touch.has-hover ? #ff8a45 : #ff6a1a)
+        : root.danger
+            ? (touch.has-hover ? #ff7b7233 : #ff7b7214)
+            : (touch.has-hover ? #3a3a40 : #2c2c32);
+    animate background { duration: 140ms; }
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    content := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+
+        if root.icon.width > 0: VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                colorize: root.danger ? #ff8f87 : white;
+                width: 13px;
+                height: 13px;
+            }
+        }
+
+        Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            text: root.text;
+            color: root.danger ? #ff8f87 : white;
+            font-size: 12px;
+            font-weight: root.primary ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// What a peek shows above its buttons, `width` wide, as tall as it needs
+// (`content-h`): a picture, a block of text, or lines in a box (labelled
+// lines side by side, like a list of facts).
+component PeekBody inherits Rectangle {
+    in property <image> picture;
+    in property <string> text;
+    in property <[PeekLine]> lines;
+    out property <length> content-h: root.picture.width > 0 ? 150px
+        : root.text != "" ? min(132px, body.preferred-height) + 20px
+        : root.lines.length * 18px + 16px;
+
+    property <bool> labelled: root.lines.length > 0 && root.lines[0].label != "";
+
+    height: root.content-h;
+    border-radius: 10px;
+    background: #0d0d10;
+    border-width: 1px;
+    border-color: #ffffff12;
+    clip: true;
+
+    if root.picture.width > 0: Image {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        source: root.picture;
+        image-fit: contain;
+    }
+
+    body := Text {
+        x: 12px;
+        y: 10px;
+        width: parent.width - 24px;
+        height: min(132px, self.preferred-height);
+        visible: root.picture.width == 0 && root.text != "";
+        text: root.text;
+        color: #e8e8e8;
+        font-size: 12.5px;
+        wrap: word-wrap;
+        overflow: elide;
+        horizontal-alignment: Theme.rtl ? right : left;
+    }
+
+    if root.picture.width == 0 && root.text == "": Rectangle {
+        for line[i] in root.lines: Rectangle {
+            y: 8px + i * 18px;
+            height: 18px;
+
+            if root.labelled: Text {
+                x: Theme.rtl ? parent.width - 12px - self.width : 12px;
+                width: 64px;
+                text: line.label;
+                color: #ffffff70;
+                font-size: 11.5px;
+                horizontal-alignment: Theme.rtl ? right : left;
+                vertical-alignment: center;
+            }
+
+            LineText {
+                property <length> start: root.labelled ? 12px + 64px + 6px : 12px;
+                x: Theme.rtl ? 12px : self.start;
+                width: parent.width - self.start - 12px;
+                text: line.value;
+                color: line.label == "" && i > 0 && root.lines.length > 1 ? #e8e8e8 : #f0f0f0;
+                font-size: root.labelled ? 11.5px : 12px;
+                wrap: no-wrap;
+                horizontal-alignment: Theme.rtl ? right : left;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// The peek under an open row: its body, then its buttons (its children,
+// laid out in a row at the start) and Remove at the end. It fades in and
+// rises a little as it opens. `height` is all it needs.
+component Peek inherits Rectangle {
+    in property <image> picture;
+    in property <string> text;
+    in property <[PeekLine]> lines;
+    callback remove();
+    out property <length> needed-h: 2px + peek-body.content-h + 10px + 28px + 12px;
+
+    property <bool> shown;
+
+    init => {
+        self.shown = true;
+    }
+
+    opacity: root.shown ? 1 : 0;
+    animate opacity { duration: 240ms; delay: 90ms; }
+
+    Rectangle {
+        y: root.shown ? 0px : -8px;
+        animate y { duration: 360ms; delay: 90ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+        peek-body := PeekBody {
+            y: 2px;
+            width: parent.width;
+            picture: root.picture;
+            text: root.text;
+            lines: root.lines;
+        }
+
+        HorizontalLayout {
+            y: peek-body.y + peek-body.height + 10px;
+            height: 28px;
+            alignment: Theme.rtl ? end : start;
+            spacing: 6px;
+
+            @children
+        }
+
+        PillButton {
+            x: Theme.rtl ? 0px : parent.width - self.width;
+            y: peek-body.y + peek-body.height + 10px;
+            text: @tr("Remove");
+            icon: Icons.trash;
+            danger: true;
+            clicked => {
+                root.remove();
+            }
+        }
+    }
+}
+
+// The Clipboard view: the filters in a row on top, and under them the
+// history as a list, pinned entries first, then newest on top. A row's
+// arrow opens its peek under it, one at a time, and the rows below make
+// room for it. Clear (or Undo) is in the bottom bar under the view.
+component ClipList inherits Rectangle {
+    // The rows the chosen filter lists.
+    in property <[ClipRow]> rows;
+    // The chosen filter (0 All, 1 Pinned, 2 Text, 3 Links, 4 Images,
+    // 5 Files) and how many rows each lists; the first is the whole history.
+    in property <int> filter;
+    in property <[int]> counts;
+    // The open peek: its row's place in `rows` (-1 for none), and what it
+    // shows.
+    in property <int> peek-index: -1;
+    in property <image> peek-picture;
+    in property <string> peek-text;
+    in property <[PeekLine]> peek-lines;
+    // All by entry id.
+    callback pressed(int);
+    callback pocket(int);
+    callback pin(int, bool);
+    callback remove(int);
+    callback peek(int);
+    callback open-link(int);
+    callback reveal(int);
+    callback filter-chosen(int);
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+    property <length> pad: 12px;
+    property <length> line-h: 52px;
+    property <length> step: root.line-h + 2px;
+    property <length> head-h: 26px;
+    // The filters' names, in the order of `counts`.
+    property <[string]> filter-names: [@tr("All"), @tr("Pinned"), @tr("Text"), @tr("Links"), @tr("Images"), @tr("Files")];
+    // Room the open peek takes under its row.
+    property <length> peek-h: root.peek-index >= 0 ? 2px + probe.content-h + 10px + 28px + 12px : 0px;
+    property <length> peek-w: list.width - 56px - 12px;
+
+    // Scrolls the open peek into view.
+    function bring-peek() {
+        if root.peek-index >= 0 {
+            let bottom = root.peek-index * root.step + root.line-h + root.peek-h + 6px;
+            if bottom > -list.content-y + list.height {
+                list.content-y = -min(bottom - list.height, list.content-height - list.height);
+            }
+        }
+    }
+
+    changed peek-index => {
+        root.bring-peek();
+    }
+    changed peek-h => {
+        root.bring-peek();
+    }
+
+    // Measures the open peek's body, so the rows below know how far to
+    // move before it is drawn.
+    probe := PeekBody {
+        visible: false;
+        width: root.peek-w;
+        picture: root.peek-picture;
+        text: root.peek-text;
+        lines: root.peek-lines;
+    }
+
+    ChipRow {
+        x: root.pad + 4px;
+        y: 10px;
+        width: parent.width - 2 * root.pad - 8px;
+        height: root.head-h;
+
+        for name[i] in root.filter-names: KindChip {
+            layout-order: Theme.rtl ? -i : 0;
+            label: name;
+            count: root.counts[i];
+            current: root.filter == i;
+            clicked => {
+                root.filter-chosen(i);
+            }
+        }
+    }
+
+    list := Flickable {
+        x: root.pad;
+        y: 10px + root.head-h + 8px;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - self.y - 6px;
+        // Presses belong to the rows; the list scrolls by wheel only.
+        interactive: false;
+        content-height: root.rows.length * root.step + root.peek-h;
+
+        for row[i] in root.rows: Rectangle {
+            property <bool> open: i == root.peek-index;
+
+            y: i * root.step + (root.peek-index >= 0 && i > root.peek-index ? root.peek-h : 0px);
+            width: list.width;
+            height: root.line-h + (self.open ? root.peek-h : 0px);
+            animate y, height { duration: 380ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            border-radius: 14px;
+            background: self.open ? #141418 : transparent;
+            border-width: self.open ? 1px : 0px;
+            border-color: #ffffff10;
+            clip: true;
+
+            touch := TouchArea {
+                y: 0px;
+                height: root.line-h;
+                // A missing entry has nothing to put back.
+                clicked => {
+                    if !row.missing {
+                        root.pressed(row.id);
+                    }
+                }
+
+                Rectangle {
+                    border-radius: 12px;
+                    background: touch.has-hover && !row.missing && !open ? root.item-fill : transparent;
+                }
+
+                Rectangle {
+                    opacity: row.missing ? 0.4 : 1.0;
+
+                    Rectangle {
+                        x: Theme.rtl ? parent.width - self.width - 6px : 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 38px;
+                        height: 38px;
+                        border-radius: 9px;
+                        background: touch.has-hover && !row.missing ? #2c2c32 : root.item-fill;
+                        clip: true;
+
+                        // An image's thumbnail, once it could be loaded.
+                        if row.kind == 3 && row.thumb.width > 0: Image {
+                            source: row.thumb;
+                            width: parent.width;
+                            height: parent.height;
+                            image-fit: cover;
+                        }
+
+                        if row.kind != 3 || row.thumb.width == 0: Image {
+                            source: row.kind == 0 ? Icons.text : row.kind == 1 ? Icons.file : row.kind == 2 ? Icons.copy-path : Icons.photo;
+                            colorize: #ffffffc0;
+                            width: 18px;
+                            height: 18px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+
+                    // Room left at the end for the arrow, and the pin or the
+                    // buttons before it.
+                    property <length> end-room: touch.has-hover ? actions.width + 8px + 28px + 8px + 8px
+                        : row.pinned ? 8px + 28px + 8px + 13px + 10px : 8px + 28px + 12px;
+
+                    LineText {
+                        x: Theme.rtl ? parent.end-room : 56px;
+                        y: 8px;
+                        width: parent.width - 56px - parent.end-room;
+                        height: 19px;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: row.label;
+                        color: #f0f0f0;
+                        font-size: 13.5px;
+                        wrap: no-wrap;
+                        vertical-alignment: center;
+                    }
+
+                    LineText {
+                        x: Theme.rtl ? parent.end-room : 56px;
+                        y: 28px;
+                        width: parent.width - 56px - parent.end-room;
+                        height: 15px;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: row.meta;
+                        color: #ffffff80;
+                        font-size: 11px;
+                        wrap: no-wrap;
+                        vertical-alignment: center;
+                    }
+
+                    // Pinned: a pin before the arrow. On hover the pin
+                    // button takes its place.
+                    if !touch.has-hover && row.pinned: Image {
+                        source: Icons.pin;
+                        colorize: root.accent;
+                        width: 13px;
+                        height: 13px;
+                        x: Theme.rtl ? 8px + 28px + 10px : parent.width - 8px - 28px - 10px - self.width;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                // Children of the row's TouchArea, so hovering them keeps the
+                // row hovered, and they take the press before it does.
+                actions := HorizontalLayout {
+                    x: Theme.rtl ? 8px + 28px + 6px : parent.width - 8px - 28px - 6px - self.width;
+                    y: (parent.height - 28px) / 2;
+                    width: self.preferred-width;
+                    height: 28px;
+                    spacing: 6px;
+                    visible: touch.has-hover;
+
+                    // Pins the entry (kept until removed by hand) or unpins
+                    // it; filled with the accent while pinned.
+                    RoundButton {
+                        layout-order: Theme.rtl ? 3 : 0;
+                        icon: Icons.pin;
+                        label: row.pinned ? @tr("Unpin") : @tr("Pin");
+                        on: row.pinned;
+                        clicked => {
+                            root.pin(row.id, !row.pinned);
+                        }
+                    }
+
+                    if !row.missing: RoundButton {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        icon: Icons.pocket;
+                        label: @tr("Add to Pocket");
+                        clicked => {
+                            root.pocket(row.id);
+                        }
+                    }
+
+                    RoundButton {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        icon: Icons.remove;
+                        icon-size: 11px;
+                        label: @tr("Remove");
+                        clicked => {
+                            root.remove(row.id);
+                        }
+                    }
+                }
+
+                PeekButton {
+                    x: Theme.rtl ? 8px : parent.width - 8px - self.width;
+                    y: (parent.height - self.height) / 2;
+                    open: open;
+                    clicked => {
+                        root.peek(row.id);
+                    }
+                }
+            }
+
+            if open: Peek {
+                x: Theme.rtl ? 12px : 56px;
+                y: root.line-h;
+                width: root.peek-w;
+                height: root.peek-h;
+                picture: root.peek-picture;
+                text: root.peek-text;
+                lines: root.peek-lines;
+                remove => {
+                    root.remove(row.id);
+                }
+
+                if !row.missing: PillButton {
+                    layout-order: Theme.rtl ? 3 : 0;
+                    text: @tr("Copy");
+                    icon: Icons.copy;
+                    primary: true;
+                    clicked => {
+                        root.pressed(row.id);
+                    }
+                }
+
+                if row.web: PillButton {
+                    layout-order: Theme.rtl ? 2 : 0;
+                    text: @tr("Open in browser");
+                    icon: Icons.open-link;
+                    clicked => {
+                        root.open-link(row.id);
+                    }
+                }
+
+                if row.files && !row.missing: PillButton {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    text: @tr("Show in Finder");
+                    icon: Icons.reveal;
+                    clicked => {
+                        root.reveal(row.id);
+                    }
+                }
+            }
+        }
+    }
+
+    // A scrollbar in the gap beside the list, once the rows overflow it.
+    if list.content-height > list.height: ListScrollbar {
+        x: Theme.rtl ? list.x - 3px - self.width : list.x + list.width + 3px;
+        y: list.y;
+        height: list.height;
+        content-h: list.content-height;
+        offset <=> list.content-y;
+    }
+
+    if root.rows.length == 0: Text {
+        x: list.x;
+        y: list.y;
+        width: list.width;
+        height: list.height;
+        text: root.filter == 0
+            ? @tr("Copy something and it shows up here")
+            : root.filter == 1 ? @tr("Pin a copy to keep it here") : @tr("Nothing of this kind yet");
+        color: #ffffff66;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// The Pocket view: the items grouped by kind, in the app's fixed kind
+// order, each group a header and a row of tiles. A group's name and its
+// "+N" tile open the Pocket list on that kind; "Drag N" drags the whole
+// group out. Three groups are in sight; more scroll.
+component PocketKinds inherits Rectangle {
+    in property <[PocketGroup]> groups;
+    in property <[PocketTile]> tiles;
+    // Tiles by item index, as cells were: pressed, moved (from the press
+    // point) and released; a press that may open the item's menu (at a
+    // window-local point, with the left button or not), true if it did;
+    // the tile's x.
+    callback tile-pressed(int);
+    callback tile-moved(int, length, length);
+    callback tile-released(int);
+    callback tile-context(int, length, length, bool) -> bool;
+    callback tile-remove(int);
+    // Groups by kind: the name or "+N" clicked; "Drag N" pressed, moved and
+    // released.
+    callback kind-open(int);
+    callback kind-pressed(int);
+    callback kind-moved(int, length, length);
+    callback kind-released(int);
+
+    property <color> item-fill: #1d1d21;
+    property <color> accent: #ff6a1a;
+    property <length> pad: 16px;
+    property <length> group-h: 92px;
+    property <length> top: 8px;
+    property <length> tile-h: 58px;
+    property <length> gap: 6px;
+
+    flick := Flickable {
+        x: root.pad;
+        y: 0px;
+        width: parent.width - 2 * root.pad;
+        height: parent.height;
+        // Presses belong to the tiles; the groups scroll by wheel only.
+        interactive: false;
+        content-height: root.top + root.groups.length * root.group-h;
+
+        for group[g] in root.groups: Rectangle {
+            y: root.top + g * root.group-h;
+            height: root.group-h;
+
+            // The group's name: opens the list on its kind.
+            Rectangle {
+                x: Theme.rtl ? parent.width - self.width : 0px;
+                y: 0px;
+                width: head.preferred-width;
+                height: 22px;
+                accessible-role: button;
+                accessible-label: @tr("Show all {}", group.label);
+                accessible-action-default => {
+                    root.kind-open(group.kind);
+                }
+
+                head := HorizontalLayout {
+                    spacing: 3px;
+
+                    Text {
+                        layout-order: Theme.rtl ? 3 : 0;
+                        text: group.label;
+                        color: head-touch.has-hover ? #ff8a45 : #f0f0f0;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        alignment: center;
+
+                        Image {
+                            source: Theme.rtl ? Icons.back : Icons.back-rtl;
+                            colorize: head-touch.has-hover ? #ff8a45 : #ffffff90;
+                            width: 12px;
+                            height: 12px;
+                        }
+                    }
+
+                    Text {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        text: @tr("{n} item" | "{n} items" % group.count);
+                        color: #ffffff70;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                head-touch := TouchArea {
+                    clicked => {
+                        root.kind-open(group.kind);
+                    }
+                }
+            }
+
+            // Drags every item of the group out.
+            Rectangle {
+                x: Theme.rtl ? 0px : parent.width - self.width;
+                y: 0px;
+                width: drag-text.preferred-width + 20px;
+                height: 22px;
+                border-radius: 11px;
+                background: drag-touch.pressed ? #3a3a40 : drag-touch.has-hover ? #2c2c32 : root.item-fill;
+                accessible-role: button;
+                accessible-label: drag-text.text;
+
+                drag-text := Text {
+                    text: @tr("Drag {n}" | "Drag {n}" % group.count);
+                    color: drag-touch.has-hover ? white : #ffffffc0;
+                    font-size: 11px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                drag-touch := TouchArea {
+                    mouse-cursor: grab;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                            root.kind-pressed(group.kind);
+                        } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                            || e.kind == PointerEventKind.cancel {
+                            root.kind-released(group.kind);
+                        }
+                    }
+                    moved => {
+                        if self.pressed {
+                            root.kind-moved(group.kind, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                        }
+                    }
+                }
+            }
+
+            // The rest of the group, behind "+N": opens the list on its kind.
+            if group.count > group.shown: Rectangle {
+                property <length> start: group.shown * ((group.wide ? 150px : 92px) + root.gap);
+                x: Theme.rtl ? parent.width - self.start - self.width : self.start;
+                y: 26px;
+                width: 56px;
+                height: root.tile-h;
+                border-radius: 10px;
+                background: more-touch.has-hover ? #2c2c32 : root.item-fill;
+                accessible-role: button;
+                accessible-label: @tr("Show all {}", group.label);
+                accessible-action-default => {
+                    root.kind-open(group.kind);
+                }
+
+                Text {
+                    text: "+" + (group.count - group.shown);
+                    color: more-touch.has-hover ? white : #ffffffc0;
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                more-touch := TouchArea {
+                    clicked => {
+                        root.kind-open(group.kind);
+                    }
+                }
+            }
+
+            if g < root.groups.length - 1: Rectangle {
+                y: parent.height - 4px;
+                height: 1px;
+                background: #ffffff10;
+            }
+        }
+
+        for tile in root.tiles: Rectangle {
+            property <length> w: tile.wide ? 150px : 92px;
+            property <length> start: tile.slot * (self.w + root.gap);
+            x: Theme.rtl ? flick.width - self.start - self.w : self.start;
+            y: root.top + tile.group * root.group-h + 26px;
+            width: self.w;
+            height: root.tile-h;
+            border-radius: 10px;
+            background: tile.selected ? #ff6a1a2e : touch.has-hover ? root.item-fill : #141418;
+            border-width: tile.selected ? 2px : 1px;
+            border-color: tile.selected ? root.accent : #ffffff10;
+            clip: true;
+
+            Rectangle {
+                opacity: tile.missing ? 0.4 : 1.0;
+
+                // A picture fills a narrow tile; its name shows on hover.
+                if !tile.wide && tile.thumb && !tile.missing: Image {
+                    source: tile.icon;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: cover;
+                }
+
+                if !tile.wide && (!tile.thumb || tile.missing): Image {
+                    source: tile.icon;
+                    colorize: tile.missing ? white : transparent;
+                    x: (parent.width - self.width) / 2;
+                    y: 6px;
+                    width: 28px;
+                    height: 28px;
+                }
+
+                if !tile.wide && (!tile.thumb || tile.missing): LineText {
+                    x: 6px;
+                    y: 36px;
+                    width: parent.width - 12px;
+                    height: 16px;
+                    text: tile.name;
+                    color: #ffffffc0;
+                    font-size: 10.5px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if !tile.wide && tile.thumb && !tile.missing && touch.has-hover: Rectangle {
+                    y: parent.height - self.height;
+                    height: 24px;
+                    background: @linear-gradient(180deg, #00000000 0%, #000000c0 100%);
+
+                    LineText {
+                        x: 6px;
+                        width: parent.width - 12px;
+                        text: tile.name;
+                        color: white;
+                        font-size: 10.5px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // A wide tile: the icon (or picture), the name and what it
+                // holds.
+                if tile.wide: Rectangle {
+                    Rectangle {
+                        x: Theme.rtl ? parent.width - self.width - 10px : 10px;
+                        y: (parent.height - self.height) / 2;
+                        width: 32px;
+                        height: 32px;
+                        border-radius: tile.thumb ? 6px : 0px;
+                        clip: tile.thumb;
+
+                        Image {
+                            source: tile.icon;
+                            colorize: tile.missing ? white : transparent;
+                            width: parent.width;
+                            height: parent.height;
+                            image-fit: tile.thumb ? cover : contain;
+                        }
+                    }
+
+                    LineText {
+                        x: Theme.rtl ? 10px : 50px;
+                        y: 12px;
+                        width: parent.width - 50px - 10px;
+                        height: 16px;
+                        text: tile.name;
+                        color: #f0f0f0;
+                        font-size: 12px;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        vertical-alignment: center;
+                    }
+
+                    LineText {
+                        x: Theme.rtl ? 10px : 50px;
+                        y: 30px;
+                        width: parent.width - 50px - 10px;
+                        height: 14px;
+                        text: tile.meta;
+                        color: #ffffff70;
+                        font-size: 10.5px;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            if tile.missing: Image {
+                source: Icons.missing;
+                colorize: #ffcc33;
+                x: Theme.rtl ? 4px : parent.width - self.width - 4px;
+                y: parent.height - self.height - 4px;
+                width: 14px;
+                height: 14px;
+            }
+
+            touch := TouchArea {
+                pointer-event(e) => {
+                    // A menu press is never a drag, a selection or a hover change.
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        if !root.tile-context(tile.index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true) {
+                            root.tile-pressed(tile.index);
+                        }
+                    } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                        && !self.pressed {
+                        root.tile-context(tile.index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.tile-released(tile.index);
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.tile-moved(tile.index, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    }
+                }
+
+                // A child of the tile's TouchArea, so hovering it keeps the
+                // tile hovered.
+                if touch.has-hover: Rectangle {
+                    x: Theme.rtl ? 3px : parent.width - self.width - 3px;
+                    y: 3px;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: remove-touch.has-hover ? #55555c : #3a3a40e0;
+                    accessible-role: button;
+                    accessible-label: @tr("Remove");
+
+                    Image {
+                        source: Icons.remove;
+                        colorize: white;
+                        width: 10px;
+                        height: 10px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    remove-touch := TouchArea {
+                        // This press opened the menu (a Control-click): no removal.
+                        property <bool> menu-press;
+
+                        clicked => {
+                            if !self.menu-press {
+                                root.tile-remove(tile.index);
+                            }
+                        }
+                        // The x takes the press before its tile does.
+                        pointer-event(e) => {
+                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                self.menu-press = root.tile-context(tile.index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true);
+                            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
+                                && !self.pressed {
+                                root.tile-context(tile.index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // A scrollbar at the edge, once the groups overflow.
+    if flick.content-height > flick.height: ListScrollbar {
+        x: Theme.rtl ? 5px : parent.width - 5px - self.width;
+        y: root.top;
+        height: flick.height - 2 * root.top;
+        content-h: flick.content-height;
+        offset <=> flick.content-y;
+    }
+}
+
+// The Pocket list: the Pocket's items one row each, in Pocket order, with a
+// back control to the kinds and a chip per kind to filter them. A row drags
+// out as a tile does; its arrow opens its peek under it, one at a time.
 component PocketList inherits Rectangle {
-    in property <bool> side: true;
     // The rows the chosen chip lists.
     in property <[PocketRow]> rows;
     // "All", then one chip per kind present; `filter` is the chosen one.
     in property <[PocketChip]> chips;
     in property <int> filter;
-    // Every item, for the column's "Drag all".
-    in property <int> count;
-    in property <bool> undo-active;
-    in property <float> undo-left;
-    in property <int> undo-secs;
+    // The open peek: its row's place in `rows` (-1 for none), and what it
+    // shows.
+    in property <int> peek-index: -1;
+    in property <image> peek-picture;
+    in property <[PeekLine]> peek-lines;
     // Rows by item id; `moved` offsets are measured from the press point.
     callback pressed(int);
     callback moved(int, length, length);
     callback released(int);
     callback remove(int);
+    callback peek(int);
+    callback reveal(int);
+    callback copy-path(int);
     callback filter-chosen(int);
     callback back();
-    callback all-pressed();
-    callback all-moved(length, length);
-    callback all-released();
-    callback clear();
-    callback undo();
 
     property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
-    property <length> pad: 14px;
-    property <length> side-w: 52px;
-    property <length> row-h: 36px;
-    property <length> head-h: 24px;
+    property <length> pad: 12px;
+    property <length> line-h: 48px;
+    property <length> step: root.line-h + 2px;
+    property <length> head-h: 26px;
+    property <length> peek-h: root.peek-index >= 0 ? 2px + probe.content-h + 10px + 28px + 12px : 0px;
+    property <length> peek-w: list.width - 52px - 12px;
 
-    // Back to the cells.
+    // Scrolls the open peek into view.
+    function bring-peek() {
+        if root.peek-index >= 0 {
+            let bottom = root.peek-index * root.step + root.line-h + root.peek-h + 6px;
+            if bottom > -list.content-y + list.height {
+                list.content-y = -min(bottom - list.height, list.content-height - list.height);
+            }
+        }
+    }
+
+    changed peek-index => {
+        root.bring-peek();
+    }
+    changed peek-h => {
+        root.bring-peek();
+    }
+
+    // Measures the open peek's body, so the rows below know how far to
+    // move before it is drawn.
+    probe := PeekBody {
+        visible: false;
+        width: root.peek-w;
+        picture: root.peek-picture;
+        lines: root.peek-lines;
+    }
+
+    // Back to the kinds.
     back-button := Rectangle {
-        x: Theme.rtl ? list.x + list.width - self.width : root.pad;
-        y: 8px;
-        width: 74px;
+        x: Theme.rtl ? parent.width - root.pad - 4px - self.width : root.pad + 4px;
+        y: 10px;
+        width: back-row.preferred-width;
         height: root.head-h;
-        border-radius: 12px;
+        border-radius: 13px;
         background: back-touch.has-hover ? #2c2c32 : root.item-fill;
         accessible-role: button;
-        accessible-label: @tr("Back to Pocket");
+        accessible-label: @tr("Back to kinds");
         accessible-action-default => {
             root.back();
         }
 
-        Image {
-            source: Theme.rtl ? Icons.back-rtl : Icons.back;
-            colorize: back-touch.has-hover ? white : #ffffffc0;
-            width: 14px;
-            height: 14px;
-            x: Theme.rtl ? parent.width - self.width - 7px : 7px;
-            y: (parent.height - self.height) / 2;
-        }
+        back-row := HorizontalLayout {
+            padding-left: Theme.rtl ? 10px : 6px;
+            padding-right: Theme.rtl ? 6px : 10px;
+            spacing: 2px;
 
-        Text {
-            x: Theme.rtl ? 8px : 23px;
-            width: parent.width - 23px - 8px;
-            horizontal-alignment: Theme.rtl ? right : left;
-            text: @tr("Pocket");
-            color: back-touch.has-hover ? white : #ffffffc0;
-            font-size: 11px;
-            font-weight: 600;
-            vertical-alignment: center;
+            VerticalLayout {
+                layout-order: Theme.rtl ? 2 : 0;
+                alignment: center;
+
+                Image {
+                    source: Theme.rtl ? Icons.back-rtl : Icons.back;
+                    colorize: back-touch.has-hover ? white : #ffffffc0;
+                    width: 14px;
+                    height: 14px;
+                }
+            }
+
+            Text {
+                layout-order: Theme.rtl ? 1 : 0;
+                text: @tr("Kinds");
+                color: back-touch.has-hover ? white : #ffffffd0;
+                font-size: 12px;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
         }
 
         back-touch := TouchArea {
@@ -952,11 +1436,20 @@ component PocketList inherits Rectangle {
         }
     }
 
+    Rectangle {
+        x: Theme.rtl ? back-button.x - 8px - self.width : back-button.x + back-button.width + 8px;
+        y: back-button.y + (root.head-h - self.height) / 2;
+        width: 1px;
+        height: 16px;
+        background: #ffffff1a;
+    }
+
     // The chips, scrolling sideways when they don't fit.
     ChipRow {
-        x: Theme.rtl ? list.x : back-button.x + back-button.width + 6px;
-        y: 8px;
-        width: list.width - back-button.width - 6px;
+        property <length> start: back-button.width + 17px;
+        x: Theme.rtl ? root.pad + 4px : back-button.x + self.start;
+        y: back-button.y;
+        width: parent.width - 2 * root.pad - 8px - self.start;
         height: root.head-h;
 
         for chip[i] in root.chips: KindChip {
@@ -971,25 +1464,31 @@ component PocketList inherits Rectangle {
     }
 
     list := Flickable {
-        x: Theme.rtl ? parent.width - root.pad - self.width : root.pad;
-        y: 8px + root.head-h + 6px;
-        width: parent.width - 2 * root.pad - (root.side ? root.side-w + 10px : 0px);
-        height: parent.height - self.y - 8px;
+        x: root.pad;
+        y: 10px + root.head-h + 8px;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - self.y - 6px;
         // Presses belong to the rows; the list scrolls by wheel only.
         interactive: false;
-        content-height: root.rows.length * root.row-h;
+        content-height: root.rows.length * root.step + root.peek-h;
 
         for row[i] in root.rows: Rectangle {
-            y: i * root.row-h;
-            height: root.row-h;
+            property <bool> open: i == root.peek-index;
+
+            y: i * root.step + (root.peek-index >= 0 && i > root.peek-index ? root.peek-h : 0px);
             width: list.width;
-            border-radius: 10px;
-            background: row.selected ? #ff6a1a2e : touch.has-hover ? root.item-fill : transparent;
-            border-width: row.selected ? 1.5px : 0px;
-            border-color: root.accent;
+            height: root.line-h + (self.open ? root.peek-h : 0px);
+            animate y, height { duration: 380ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            border-radius: 14px;
+            background: self.open ? #141418 : transparent;
+            border-width: self.open ? 1px : 0px;
+            border-color: #ffffff10;
+            clip: true;
 
             touch := TouchArea {
-                // As a cell's: a press drags the item (or the selection it is
+                y: 0px;
+                height: root.line-h;
+                // As a tile's: a press drags the item (or the selection it is
                 // part of) out, a click selects it.
                 pointer-event(e) => {
                     if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
@@ -1006,34 +1505,60 @@ component PocketList inherits Rectangle {
                 }
 
                 Rectangle {
+                    border-radius: 12px;
+                    background: row.selected ? #ff6a1a2e : touch.has-hover && !open ? root.item-fill : transparent;
+                    border-width: row.selected ? 1.5px : 0px;
+                    border-color: root.accent;
+                }
+
+                Rectangle {
                     opacity: row.missing ? 0.4 : 1.0;
 
-                    if !row.missing: Image {
-                        source: row.icon;
+                    Rectangle {
                         x: Theme.rtl ? parent.width - self.width - 6px : 6px;
                         y: (parent.height - self.height) / 2;
-                        width: 24px;
-                        height: 24px;
+                        width: 36px;
+                        height: 36px;
+                        border-radius: row.thumb ? 8px : 0px;
+                        clip: row.thumb;
+
+                        Image {
+                            source: row.icon;
+                            colorize: row.missing ? white : transparent;
+                            x: row.thumb ? 0px : 2px;
+                            y: self.x;
+                            width: parent.width - 2 * self.x;
+                            height: self.width;
+                            image-fit: row.thumb ? cover : contain;
+                        }
                     }
 
-                    if row.missing: Image {
-                        source: row.icon;
-                        colorize: white;
-                        x: Theme.rtl ? parent.width - self.width - 6px : 6px;
-                        y: (parent.height - self.height) / 2;
-                        width: 24px;
-                        height: 24px;
+                    // Room left at the end for the arrow, and the buttons
+                    // before it on hover.
+                    property <length> end-room: touch.has-hover ? actions.width + 8px + 28px + 8px + 8px : 8px + 28px + 12px;
+
+                    LineText {
+                        x: Theme.rtl ? parent.end-room : 52px;
+                        y: 7px;
+                        width: parent.width - 52px - parent.end-room;
+                        height: 19px;
+                        horizontal-alignment: Theme.rtl ? right : left;
+                        text: row.name;
+                        color: #f0f0f0;
+                        font-size: 13.5px;
+                        wrap: no-wrap;
+                        vertical-alignment: center;
                     }
 
                     LineText {
-                        // Room left at the end, for the x on hover.
-                        property <length> end-room: touch.has-hover ? 40px : 12px;
-                        x: Theme.rtl ? self.end-room : 40px;
-                        width: parent.width - 40px - self.end-room;
+                        x: Theme.rtl ? parent.end-room : 52px;
+                        y: 26px;
+                        width: parent.width - 52px - parent.end-room;
+                        height: 15px;
                         horizontal-alignment: Theme.rtl ? right : left;
-                        text: row.name;
-                        color: #e6e6e6;
-                        font-size: 13px;
+                        text: row.meta;
+                        color: #ffffff80;
+                        font-size: 11px;
                         wrap: no-wrap;
                         vertical-alignment: center;
                     }
@@ -1042,40 +1567,87 @@ component PocketList inherits Rectangle {
                 if row.missing: Image {
                     source: Icons.missing;
                     colorize: #ffcc33;
-                    x: Theme.rtl ? parent.width - self.width - 20px : 20px;
-                    y: parent.height / 2;
-                    width: 12px;
-                    height: 12px;
+                    x: Theme.rtl ? parent.width - self.width - 30px : 30px;
+                    y: 28px;
+                    width: 13px;
+                    height: 13px;
                 }
 
-                // A child of the row's TouchArea, so hovering it keeps the
-                // row hovered, and it takes the press before the row does.
-                if touch.has-hover: Rectangle {
-                    x: Theme.rtl ? 6px : parent.width - self.width - 6px;
-                    y: (parent.height - self.height) / 2;
-                    width: 24px;
-                    height: 24px;
-                    border-radius: 12px;
-                    background: remove-touch.has-hover ? #55555c : #3a3a40;
-                    accessible-role: button;
-                    accessible-label: @tr("Remove");
-                    accessible-action-default => {
-                        root.remove(row.id);
+                // Children of the row's TouchArea, so hovering them keeps the
+                // row hovered, and they take the press before it does.
+                actions := HorizontalLayout {
+                    x: Theme.rtl ? 8px + 28px + 6px : parent.width - 8px - 28px - 6px - self.width;
+                    y: (parent.height - 28px) / 2;
+                    width: self.preferred-width;
+                    height: 28px;
+                    spacing: 6px;
+                    visible: touch.has-hover;
+
+                    if !row.missing: RoundButton {
+                        layout-order: Theme.rtl ? 3 : 0;
+                        icon: Icons.reveal;
+                        label: @tr("Show in Finder");
+                        clicked => {
+                            root.reveal(row.id);
+                        }
                     }
 
-                    Image {
-                        source: Icons.remove;
-                        colorize: white;
-                        width: 10px;
-                        height: 10px;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
+                    RoundButton {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        icon: Icons.copy-path;
+                        label: @tr("Copy path");
+                        clicked => {
+                            root.copy-path(row.id);
+                        }
                     }
 
-                    remove-touch := TouchArea {
+                    RoundButton {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        icon: Icons.remove;
+                        icon-size: 11px;
+                        label: @tr("Remove");
                         clicked => {
                             root.remove(row.id);
                         }
+                    }
+                }
+
+                PeekButton {
+                    x: Theme.rtl ? 8px : parent.width - 8px - self.width;
+                    y: (parent.height - self.height) / 2;
+                    open: open;
+                    clicked => {
+                        root.peek(row.id);
+                    }
+                }
+            }
+
+            if open: Peek {
+                x: Theme.rtl ? 12px : 52px;
+                y: root.line-h;
+                width: root.peek-w;
+                height: root.peek-h;
+                picture: root.peek-picture;
+                lines: root.peek-lines;
+                remove => {
+                    root.remove(row.id);
+                }
+
+                if !row.missing: PillButton {
+                    layout-order: Theme.rtl ? 2 : 0;
+                    text: @tr("Show in Finder");
+                    icon: Icons.reveal;
+                    clicked => {
+                        root.reveal(row.id);
+                    }
+                }
+
+                PillButton {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    text: @tr("Copy path");
+                    icon: Icons.copy-path;
+                    clicked => {
+                        root.copy-path(row.id);
                     }
                 }
             }
@@ -1090,29 +1662,160 @@ component PocketList inherits Rectangle {
         content-h: list.content-height;
         offset <=> list.content-y;
     }
+}
 
-    // "Drag all" and Clear at the foot of the column.
-    if root.side: PocketSide {
-        x: Theme.rtl ? root.pad : parent.width - root.pad - root.side-w;
-        y: parent.height - self.height - 8px;
-        count: root.count;
-        undo-active: root.undo-active;
-        undo-left: root.undo-left;
-        undo-secs: root.undo-secs;
-        all-pressed => {
-            root.all-pressed();
+// One tab of the bottom bar: a view's name and its count, raised while that
+// view is shown.
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <int> count;
+    in property <bool> current;
+    callback clicked();
+
+    height: 30px;
+    width: tab-row.preferred-width;
+    border-radius: 15px;
+    background: root.current ? #2c2c32 : touch.has-hover ? #1d1d21 : transparent;
+    animate background { duration: 200ms; }
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selected: root.current;
+    accessible-action-default => {
+        root.clicked();
+    }
+
+    tab-row := HorizontalLayout {
+        padding-left: 13px;
+        padding-right: 13px;
+        spacing: 5px;
+
+        Text {
+            layout-order: Theme.rtl ? 2 : 0;
+            text: root.label;
+            color: root.current ? white : #ffffffa0;
+            font-size: 12px;
+            font-weight: 500;
+            vertical-alignment: center;
         }
-        all-moved(dx, dy) => {
-            root.all-moved(dx, dy);
+
+        Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            text: root.count;
+            color: root.current ? #ffffff99 : #ffffff70;
+            font-size: 12px;
+            font-weight: 500;
+            vertical-alignment: center;
         }
-        all-released => {
-            root.all-released();
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
         }
-        clear => {
-            root.clear();
+    }
+}
+
+// The Pocket view's two looks side by side: by kind, or as a list; the one
+// shown is raised.
+component LookToggle inherits Rectangle {
+    in property <bool> list;
+    // True for the list.
+    callback chosen(bool);
+
+    width: 64px;
+    height: 30px;
+    border-radius: 15px;
+    background: #1d1d21;
+
+    for look[i] in [false, true]: Rectangle {
+        x: 2px + (Theme.rtl ? 1 - i : i) * 30px;
+        y: 2px;
+        width: 30px;
+        height: 26px;
+        border-radius: 13px;
+        background: look == root.list ? #3a3a40 : touch.has-hover ? #2c2c32 : transparent;
+        animate background { duration: 200ms; }
+        accessible-role: button;
+        accessible-label: look ? @tr("As a list") : @tr("By kind");
+        accessible-checkable: true;
+        accessible-checked: look == root.list;
+        accessible-action-default => {
+            root.chosen(look);
         }
-        undo => {
-            root.undo();
+
+        Image {
+            source: look ? Icons.list : Icons.kinds;
+            colorize: look == root.list ? white : #ffffffa0;
+            width: 14px;
+            height: 14px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+
+        touch := TouchArea {
+            clicked => {
+                root.chosen(look);
+            }
+        }
+    }
+}
+
+// "Drag all N", or "Drag N" for the kind the list shows: a press drags
+// those items out. `moved` offsets are measured from the press point.
+component DragButton inherits Rectangle {
+    in property <string> text;
+    callback pressed();
+    callback moved(length, length);
+    callback released();
+
+    height: 30px;
+    width: drag-row.preferred-width;
+    border-radius: 15px;
+    background: touch.pressed ? #e55a10 : touch.has-hover ? #ff8a45 : #ff6a1a;
+    accessible-role: button;
+    accessible-label: root.text;
+
+    drag-row := HorizontalLayout {
+        padding-left: Theme.rtl ? 12px : 10px;
+        padding-right: Theme.rtl ? 10px : 12px;
+        spacing: 7px;
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
+            alignment: center;
+
+            Image {
+                source: Icons.grab;
+                colorize: white;
+                width: 14px;
+                height: 14px;
+            }
+        }
+
+        Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            text: root.text;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: grab;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.pressed();
+            } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                || e.kind == PointerEventKind.cancel {
+                root.released();
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+            }
         }
     }
 }
@@ -1132,21 +1835,21 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
-    // At most eight, but every item under the Scroll layout, and none while
-    // `stacks` stand in for them; `count` is the total, so the rest show as
-    // "All N" (opening the Pocket list) under the List layout.
-    in property <[PocketCell]> cells;
+    // The Pocket view's groups, one per kind present, and their tiles.
+    in property <[PocketGroup]> groups;
+    in property <[PocketTile]> tiles;
+    // How many items the Pocket holds.
     in property <int> count;
-    // Under the Stacks layout, a full Pocket's stacks, one per kind present;
-    // empty otherwise.
-    in property <[PocketStack]> stacks;
-    // How a Pocket of more than eight items is laid out: 0 List, 1 Scroll,
-    // 2 Stacks.
-    in property <int> layout;
     // A drag hovers over the island.
     in property <bool> hint;
-    // The expanded width: wide enough for the cells shown (set by the app).
-    in property <length> panel-w: 420px;
+    // The expanded width, the same for every view (set by the app).
+    in property <length> panel-w: 560px;
+    // Height of what is drawn below the menu bar, the bottom bar included
+    // (set by the app). The island grows or shrinks to it.
+    in property <length> panel-h: 152px;
+    // Height of the window below the menu bar: `panel-h`, kept a moment
+    // longer after the island shrinks so the shrinking can be seen.
+    in property <length> window-h: 152px;
     // Undo is offered for a removal or a clear; `undo-left` is the share
     // of its time still left (1 to 0), `undo-secs` the seconds.
     in property <bool> undo-active;
@@ -1155,13 +1858,10 @@ export component PocketIsland inherits Window {
     // What the offered Undo puts back: 0 Pocket items, 1 history entries.
     // Each view shows the ring only for its own; collapsed, both read "Undo".
     in property <int> undo-kind;
-    // What a clear took, shown faded while its Undo is offered.
-    in property <[PocketCell]> ghosts;
-    // The view shown expanded: 0 the Pocket, 1 the Clipboard, 2 the Pocket
-    // list.
+    // The view shown expanded: 0 the Pocket's kinds, 1 the Clipboard, 2 the
+    // Pocket list.
     in property <int> view;
-    // The clipboard history is on: the bar switching views is drawn under
-    // either one.
+    // The clipboard history is on: the bottom bar has a tab for each view.
     in property <bool> show-switch;
     // The history, newest first, and how many entries it holds.
     in property <[ClipRow]> clip-rows;
@@ -1170,71 +1870,84 @@ export component PocketIsland inherits Window {
     // 4 Images, 5 Files) and how many entries each lists.
     in property <int> clip-filter;
     in property <[int]> clip-filter-counts: [0, 0, 0, 0, 0, 0];
+    // The Clipboard view's open peek: its row's place in `clip-rows` (-1
+    // for none) and what it shows.
+    in property <int> clip-peek-index: -1;
+    in property <image> clip-peek-picture;
+    in property <string> clip-peek-text;
+    in property <[PeekLine]> clip-peek-lines;
     // The Pocket list's rows, its chips ("All", then each kind present) and
     // the chosen chip.
     in property <[PocketRow]> list-rows;
     in property <[PocketChip]> list-chips;
     in property <int> list-filter;
-    // Height of what is drawn below the menu bar (set by the app).
-    in property <length> panel-h: 112px;
+    // The Pocket list's open peek, as the Clipboard view's.
+    in property <int> list-peek-index: -1;
+    in property <image> list-peek-picture;
+    in property <[PeekLine]> list-peek-lines;
     // Collapsed with an empty Pocket but some history: the wings show the
     // clipboard icon and no count.
     in property <bool> clip-wing;
 
-    // `moved` offsets are measured from the press point.
+    // A tile, by its item's place in the Pocket: `moved` offsets are
+    // measured from the press point.
     callback item-pressed(int);
     callback item-moved(int, length, length);
     callback item-released(int);
-    // A press on cell `index` at this window-local point, with the left
-    // button or not: true if it opens the cell's menu (a right press, or a
+    // A press on tile `index` at this window-local point, with the left
+    // button or not: true if it opens the item's menu (a right press, or a
     // Control-click), which the press then does nothing else for.
     callback item-context(int, length, length, bool) -> bool;
     callback all-pressed();
     callback all-moved(length, length);
     callback all-released();
+    // A tile's x, by its item's place in the Pocket.
     callback remove(int);
     callback clear();
     callback undo();
-    // A switch button: the view to show.
+    // A tab or the Pocket's look toggle: the view to show (as `view`).
     callback view-chosen(int);
-    // The Clipboard view, by entry id: a row clicked, its Pocket and x
-    // buttons; and its Clear.
+    // The Clipboard view, by entry id: a row clicked (or its peek's Copy),
+    // its Pocket and x buttons, its arrow, its peek's Open and Show in
+    // Finder; and its Clear.
     callback clip-pressed(int);
     callback clip-pocket(int);
     // Entry id, and whether it is to be pinned (or unpinned).
     callback clip-pin(int, bool);
     callback clip-remove(int);
+    callback clip-peek(int);
+    callback clip-open(int);
+    callback clip-reveal(int);
     callback clip-clear();
     callback clip-filter-chosen(int);
-    // "All N": shows the Pocket list.
-    callback list-open();
+    // A group, by its kind: its name or "+N" clicked (the list on that
+    // kind); its "Drag N" pressed, moved (from the press point) and
+    // released.
+    callback kind-open(int);
+    callback kind-pressed(int);
+    callback kind-moved(int, length, length);
+    callback kind-released(int);
     // The Pocket list, by item id: a row pressed, moved (from the press
-    // point) and released, its x; a chip chosen (0 All, then the kinds in
-    // the order shown); and its back control.
+    // point) and released, its x, arrow, Show in Finder and Copy path; a
+    // chip chosen (0 All, then the kinds in the order shown); and its back
+    // control.
     callback list-pressed(int);
     callback list-moved(int, length, length);
     callback list-released(int);
     callback list-remove(int);
+    callback list-peek(int);
+    callback list-reveal(int);
+    callback list-copy-path(int);
     callback list-filter-chosen(int);
     callback list-back();
-    // A stack, by its kind: pressed, moved (from the press point) and
-    // released, as a cell is; a click opens the Pocket list on its kind.
-    callback stack-pressed(int);
-    callback stack-moved(int, length, length);
-    callback stack-released(int);
 
     width: root.panel-w;
-    height: root.top-h + root.panel-h;
+    height: root.top-h + root.window-h;
 
-    property <color> item-fill: #1d1d21;
     property <color> accent: #ff6a1a;
     property <length> wing: 44px;
-    property <length> cell-step: 68px;
-    property <length> pad: 14px;
-    property <length> side-w: 52px;
-    // Room the Pocket's rows leave at the right for its column, which the
-    // bottom bar holds instead while it shows.
-    property <length> side-room: root.show-switch ? 0px : root.side-w + 10px;
+    property <length> pad: 16px;
+    property <length> bar-h: 44px;
 
     property <length> collapsed-w: root.notch-style ? root.notch-w + 2 * root.wing : 120px;
     property <length> collapsed-h: root.notch-style ? root.top-h : 28px;
@@ -1242,20 +1955,26 @@ export component PocketIsland inherits Window {
     property <length> pill-r: root.notch-style ? 0px : 14px;
     property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
     property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
+    property <bool> on-clip: root.view == 1;
+    property <bool> on-list: root.view == 2;
+    // What "Drag" takes: every item, or the kind the list shows.
+    property <int> drag-count: root.on-list && root.list-filter > 0 && root.list-filter < root.list-chips.length
+        ? root.list-chips[root.list-filter].count : root.count;
 
     island := Rectangle {
         width: root.expanded ? root.width : root.collapsed-w;
-        height: root.expanded ? root.height : root.collapsed-h;
+        height: root.expanded ? root.top-h + root.panel-h : root.collapsed-h;
         x: (root.width - self.width) / 2;
         y: root.expanded ? 0px : root.collapsed-y;
-        animate width, height, y { duration: 160ms; easing: ease-out; }
+        animate width, y { duration: 160ms; easing: ease-out; }
+        animate height { duration: 240ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
         background: root.bar-hover && !root.expanded ? #2b2b2b : #000000;
         animate background { duration: 120ms; }
         clip: true;
         border-top-left-radius: root.expanded ? 0px : root.pill-r;
         border-top-right-radius: root.expanded ? 0px : root.pill-r;
-        border-bottom-left-radius: root.expanded ? 18px : (root.notch-style ? 10px : 14px);
+        border-bottom-left-radius: root.expanded ? 22px : (root.notch-style ? 10px : 14px);
         border-bottom-right-radius: self.border-bottom-left-radius;
 
         // Collapsed: the stack icon on the left, the item count on the right
@@ -1294,449 +2013,35 @@ export component PocketIsland inherits Window {
             }
         }
 
-        // Expanded: fixed in window coordinates while the island grows around it.
+        // Expanded: fixed in window coordinates while the island grows around
+        // it, and as tall as the island below the menu bar, so the bottom bar
+        // moves with its edge as it grows or shrinks.
         if root.expanded: Rectangle {
             x: (parent.width - root.width) / 2;
             y: root.top-h - parent.y;
             width: root.width;
-            height: root.panel-h;
+            height: max(0px, parent.height - self.y);
 
-            // The Pocket view.
-            if root.view == 0: Rectangle {
-                x: 0px;
+            property <length> view-h: max(0px, self.height - root.bar-h);
+
+            // The Clipboard view, sliding and fading in from the start of the
+            // line as the Pocket goes.
+            ClipList {
+                x: root.on-clip ? 0px : (Theme.rtl ? 24px : -24px);
                 y: 0px;
                 width: parent.width;
-                height: 112px;
-
-                row := SideFlickable {
-                    // Under Scroll, a full Pocket's strip of every item (or of
-                    // a clear's faded items while its Undo is offered, as long
-                    // as nothing new came in: those are shown only in an empty
-                    // Pocket).
-                    property <bool> strip: root.layout == 1 && (root.count == 0 ? root.ghosts.length : root.count) > 8;
-                    // The strip starts at the first item whenever the Pocket
-                    // fills up or drops to eight or fewer (a clear included),
-                    // or the layout changes. A collapse starts the row afresh
-                    // anyway.
-                    property <bool> full-scroll: root.layout == 1 && root.count > 8;
-
-
-                    x: Theme.rtl ? root.pad + root.side-room : root.pad;
-                    y: 16px;
-                    width: parent.width - 2 * root.pad - root.side-room;
-                    height: 80px;
-                    // Pointer drags belong to the cells; the row scrolls by wheel only.
-                    interactive: false;
-                    content-width: root.stacks.length > 0 ? root.stacks.length * root.cell-step
-                        : max(root.cells.length, root.count == 0 ? root.ghosts.length : 0) * root.cell-step
-                        + (root.count > root.cells.length && root.layout == 0 ? 48px : 0px);
-
-                    changed full-scroll => {
-                        self.to-start();
-                    }
-
-                    // Behind the cells, so it gets the wheel events they let
-                    // through: the strip also scrolls with a mouse wheel's
-                    // vertical scroll (a trackpad's sideways swipe already
-                    // scrolls it).
-                    if row.strip: TouchArea {
-                        width: max(row.width, row.content-width);
-                        height: row.height;
-                        scroll-event(e) => {
-                            if e.delta-x == 0 && e.delta-y != 0 && row.content-width > row.width {
-                                row.content-x = max(row.width - row.content-width, min(0px, row.content-x + (Theme.rtl ? -e.delta-y : e.delta-y)));
-                                return accept;
-                            }
-                            return reject;
-                        }
-                    }
-
-                    // A clear's items, faded, until its Undo is gone.
-                    if root.count == 0: Rectangle {
-                        opacity: 0.35;
-
-                        for ghost[i] in root.ghosts: Rectangle {
-                            x: Theme.rtl ? row.span - i * root.cell-step - self.width : i * root.cell-step;
-                            width: 64px;
-                            height: 80px;
-                            border-radius: 12px;
-                            background: root.item-fill;
-
-                            Image {
-                                source: ghost.icon;
-                                x: 12px;
-                                y: 8px;
-                                width: 40px;
-                                height: 40px;
-                            }
-
-                            LineText {
-                                text: ghost.name;
-                                x: 4px;
-                                y: 54px;
-                                width: 56px;
-                                height: 18px;
-                                color: white;
-                                font-size: 11px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-
-                    for cell[i] in root.cells: Rectangle {
-                        x: Theme.rtl ? row.span - i * root.cell-step - self.width : i * root.cell-step;
-                        width: 64px;
-                        height: 80px;
-                        border-radius: 12px;
-                        background: root.item-fill;
-                        border-width: cell.selected ? 2px : 0px;
-                        border-color: root.accent;
-
-                        Rectangle {
-                            opacity: cell.missing ? 0.4 : 1.0;
-
-                            if !cell.missing: Image {
-                                source: cell.icon;
-                                x: 12px;
-                                y: 8px;
-                                width: 40px;
-                                height: 40px;
-                            }
-
-                            if cell.missing: Image {
-                                source: cell.icon;
-                                colorize: white;
-                                x: 12px;
-                                y: 8px;
-                                width: 40px;
-                                height: 40px;
-                            }
-
-                            LineText {
-                                text: cell.name;
-                                x: 4px;
-                                y: 54px;
-                                width: 56px;
-                                height: 18px;
-                                color: white;
-                                font-size: 11px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        if cell.missing: Image {
-                            source: Icons.missing;
-                            colorize: #ffcc33;
-                            x: Theme.rtl ? parent.width - self.width - 40px : 40px;
-                            y: 32px;
-                            width: 16px;
-                            height: 16px;
-                        }
-
-                        touch := TouchArea {
-                            pointer-event(e) => {
-                                // A menu press is never a drag, a selection or a hover change.
-                                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                    if !root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true) {
-                                        root.item-pressed(i);
-                                    }
-                                } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
-                                    && !self.pressed {
-                                    root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
-                                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
-                                    || e.kind == PointerEventKind.cancel {
-                                    root.item-released(i);
-                                }
-                            }
-                            moved => {
-                                if self.pressed {
-                                    root.item-moved(i, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                                }
-                            }
-
-                            // A child of the cell's TouchArea, so hovering it keeps the cell hovered.
-                            if touch.has-hover: Rectangle {
-                                x: Theme.rtl ? 2px : parent.width - self.width - 2px;
-                                y: 2px;
-                                width: 18px;
-                                height: 18px;
-                                border-radius: 9px;
-                                background: remove-touch.has-hover ? #55555c : #3a3a40;
-
-                                Image {
-                                    source: Icons.remove;
-                                    colorize: white;
-                                    width: 10px;
-                                    height: 10px;
-                                    x: (parent.width - self.width) / 2;
-                                    y: (parent.height - self.height) / 2;
-                                }
-
-                                remove-touch := TouchArea {
-                                    // This press opened the menu (a Control-click): no removal.
-                                    property <bool> menu-press;
-
-                                    clicked => {
-                                        if !self.menu-press {
-                                            root.remove(i);
-                                        }
-                                    }
-                                    // The x takes the press before its cell does.
-                                    pointer-event(e) => {
-                                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                            self.menu-press = root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true);
-                                        } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.right
-                                            && !self.pressed {
-                                            root.item-context(i, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, false);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // The Stacks layout: one stack per kind, a pile of
-                    // cards with the kind's icon, name and count.
-                    for stack[i] in root.stacks: Rectangle {
-                        x: Theme.rtl ? row.span - i * root.cell-step - self.width : i * root.cell-step;
-                        width: 64px;
-                        height: 80px;
-                        accessible-role: button;
-                        accessible-label: @tr("{} {n}" | "{} {n}" % stack.count, stack.label);
-                        accessible-action-default => {
-                            root.stack-pressed(stack.kind);
-                            root.stack-released(stack.kind);
-                        }
-
-                        // The cards beneath, peeking out above.
-                        Rectangle {
-                            x: 10px;
-                            y: 0px;
-                            width: 44px;
-                            height: 20px;
-                            border-radius: 8px;
-                            background: #2a2a30;
-                        }
-
-                        Rectangle {
-                            x: 5px;
-                            y: 3px;
-                            width: 54px;
-                            height: 20px;
-                            border-radius: 10px;
-                            background: #232328;
-                        }
-
-                        Rectangle {
-                            y: 7px;
-                            height: 73px;
-                            border-radius: 12px;
-                            background: stack-touch.has-hover ? #2c2c32 : root.item-fill;
-                            animate background { duration: 120ms; }
-
-                            Image {
-                                source: stack.icon;
-                                colorize: stack-touch.has-hover ? white : #ffffffd0;
-                                x: (parent.width - self.width) / 2;
-                                y: 12px;
-                                width: 28px;
-                                height: 28px;
-                            }
-
-                            LineText {
-                                text: stack.label;
-                                x: 4px;
-                                y: 47px;
-                                width: 56px;
-                                height: 18px;
-                                color: white;
-                                font-size: 11px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        // How many items the stack holds.
-                        Rectangle {
-                            x: Theme.rtl ? 2px : parent.width - self.width - 2px;
-                            y: 9px;
-                            width: max(18px, badge-text.preferred-width + 10px);
-                            height: 18px;
-                            border-radius: 9px;
-                            background: root.accent;
-
-                            badge-text := Text {
-                                text: stack.count;
-                                color: white;
-                                font-size: 10px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        stack-touch := TouchArea {
-                            // As a cell's: a press drags the stack's items
-                            // out, a click opens the Pocket list on its kind.
-                            pointer-event(e) => {
-                                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                                    root.stack-pressed(stack.kind);
-                                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
-                                    || e.kind == PointerEventKind.cancel {
-                                    root.stack-released(stack.kind);
-                                }
-                            }
-                            moved => {
-                                if self.pressed {
-                                    root.stack-moved(stack.kind, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                                }
-                            }
-                        }
-                    }
-
-                    // The List layout: "All N" opens the list of every item.
-                    if root.count > root.cells.length && root.layout == 0: Rectangle {
-                        x: Theme.rtl ? row.span - root.cells.length * root.cell-step - self.width : root.cells.length * root.cell-step;
-                        width: 44px;
-                        height: 80px;
-                        border-radius: 12px;
-                        background: list-touch.has-hover ? #2c2c32 : root.item-fill;
-                        accessible-role: button;
-                        accessible-label: @tr("All {n}" | "All {n}" % root.count);
-                        accessible-action-default => {
-                            root.list-open();
-                        }
-
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 1px;
-
-                            Text {
-                                text: @tr("All");
-                                color: list-touch.has-hover ? white : #ffffff90;
-                                font-size: 11px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: root.count;
-                                color: list-touch.has-hover ? white : #ffffffb0;
-                                font-size: 13px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                            }
-                        }
-
-                        list-touch := TouchArea {
-                            clicked => {
-                                root.list-open();
-                            }
-                        }
-                    }
-                }
-
-                // The strip's edges fade into the island where more items
-                // lie beyond them.
-                if row.strip: Rectangle {
-                    x: row.x;
-                    y: row.y;
-                    width: 24px;
-                    height: row.height;
-                    background: @linear-gradient(90deg, #000000 0%, #00000000 100%);
-                    opacity: row.content-x < 0 ? 1 : 0;
-                    animate opacity { duration: 120ms; }
-                }
-
-                if row.strip: Rectangle {
-                    x: row.x + row.width - self.width;
-                    y: row.y;
-                    width: 24px;
-                    height: row.height;
-                    background: @linear-gradient(90deg, #00000000 0%, #000000 100%);
-                    opacity: row.content-x > row.width - row.content-width ? 1 : 0;
-                    animate opacity { duration: 120ms; }
-                }
-
-                // Under the strip: how much of it is in view, and where.
-                if row.strip && !root.hint: StripScrollbar {
-                    x: row.x;
-                    y: row.y + row.height + 5px;
-                    width: row.width;
-                    content-w: row.content-width;
-                    offset: row.content-x;
-                    scrolled(x) => {
-                        row.content-x = x;
-                    }
-                }
-
-                if !root.show-switch: PocketSide {
-                    x: Theme.rtl ? root.pad : parent.width - root.pad - root.side-w;
-                    y: 16px;
-                    count: root.count;
-                    undo-active: root.pocket-undo;
-                    undo-left: root.undo-left;
-                    undo-secs: root.undo-secs;
-                    all-pressed => {
-                        root.all-pressed();
-                    }
-                    all-moved(dx, dy) => {
-                        root.all-moved(dx, dy);
-                    }
-                    all-released => {
-                        root.all-released();
-                    }
-                    clear => {
-                        root.clear();
-                    }
-                    undo => {
-                        root.undo();
-                    }
-                }
-
-                // Empty, or a drag hovers: say what a drop does.
-                if root.hint || (root.count == 0 && !root.pocket-undo): DashedBox {
-                    x: 8px;
-                    y: 6px;
-                    width: parent.width - 16px;
-                    height: parent.height - 14px;
-                    stroke: root.hint ? root.accent : #ffffff40;
-                    thickness: root.hint ? 2px : 1.5px;
-                    background: root.count > 0 || root.pocket-undo ? #000000d8 : transparent;
-
-                    Image {
-                        source: Icons.drop;
-                        colorize: root.hint ? root.accent : #ffffff66;
-                        width: 26px;
-                        height: 26px;
-                        x: (parent.width - self.width) / 2;
-                        y: parent.height / 2 - self.height - 2px;
-                    }
-
-                    Text {
-                        y: parent.height / 2 + 4px;
-                        height: 18px;
-                        text: @tr("Drop to add");
-                        color: root.hint ? root.accent : #ffffff66;
-                        font-size: 13px;
-                        font-weight: 600;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-            }
-
-            // The Clipboard view.
-            if root.view == 1: ClipList {
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: 232px;
+                height: parent.view-h;
+                opacity: root.on-clip ? 1 : 0;
+                visible: self.opacity > 0;
+                animate opacity { duration: 260ms; easing: ease; }
+                animate x { duration: 360ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
                 rows: root.clip-rows;
                 filter: root.clip-filter;
                 counts: root.clip-filter-counts;
+                peek-index: root.clip-peek-index;
+                peek-picture: root.clip-peek-picture;
+                peek-text: root.clip-peek-text;
+                peek-lines: root.clip-peek-lines;
                 pressed(id) => {
                     root.clip-pressed(id);
                 }
@@ -1746,72 +2051,165 @@ export component PocketIsland inherits Window {
                 pin(id, on) => {
                     root.clip-pin(id, on);
                 }
-                filter-chosen(i) => {
-                    root.clip-filter-chosen(i);
-                }
                 remove(id) => {
                     root.clip-remove(id);
                 }
-            }
-
-            // The Pocket list.
-            if root.view == 2: PocketList {
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: 232px;
-                side: !root.show-switch;
-                rows: root.list-rows;
-                chips: root.list-chips;
-                filter: root.list-filter;
-                count: root.count;
-                undo-active: root.pocket-undo;
-                undo-left: root.undo-left;
-                undo-secs: root.undo-secs;
-                pressed(id) => {
-                    root.list-pressed(id);
+                peek(id) => {
+                    root.clip-peek(id);
                 }
-                moved(id, dx, dy) => {
-                    root.list-moved(id, dx, dy);
+                open-link(id) => {
+                    root.clip-open(id);
                 }
-                released(id) => {
-                    root.list-released(id);
-                }
-                remove(id) => {
-                    root.list-remove(id);
+                reveal(id) => {
+                    root.clip-reveal(id);
                 }
                 filter-chosen(i) => {
-                    root.list-filter-chosen(i);
-                }
-                back => {
-                    root.list-back();
-                }
-                all-pressed => {
-                    root.all-pressed();
-                }
-                all-moved(dx, dy) => {
-                    root.all-moved(dx, dy);
-                }
-                all-released => {
-                    root.all-released();
-                }
-                clear => {
-                    root.clear();
-                }
-                undo => {
-                    root.undo();
+                    root.clip-filter-chosen(i);
                 }
             }
 
-            // Under either view: the two buttons switching between them, and
-            // at the end, the shown view's controls: the Pocket's column
-            // ("Drag all" and Clear, or Undo), or the Clipboard's Clear (or
-            // Undo).
-            if root.show-switch: Rectangle {
-                x: 0px;
-                y: parent.height - self.height;
+            // The Pocket view: its kinds, and its list sliding in over them
+            // from the end of the line.
+            Rectangle {
+                x: !root.on-clip ? 0px : (Theme.rtl ? -24px : 24px);
+                y: 0px;
                 width: parent.width;
-                height: 40px;
+                height: parent.view-h;
+                opacity: !root.on-clip ? 1 : 0;
+                visible: self.opacity > 0;
+                animate opacity { duration: 260ms; easing: ease; }
+                animate x { duration: 360ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                clip: true;
+
+                kinds := PocketKinds {
+                    x: !root.on-list ? 0px : (Theme.rtl ? parent.width : -parent.width);
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    visible: self.x > -self.width && self.x < self.width;
+                    animate x { duration: 460ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                    groups: root.groups;
+                    tiles: root.tiles;
+                    tile-pressed(i) => {
+                        root.item-pressed(i);
+                    }
+                    tile-moved(i, dx, dy) => {
+                        root.item-moved(i, dx, dy);
+                    }
+                    tile-released(i) => {
+                        root.item-released(i);
+                    }
+                    tile-context(i, x, y, left) => {
+                        root.item-context(i, x, y, left)
+                    }
+                    tile-remove(i) => {
+                        root.remove(i);
+                    }
+                    kind-open(k) => {
+                        root.kind-open(k);
+                    }
+                    kind-pressed(k) => {
+                        root.kind-pressed(k);
+                    }
+                    kind-moved(k, dx, dy) => {
+                        root.kind-moved(k, dx, dy);
+                    }
+                    kind-released(k) => {
+                        root.kind-released(k);
+                    }
+
+                    // Cleared, while its Undo is offered.
+                    if root.count == 0 && root.pocket-undo && !root.hint: Text {
+                        text: @tr("Pocket cleared");
+                        color: #ffffff66;
+                        font-size: 13px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    // Empty, or a drag hovers: say what a drop does.
+                    if root.hint || (root.count == 0 && !root.pocket-undo): DashedBox {
+                        x: 10px;
+                        y: 8px;
+                        width: parent.width - 20px;
+                        height: parent.height - 12px;
+                        stroke: root.hint ? root.accent : #ffffff40;
+                        thickness: root.hint ? 2px : 1.5px;
+                        background: root.count > 0 || root.pocket-undo ? #000000d8 : transparent;
+
+                        Image {
+                            source: Icons.drop;
+                            colorize: root.hint ? root.accent : #ffffff66;
+                            width: 26px;
+                            height: 26px;
+                            x: (parent.width - self.width) / 2;
+                            y: parent.height / 2 - self.height - 2px;
+                        }
+
+                        Text {
+                            y: parent.height / 2 + 4px;
+                            height: 18px;
+                            text: @tr("Drop to add");
+                            color: root.hint ? root.accent : #ffffff66;
+                            font-size: 13px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                PocketList {
+                    x: root.on-list ? 0px : (Theme.rtl ? -parent.width : parent.width);
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    visible: self.x > -self.width && self.x < self.width;
+                    animate x { duration: 460ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                    rows: root.list-rows;
+                    chips: root.list-chips;
+                    filter: root.list-filter;
+                    peek-index: root.list-peek-index;
+                    peek-picture: root.list-peek-picture;
+                    peek-lines: root.list-peek-lines;
+                    pressed(id) => {
+                        root.list-pressed(id);
+                    }
+                    moved(id, dx, dy) => {
+                        root.list-moved(id, dx, dy);
+                    }
+                    released(id) => {
+                        root.list-released(id);
+                    }
+                    remove(id) => {
+                        root.list-remove(id);
+                    }
+                    peek(id) => {
+                        root.list-peek(id);
+                    }
+                    reveal(id) => {
+                        root.list-reveal(id);
+                    }
+                    copy-path(id) => {
+                        root.list-copy-path(id);
+                    }
+                    filter-chosen(i) => {
+                        root.list-filter-chosen(i);
+                    }
+                    back => {
+                        root.list-back();
+                    }
+                }
+            }
+
+            // Under either view: a tab for each (with the history on), and at
+            // the end the shown view's controls: the Pocket's look, "Drag"
+            // and Clear (or Undo), or the Clipboard's Clear (or Undo).
+            Rectangle {
+                y: parent.view-h;
+                width: parent.width;
+                height: root.bar-h;
 
                 Rectangle {
                     x: root.pad;
@@ -1821,83 +2219,93 @@ export component PocketIsland inherits Window {
                     background: #ffffff14;
                 }
 
-                HorizontalLayout {
-                    alignment: Theme.rtl ? end : start;
+                if root.show-switch: HorizontalLayout {
+                    x: Theme.rtl ? parent.width - root.pad - self.width : root.pad;
+                    y: 7px;
+                    width: self.preferred-width;
+                    height: 30px;
                     spacing: 6px;
-                    padding-left: Theme.rtl ? 0px : root.pad;
-                    padding-right: Theme.rtl ? root.pad : 0px;
-                    padding-top: 4px;
-                    padding-bottom: 8px;
 
-                    SwitchButton {
+                    TabButton {
                         layout-order: Theme.rtl ? 2 : 0;
-                        icon: Icons.clipboard;
                         label: @tr("Clipboard");
                         count: root.clip-count;
-                        current: root.view == 1;
+                        current: root.on-clip;
                         clicked => {
                             root.view-chosen(1);
                         }
                     }
 
-                    SwitchButton {
+                    TabButton {
                         layout-order: Theme.rtl ? 1 : 0;
-                        icon: Icons.pocket;
                         label: @tr("Pocket");
                         count: root.count;
-                        // The Pocket list is part of the Pocket.
-                        current: root.view != 1;
+                        current: !root.on-clip;
                         clicked => {
                             root.view-chosen(0);
                         }
                     }
                 }
 
-                if root.view != 1: PocketSide {
+                HorizontalLayout {
                     x: Theme.rtl ? root.pad : parent.width - root.pad - self.width;
-                    y: 4px;
-                    compact: true;
-                    count: root.count;
-                    undo-active: root.pocket-undo;
-                    undo-left: root.undo-left;
-                    undo-secs: root.undo-secs;
-                    all-pressed => {
-                        root.all-pressed();
-                    }
-                    all-moved(dx, dy) => {
-                        root.all-moved(dx, dy);
-                    }
-                    all-released => {
-                        root.all-released();
-                    }
-                    clear => {
-                        root.clear();
-                    }
-                    undo => {
-                        root.undo();
-                    }
-                }
+                    y: 7px;
+                    width: self.preferred-width;
+                    height: 30px;
+                    spacing: 6px;
 
-                // Clear empties everything but pinned entries, whatever the
-                // filter.
-                if root.view == 1 && root.clip-filter-counts[0] > root.clip-filter-counts[1] && !root.clip-undo: ClearButton {
-                    x: Theme.rtl ? root.pad : parent.width - root.pad - self.width;
-                    y: 4px;
-                    width: 28px;
-                    clicked => {
-                        root.clip-clear();
+                    if !root.on-clip && root.count > 0 && !root.pocket-undo: LookToggle {
+                        layout-order: Theme.rtl ? 5 : 0;
+                        list: root.on-list;
+                        chosen(list) => {
+                            root.view-chosen(list ? 2 : 0);
+                        }
                     }
-                }
 
-                if root.view == 1 && root.clip-undo: UndoRing {
-                    x: Theme.rtl ? root.pad : parent.width - root.pad - self.width;
-                    y: 4px;
-                    width: 80px;
-                    compact: true;
-                    left: root.undo-left;
-                    secs: root.undo-secs;
-                    clicked => {
-                        root.undo();
+                    if !root.on-clip && root.count > 0 && !root.pocket-undo: DragButton {
+                        layout-order: Theme.rtl ? 4 : 0;
+                        text: root.drag-count == root.count
+                            ? @tr("Drag all {n}" | "Drag all {n}" % root.count)
+                            : @tr("Drag {n}" | "Drag {n}" % root.drag-count);
+                        pressed => {
+                            root.all-pressed();
+                        }
+                        moved(dx, dy) => {
+                            root.all-moved(dx, dy);
+                        }
+                        released => {
+                            root.all-released();
+                        }
+                    }
+
+                    if !root.on-clip && root.count > 0 && !root.pocket-undo: ClearButton {
+                        layout-order: Theme.rtl ? 3 : 0;
+                        width: 30px;
+                        clicked => {
+                            root.clear();
+                        }
+                    }
+
+                    // Clear empties everything but pinned entries, whatever
+                    // the filter.
+                    if root.on-clip && root.clip-filter-counts[0] > root.clip-filter-counts[1] && !root.clip-undo: ClearButton {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        width: 30px;
+                        clicked => {
+                            root.clip-clear();
+                        }
+                    }
+
+                    if (root.on-clip && root.clip-undo) || (!root.on-clip && root.pocket-undo): UndoRing {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        width: 80px;
+                        y: 1px;
+                        compact: true;
+                        left: root.undo-left;
+                        secs: root.undo-secs;
+                        clicked => {
+                            root.undo();
+                        }
                     }
                 }
             }

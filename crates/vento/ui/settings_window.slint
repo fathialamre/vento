@@ -90,8 +90,8 @@ export component SettingsWindow inherits Window {
     in property <int> theme;
     // 0 Honeycomb, 1 Petals.
     in property <int> wheel-layout;
-    // 0 List, 1 Scroll, 2 Stacks: how a Pocket of more than 8 items looks.
-    in property <int> pocket-layout;
+    // What the Pocket view opens on: 0 its kinds, 1 the list.
+    in property <int> pocket-view;
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
@@ -151,7 +151,7 @@ export component SettingsWindow inherits Window {
     callback appearance-chosen(int);
     callback theme-chosen(int);
     callback layout-chosen(int);
-    callback pocket-layout-chosen(int);
+    callback pocket-view-chosen(int);
     callback action-toggled(int, bool);
     // A row of the Wheel page's list dragged from one place to another.
     callback action-moved(int, int);
@@ -383,12 +383,12 @@ export component SettingsWindow inherits Window {
                             recording <=> root.shortcut-recording;
                             remove-after-drop: root.remove-after-drop;
                             keep-copies: root.keep-copies;
-                            pocket-layout: root.pocket-layout;
+                            pocket-view: root.pocket-view;
                             recording-started => { root.shortcut-recording-started(); }
                             recording-cancelled => { root.stop-recording(); }
                             remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
                             keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
-                            pocket-layout-chosen(i) => { root.pocket-layout-chosen(i); }
+                            pocket-view-chosen(i) => { root.pocket-view-chosen(i); }
                         }
                         if root.page-id == 4: ClipboardPage {
                             history: root.clip-history;

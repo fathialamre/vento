@@ -740,13 +740,13 @@ export component PocketPage inherits VerticalLayout {
     in-out property <bool> recording;
     in property <bool> remove-after-drop;
     in property <bool> keep-copies;
-    // 0 List, 1 Scroll, 2 Stacks.
-    in property <int> pocket-layout;
+    // What the Pocket view opens on: 0 its kinds, 1 the list.
+    in property <int> pocket-view;
     callback recording-started();
     callback recording-cancelled();
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
-    callback pocket-layout-chosen(int);
+    callback pocket-view-chosen(int);
 
     SettingRow {
         label: @tr("Shortcut");
@@ -798,14 +798,15 @@ export component PocketPage inherits VerticalLayout {
     RowSeparator { }
 
     SettingRow {
-        label: @tr("When it holds more than 8 items");
+        label: @tr("When the Pocket opens, show");
+        description: @tr("Its items by kind, or as a list; the bar under it switches between the two");
 
         MenuField {
             width: 130px;
-            label: @tr("When it holds more than 8 items");
-            items: [@tr("List"), @tr("Scroll"), @tr("Stacks")];
-            current: root.pocket-layout;
-            chosen(i) => { root.pocket-layout-chosen(i); }
+            label: @tr("When the Pocket opens, show");
+            items: [@tr("By kind"), @tr("List")];
+            current: root.pocket-view;
+            chosen(i) => { root.pocket-view-chosen(i); }
         }
     }
 }

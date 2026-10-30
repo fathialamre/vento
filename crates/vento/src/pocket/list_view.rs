@@ -1,28 +1,28 @@
-//! The Pocket list: every item the Pocket holds as one row each, opened from
-//! the "All N" button of a full Pocket, with a chip per kind to filter it.
-//! It is part of the Pocket view: the bottom switch shows the Pocket as
-//! current over it, and it is kept open (in memory) while the Clipboard view
-//! is shown, and across a collapse while the Pocket still holds more than
-//! eight items (so dragging rows out one by one needs no new click on
-//! "All N"). Otherwise a collapse closes it, so the island opens on its
-//! cells, as it always has with eight items or fewer.
+//! The Pocket list: the Pocket's items one row each, shown by the bar's look
+//! toggle (or by the settings, when the island opens) or on one kind from
+//! its group, with a chip per kind to filter it. It is part of the Pocket
+//! view: the bar shows the Pocket as current over it. A row's arrow opens a
+//! peek under it: the picture, what a folder holds, or what the item is and
+//! where it lives.
 
 use std::cell::{Cell, RefCell};
 use std::iter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use log::debug;
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
-use vento_core::i18n::tr;
-use vento_core::pocket::Pocket;
+use log::{debug, warn};
+use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
+use vento_core::destinations::display_path;
+use vento_core::i18n::{fill, tr};
+use vento_core::pocket::{Pocket, PocketItem};
 use vento_core::pocket_kind::{PocketKind, kind_of};
-use vento_core::pocket_zone::Presence;
+use vento_core::settings::PocketView;
 
-use crate::ui::{Icons, PocketChip, PocketIsland, PocketRow};
+use crate::ui::{Icons, PeekLine, PocketChip, PocketIsland, PocketRow};
 
-use super::clip_view::{set_rows_in_place, view_index};
-use super::geometry::MAX_CELLS;
+use super::clip::age_label_now;
+use super::clip_view::{no_picture, peek_picture, set_rows_in_place, view_index};
+use super::kinds::{item_meta, shows_pictures};
 use super::out::{Press, drag_ids};
 use super::{PocketController, UNDO_WINDOW, View, display_name};
 
@@ -90,13 +90,33 @@ pub(super) fn kind_counts(items: &[ListItem]) -> Vec<(PocketKind, usize)> {
         .collect()
 }
 
-/// Whether an open list stays open in `presence` with `count` items in the
-/// Pocket: never once it is empty; while the island is expanded, whatever
-/// the count; collapsed or hidden, only while the Pocket still holds more
-/// than [`MAX_CELLS`], so the next opening returns to it. Otherwise that
-/// opening shows the cells, as a Pocket of eight items or fewer always has.
-pub(super) fn list_stays_open(presence: Presence, count: usize) -> bool {
-    count > 0 && (presence == Presence::Expanded || count > MAX_CELLS)
+/// Names at most this many of a folder's items in its peek.
+const FOLDER_NAMES: usize = 4;
+
+/// The peek's lines for the folder at `path`: its name and how many items
+/// it holds, then the first few names in name order (hidden files left
+/// out), and how many more there are.
+fn folder_lines(path: &Path) -> Vec<(String, String)> {
+    let mut names: Vec<String> = std::fs::read_dir(path)
+        .map(|dir| {
+            dir.filter_map(Result::ok)
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| !n.starts_with('.'))
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort_by_key(|n| n.to_lowercase());
+    let count = names.len().to_string();
+    let head = fill(
+        &tr("{name} · {n} items"),
+        &[("name", &display_name(path)), ("n", &count)],
+    );
+    let more = names.len().saturating_sub(FOLDER_NAMES);
+    iter::once(head)
+        .chain(names.into_iter().take(FOLDER_NAMES))
+        .chain((more > 0).then(|| fill(&tr("+{n} more"), &[("n", &more.to_string())])))
+        .map(|line| (String::new(), line))
+        .collect()
 }
 
 /// The window's number for chip `filter` among the chips of `kinds` (0 is
@@ -118,11 +138,12 @@ fn filter_at(i: i32, kinds: &[PocketKind]) -> Option<PocketKind> {
         .copied()
 }
 
-/// Whether the list is open, its filter, and the rows and chips it shows.
+/// Whether the list is open, its filter, its open peek, and the rows and
+/// chips it shows.
 pub(super) struct ListView {
-    /// Opened by "All N", closed by its back control, a new layout, a drag
-    /// headed for the island, the island collapsing with eight items or
-    /// fewer left, or an empty Pocket.
+    /// Opened by the look toggle or a group, closed by the toggle, its back
+    /// control or a drag headed for the island; the island opens on the
+    /// look the settings say.
     open: Cell<bool>,
     /// The kind listed, or every item for `None`.
     filter: Cell<Option<PocketKind>>,
@@ -130,21 +151,29 @@ pub(super) struct ListView {
     chips: Rc<VecModel<PocketChip>>,
     /// The kinds the chips after "All" stand for, in the order shown.
     kinds: RefCell<Vec<PocketKind>>,
+    /// The item whose peek is open.
+    peek: Cell<Option<u64>>,
+    peek_lines: Rc<VecModel<PeekLine>>,
 }
 
 impl ListView {
-    /// A closed list, its rows and chips bound to `window`.
-    pub(super) fn new(window: &PocketIsland) -> Self {
+    /// The list, open if `look` says so, its rows and chips bound to
+    /// `window`.
+    pub(super) fn new(window: &PocketIsland, look: PocketView) -> Self {
         let rows = Rc::new(VecModel::default());
         window.set_list_rows(ModelRc::from(rows.clone()));
         let chips = Rc::new(VecModel::default());
         window.set_list_chips(ModelRc::from(chips.clone()));
+        let peek_lines = Rc::new(VecModel::default());
+        window.set_list_peek_lines(ModelRc::from(peek_lines.clone()));
         Self {
-            open: Cell::new(false),
+            open: Cell::new(look == PocketView::List),
             filter: Cell::new(None),
             rows,
             chips,
             kinds: RefCell::new(Vec::new()),
+            peek: Cell::new(None),
+            peek_lines,
         }
     }
 
@@ -161,21 +190,14 @@ impl ListView {
 }
 
 impl PocketController {
-    /// Routes "All N" and the list's rows, chips and back control to the
-    /// controller.
+    /// Routes the list's rows, their buttons, its chips and back control
+    /// to the controller.
     pub(super) fn connect_list(&self) {
         let w = &self.window;
         let this = self.this.clone();
         let with = move || this.upgrade();
-        let c = with.clone();
-        w.on_list_open(move || {
-            if let Some(c) = c() {
-                c.open_pocket_list(None);
-                c.hold_open_briefly();
-            }
-        });
-        // A row's press goes through the cells' latch, by the item's place
-        // in the Pocket, so it drags and selects as a cell does.
+        // A row's press goes through the tiles' latch, by the item's place
+        // in the Pocket, so it drags and selects as a tile does.
         let c = with.clone();
         w.on_list_pressed(move |id| {
             let Some(c) = c() else {
@@ -208,10 +230,33 @@ impl PocketController {
             }
         });
         let c = with.clone();
+        w.on_list_peek(move |id| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id)) {
+                c.toggle_list_peek(id);
+            }
+        });
+        let c = with.clone();
+        w.on_list_reveal(move |id| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id))
+                && let Some(path) = c.item_path(id)
+            {
+                c.platform.reveal_in_finder(&[path]);
+            }
+        });
+        let c = with.clone();
+        w.on_list_copy_path(move |id| {
+            if let (Some(c), Ok(id)) = (c(), u64::try_from(id))
+                && let Some(path) = c.item_path(id)
+            {
+                c.copy_item_path(&path);
+            }
+        });
+        let c = with.clone();
         w.on_list_filter_chosen(move |i| {
             if let Some(c) = c() {
                 let filter = filter_at(i, &c.list.kinds.borrow());
                 c.list.filter.set(filter);
+                c.list.peek.set(None);
                 c.refresh_list();
             }
         });
@@ -232,10 +277,12 @@ impl PocketController {
         debug!("pocket list open on {filter:?}");
         self.list.open.set(true);
         self.list.filter.set(filter);
+        self.list.peek.set(None);
+        self.window.set_view(self.window_view());
         self.refresh();
     }
 
-    /// Goes back from the Pocket list to the cells; false if it wasn't open
+    /// Goes back from the Pocket list to the kinds; false if it wasn't open
     /// (and nothing was refreshed).
     pub(super) fn close_pocket_list(&self) -> bool {
         if !self.list.open.replace(false) {
@@ -243,8 +290,92 @@ impl PocketController {
         }
         debug!("pocket list closed");
         self.list.filter.set(None);
+        self.list.peek.set(None);
+        self.window.set_view(self.window_view());
         self.refresh();
         true
+    }
+
+    /// Back to the look the settings say, on every item, with no peek open
+    /// in either view: what the island opens on.
+    pub(super) fn reset_look(&self) {
+        let list = self.pocket_view.get() == PocketView::List;
+        let changed = self.list.open.replace(list) != list
+            || self.list.filter.take().is_some()
+            || self.list.peek.take().is_some()
+            || self.close_clip_peek();
+        if changed {
+            debug!("pocket look reset to {:?}", self.pocket_view.get());
+            self.window.set_view(self.window_view());
+            self.refresh();
+        }
+    }
+
+    /// The kind the list shows while it is in sight on one kind.
+    pub(super) fn list_kind(&self) -> Option<PocketKind> {
+        self.list.filter.get().filter(|_| self.list_shown())
+    }
+
+    /// Opens the peek of the list's row of item `id`, or closes it when it
+    /// is the one open.
+    fn toggle_list_peek(&self, id: u64) {
+        let open = self.list.peek.get() != Some(id);
+        self.list.peek.set(open.then_some(id));
+        self.refresh_list();
+    }
+
+    /// The path of item `id`, while the Pocket holds it.
+    pub(super) fn item_path(&self, id: u64) -> Option<PathBuf> {
+        self.pocket.borrow().get(id).map(|i| i.path.clone())
+    }
+
+    /// Puts `path` on the clipboard as text, in the format the Copy path
+    /// action uses.
+    fn copy_item_path(&self, path: &Path) {
+        let format = self.settings.borrow().copy_path_format;
+        let text = vento_core::paths::format_paths(&[path.to_path_buf()], format);
+        if let Err(e) = self.platform.copy_text(&text) {
+            warn!("cannot copy the path of a pocket item: {e}");
+            let text = fill(
+                &tr("Couldn't copy: {reason}"),
+                &[("reason", &e.to_string())],
+            );
+            self.toast.show(&text, None, self.toast_at());
+        }
+    }
+
+    /// The peek of `item`, its file missing when `gone`: a picture's
+    /// picture, a folder's first few names, or what the item is, how big,
+    /// where it lives and when it came in.
+    fn item_peek(&self, item: &PocketItem, gone: bool) -> (Image, Vec<(String, String)>) {
+        let is_dir = item.path.is_dir();
+        let kind = kind_of(&item.path, is_dir);
+        if !gone
+            && shows_pictures(kind)
+            && let Some(picture) = peek_picture(&item.path)
+        {
+            return (picture, Vec::new());
+        }
+        if !gone && is_dir {
+            return (no_picture(), folder_lines(&item.path));
+        }
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let place = item
+            .path
+            .parent()
+            .map(|p| display_path(p, home.as_deref()))
+            .unwrap_or_default();
+        let what = self
+            .platform
+            .kind_description(&item.path)
+            .unwrap_or_else(|| kind.label());
+        let lines = vec![
+            (tr("Kind"), what),
+            (tr("Size"), item_meta(&item.path, is_dir, gone)),
+            (tr("Where"), place),
+            (tr("Added"), age_label_now(item.added_unix)),
+        ];
+        (no_picture(), lines)
     }
 
     /// The items a press on the list's row of item `pressed` drags: see
@@ -275,23 +406,12 @@ impl PocketController {
         }
     }
 
-    /// Closes the list once it no longer stays open ([`list_stays_open`]:
-    /// the Pocket emptied, or a drop that removed items left eight or fewer
-    /// while the island was collapsed), and pushes its chips and rows into
-    /// the window while it is in sight (rows cost a look at each file, so
-    /// none are made for a hidden list). A filter whose kind is gone falls
-    /// back to All. Only rows that changed are touched, so the row under the
-    /// pointer keeps its hover.
+    /// Pushes the list's chips and rows into the window while it is in
+    /// sight (rows cost a look at each file, so none are made for a hidden
+    /// list), and its open peek. A filter whose kind is gone falls back to
+    /// All; a peek whose item is no longer listed closes. Only rows that
+    /// changed are touched, so the row under the pointer keeps its hover.
     pub(super) fn refresh_list(&self) {
-        let presence = self.island.borrow().presence();
-        if self.list.open.get() && !list_stays_open(presence, self.item_count()) {
-            debug!(
-                "pocket list closed: {} item(s), {presence:?}",
-                self.item_count()
-            );
-            self.list.open.set(false);
-            self.list.filter.set(None);
-        }
         if !self.expanded() || !self.list_shown() {
             return;
         }
@@ -319,22 +439,61 @@ impl PocketController {
         let selected = self.selected.borrow();
         let mut icons = self.icons.borrow_mut();
         let fallback = self.window.global::<Icons>().get_file();
-        let rows = list_rows(&items, filter)
-            .into_iter()
-            .filter_map(|id| pocket.get(id))
+        let listed = list_rows(&items, filter);
+        let rows = listed
+            .iter()
+            .filter_map(|&id| pocket.get(id))
             .map(|item| {
                 let gone = missing.contains(&item.id);
+                let is_dir = item.path.is_dir();
+                let kind = kind_of(&item.path, is_dir);
+                let thumb = (shows_pictures(kind) && !gone)
+                    .then(|| self.kinds.thumb(item))
+                    .flatten();
+                let place = item.path.parent().map(display_name).unwrap_or_default();
+                let size = item_meta(&item.path, is_dir, gone);
                 PocketRow {
                     // An id too big for the window's ints takes no action.
                     id: i32::try_from(item.id).unwrap_or(-1),
                     name: display_name(&item.path).into(),
-                    icon: self.item_icon(&mut icons, item, gone, &fallback),
+                    meta: [kind.label(), size, place]
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                        .into(),
+                    thumb: thumb.is_some(),
+                    icon: thumb
+                        .unwrap_or_else(|| self.item_icon(&mut icons, item, gone, &fallback)),
                     missing: gone,
                     selected: selected.contains(&item.id),
                 }
             })
             .collect();
         set_rows_in_place(&self.list.rows, rows);
+        let peek = self
+            .list
+            .peek
+            .get()
+            .and_then(|id| listed.iter().position(|&l| l == id).map(|i| (id, i)));
+        self.list.peek.set(peek.map(|(id, _)| id));
+        let (picture, lines) = peek.and_then(|(id, _)| pocket.get(id)).map_or_else(
+            || (no_picture(), Vec::new()),
+            |item| self.item_peek(item, missing.contains(&item.id)),
+        );
+        self.window.set_list_peek_picture(picture);
+        set_rows_in_place(
+            &self.list.peek_lines,
+            lines
+                .into_iter()
+                .map(|(label, value)| PeekLine {
+                    label: label.into(),
+                    value: value.into(),
+                })
+                .collect(),
+        );
+        self.window
+            .set_list_peek_index(peek.map_or(-1, |(_, i)| i32::try_from(i).unwrap_or(-1)));
     }
 }
 
@@ -414,21 +573,22 @@ mod tests {
     }
 
     #[test]
-    fn a_collapse_keeps_the_list_only_while_the_pocket_is_full() {
-        // Expanded, it stays whatever the count (removing down to eight
-        // keeps it in sight).
-        assert!(list_stays_open(Presence::Expanded, 12));
-        assert!(list_stays_open(Presence::Expanded, 5));
-        // Collapsed with more than eight: the next opening returns to it.
-        assert!(list_stays_open(Presence::Collapsed, 9));
-        assert!(list_stays_open(Presence::Collapsed, 40));
-        // Eight or fewer: the next opening shows the cells, as today.
-        assert!(!list_stays_open(Presence::Collapsed, 8));
-        assert!(!list_stays_open(Presence::Collapsed, 1));
-        // Empty: closed, even while a clear's Undo holds the island open.
-        assert!(!list_stays_open(Presence::Hidden, 0));
-        assert!(!list_stays_open(Presence::Collapsed, 0));
-        assert!(!list_stays_open(Presence::Expanded, 0));
+    fn a_folder_peek_names_its_first_items_and_counts_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["b.txt", "A.txt", ".hidden", "c.txt", "d.txt", "e.txt"] {
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        let lines: Vec<String> = folder_lines(dir.path())
+            .into_iter()
+            .map(|(label, value)| {
+                assert!(label.is_empty());
+                value
+            })
+            .collect();
+        assert!(lines[0].ends_with(" · 5 items"), "{lines:?}");
+        assert_eq!(lines[1..5], ["A.txt", "b.txt", "c.txt", "d.txt"]);
+        assert_eq!(lines[5], "+1 more");
+        assert_eq!(lines.len(), 6);
     }
 
     #[test]

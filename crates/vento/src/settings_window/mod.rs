@@ -31,7 +31,7 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketLayout,
+    Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView,
     Settings, SettingsError, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
@@ -528,11 +528,9 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
-        window.on_pocket_layout_chosen(move |i| {
-            if let (Some(controller), Some(layout)) =
-                (this.upgrade(), choice(&PocketLayout::ALL, i))
-            {
-                controller.apply(|s| s.pocket_layout = layout);
+        window.on_pocket_view_chosen(move |i| {
+            if let (Some(controller), Some(look)) = (this.upgrade(), choice(&PocketView::ALL, i)) {
+                controller.apply(|s| s.pocket_view = look);
             }
         });
         let this = self.this.clone();
@@ -879,7 +877,7 @@ impl SettingsWindowController {
         window.set_shortcut(symbols(&settings.pocket_shortcut).into());
         window.set_remove_after_drop(settings.pocket_remove_after_drop);
         window.set_keep_copies(settings.pocket_keep_copies);
-        window.set_pocket_layout(choice_index(&PocketLayout::ALL, settings.pocket_layout));
+        window.set_pocket_view(choice_index(&PocketView::ALL, settings.pocket_view));
         window.set_clip_history(settings.clipboard_history);
         window.set_awake_screen_off(settings.keep_awake_screen_off);
         let closed: Vec<bool> = pages(true)

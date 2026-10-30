@@ -62,13 +62,13 @@ pub(super) fn removes_after_drop(
 /// What a press is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Press {
-    /// The cell (or Pocket list row) of the item at this place in the
+    /// The tile (or Pocket list row) of the item at this place in the
     /// Pocket.
     Cell(u32),
-    /// "Drag all".
+    /// "Drag all" (or "Drag N" under the list's kind).
     All,
-    /// The stack of this kind, under the Stacks layout.
-    Stack(PocketKind),
+    /// The "Drag N" of this kind's group.
+    Kind(PocketKind),
 }
 
 /// How far, in logical pixels, a press moves before it becomes a drag.
@@ -315,14 +315,12 @@ mod tests {
         // Released twice (up, then a cancel): one click.
         assert_eq!(latch.release(), None);
         assert_eq!(latch.release(), None);
-        // A stack's press is told apart from a cell's, as a click or a drag.
-        latch.press(Press::Stack(PocketKind::Image));
-        assert_eq!(latch.release(), Some(Press::Stack(PocketKind::Image)));
-        latch.press(Press::Stack(PocketKind::Folder));
-        assert_eq!(
-            latch.moved(0.0, 6.0),
-            Some(Press::Stack(PocketKind::Folder))
-        );
+        // A group's "Drag N" is told apart from a tile's, as a click or a
+        // drag.
+        latch.press(Press::Kind(PocketKind::Image));
+        assert_eq!(latch.release(), Some(Press::Kind(PocketKind::Image)));
+        latch.press(Press::Kind(PocketKind::Folder));
+        assert_eq!(latch.moved(0.0, 6.0), Some(Press::Kind(PocketKind::Folder)));
     }
 
     #[test]

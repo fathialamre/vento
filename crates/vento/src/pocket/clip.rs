@@ -22,8 +22,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use jiff::tz::TimeZone;
 use log::{debug, warn};
 use vento_core::clip::{
-    ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, drop_missing_files, fit, image, is_file_reference,
-    is_secret, plain_text, shown_picture, snapshot_hash, summarize,
+    ClipSnapshot, MAX_SNAPSHOT_BYTES, Summary, TYPE_PNG, TYPE_TEXT, TYPE_TIFF, drop_missing_files,
+    fit, image, is_file_reference, is_secret, plain_text, shown_picture, snapshot_hash, summarize,
 };
 use vento_core::clip_history::{
     ClipEntry, ClipHistory, Loaded, clipboard_dir, clipboard_path, has_backup, remove_backup,
@@ -32,7 +32,7 @@ use vento_core::clip_store::{delete_entry, highest_id, read_entry, sweep, write_
 use vento_core::i18n::dates::{day_month, weekday_short};
 use vento_core::i18n::{fill, tr};
 use vento_core::settings::Settings;
-use vento_platform::{Dropped, Platform};
+use vento_platform::{Dropped, Platform, RgbaImage};
 
 use super::clip_thumb::{THUMB_FILE, write_file_thumb, write_thumb};
 use super::display_name;
@@ -92,12 +92,61 @@ pub(super) struct ClipRowData {
     pub(super) label: String,
     /// How long ago it was copied: `now`, `5m`, `3h`, `Tue`, `12 Oct`.
     pub(super) age: String,
+    /// The line under the label: what the entry is, where it came from
+    /// (a link's site, the files' folder) and its age.
+    pub(super) meta: String,
+    /// A file entry with files to show in Finder.
+    pub(super) files: bool,
+    /// A link a browser opens (http or https).
+    pub(super) web: bool,
     /// A file entry whose files are all gone (shown dimmed, not put back).
     pub(super) missing: bool,
     /// The stored image of an Image entry, for its thumbnail.
     pub(super) thumb: Option<PathBuf>,
     /// Kept until removed by hand; pinned rows come first.
     pub(super) pinned: bool,
+}
+
+/// What the Clipboard view's peek shows for an entry: its text, its
+/// picture, or lines (a link's site and address, a file entry's names).
+#[derive(Default)]
+pub(super) struct ClipPeek {
+    pub(super) text: String,
+    pub(super) picture: Option<RgbaImage>,
+    pub(super) lines: Vec<(String, String)>,
+}
+
+/// A peek's text holds at most this many characters.
+const PEEK_CHARS: usize = 600;
+/// A peek names at most this many files.
+const PEEK_FILES: usize = 5;
+/// A peek's picture's shorter side, in pixels.
+pub(super) const PEEK_PICTURE_PX: u32 = 300;
+
+/// The peek's lines for a file entry of `paths`: the first few names, and
+/// how many more there are.
+fn file_lines(paths: &[PathBuf]) -> Vec<(String, String)> {
+    let more = paths.len().saturating_sub(PEEK_FILES);
+    paths
+        .iter()
+        .take(PEEK_FILES)
+        .map(|p| display_name(p))
+        .chain((more > 0).then(|| fill(&tr("+{n} more"), &[("n", &more.to_string())])))
+        .map(|name| (String::new(), name))
+        .collect()
+}
+
+/// The site of `url`: its host, without a leading `www.`.
+fn link_host(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    host.strip_prefix("www.").unwrap_or(host).to_owned()
+}
+
+/// Whether a browser opens `url`.
+pub(super) fn is_web(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.starts_with("https://") || lower.starts_with("http://")
 }
 
 /// Records copies into the clipboard history and puts entries back. Main
@@ -521,6 +570,79 @@ impl ClipController {
         }
     }
 
+    /// What the peek of entry `id` shows: the whole text (capped), the
+    /// picture made larger than its thumbnail, a link's site and address,
+    /// or a file entry's names. Read from the stored entry when it is asked
+    /// for, one entry at a time.
+    pub(super) fn peek(&self, id: u64) -> Option<ClipPeek> {
+        let entry = self.history.borrow().get(id).cloned()?;
+        let peek = match &entry.summary {
+            Summary::Text { preview } => {
+                let text = self
+                    .snapshot(id)
+                    .and_then(|(_, s)| {
+                        let rep = s.items.first()?.iter().find(|r| r.ty == TYPE_TEXT)?;
+                        Some(String::from_utf8_lossy(&rep.data).trim().to_owned())
+                    })
+                    .unwrap_or_else(|| preview.clone());
+                ClipPeek {
+                    text: text.chars().take(PEEK_CHARS).collect(),
+                    ..ClipPeek::default()
+                }
+            }
+            Summary::Link { url } => ClipPeek {
+                lines: vec![(tr("Site"), link_host(url)), (tr("Address"), url.clone())],
+                ..ClipPeek::default()
+            },
+            Summary::Image { .. } => ClipPeek {
+                picture: self.snapshot(id).and_then(|(_, s)| {
+                    let item = s.items.first()?;
+                    let rep = [TYPE_PNG, TYPE_TIFF]
+                        .into_iter()
+                        .find_map(|ty| item.iter().find(|r| r.ty == ty))?;
+                    vento_platform::picture_data_thumbnail(&rep.data, PEEK_PICTURE_PX, 4)
+                }),
+                ..ClipPeek::default()
+            },
+            Summary::Files { paths } => match shown_picture(&entry.summary) {
+                Some(picture) => ClipPeek {
+                    picture: vento_platform::picture_thumbnail(
+                        &self.real_path(picture),
+                        PEEK_PICTURE_PX,
+                        4,
+                    ),
+                    lines: file_lines(paths),
+                    ..ClipPeek::default()
+                },
+                None => ClipPeek {
+                    lines: file_lines(paths),
+                    ..ClipPeek::default()
+                },
+            },
+        };
+        Some(peek)
+    }
+
+    /// The address of link entry `id`.
+    pub(super) fn link(&self, id: u64) -> Option<String> {
+        match &self.history.borrow().get(id)?.summary {
+            Summary::Link { url } => Some(url.clone()),
+            _ => None,
+        }
+    }
+
+    /// The files of file entry `id` that are still there.
+    pub(super) fn files(&self, id: u64) -> Vec<PathBuf> {
+        match self.history.borrow().get(id).map(|e| &e.summary) {
+            Some(Summary::Files { paths }) => paths
+                .iter()
+                .map(|p| self.real_path(p))
+                .filter(|p| p.exists())
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     /// Takes the entries with these ids out and returns them, for an Undo
     /// to [`restore`](Self::restore) or [`discard`](Self::discard).
     pub(super) fn remove(&self, ids: &[u64]) -> Vec<ClipEntry> {
@@ -831,6 +953,33 @@ fn build_rows(
         .into_iter()
         .chain(rest)
         .map(|e| {
+            let age = age_label(e.copied_unix, now_unix, tz.clone());
+            let (what, place) = match &e.summary {
+                Summary::Text { .. } => (tr("Text"), String::new()),
+                Summary::Link { url } => (tr("Link"), link_host(url)),
+                Summary::Image { ext, .. } => (tr("Image"), ext.to_ascii_uppercase()),
+                Summary::Files { paths } => (
+                    if paths.len() > 1 {
+                        fill(&tr("{n} files"), &[("n", &paths.len().to_string())])
+                    } else if shown_picture(&e.summary).is_some() {
+                        tr("Image")
+                    } else {
+                        tr("File")
+                    },
+                    paths
+                        .first()
+                        .and_then(|p| p.parent())
+                        .map(display_name)
+                        .unwrap_or_default(),
+                ),
+            };
+            let meta = [what, place, age.clone()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let files = matches!(&e.summary, Summary::Files { paths } if !paths.is_empty());
+            let web = matches!(&e.summary, Summary::Link { url } if is_web(url));
             let (kind, label, missing, thumb) = match &e.summary {
                 Summary::Text { preview } => (ClipKind::Text, preview.clone(), false, None),
                 // Picture files (a photo copied in Finder) show as the
@@ -867,7 +1016,10 @@ fn build_rows(
                 id: e.id,
                 kind,
                 label,
-                age: age_label(e.copied_unix, now_unix, tz.clone()),
+                age,
+                meta,
+                files,
+                web,
                 missing,
                 thumb,
                 pinned: e.pinned,
@@ -899,6 +1051,12 @@ fn link_label(url: &str) -> String {
         .or_else(|| url.strip_prefix("http://"))
         .unwrap_or(url)
         .to_owned()
+}
+
+/// How long ago `unix` is now, as [`age_label`] words it in the system's
+/// time zone.
+pub(super) fn age_label_now(unix: u64) -> String {
+    age_label(unix, now_unix(), TimeZone::system())
 }
 
 /// How long ago `copied_unix` was at `now_unix`, in the interface language:
@@ -1714,6 +1872,68 @@ mod tests {
         assert_eq!(age_label(now - 10 * 86400, now, TimeZone::UTC), "12 Oct");
         // A time ahead of now (a clock set back) reads as now.
         assert_eq!(age_label(now + 50, now, TimeZone::UTC), "now");
+    }
+
+    #[test]
+    fn rows_say_what_they_are_where_from_and_when() {
+        let now = 1_000_000;
+        let dir = Path::new("/data/clipboard");
+        let entries = vec![
+            entry(
+                1,
+                now - 300,
+                Summary::Link {
+                    url: "https://www.example.com/a?b".into(),
+                },
+                vec![],
+            ),
+            entry(
+                2,
+                now,
+                Summary::Files {
+                    paths: vec![
+                        PathBuf::from("/x/Downloads/a.txt"),
+                        PathBuf::from("/x/b.txt"),
+                    ],
+                },
+                vec![],
+            ),
+            entry(
+                3,
+                now,
+                Summary::Text {
+                    preview: "hi".into(),
+                },
+                vec![],
+            ),
+            entry(
+                4,
+                now,
+                Summary::Link {
+                    url: "mailto:a@example.com".into(),
+                },
+                vec![],
+            ),
+        ];
+        let rows = build_rows(&entries, now, |_| true, dir);
+        let metas: Vec<&str> = rows.iter().map(|r| r.meta.as_str()).collect();
+        assert_eq!(
+            metas,
+            [
+                "Link · example.com · 5m",
+                "2 files · Downloads · now",
+                "Text · now",
+                "Link · mailto:a@example.com · now"
+            ]
+        );
+        assert_eq!(
+            rows.iter().map(|r| (r.files, r.web)).collect::<Vec<_>>(),
+            [(false, true), (true, false), (false, false), (false, false)]
+        );
+        let names: Vec<PathBuf> = (0..7).map(|i| PathBuf::from(format!("/x/{i}"))).collect();
+        let lines = file_lines(&names);
+        assert_eq!(lines.len(), 6);
+        assert_eq!(lines[5].1, "+2 more");
     }
 
     #[test]

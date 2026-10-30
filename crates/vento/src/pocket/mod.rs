@@ -11,24 +11,22 @@
 //! and the island opens as a drag nears it or on the global shortcut.
 //!
 //! With the clipboard history on, the expanded island has a second view, the
-//! Clipboard ([`View`]), and a bar under either view to switch between them.
+//! Clipboard ([`View`]), and the bar under either view has a tab for each.
 //!
-//! A Pocket of more than eight items is laid out as the settings say
-//! ([`PocketLayout`]); under List, its "All N" button opens the Pocket list
-//! (`list_view`); under Scroll, every item is a cell in a strip that scrolls
-//! sideways; under Stacks, one stack per kind stands in for the cells
-//! (`stacks`).
+//! The Pocket view shows its items grouped by kind (`kinds`) or as a list
+//! (`list_view`): it opens on the look the settings say ([`PocketView`]),
+//! and its bar switches between the two.
 
 mod add;
 mod clip;
 mod clip_thumb;
 mod clip_view;
 mod geometry;
+mod kinds;
 mod list_view;
 mod menu;
 mod out;
 mod owned;
-mod stacks;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -41,8 +39,7 @@ use raw_window_handle::HasWindowHandle;
 use slint::platform::{PointerEventButton, WindowEvent};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{
-    ComponentHandle, Image, LogicalPosition, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
-    TimerMode, VecModel,
+    ComponentHandle, Image, LogicalPosition, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode,
 };
 use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
@@ -50,33 +47,32 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{fill, tr, with_language};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
-use vento_core::settings::{PocketLayout, Settings};
+use vento_core::settings::{PocketView, Settings};
 use vento_core::trigger::InputSample;
 use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
 };
 
 use crate::appearance;
-use crate::panel::set_rows;
 use crate::toast::Toaster;
-use crate::ui::{Icons, PocketCell, PocketIsland};
+use crate::ui::PocketIsland;
 
 #[cfg(target_os = "linux")]
 use crate::drag;
 use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
-use geometry::{Frames, cell_cap, frames, hits, hover_event, interactive_rect, island_inputs};
-use list_view::{ListView, list_stays_open};
+use geometry::{Frames, frames, hits, hover_event, interactive_rect, island_inputs};
+use kinds::Kinds;
+use list_view::ListView;
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
 use out::{
     Press, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
 };
 use owned::{PendingTrash, trash_kept, trash_owned};
-use stacks::{Stacks, shows_stacks};
 
-/// Icon size of a cell, in points.
+/// Icon size of a tile or a row, in points.
 const ICON_PX: u32 = 40;
 /// Where the window waits, out of sight, while it is pre-warmed.
 const PARKED: LogicalPosition = LogicalPosition {
@@ -85,6 +81,9 @@ const PARKED: LogicalPosition = LogicalPosition {
 };
 /// How long the parked window stays up, so the native window exists.
 const WARM_DELAY: Duration = Duration::from_millis(200);
+/// How long the window stays as tall as before after the island shrinks, so
+/// the shrinking is seen: a little longer than the island's animation.
+const SHRINK_DELAY: Duration = Duration::from_millis(280);
 /// How long the island offers Undo after a clear or an x.
 const UNDO_LIFETIME: Duration = Duration::from_secs(5);
 /// How often the Undo ring is redrawn while it counts down in sight.
@@ -163,45 +162,6 @@ impl Undo {
     }
 }
 
-/// The window's number for `layout`.
-fn layout_index(layout: PocketLayout) -> i32 {
-    match layout {
-        PocketLayout::List => 0,
-        PocketLayout::Scroll => 1,
-        PocketLayout::Stacks => 2,
-    }
-}
-
-/// Cells for the items `layout` shows as cells (see [`cell_cap`]; none
-/// while stacks stand in for them), in the Pocket's order so a cell's index
-/// is its item's; `icon` gets each item and whether its file is missing.
-fn build_cells(
-    items: &[PocketItem],
-    layout: PocketLayout,
-    missing: &[u64],
-    selected: &[u64],
-    mut icon: impl FnMut(&PocketItem, bool) -> Image,
-) -> Vec<PocketCell> {
-    let cap = if shows_stacks(layout, items.len()) {
-        0
-    } else {
-        cell_cap(layout)
-    };
-    items
-        .iter()
-        .take(cap)
-        .map(|item| {
-            let gone = missing.contains(&item.id);
-            PocketCell {
-                name: display_name(&item.path).into(),
-                icon: icon(item, gone),
-                missing: gone,
-                selected: selected.contains(&item.id),
-            }
-        })
-        .collect()
-}
-
 pub(super) fn display_name(path: &Path) -> String {
     path.file_name().map_or_else(
         || path.display().to_string(),
@@ -234,7 +194,8 @@ pub struct PocketController {
     home: Cell<Option<IslandHome>>,
     /// Finder icons by item id, converted once.
     icons: RefCell<HashMap<u64, Image>>,
-    cells: Rc<VecModel<PocketCell>>,
+    /// The Pocket view's groups and tiles.
+    kinds: Kinds,
     /// Kept open by the shortcut until toggled again.
     pinned: Cell<bool>,
     /// Kept open until then, to confirm an add.
@@ -262,9 +223,9 @@ pub struct PocketController {
     /// The input shape last set, in physical window pixels; `None` before
     /// the first.
     input_shape: Cell<Option<Option<Rect>>>,
-    /// Ids of the selected items, toggled by clicking their cells.
+    /// Ids of the selected items, toggled by clicking their tiles or rows.
     selected: RefCell<Vec<u64>>,
-    /// Presses on the cells, the stacks and "Drag all".
+    /// Presses on the tiles, the rows, "Drag N" and "Drag all".
     latch: PressLatch,
     /// Items taken out whose files wait to go to the Trash.
     pending: PendingTrash,
@@ -275,8 +236,6 @@ pub struct PocketController {
     /// `undo_timer` repeats to redraw the ring in sight; otherwise it only
     /// waits for the offer to end.
     undo_ticking: Cell<bool>,
-    /// The cells a clear took, shown faded while its Undo is offered.
-    ghosts: Rc<VecModel<PocketCell>>,
     /// vento is paused: the island rests and takes nothing.
     paused: Cell<bool>,
     /// The cursor at the last sample with the mouse up, and whether it was
@@ -289,12 +248,12 @@ pub struct PocketController {
     view: Cell<View>,
     /// The Clipboard view's rows.
     clip_view: ClipView,
-    /// How a Pocket of more than eight items is laid out.
-    layout: Cell<PocketLayout>,
-    /// The Pocket list, opened by "All N" or a stack.
+    /// The Pocket view's look in the settings, which it opens on.
+    pocket_view: Cell<PocketView>,
+    /// The Pocket list, shown by the bar's look toggle or a group.
     list: ListView,
-    /// The stacks of a full Pocket under the Stacks layout.
-    stacks: Stacks,
+    /// Brings the window down to the island's height once it has shrunk.
+    shrink_timer: Timer,
     this: Weak<Self>,
 }
 
@@ -315,15 +274,10 @@ impl PocketController {
         let window = PocketIsland::new().expect("cannot create the pocket window");
         // The island keeps its own dark look; it takes the direction.
         appearance::follow(&window, appearance::Look::Direction);
-        let cells = Rc::new(VecModel::default());
-        window.set_cells(ModelRc::from(cells.clone()));
-        let ghosts = Rc::new(VecModel::default());
-        window.set_ghosts(ModelRc::from(ghosts.clone()));
+        let kinds = Kinds::new(&window);
         let clip_view = ClipView::new(&window);
-        let list = ListView::new(&window);
-        let stacks = Stacks::new(&window);
-        let layout = settings.borrow().pocket_layout;
-        window.set_layout(layout_index(layout));
+        let pocket_view = settings.borrow().pocket_view;
+        let list = ListView::new(&window, pocket_view);
         let home = platform.pocket_home();
         let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
         let controller = Rc::new_cyclic(|this| Self {
@@ -336,7 +290,7 @@ impl PocketController {
             island: RefCell::new(IslandState::new()),
             home: Cell::new(home),
             icons: RefCell::new(HashMap::new()),
-            cells,
+            kinds,
             pinned: Cell::new(false),
             pin_until: Cell::new(None),
             catcher: RefCell::new(None),
@@ -355,16 +309,15 @@ impl PocketController {
             undo: RefCell::new(None),
             undo_timer: Timer::default(),
             undo_ticking: Cell::new(false),
-            ghosts,
             paused: Cell::new(false),
             last_cursor: Cell::new(None),
             pointer_in: Cell::new(false),
             clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
             view: Cell::new(View::Pocket),
             clip_view,
-            layout: Cell::new(layout),
+            pocket_view: Cell::new(pocket_view),
             list,
-            stacks,
+            shrink_timer: Timer::default(),
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -373,7 +326,7 @@ impl PocketController {
         controller.connect();
         controller.connect_clip();
         controller.connect_list();
-        controller.connect_stacks();
+        controller.connect_kinds();
         MAIN_POCKET.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
         controller
     }
@@ -500,9 +453,16 @@ impl PocketController {
             return;
         };
         let pressed = match target {
-            Press::All => None,
-            Press::Stack(kind) => {
-                self.drag_stack(kind);
+            // Under the list's kind, "Drag N" takes that kind.
+            Press::All => match self.list_kind() {
+                Some(kind) => {
+                    self.drag_kind(kind);
+                    return;
+                }
+                None => None,
+            },
+            Press::Kind(kind) => {
+                self.drag_kind(kind);
                 return;
             }
             Press::Cell(i) => match self.id_at(i as usize) {
@@ -525,13 +485,10 @@ impl PocketController {
         self.start_drag_out(ids);
     }
 
-    /// A press ended: a click on a cell toggles its selection, one on a
-    /// stack opens the Pocket list on its kind.
+    /// A press ended: a click on a tile or a row toggles its selection.
     fn released(&self) {
-        match self.latch.release() {
-            Some(Press::Cell(i)) => self.toggle_selected(i as usize),
-            Some(Press::Stack(kind)) => self.stack_clicked(kind),
-            Some(Press::All) | None => {}
+        if let Some(Press::Cell(i)) = self.latch.release() {
+            self.toggle_selected(i as usize);
         }
     }
 
@@ -552,16 +509,13 @@ impl PocketController {
                 }
             }
         };
-        if let Some(mut cell) = self.cells.row_data(index) {
-            cell.selected = on;
-            self.cells.set_row_data(index, cell);
-        }
+        self.kinds.set_selected(index, on);
         self.list.set_selected(id, on);
     }
 
-    /// The right-click menu on cell `index`, at window-local `at`: acts on
-    /// the selection when the cell is part of a bigger one, otherwise on the
-    /// cell's item. While it is up (it is modal), nothing else runs, so the
+    /// The right-click menu on a tile, at window-local `at`: acts on the
+    /// selection when the tile is part of a bigger one, otherwise on the
+    /// tile's item. While it is up (it is modal), nothing else runs, so the
     /// island stays as it is; afterwards it settles as usual.
     fn show_menu(&self, clicked: u64, at: Point, button: PointerEventButton) {
         if self.paused.get()
@@ -772,20 +726,12 @@ impl PocketController {
         debug!("pocket removed {} item(s)", removed.len());
         self.save();
         self.refresh();
-        self.trash_later(removed, trash_after, undo.then(Vec::new));
+        self.trash_later(removed, trash_after, undo);
     }
 
     /// Empties the Pocket. The island's Undo puts the items back; vento's
     /// own files go to the Trash only once Undo is no longer offered.
     fn clear(&self) {
-        let ghosts = self
-            .cells
-            .iter()
-            .map(|c| PocketCell {
-                selected: false,
-                ..c
-            })
-            .collect();
         let items = self.pocket.borrow_mut().clear();
         if items.is_empty() {
             return;
@@ -793,7 +739,7 @@ impl PocketController {
         debug!("pocket cleared {} item(s)", items.len());
         self.save();
         self.refresh();
-        self.trash_later(items, UNDO_WINDOW, Some(ghosts));
+        self.trash_later(items, UNDO_WINDOW, true);
     }
 
     /// Puts removed items back, oldest first. An item whose file came back
@@ -813,11 +759,11 @@ impl PocketController {
 
     /// Holds `items` (just taken out) for `after`, then moves vento's own
     /// files among them to the Trash. With `undo`, the island offers Undo,
-    /// which puts the items back instead, showing those cells faded.
-    fn trash_later(&self, items: Vec<PocketItem>, after: Duration, undo: Option<Vec<PocketCell>>) {
+    /// which puts the items back instead.
+    fn trash_later(&self, items: Vec<PocketItem>, after: Duration, undo: bool) {
         let job = self.pending.add(items);
-        if let Some(ghosts) = undo {
-            self.offer_undo(Undo::Pocket(job), ghosts);
+        if undo {
+            self.offer_undo(Undo::Pocket(job));
         }
         let this = self.this.clone();
         Timer::single_shot(after, move || {
@@ -829,12 +775,11 @@ impl PocketController {
         });
     }
 
-    /// Offers `undo` in the island for [`UNDO_LIFETIME`], showing `ghosts`
-    /// (a Pocket clear's cells) faded meanwhile. It replaces any Undo already
-    /// offered: a Pocket job's files still go on their own timer, history
-    /// entries are let go now. The island stays up meanwhile, even with
-    /// nothing in it.
-    fn offer_undo(&self, undo: Undo, ghosts: Vec<PocketCell>) {
+    /// Offers `undo` in the island for [`UNDO_LIFETIME`]. It replaces any
+    /// Undo already offered: a Pocket job's files still go on their own
+    /// timer, history entries are let go now. The island stays up
+    /// meanwhile, even with nothing in it.
+    fn offer_undo(&self, undo: Undo) {
         self.window.set_undo_kind(undo.kind());
         let replaced = self
             .undo
@@ -842,7 +787,6 @@ impl PocketController {
         if let Some((Undo::Clip(entries), _)) = replaced {
             self.clip.discard(entries);
         }
-        self.ghosts.set_vec(ghosts);
         self.window.set_undo_active(true);
         self.run_undo_timer();
         self.fit_panel();
@@ -908,7 +852,6 @@ impl PocketController {
         self.undo_timer.stop();
         self.undo_ticking.set(false);
         self.window.set_undo_active(false);
-        self.ghosts.set_vec(Vec::new());
         self.fit_panel();
         Some(undo)
     }
@@ -1134,7 +1077,7 @@ impl PocketController {
             self.set_view(View::Pocket);
         }
         // One over the Pocket list (not the list's own drag out) goes back
-        // to the cells, which say what a drop does.
+        // to the kinds, which say what a drop does.
         if dragging && !self.latch.running() && hits(&f, after, sample.cursor) && self.list_shown()
         {
             self.close_pocket_list();
@@ -1267,9 +1210,11 @@ impl PocketController {
         if after == Presence::Expanded || before == Presence::Hidden {
             self.refresh();
         }
-        // With eight items or fewer, the next opening shows the cells.
-        if !list_stays_open(after, self.item_count()) {
-            self.close_pocket_list();
+        // The next opening shows the look the settings say, with no peek
+        // open; a collapse during the Pocket's own drag out keeps what it
+        // shows, so rows can be dragged out one after another.
+        if after != Presence::Expanded && !self.latch.running() {
+            self.reset_look();
         }
         self.window.set_expanded(after == Presence::Expanded);
         self.run_undo_timer();
@@ -1297,11 +1242,26 @@ impl PocketController {
         }
     }
 
-    /// Sizes the window for `home` and places it at the top centre.
+    /// Sizes the window for `home` and places it at the top centre. The
+    /// island grows or shrinks to its new height as it animates; a window
+    /// that shrinks waits for it, so the shrinking is seen.
     fn apply_home(&self, home: &IslandHome) {
         let f = self.frames_of(home);
+        let panel_h = (f.expanded.h - f.top_h) as f32;
         self.window.set_panel_w(f.expanded.w as f32);
-        self.window.set_panel_h((f.expanded.h - f.top_h) as f32);
+        self.window.set_panel_h(panel_h);
+        if panel_h >= self.window.get_window_h() || !self.expanded() {
+            self.shrink_timer.stop();
+            self.window.set_window_h(panel_h);
+        } else {
+            let this = self.this.clone();
+            self.shrink_timer
+                .start(TimerMode::SingleShot, SHRINK_DELAY, move || {
+                    if let Some(c) = this.upgrade() {
+                        c.window.set_window_h(c.window.get_panel_h());
+                    }
+                });
+        }
         self.window.set_notch_style(f.notch_style);
         self.window.set_notch_w(f.notch_w as f32);
         self.window.set_top_h(f.top_h as f32);
@@ -1489,26 +1449,22 @@ impl PocketController {
         self.run_undo_timer();
     }
 
-    /// Follows the Pocket layout of `s`. A change lays the island out anew
-    /// at once, back on its cells.
+    /// Follows the Pocket look of `s`: a change shows it at once.
     pub fn apply_pocket_settings(&self, s: &Settings) {
-        let layout = s.pocket_layout;
-        if self.layout.replace(layout) == layout {
+        let look = s.pocket_view;
+        if self.pocket_view.replace(look) == look {
             return;
         }
-        debug!("pocket layout {layout:?}");
-        self.window.set_layout(layout_index(layout));
-        if !self.close_pocket_list() {
-            self.refresh();
-        }
+        debug!("pocket view {look:?}");
+        self.reset_look();
     }
 
     /// Writes the texts Rust pushes into the island again after a language
-    /// change: the kind names of the stacks, the filter chips of the list
+    /// change: the kind names of the groups, the filter chips of the list
     /// and the clipboard history's labels and ages. Only what is in sight
     /// is made, as for any refresh.
     pub fn apply_language(&self) {
-        self.refresh_stacks();
+        self.refresh_kinds();
         self.refresh_list();
         self.refresh_clip();
     }
@@ -1540,14 +1496,11 @@ impl PocketController {
     }
 
     /// Pushes the count into the window, and the clipboard history with it.
-    /// The cells are rebuilt only while the island is expanded (a hidden or
+    /// The tiles are rebuilt only while the island is expanded (a hidden or
     /// collapsed island shows none), so a copy made meanwhile costs no look
     /// at every file; [`present`](Self::present) refreshes as it expands.
     pub fn refresh(&self) {
-        if self.expanded() {
-            self.refresh_cells();
-        }
-        self.refresh_stacks();
+        self.refresh_kinds();
         self.refresh_list();
         let count = self.item_count();
         self.window
@@ -1556,28 +1509,7 @@ impl PocketController {
         self.fit_panel();
     }
 
-    /// Re-reads which files are missing, loads icons not yet cached, and
-    /// pushes the cells into the window. Only rows that changed are touched,
-    /// so a copy made while the island is open keeps its hover and presses.
-    fn refresh_cells(&self) {
-        let pocket = self.pocket.borrow();
-        let missing = pocket.missing();
-        let mut icons = self.icons.borrow_mut();
-        icons.retain(|id, _| pocket.get(*id).is_some());
-        let mut selected = self.selected.borrow_mut();
-        selected.retain(|&id| pocket.get(id).is_some());
-        let fallback = self.window.global::<Icons>().get_file();
-        let cells = build_cells(
-            pocket.items(),
-            self.layout.get(),
-            &missing,
-            &selected,
-            |item, gone| self.item_icon(&mut icons, item, gone, &fallback),
-        );
-        set_rows(&self.cells, cells);
-    }
-
-    /// The icon a cell or a row shows for `item`: its Finder icon, converted
+    /// The icon a tile or a row shows for `item`: its Finder icon, converted
     /// once and kept in `icons`, or `fallback` while its file is missing
     /// (`gone`) or has no icon.
     fn item_icon(
@@ -1612,8 +1544,7 @@ impl PocketController {
         self.island.borrow().presence() == Presence::Expanded
     }
 
-    /// Widens or narrows the panel to what it shows (ruling P18), and sizes
-    /// it for the view shown.
+    /// Sizes the panel for the view shown.
     fn fit_panel(&self) {
         let Some(home) = self.home.get() else {
             return;
@@ -1624,12 +1555,6 @@ impl PocketController {
         {
             self.apply_home(&home);
         }
-    }
-
-    /// Cells the expanded island shows: the items, or a clear's ghosts.
-    fn shown_count(&self) -> usize {
-        let items = self.pocket.borrow().items().len();
-        items.max(self.ghosts.row_count())
     }
 
     /// The island has something to show: items, an Undo on offer, or a
@@ -1662,10 +1587,9 @@ impl PocketController {
         })
     }
 
-    /// The island's frames for `home`, sized for the view and the cells it
-    /// shows now.
+    /// The island's frames for `home`, sized for the view it shows now.
     fn frames_of(&self, home: &IslandHome) -> Frames {
-        frames(home, self.shown_count(), self.panel())
+        frames(home, self.panel())
     }
 
     fn island_frames(&self) -> Option<Frames> {
@@ -1682,77 +1606,6 @@ impl PocketController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    use vento_core::pocket::{ItemSource, PocketItem};
-
-    fn item(id: u64, path: &str) -> PocketItem {
-        PocketItem {
-            id,
-            path: PathBuf::from(path),
-            source: ItemSource::Reference,
-            added_unix: 0,
-            origin: None,
-        }
-    }
-
-    #[test]
-    fn cells_cap_at_eight_with_overflow_count() {
-        let items: Vec<PocketItem> = (0..11)
-            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
-            .collect();
-        let cells = build_cells(&items, PocketLayout::List, &[2], &[1], |_, _| {
-            slint::Image::default()
-        });
-        assert_eq!(cells.len(), 8);
-        // The island shows "+{count - cells}".
-        assert_eq!(items.len() - cells.len(), 3);
-        assert_eq!(cells[0].name, "file-0.txt");
-        assert_eq!(cells[7].name, "file-7.txt");
-        assert!(cells[2].missing);
-        assert!(!cells[1].missing);
-        assert!(cells[1].selected);
-        assert_eq!(cells.iter().filter(|c| c.selected).count(), 1);
-    }
-
-    #[test]
-    fn scroll_makes_a_cell_of_every_item() {
-        let items: Vec<PocketItem> = (0..12)
-            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
-            .collect();
-        let cells = |layout| build_cells(&items, layout, &[], &[11], |_, _| Image::default());
-        let all = cells(PocketLayout::Scroll);
-        assert_eq!(all.len(), 12);
-        // In the Pocket's order, so a cell's index is its item's.
-        assert_eq!(all[11].name, "file-11.txt");
-        assert!(all[11].selected);
-        assert_eq!(cells(PocketLayout::List).len(), 8);
-    }
-
-    #[test]
-    fn stacks_stand_in_for_the_cells_of_a_full_pocket() {
-        let items: Vec<PocketItem> = (0..12)
-            .map(|i| item(i, &format!("/tmp/vento-test/file-{i}.txt")))
-            .collect();
-        let cells = |n| {
-            build_cells(&items[..n], PocketLayout::Stacks, &[], &[], |_, _| {
-                Image::default()
-            })
-        };
-        assert!(cells(12).is_empty());
-        assert!(cells(9).is_empty());
-        // Eight or fewer: every item is a cell, as in the other layouts.
-        assert_eq!(cells(8).len(), 8);
-        assert_eq!(cells(3)[2].name, "file-2.txt");
-    }
-
-    #[test]
-    fn each_layout_has_its_window_number() {
-        // As `pocket.slint` reads `layout`.
-        let numbers: Vec<i32> = PocketLayout::ALL.into_iter().map(layout_index).collect();
-        assert_eq!(numbers, [0, 1, 2]);
-        assert_eq!(layout_index(PocketLayout::List), 0);
-    }
 
     #[test]
     fn open_view_toggles_and_switches() {
