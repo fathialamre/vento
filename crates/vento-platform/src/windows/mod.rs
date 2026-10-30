@@ -1,9 +1,11 @@
 //! Windows [`Platform`], through Win32.
 //!
-//! The port is under way (see W0–W7 in the port plan): what is done here
-//! is the pointer and keys, drags in other apps, the monitors, one Vento
-//! per session, and vento's own windows kept off the taskbar and out of
-//! focus; every other call goes to the [`StubPlatform`] for now.
+//! The port is under way (see W0–W7 in the port plan): done here are the
+//! pointer and keys, drags in other apps, the monitors, one Vento per
+//! session and its end, vento's own windows kept off the taskbar and out
+//! of focus, and the Shell's services (pickers, terminals, opening files,
+//! icons, the Recycle Bin, menus, Keep Awake). The clipboard and the
+//! Pocket's drop catcher go to the [`StubPlatform`] for now.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -24,8 +26,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::{
-    AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, StubPlatform,
-    TerminalApp,
+    AppInfo, AwakeHold, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage,
+    StubPlatform, TerminalApp,
 };
 
 mod clicks;
@@ -36,14 +38,59 @@ mod heif;
 #[path = "../linux/image_io.rs"]
 pub(crate) mod image_io;
 mod instance;
+mod menu;
 mod overlay;
 mod screens;
+mod shell;
+mod terminal;
 /// Linux's thumbnails need only the `image` crate.
 #[path = "../linux/thumbs.rs"]
 mod thumbs;
 
 pub use instance::claim_instance;
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
+
+/// [`Platform::file_icon`] at `scale`, for a worker thread.
+pub(crate) fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
+    shell::file_icon(path, (f64::from(px) * scale).round() as u32)
+}
+
+/// Where Windows keeps a file's Mark of the Web: its `Zone.Identifier`
+/// stream, which says the file came from the internet.
+fn zone_stream(path: &Path) -> PathBuf {
+    let mut stream = path.as_os_str().to_owned();
+    stream.push(":Zone.Identifier");
+    stream.into()
+}
+
+/// The Mark of the Web of `path`, as its `Zone.Identifier` stream holds it;
+/// `None` without one.
+pub(crate) fn quarantine_of(path: &Path) -> Option<Vec<u8>> {
+    std::fs::read(zone_stream(path)).ok()
+}
+
+/// Gives `path` the Mark of the Web `value`, as [`quarantine_of`] read it.
+pub(crate) fn set_quarantine(path: &Path, value: &[u8]) -> std::io::Result<()> {
+    std::fs::write(zone_stream(path), value)
+}
+
+/// The system's folder picker, starting in `start`.
+fn pick_folder(start: Option<&Path>) -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(start) = start {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.pick_folder()
+}
+
+/// The system's file picker for PDFs, starting in `start`.
+pub(crate) fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+    let mut dialog = rfd::FileDialog::new().add_filter("PDF", &["pdf"]);
+    if let Some(start) = start {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.pick_files().unwrap_or_default()
+}
 
 /// Whether the taskbar is light, so the tray icon is drawn dark on it.
 /// Windows 10 1903 and later keep this apart from the apps' own theme;
@@ -85,6 +132,8 @@ pub struct WindowsPlatform {
     stub: StubPlatform,
     /// Runs when another launch asks this Vento to open.
     on_reopen: RefCell<Option<Handler>>,
+    /// Runs before vento goes at the session's end.
+    on_terminate: RefCell<Option<Handler>>,
     /// The window of another app that had the focus when vento took it
     /// ([`Platform::activate_app`]), as an address; 0 for none.
     focus_before: Cell<usize>,
@@ -141,6 +190,14 @@ impl Platform for WindowsPlatform {
     fn prepare_app(&self) {}
 
     fn sample_input(&self) -> InputSample {
+        if instance::asked_to_end() {
+            if let Some(handler) = self.on_terminate.borrow().as_ref() {
+                log::info!("tidying up before the session ends");
+                (handler.0)();
+            }
+            instance::ended();
+            std::process::exit(0);
+        }
         if instance::asked_to_open()
             && let Some(handler) = self.on_reopen.borrow().as_ref()
         {
@@ -215,11 +272,13 @@ impl Platform for WindowsPlatform {
     }
 
     fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf> {
-        self.stub.resolve_file_reference(path)
+        std::fs::symlink_metadata(path)
+            .ok()
+            .map(|_| path.to_path_buf())
     }
 
     fn terminals(&self) -> Vec<TerminalApp> {
-        self.stub.terminals()
+        terminal::installed()
     }
 
     fn open_terminal(
@@ -228,11 +287,11 @@ impl Platform for WindowsPlatform {
         dir: &Path,
         on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
-        self.stub.open_terminal(terminal, dir, on_error)
+        terminal::open(terminal, dir, on_error)
     }
 
     fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
-        self.stub.pick_folder(start)
+        pick_folder(start)
     }
 
     /// The top middle of the primary monitor. A taskbar along the top
@@ -275,12 +334,14 @@ impl Platform for WindowsPlatform {
         overlay::keep(window, overlay::OFF_TASKBAR)
     }
 
+    /// At the primary monitor's scale, as on the other two.
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
-        self.stub.file_icon(path, px)
+        let scale = screens::monitors().first().map_or(1.0, |m| m.scale);
+        file_icon_at(path, px, scale)
     }
 
     fn kind_description(&self, path: &Path) -> Option<String> {
-        self.stub.kind_description(path)
+        shell::kind_description(path)
     }
 
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>> {
@@ -288,7 +349,7 @@ impl Platform for WindowsPlatform {
     }
 
     fn trash(&self, path: &Path) -> Result<(), PlatformError> {
-        self.stub.trash(path)
+        shell::trash(path)
     }
 
     fn screens_changed(&self) -> bool {
@@ -300,7 +361,30 @@ impl Platform for WindowsPlatform {
     }
 
     fn on_terminate(&self, f: Box<dyn Fn()>) {
-        self.stub.on_terminate(f);
+        *self.on_terminate.borrow_mut() = Some(Handler(f));
+    }
+
+    /// Held on the main thread, which asks for it; the hold ends with the
+    /// process in any case.
+    fn keep_awake(&self, hold: Option<AwakeHold>) -> Result<(), PlatformError> {
+        use windows_sys::Win32::System::Power::{
+            ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, SetThreadExecutionState,
+        };
+
+        let state = match hold {
+            None => ES_CONTINUOUS,
+            Some(AwakeHold { screen: false }) => ES_CONTINUOUS | ES_SYSTEM_REQUIRED,
+            Some(AwakeHold { screen: true }) => {
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            }
+        };
+        // SAFETY: plain call. It returns the earlier state, or 0 on failure.
+        if unsafe { SetThreadExecutionState(state) } == 0 {
+            return Err(PlatformError::Failed(
+                std::io::Error::last_os_error().to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn on_reopen(&self, f: Box<dyn Fn()>) {
@@ -348,24 +432,26 @@ impl Platform for WindowsPlatform {
     }
 
     fn apps_for(&self, path: &Path) -> Vec<AppInfo> {
-        self.stub.apps_for(path)
+        shell::apps_for(path)
     }
 
     fn open_paths(&self, paths: &[PathBuf]) -> Result<(), PlatformError> {
-        self.stub.open_paths(paths)
+        shell::open_paths(paths)
     }
 
     fn open_with(
         &self,
         paths: &[PathBuf],
         app: &Path,
-        on_error: Box<dyn Fn(PlatformError) + Send>,
+        _on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError> {
-        self.stub.open_with(paths, app, on_error)
+        // The Shell starts the app before returning, so on_error is never
+        // called.
+        shell::open_with(paths, app)
     }
 
     fn reveal_in_finder(&self, paths: &[PathBuf]) {
-        self.stub.reveal_in_finder(paths);
+        shell::reveal(paths);
     }
 
     fn context_menu(
@@ -374,7 +460,7 @@ impl Platform for WindowsPlatform {
         at: Point,
         entries: &[MenuEntry],
     ) -> Option<u32> {
-        self.stub.context_menu(window, at, entries)
+        menu::show(window, at, entries)
     }
 }
 
@@ -393,6 +479,27 @@ mod tests {
             y: screens[0].y + screens[0].h / 2.0,
         };
         assert!(p.scale_factor_at(centre) >= 1.0);
+    }
+
+    #[test]
+    fn the_mark_of_the_web_goes_with_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("download.zip");
+        std::fs::write(&file, b"x").unwrap();
+        assert_eq!(quarantine_of(&file), None);
+        let mark = b"[ZoneTransfer]\r\nZoneId=3\r\n";
+        set_quarantine(&file, mark).unwrap();
+        assert_eq!(quarantine_of(&file).as_deref(), Some(&mark[..]));
+        // The file's own content is untouched.
+        assert_eq!(std::fs::read(&file).unwrap(), b"x");
+    }
+
+    #[test]
+    fn keep_awake_holds_and_lets_go() {
+        let p = WindowsPlatform::new();
+        p.keep_awake(Some(AwakeHold { screen: true })).unwrap();
+        p.keep_awake(Some(AwakeHold { screen: false })).unwrap();
+        p.keep_awake(None).unwrap();
     }
 
     #[test]

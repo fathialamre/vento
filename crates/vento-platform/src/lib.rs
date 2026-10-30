@@ -651,7 +651,11 @@ pub fn quarantine_of(path: &Path) -> Option<Vec<u8>> {
     {
         macos::quarantine_of(path)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows::quarantine_of(path)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         stub::quarantine_of(path)
     }
@@ -665,7 +669,11 @@ pub fn set_quarantine(path: &Path, value: &[u8]) -> std::io::Result<()> {
     {
         macos::set_quarantine(path, value)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows::set_quarantine(path, value)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         stub::set_quarantine(path, value)
     }
@@ -697,7 +705,11 @@ pub fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
     {
         linux::file_icon_at(path, px, scale)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::file_icon_at(path, px, scale)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (path, px, scale);
         None
@@ -822,7 +834,11 @@ pub fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
     {
         macos::pick_pdfs(start)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows::pick_pdfs(start)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         stub::pick_pdfs(start)
     }

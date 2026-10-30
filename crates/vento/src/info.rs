@@ -38,11 +38,13 @@ const WIDTH: f64 = 300.0;
 /// backing scale; it is shown at 32 pt).
 const ICON_PT: u32 = 32;
 
-/// The reveal button's text: the file manager is Finder on a Mac and Files
-/// elsewhere.
+/// The reveal button's text: the file manager is Finder on a Mac, Explorer
+/// on Windows and Files elsewhere.
 fn reveal_label() -> String {
     if cfg!(target_os = "macos") {
         tr("Show in Finder")
+    } else if cfg!(windows) {
+        tr("Show in Explorer")
     } else {
         tr("Show in Files")
     }

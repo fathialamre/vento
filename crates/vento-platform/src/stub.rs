@@ -18,13 +18,13 @@ use crate::{
 };
 
 /// No quarantine attribute exists here.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
 pub(crate) fn quarantine_of(_path: &Path) -> Option<Vec<u8>> {
     None
 }
 
 /// Nothing to set here.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
 pub(crate) fn set_quarantine(_path: &Path, _value: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
@@ -155,7 +155,7 @@ impl PdfRenderer {
 }
 
 /// No open panel for PDFs here.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
 pub(crate) fn pick_pdfs(_start: Option<&Path>) -> Vec<PathBuf> {
     Vec::new()
 }

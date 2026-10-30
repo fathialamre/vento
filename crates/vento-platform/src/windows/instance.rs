@@ -1,12 +1,19 @@
-//! One Vento per session. The first holds a named mutex and keeps a
-//! message-only window on a thread of its own; a later launch (from the
-//! Start menu, or a second start at login) finds that window, posts it a
-//! message asking to open the settings, and goes. The request waits for the
-//! main thread, which hands it on from [`asked_to_open`] on every input
-//! sample, as on Linux.
+//! One Vento per session, and the session's end. The first Vento holds a
+//! named mutex and keeps a hidden window on a thread of its own; a later
+//! launch (from the Start menu, or a second start at login) finds that
+//! window, posts it a message asking to open the settings, and goes. The
+//! request waits for the main thread, which hands it on from
+//! [`asked_to_open`] on every input sample, as on Linux.
+//!
+//! The window is a hidden top-level one, not a message-only one, so that it
+//! also hears the session end (sign-out, shutdown): it holds Windows back,
+//! for a few seconds at most, while the main thread tidies up
+//! ([`asked_to_end`], [`ended`]).
 
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Condvar, Mutex};
+use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{
     ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, WPARAM,
@@ -14,9 +21,9 @@ use windows_sys::Win32::Foundation::{
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AllowSetForegroundWindow, CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowExW,
-    GetMessageW, GetWindowThreadProcessId, HWND_MESSAGE, MSG, PostMessageW, RegisterClassW, WM_APP,
-    WNDCLASSW,
+    AllowSetForegroundWindow, CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW,
+    GetMessageW, GetWindowThreadProcessId, MSG, PostMessageW, RegisterClassW, WM_APP,
+    WM_ENDSESSION, WM_QUERYENDSESSION, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows_sys::w;
 
@@ -27,9 +34,16 @@ const MUTEX: windows_sys::core::PCWSTR = w!("Local\\io.github.fathialamre.Vento"
 const CLASS: windows_sys::core::PCWSTR = w!("io.github.fathialamre.Vento.Instance");
 /// Asks the running Vento to open its settings.
 const WM_OPEN: u32 = WM_APP + 1;
+/// The longest the session's end waits for vento to tidy up; Windows
+/// itself waits about five seconds before offering to end it anyway.
+const END_WAIT: Duration = Duration::from_secs(4);
 
 /// Set when another launch asked this Vento to open.
 static OPEN_ASKED: AtomicBool = AtomicBool::new(false);
+/// Set when the session ends.
+static END_ASKED: AtomicBool = AtomicBool::new(false);
+/// Set by the main thread once it has tidied up.
+static END_DONE: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 
 /// Whether this is the only Vento: true after taking the mutex (or when it
 /// cannot be made, where there is nothing to ask), false after asking the
@@ -59,7 +73,7 @@ pub fn claim_instance() -> bool {
 fn ask_to_open() {
     // SAFETY: plain calls with live arguments.
     unsafe {
-        let window = FindWindowExW(HWND_MESSAGE, ptr::null_mut(), CLASS, ptr::null());
+        let window = FindWindowW(CLASS, ptr::null());
         if window.is_null() {
             log::warn!("vento is already running, and did not answer");
             return;
@@ -78,7 +92,8 @@ fn ask_to_open() {
     }
 }
 
-/// Answers [`WM_OPEN`] from a message-only window on a thread of its own.
+/// Answers [`WM_OPEN`] and the session's end from a hidden window on a
+/// thread of its own.
 fn serve() {
     let spawned = std::thread::Builder::new()
         .name("vento-instance".into())
@@ -101,15 +116,15 @@ fn serve() {
                     return;
                 }
                 let window = CreateWindowExW(
-                    0,
+                    WS_EX_TOOLWINDOW,
                     CLASS,
                     ptr::null(),
+                    WS_POPUP,
                     0,
                     0,
                     0,
                     0,
-                    0,
-                    HWND_MESSAGE,
+                    ptr::null_mut(),
                     ptr::null_mut(),
                     module,
                     ptr::null(),
@@ -138,9 +153,21 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    if msg == WM_OPEN {
-        OPEN_ASKED.store(true, Ordering::SeqCst);
-        return 0;
+    match msg {
+        WM_OPEN => {
+            OPEN_ASKED.store(true, Ordering::SeqCst);
+            return 0;
+        }
+        // vento never stands in the session's way.
+        WM_QUERYENDSESSION => return 1,
+        WM_ENDSESSION if wparam != 0 => {
+            END_ASKED.store(true, Ordering::SeqCst);
+            let (done, ended) = &END_DONE;
+            let guard = done.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = ended.wait_timeout_while(guard, END_WAIT, |done| !*done);
+            return 0;
+        }
+        _ => {}
     }
     // SAFETY: the arguments are the ones Windows passed in.
     unsafe { DefWindowProcW(window, msg, wparam, lparam) }
@@ -149,4 +176,16 @@ unsafe extern "system" fn window_proc(
 /// Whether another launch asked this Vento to open since the last call.
 pub(super) fn asked_to_open() -> bool {
     OPEN_ASKED.swap(false, Ordering::SeqCst)
+}
+
+/// Whether the session is ending.
+pub(super) fn asked_to_end() -> bool {
+    END_ASKED.load(Ordering::SeqCst)
+}
+
+/// Lets the session end: vento has tidied up.
+pub(super) fn ended() {
+    let (done, ended) = &END_DONE;
+    *done.lock().unwrap_or_else(|e| e.into_inner()) = true;
+    ended.notify_all();
 }
