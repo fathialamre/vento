@@ -93,6 +93,9 @@ pub(super) fn open(
         .or(installed.first())
         .ok_or(PlatformError::NoTerminal)?;
     let mut command = Command::new(program);
+    // Neither a shell nor Windows Terminal takes a `\\?\` path.
+    let dir = super::shell::shell_path(dir);
+    let dir = dir.as_path();
     if known.id == "wt" {
         command.arg("-d").arg(dir);
     } else {

@@ -22,10 +22,10 @@ use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{
     ASSOC_FILTER_RECOMMENDED, ASSOCF_NONE, ASSOCSTR_EXECUTABLE, AssocQueryStringW, BHID_DataObject,
     FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FOF_WANTNUKEWARNING,
-    FOFX_RECYCLEONDELETE, FileOperation, IAssocHandler, IFileOperation, ILFindLastID, ILFree,
-    IShellItem, IShellItemImageFactory, SHAssocEnumHandlers, SHCreateItemFromParsingName,
-    SHCreateShellItemArrayFromIDLists, SHOpenFolderAndSelectItems, SHParseDisplayName,
-    SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY, ShellExecuteW,
+    FOFX_RECYCLEONDELETE, FileOperation, IAssocHandler, IFileOperation, ILFree, IShellItem,
+    IShellItemImageFactory, SHAssocEnumHandlers, SHCreateItemFromParsingName,
+    SHCreateShellItemArrayFromIDLists, SHParseDisplayName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+    ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::{HSTRING, PCWSTR, PWSTR, w};
@@ -51,9 +51,24 @@ fn com() {
     });
 }
 
-/// `path` for a wide-string parameter.
+/// `path` for a wide-string parameter, as the Shell takes it: without the
+/// `\\?\` that `std::fs::canonicalize` puts before a path, which the Shell
+/// refuses ("The parameter is incorrect").
 fn wide(path: &Path) -> HSTRING {
-    HSTRING::from(path.as_os_str())
+    HSTRING::from(shell_path(path).as_os_str())
+}
+
+/// `path` without a verbatim `\\?\` prefix: `\\?\C:\x` is `C:\x`, and
+/// `\\?\UNC\server\share` is `\\server\share`.
+pub(super) fn shell_path(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{share}"))
+    } else if let Some(local) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(local)
+    } else {
+        path.to_path_buf()
+    }
 }
 
 /// The string a Shell call handed over, freed.
@@ -243,7 +258,7 @@ pub(super) fn open_with(paths: &[PathBuf], app: &Path) -> Result<(), PlatformErr
             unsafe { handler.Invoke(&data) }.map_err(failed)
         }
         None if app.is_file() => Command::new(app)
-            .args(paths)
+            .args(paths.iter().map(|p| shell_path(p)))
             .spawn()
             .map(drop)
             .map_err(|error| PlatformError::CouldNotRun {
@@ -293,33 +308,27 @@ fn data_object(paths: &[PathBuf]) -> Result<IDataObject, PlatformError> {
     }
 }
 
-/// Shows `paths` selected in Explorer: one window per folder they are in.
+/// Shows `paths` in Explorer: one window per folder they are in, its first
+/// item selected. `explorer /select` hands the window to the running
+/// Explorer at once; `SHOpenFolderAndSelectItems` holds the calling thread
+/// for twenty seconds on Windows 11 and then gives up.
 pub(super) fn reveal(paths: &[PathBuf]) {
-    let mut folders: Vec<(&Path, Vec<PathBuf>)> = Vec::new();
+    use std::os::windows::process::CommandExt;
+
+    let mut firsts: Vec<&Path> = Vec::new();
     for path in paths {
-        let parent = path.parent().unwrap_or(path);
-        match folders.iter_mut().find(|(f, _)| *f == parent) {
-            Some((_, items)) => items.push(path.clone()),
-            None => folders.push((parent, vec![path.clone()])),
+        let parent = path.parent();
+        if !firsts.iter().any(|f| f.parent() == parent) {
+            firsts.push(path);
         }
     }
-    for (folder, items) in folders {
-        let folder_id = pidls(&[folder.to_path_buf()]);
-        let item_ids = pidls(&items);
-        let Some(&folder_pidl) = folder_id.0.first() else {
-            log::warn!("cannot show {} in Explorer", folder.display());
-            continue;
-        };
-        // SAFETY: each item's last ID lies inside its own list, which lives
-        // through the call.
-        let children: Vec<*const ITEMIDLIST> = item_ids
-            .0
-            .iter()
-            .map(|&p| unsafe { ILFindLastID(p) }.cast_const())
-            .collect();
-        // SAFETY: as above.
-        if let Err(e) = unsafe { SHOpenFolderAndSelectItems(folder_pidl, Some(&children), 0) } {
-            log::warn!("cannot show {} in Explorer: {e}", folder.display());
+    for path in firsts {
+        // As Explorer wants it: the path in quotes after the comma.
+        let mut arg = OsString::from("/select,\"");
+        arg.push(shell_path(path).as_os_str());
+        arg.push("\"");
+        if let Err(e) = Command::new("explorer.exe").raw_arg(arg).spawn() {
+            log::warn!("cannot show {} in Explorer: {e}", path.display());
         }
     }
 }
@@ -364,15 +373,27 @@ pub(super) fn file_icon(path: &Path, px: u32) -> Option<RgbaImage> {
     com();
     let side = i32::try_from(px).ok()?;
     // SAFETY: COM calls on live interfaces; the bitmap is freed below.
-    let bitmap = unsafe {
-        let factory: IShellItemImageFactory =
-            SHCreateItemFromParsingName(&wide(path), None).ok()?;
-        factory
-            .GetImage(
+    let factory: IShellItemImageFactory =
+        unsafe { SHCreateItemFromParsingName(&wide(path), None) }.ok()?;
+    // While another thread draws the same icon, the Shell answers "not yet"
+    // (E_PENDING) rather than waiting: ask again, for a second at most.
+    let mut tries = 0;
+    let bitmap = loop {
+        // SAFETY: as above.
+        let got = unsafe {
+            factory.GetImage(
                 SIZE { cx: side, cy: side },
                 SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK,
             )
-            .ok()?
+        };
+        match got {
+            Ok(bitmap) => break bitmap,
+            Err(e) if e.code() == E_PENDING && tries < ICON_TRIES => {
+                tries += 1;
+                std::thread::sleep(ICON_RETRY);
+            }
+            Err(_) => return None,
+        }
     };
     let image = rgba_of(bitmap);
     // SAFETY: the bitmap is the Shell's, handed to us to free.
@@ -381,6 +402,13 @@ pub(super) fn file_icon(path: &Path, px: u32) -> Option<RgbaImage> {
     }
     image
 }
+
+/// How often, and how far apart, [`file_icon`] asks again for an icon the
+/// Shell is still drawing for another thread.
+const ICON_TRIES: u32 = 100;
+const ICON_RETRY: std::time::Duration = std::time::Duration::from_millis(10);
+/// "The data necessary to complete this operation is not yet available."
+const E_PENDING: windows::core::HRESULT = windows::core::HRESULT(0x8000_000A_u32 as i32);
 
 /// The pixels of a 32-bit bitmap with premultiplied alpha, as the Shell's
 /// images are, as straight RGBA, top row first.
@@ -477,6 +505,36 @@ mod tests {
             "{apps:?}"
         );
         assert!(apps_for(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn verbatim_paths_are_given_plainly() {
+        assert_eq!(
+            shell_path(Path::new(r"\\?\C:\Users\me\a b.txt")),
+            Path::new(r"C:\Users\me\a b.txt")
+        );
+        assert_eq!(
+            shell_path(Path::new(r"\\?\UNC\server\share\x")),
+            Path::new(r"\\server\share\x")
+        );
+        assert_eq!(shell_path(Path::new(r"C:\x")), Path::new(r"C:\x"));
+        // A canonical path, as the Pocket hands it over, has its icon.
+        let canonical = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        assert!(canonical.to_string_lossy().starts_with(r"\\?\"));
+        assert!(file_icon(&canonical, 32).is_some());
+    }
+
+    #[test]
+    fn threads_asking_for_one_icon_at_once_all_get_it() {
+        let dir = std::env::temp_dir();
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let dir = dir.clone();
+                std::thread::spawn(move || file_icon(&dir, 48).is_some())
+            })
+            .collect();
+        let got: Vec<bool> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert!(got.iter().all(|&g| g), "{got:?}");
     }
 
     #[test]
