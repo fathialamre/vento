@@ -2,6 +2,10 @@
 
 use crate::i18n::tr;
 
+/// Whether this build is for macOS, the only platform with the system
+/// services some actions need.
+const ON_MACOS: bool = cfg!(target_os = "macos");
+
 /// An action that can be placed on the wheel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionId {
@@ -25,12 +29,14 @@ pub enum ActionId {
     Convert,
     /// Open a window to merge, split, reorder or export the dragged PDFs.
     Pdf,
+    /// Send the dragged items with AirDrop, or with a service from a ring.
+    Share,
 }
 
 impl ActionId {
     /// Every action, in the order the settings list offers the ones not yet
     /// placed.
-    pub const ALL: [ActionId; 10] = [
+    pub const ALL: [ActionId; 11] = [
         ActionId::Pocket,
         ActionId::Copy,
         ActionId::Move,
@@ -41,22 +47,23 @@ impl ActionId {
         ActionId::Info,
         ActionId::Convert,
         ActionId::Pdf,
+        ActionId::Share,
     ];
 
     /// Whether this platform can run the action. PDF pages need the system's
-    /// PDF engine, which only macOS has so far; the other platforms never
-    /// offer the action.
+    /// PDF engine and sharing needs its sharing services, which only macOS has
+    /// so far; the other platforms never offer those actions.
     pub fn available(self) -> bool {
-        match self {
-            ActionId::Pdf => cfg!(target_os = "macos"),
-            _ => true,
-        }
+        ON_MACOS || !matches!(self, ActionId::Pdf | ActionId::Share)
     }
 
     /// Whether the action opens the folder ring when the pointer rests on its
     /// cell.
     pub fn takes_ring(self) -> bool {
-        matches!(self, ActionId::Move | ActionId::CopyTo | ActionId::Convert)
+        matches!(
+            self,
+            ActionId::Move | ActionId::CopyTo | ActionId::Convert | ActionId::Share
+        )
     }
 
     /// Stable key used in the settings file.
@@ -72,6 +79,7 @@ impl ActionId {
             ActionId::Info => "info",
             ActionId::Convert => "convert",
             ActionId::Pdf => "pdf",
+            ActionId::Share => "share",
         }
     }
 
@@ -88,6 +96,7 @@ impl ActionId {
             ActionId::Info => tr("Info"),
             ActionId::Convert => tr("Convert"),
             ActionId::Pdf => tr("PDF"),
+            ActionId::Share => tr("Share"),
         }
     }
 
@@ -104,6 +113,7 @@ impl ActionId {
             "info" => Some(ActionId::Info),
             "convert" => Some(ActionId::Convert),
             "pdf" => Some(ActionId::Pdf),
+            "share" => Some(ActionId::Share),
             _ => None,
         }
     }
@@ -139,7 +149,12 @@ mod tests {
             .collect();
         assert_eq!(
             ringed,
-            [ActionId::Move, ActionId::CopyTo, ActionId::Convert]
+            [
+                ActionId::Move,
+                ActionId::CopyTo,
+                ActionId::Convert,
+                ActionId::Share
+            ]
         );
     }
 
@@ -173,16 +188,26 @@ mod tests {
         assert_eq!(ActionId::Pdf.label(), "PDF");
         assert_eq!(ActionId::from_key("pdf"), Some(ActionId::Pdf));
         assert!(!ActionId::Pdf.takes_ring());
-        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Pdf));
     }
 
     #[test]
-    fn pdf_only_available_on_macos() {
-        assert_eq!(ActionId::Pdf.available(), cfg!(target_os = "macos"));
+    fn share_key_label_and_ring() {
+        assert_eq!(ActionId::Share.key(), "share");
+        assert_eq!(ActionId::Share.label(), "Share");
+        assert_eq!(ActionId::from_key("share"), Some(ActionId::Share));
+        assert!(ActionId::Share.takes_ring());
+        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Share));
+    }
+
+    #[test]
+    fn macos_only_actions() {
+        for a in [ActionId::Pdf, ActionId::Share] {
+            assert_eq!(a.available(), cfg!(target_os = "macos"));
+        }
         assert!(
             ActionId::ALL
                 .iter()
-                .filter(|a| **a != ActionId::Pdf)
+                .filter(|a| !matches!(a, ActionId::Pdf | ActionId::Share))
                 .all(|a| a.available())
         );
     }
@@ -203,7 +228,8 @@ mod tests {
                     "أرشفة",
                     "معلومات",
                     "تحويل",
-                    "\u{200f}PDF"
+                    "\u{200f}PDF",
+                    "مشاركة"
                 ]
             );
             assert_eq!(ActionId::Move.label(), "نقل");

@@ -62,6 +62,8 @@ objc2-app-kit = { version = "0.3", features = [
     "NSCursor",
     "NSBezierPath",
     "NSTrackingArea",
+    # The Share action: AirDrop, Messages, Mail, Notes and the share popover.
+    "NSSharingService",
 ] }
 objc2-core-graphics = { version = "0.3", features = [
     "CGEventSource",

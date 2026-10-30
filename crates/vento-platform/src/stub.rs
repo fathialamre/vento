@@ -345,6 +345,7 @@ impl Platform for StubPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vento_core::share::ShareTarget;
 
     #[test]
     fn stub_reports_idle_input_and_one_screen() {
@@ -409,6 +410,20 @@ mod tests {
         p.watch_outside_clicks(Box::new(|| panic!("the stub reports no clicks")));
         p.stop_watching_outside_clicks();
         assert_eq!(p.scale_factor_at(Point { x: 10.0, y: 10.0 }), 1.0);
+        assert!(p.share_targets().is_empty());
+        assert!(!p.can_share(ShareTarget::Mail, &[]));
+        assert!(matches!(
+            p.share(
+                ShareTarget::Mail,
+                &[],
+                Box::new(|_| panic!("the stub shares nothing"))
+            ),
+            Err(PlatformError::Unsupported)
+        ));
+        assert!(matches!(
+            p.share_picker(&[], Point { x: 10.0, y: 10.0 }),
+            Err(PlatformError::Unsupported)
+        ));
     }
 
     #[test]
