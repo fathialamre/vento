@@ -131,6 +131,11 @@ pdf_image_format = "png"
 # PDF window, Images: the quality last picked, in dots per inch: 300
 # (Print) or 150 (Screen); any other value means 300
 pdf_image_dpi = 300
+
+# Settings window pages whose How to card you closed: any of "general",
+# "wheel", "move", "pocket", "clipboard", "copy_from_screen", "keep_awake".
+# The other pages open with it showing
+closed_how_to = []
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

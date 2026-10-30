@@ -20,7 +20,7 @@ import "fonts/IBMPlexSansArabic-Bold.ttf";
 
 // One theme's colours in one look (light or dark), as the Quick panel and
 // the Settings window use them.
-struct ThemeColors {
+export struct ThemeColors {
     bg: color,
     // Tiles and the sidebar.
     card: color,
@@ -91,6 +91,12 @@ export global Theme {
     property <bool> use-clean: root.clean && !root.use-system;
     property <ThemeColors> pal: root.dark ? root.darks[root.palette] : root.lights[root.palette];
 
+    // Theme `index`'s colours in one look, for the Settings window's
+    // pictures of a look and its theme swatches.
+    public pure function look(index: int, dark: bool) -> ThemeColors {
+        dark ? root.darks[index] : root.lights[index]
+    }
+
     // The system text at `amount` over the system background, opaque.
     pure function tint(amount: float) -> color {
         root.system-text.mix(root.system-bg, amount)
@@ -102,15 +108,30 @@ export global Theme {
     out property <color> surface: root.use-system ? root.tint(0.1) : root.use-clean ? root.pal.surface : root.dark ? #2b2b2f : #e2eaec;
     // A field or button under the pointer (the shell's pressed).
     out property <color> hover: root.use-system ? root.tint(0.15) : root.use-clean ? (root.dark ? root.pal.surface.brighter(0.25) : root.pal.surface.darker(0.04)) : root.selected;
-    // A raised card (a Quick panel tile, the Settings sidebar), a shade
+    // A raised card (a Quick panel tile, a section of the Info window), a shade
     // lighter than `bg` with a hairline edge.
     out property <color> card: root.use-system ? root.tint(0.05) : root.use-clean ? root.pal.card : root.dark ? #2b2b2f : #f6fbfc;
     out property <color> card-border: root.use-system ? root.tint(0.1) : root.use-clean ? root.pal.line : root.dark ? #ffffff14 : #e4e9e9;
-    // The chosen sidebar page or chip: the accent, faint.
+    // A chosen chip or toggle: the accent, faint.
     out property <color> accent-soft: root.use-clean ? root.accent.transparentize(root.dark ? 0.75 : 0.88) : root.dark ? #ff6a1a33 : #ff6a1a1f;
     // The chosen item of a segmented control, a dropdown's list, a row
     // being dragged: raised above `surface`.
     out property <color> selected: root.use-system ? (root.system-dark ? root.tint(0.2) : root.system-bg) : root.use-clean ? root.pal.selected : root.dark ? #3a3a40 : #ffffff;
+    // The Settings window: its page and sidebar, and the one panel the page
+    // shows its settings on, a shade lighter, with its edge and the lines
+    // between its rows.
+    out property <color> page: root.use-clean ? (root.dark ? root.pal.bg.mix(root.pal.card, 0.35) : root.pal.card) : root.bg;
+    out property <color> panel: root.use-clean ? (root.dark ? root.pal.card.mix(root.pal.text, 0.96) : root.pal.bg) : root.card;
+    out property <color> panel-border: root.use-clean ? (root.dark ? #ffffff14 : root.pal.line) : root.card-border;
+    out property <color> panel-line: root.dark ? root.panel.mix(root.text, 0.92) : root.separator;
+    // The chosen page in the sidebar: the accent, fainter than
+    // `accent-soft`.
+    out property <color> sidebar-chosen: root.accent.transparentize(root.dark ? 0.9 : 0.93);
+    // A field or button on the panel, and the same under the pointer.
+    out property <color> field: root.dark ? root.panel.mix(root.text, 0.9) : root.use-clean ? root.pal.surface : root.selected;
+    out property <color> field-hover: root.dark ? root.field.brighter(0.15) : root.field.darker(0.04);
+    // The track of a segmented control on the panel, sunk below it.
+    out property <color> track: root.use-clean ? (root.dark ? root.pal.bg : root.pal.line) : root.surface;
     out property <color> text: root.use-system ? root.system-text : root.use-clean ? root.pal.text : root.dark ? #f2f2f3 : #1d1d1f;
     out property <color> muted: root.use-system ? root.tint(0.6) : root.use-clean ? root.pal.muted : root.dark ? #9a9aa2 : #6e6e73;
     out property <color> separator: root.use-system ? root.tint(root.system-dark ? 0.1 : 0.15) : root.use-clean ? root.pal.line : root.dark ? #ffffff14 : #0000000f;

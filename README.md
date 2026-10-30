@@ -297,7 +297,11 @@ back.
 
 Choose **Settings…** to open the **Vento Settings** window. It stays open while
 you work, and choosing Settings… again brings it forward. Pick a page on the left;
-changes apply right away.
+changes apply right away. Each page shows its settings on one panel, most with
+a short line on what they do; General shows the looks and the themes as small
+pictures to click. Every page but About ends with a **How to use** section that
+shows how to use its feature in a few steps. Click its header to close it;
+it stays closed until you open it again.
 
 | Page | What it holds |
 |---|---|

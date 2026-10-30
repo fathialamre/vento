@@ -43,6 +43,10 @@ fails until the new file is complete.
   (`{app}`, `{name}`), which can hold Latin text. A line that opens with a
   number placeholder (`{n}`) needs no mark. The translations test fails for a
   right-to-left entry that is missing one.
+- **Right-to-left languages: put U+200E before a shortcut placeholder.** In
+  "Press {} to open the history" the `{}` is a shortcut such as ⌃⌥V, whose
+  symbols take the sentence's direction and come out reversed (V⌥⌃). A
+  left-to-right mark (U+200E) just before the placeholder keeps them in order.
 - **Leave "Vento", theme names, image format names, modifier names and symbols
   as they are.** File names Vento creates, log lines and settings keys stay in
   English too.
