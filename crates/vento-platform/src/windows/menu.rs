@@ -5,71 +5,20 @@
 //! to a hidden window of vento's own, brought to the front for as long as
 //! the menu shows; the app that was in front gets the focus back after.
 
-use std::cell::Cell;
 use std::ptr;
 
 use raw_window_handle::RawWindowHandle;
 use vento_core::geometry::Point;
-use windows_sys::Win32::Foundation::{HWND, POINT};
+use windows_sys::Win32::Foundation::POINT;
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
-use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    GetForegroundWindow, HMENU, IsWindow, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
-    PostMessageW, RegisterClassW, SetForegroundWindow, TPM_LAYOUTRTL, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TrackPopupMenuEx, WM_NULL, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, GetForegroundWindow, HMENU, IsWindow, MF_GRAYED,
+    MF_POPUP, MF_SEPARATOR, MF_STRING, PostMessageW, SetForegroundWindow, TPM_LAYOUTRTL,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenuEx, WM_NULL,
 };
-use windows_sys::w;
 
 use crate::MenuEntry;
-
-thread_local! {
-    /// The hidden window that owns vento's menus, made on first use.
-    static OWNER: Cell<HWND> = const { Cell::new(ptr::null_mut()) };
-}
-
-/// The menus' owner window, made once on this (the main) thread.
-fn owner() -> Option<HWND> {
-    let made = OWNER.with(Cell::get);
-    if !made.is_null() {
-        return Some(made);
-    }
-    // SAFETY: a plain window class and a hidden window, kept for good.
-    let window = unsafe {
-        let module = GetModuleHandleW(ptr::null());
-        let class = WNDCLASSW {
-            lpfnWndProc: Some(DefWindowProcW),
-            hInstance: module,
-            lpszClassName: w!("io.github.fathialamre.Vento.Menu"),
-            ..Default::default()
-        };
-        RegisterClassW(&class);
-        CreateWindowExW(
-            WS_EX_TOOLWINDOW,
-            class.lpszClassName,
-            ptr::null(),
-            WS_POPUP,
-            0,
-            0,
-            0,
-            0,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            module,
-            ptr::null(),
-        )
-    };
-    if window.is_null() {
-        log::warn!(
-            "cannot make the menus' window: {}",
-            std::io::Error::last_os_error()
-        );
-        return None;
-    }
-    OWNER.with(|o| o.set(window));
-    Some(window)
-}
 
 /// `entries` as a popup menu; item ids are one up, as 0 means none.
 fn build(entries: &[MenuEntry]) -> HMENU {
@@ -113,7 +62,7 @@ fn wide(text: &str) -> Vec<u16> {
 /// for a choice: the chosen item's id, or `None`.
 pub(super) fn show(window: RawWindowHandle, at: Point, entries: &[MenuEntry]) -> Option<u32> {
     let hwnd = super::overlay::hwnd_of(window).ok()?;
-    let owner = owner()?;
+    let owner = super::hidden_window()?;
     // SAFETY: plain calls on live windows; the menu is destroyed (with its
     // submenus) once chosen from.
     unsafe {

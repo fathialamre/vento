@@ -477,15 +477,58 @@ pub fn image_ref(s: &ClipSnapshot) -> Option<(&[u8], &'static str)> {
 
 /// Turns a `file://` or `file://localhost` URL into a path, percent-decoding
 /// it. `None` for any other scheme, a relative path or bytes that are not
-/// UTF-8.
+/// UTF-8. On Windows, `file:///C:/a%20b` is `C:\a b`, and a URL with a host,
+/// `file://server/share/x`, is the share `\\server\share\x`.
 pub fn file_url_to_path(url: &[u8]) -> Option<PathBuf> {
     let rest = url.strip_prefix(b"file://")?;
     let rest = rest.strip_prefix(b"localhost").unwrap_or(rest);
     if !rest.starts_with(b"/") {
+        #[cfg(windows)]
+        if !rest.is_empty() {
+            let share = percent_decode(rest).decode_utf8().ok()?;
+            return Some(PathBuf::from(format!(r"\\{}", share.replace('/', r"\"))));
+        }
         return None;
     }
     let path = percent_decode(rest).decode_utf8().ok()?;
+    #[cfg(windows)]
+    if let Some(on_drive) = path
+        .strip_prefix('/')
+        .filter(|p| p.as_bytes().get(1) == Some(&b':') && p.as_bytes()[0].is_ascii_alphabetic())
+    {
+        return Some(PathBuf::from(on_drive.replace('/', r"\")));
+    }
     Some(PathBuf::from(path.into_owned()))
+}
+
+/// What [`path_to_file_url`] percent-encodes: all but letters, digits and
+/// the characters a path keeps as they are.
+const FILE_URL_ESCAPED: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'/')
+    .remove(b':')
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+/// `path` as a `file://` URL, the way [`file_url_to_path`] reads it back. On
+/// Windows `C:\a b` is `file:///C:/a%20b` and the share `\\server\share\x`
+/// is `file://server/share/x`.
+pub fn path_to_file_url(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    #[cfg(windows)]
+    let text = {
+        let slashed = text.replace('\\', "/");
+        match slashed.strip_prefix("//") {
+            // A share: its host takes the URL's host place.
+            Some(share) => share.to_owned(),
+            None => format!("/{}", slashed.trim_start_matches('/')),
+        }
+    };
+    format!(
+        "file://{}",
+        percent_encoding::utf8_percent_encode(&text, FILE_URL_ESCAPED)
+    )
 }
 
 /// Extensions of the picture files a file copy is shown as a picture for.
@@ -800,6 +843,46 @@ mod tests {
         );
         assert_eq!(file_url_to_path(b"https://x"), None);
         assert_eq!(file_url_to_path(b"file:///tmp/%FF"), None);
+    }
+
+    #[test]
+    fn paths_make_file_urls_that_read_back() {
+        #[cfg(not(windows))]
+        let paths = ["/tmp/a b/c#d%.txt", "/home/me/مرحبا.png"];
+        #[cfg(windows)]
+        let paths = [
+            r"C:\Users\me\a b\c#d%.txt",
+            r"D:\مرحبا.png",
+            r"\\server\share\x y.txt",
+        ];
+        for path in paths {
+            let url = path_to_file_url(Path::new(path));
+            assert!(url.starts_with("file://"), "{url}");
+            assert!(!url.contains(' ') && !url.contains('#'), "{url}");
+            assert_eq!(
+                file_url_to_path(url.as_bytes()).as_deref(),
+                Some(Path::new(path))
+            );
+        }
+        #[cfg(not(windows))]
+        assert_eq!(path_to_file_url(Path::new("/tmp/a b")), "file:///tmp/a%20b");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_file_urls() {
+        assert_eq!(
+            file_url_to_path(b"file:///C:/Users/me/a%20b.txt").as_deref(),
+            Some(Path::new(r"C:\Users\me\a b.txt"))
+        );
+        assert_eq!(
+            path_to_file_url(Path::new(r"C:\Users\me\a b.txt")),
+            "file:///C:/Users/me/a%20b.txt"
+        );
+        assert_eq!(
+            file_url_to_path(b"file://server/share/x").as_deref(),
+            Some(Path::new(r"\\server\share\x"))
+        );
     }
 
     #[test]

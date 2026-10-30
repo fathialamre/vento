@@ -1095,7 +1095,9 @@ mod tests {
     use super::*;
 
     use raw_window_handle::RawWindowHandle;
-    use vento_core::clip::{ClipRep, TYPE_FILE_URL, TYPE_PNG, TYPE_TEXT, TYPE_URL, snapshot_hash};
+    use vento_core::clip::{
+        ClipRep, TYPE_FILE_URL, TYPE_PNG, TYPE_TEXT, TYPE_URL, path_to_file_url, snapshot_hash,
+    };
     use vento_core::clip_history::MAX_ENTRIES;
     use vento_core::geometry::{Point, Rect};
     use vento_core::i18n::with_language;
@@ -1274,7 +1276,10 @@ mod tests {
         ClipSnapshot {
             items: paths
                 .iter()
-                .map(|p| vec![rep(TYPE_FILE_URL, format!("file://{p}").as_bytes())])
+                .map(|p| {
+                    let url = path_to_file_url(Path::new(p));
+                    vec![rep(TYPE_FILE_URL, url.as_bytes())]
+                })
                 .collect(),
         }
     }
@@ -1707,10 +1712,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(
-        windows,
-        ignore = "file URLs of Windows paths come with the Windows clipboard (W5)"
-    )]
     fn to_pocket_leaves_missing_files_out() {
         let (tmp, fake, c) = setup(true);
         let here = tmp.path().join("here.txt");

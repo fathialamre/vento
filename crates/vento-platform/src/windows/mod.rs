@@ -11,7 +11,7 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use vento_core::clip::ClipSnapshot;
+use vento_core::clip::{ClipSnapshot, MAX_SNAPSHOT_BYTES, TYPE_FILE_URL, TYPE_TEXT};
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 use windows_sys::Win32::Foundation::POINT;
@@ -30,7 +30,9 @@ use crate::{
     StubPlatform, TerminalApp,
 };
 
+mod catcher;
 mod clicks;
+mod clipboard;
 mod drag;
 mod heif;
 /// Linux's Convert needs only the `image` crate and libwebp, with
@@ -141,12 +143,68 @@ pub struct WindowsPlatform {
     screens_seen: RefCell<Option<Vec<screens::Seen>>>,
     /// Counts the drags seen in other apps.
     drags: RefCell<drag::DragCounter>,
+    /// The Pocket's drop target; made when first asked for.
+    catcher: std::cell::OnceCell<Option<Rc<catcher::WindowsCatcher>>>,
 }
 
 impl WindowsPlatform {
     pub fn new() -> Self {
         Self::default()
     }
+}
+
+thread_local! {
+    /// The hidden window of [`hidden_window`], made on first use.
+    static HIDDEN: Cell<windows_sys::Win32::Foundation::HWND> =
+        const { Cell::new(std::ptr::null_mut()) };
+}
+
+/// A hidden window of vento's on this (the main) thread, made once: it
+/// owns the menus and vento's copies on the clipboard.
+fn hidden_window() -> Option<windows_sys::Win32::Foundation::HWND> {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, RegisterClassW, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    };
+
+    let made = HIDDEN.with(Cell::get);
+    if !made.is_null() {
+        return Some(made);
+    }
+    // SAFETY: a plain window class and a hidden window, kept for good.
+    let window = unsafe {
+        let module = GetModuleHandleW(std::ptr::null());
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(DefWindowProcW),
+            hInstance: module,
+            lpszClassName: windows_sys::w!("io.github.fathialamre.Vento.Hidden"),
+            ..Default::default()
+        };
+        RegisterClassW(&class);
+        CreateWindowExW(
+            WS_EX_TOOLWINDOW,
+            class.lpszClassName,
+            std::ptr::null(),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            module,
+            std::ptr::null(),
+        )
+    };
+    if window.is_null() {
+        log::warn!(
+            "cannot make vento's hidden window: {}",
+            std::io::Error::last_os_error()
+        );
+        return None;
+    }
+    HIDDEN.with(|h| h.set(window));
+    Some(window)
 }
 
 /// The window class of `window`.
@@ -225,7 +283,7 @@ impl Platform for WindowsPlatform {
             // drag may be of files until the wheel, under the pointer, is
             // told (see `drag`).
             drag_has_files: dragging,
-            clip_change_count: 0,
+            clip_change_count: clipboard::change_count(),
             cursor,
         }
     }
@@ -248,27 +306,43 @@ impl Platform for WindowsPlatform {
     }
 
     fn copy_files(&self, paths: &[PathBuf]) -> Result<(), PlatformError> {
-        self.stub.copy_files(paths)
+        let items = paths
+            .iter()
+            .map(|p| {
+                let url = vento_core::clip::path_to_file_url(p);
+                vec![clipboard::rep(TYPE_FILE_URL, url.into_bytes())]
+            })
+            .collect();
+        self.write_clipboard(&ClipSnapshot { items })
+            .map(drop)
+            .map_err(|_| PlatformError::ClipboardRejectedFiles)
     }
 
     fn copy_text(&self, text: &str) -> Result<(), PlatformError> {
-        self.stub.copy_text(text)
+        let item = vec![clipboard::rep(TYPE_TEXT, text.as_bytes().to_vec())];
+        self.write_clipboard(&ClipSnapshot { items: vec![item] })
+            .map(drop)
+            .map_err(|_| PlatformError::ClipboardRejectedText)
     }
 
     fn clipboard_types(&self) -> Vec<String> {
-        self.stub.clipboard_types()
+        hidden_window().map_or_else(Vec::new, clipboard::current_types)
     }
 
     fn clipboard_change_count(&self) -> i64 {
-        self.stub.clipboard_change_count()
+        clipboard::change_count()
     }
 
     fn read_clipboard(&self) -> ClipSnapshot {
-        self.stub.read_clipboard()
+        hidden_window().map_or_else(ClipSnapshot::default, |owner| {
+            clipboard::read_snapshot(owner, MAX_SNAPSHOT_BYTES)
+        })
     }
 
+    /// Returns the change count the copy gave the clipboard.
     fn write_clipboard(&self, snapshot: &ClipSnapshot) -> Result<i64, PlatformError> {
-        self.stub.write_clipboard(snapshot)
+        let owner = hidden_window().ok_or(PlatformError::Unsupported)?;
+        clipboard::write(owner, &clipboard::offers(snapshot))
     }
 
     fn resolve_file_reference(&self, path: &Path) -> Option<PathBuf> {
@@ -345,7 +419,13 @@ impl Platform for WindowsPlatform {
     }
 
     fn drop_catcher(&self) -> Option<Rc<dyn DropCatcher>> {
-        self.stub.drop_catcher()
+        let catcher = self.catcher.get_or_init(|| {
+            catcher::WindowsCatcher::start()
+                .map(Rc::new)
+                .inspect_err(|e| log::warn!("no drop catcher: {e}"))
+                .ok()
+        });
+        catcher.clone().map(|c| c as Rc<dyn DropCatcher>)
     }
 
     fn trash(&self, path: &Path) -> Result<(), PlatformError> {
@@ -492,6 +572,32 @@ mod tests {
         assert_eq!(quarantine_of(&file).as_deref(), Some(&mark[..]));
         // The file's own content is untouched.
         assert_eq!(std::fs::read(&file).unwrap(), b"x");
+    }
+
+    #[test]
+    #[ignore = "replaces what the clipboard holds"]
+    fn copies_go_round_the_real_clipboard() {
+        let p = WindowsPlatform::new();
+        let before = p.clipboard_change_count();
+        p.copy_text("vento مرحبا").unwrap();
+        assert_ne!(p.clipboard_change_count(), before);
+        assert!(p.clipboard_types().contains(&TYPE_TEXT.to_owned()));
+        let read = p.read_clipboard();
+        assert_eq!(
+            vento_core::clip::plain_text(&read).as_deref(),
+            Some("vento مرحبا")
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a b.txt");
+        std::fs::write(&file, "x").unwrap();
+        p.copy_files(std::slice::from_ref(&file)).unwrap();
+        let read = p.read_clipboard();
+        let url = &read.items[0][0];
+        assert_eq!(url.ty, TYPE_FILE_URL);
+        assert_eq!(
+            vento_core::clip::file_url_to_path(&url.data).as_deref(),
+            Some(file.as_path())
+        );
     }
 
     #[test]
