@@ -59,6 +59,14 @@ const DEST_LABEL_H: f32 = 44.0;
 const DEST_PATH_CHARS: usize = 36;
 /// Space between the lowest cell and the destination label.
 const DEST_LABEL_GAP: f32 = 24.0;
+/// On Windows the wheel opens for any drag and learns its files once it is
+/// under the pointer: with none told this long after it opened, and the
+/// pointer moved [`NO_FILES_MOVE`] since, the drag carries none (text, say)
+/// and the wheel closes.
+#[cfg(windows)]
+const NO_FILES_AFTER: Duration = Duration::from_millis(300);
+#[cfg(windows)]
+const NO_FILES_MOVE: f64 = 6.0;
 /// Room kept between the destination label and the screen or window edge.
 const DEST_LABEL_MARGIN: f32 = 4.0;
 
@@ -76,6 +84,13 @@ struct State {
     /// centre from one outside every cell.
     last_offset: Vec2,
     dropped: Vec<PathBuf>,
+    /// The files the drag over the wheel carries, as winit tells them
+    /// (`HoveredFile`); where they come from on Windows, which has no drag
+    /// pasteboard to read them from first.
+    hovered: Vec<PathBuf>,
+    /// When and where the wheel last opened.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    opened: Option<(Instant, Point)>,
     /// Opens and closes the destination ring from the hover.
     tracker: RingTracker,
     /// The destination ring, while it is open.
@@ -488,6 +503,8 @@ impl WheelController {
                 highlighted: None,
                 last_offset: Vec2 { x: 0.0, y: 0.0 },
                 dropped: Vec::new(),
+                hovered: Vec::new(),
+                opened: None,
                 tracker,
                 ring: None,
                 ring_hot: None,
@@ -636,7 +653,7 @@ impl WheelController {
             if !archive && !pdf {
                 return;
             }
-            let paths = self.platform.drag_paths();
+            let paths = self.drag_paths_in(&state);
             let mut changed = false;
             if archive {
                 let extracting = looks_like_archives(&paths);
@@ -653,6 +670,16 @@ impl WheelController {
         if changed {
             let cells = self.cells(&self.state.borrow());
             self.window.set_cells(ModelRc::new(VecModel::from(cells)));
+        }
+    }
+
+    /// The files being dragged: on Windows those the wheel was told of (see
+    /// [`State::hovered`]), elsewhere the drag pasteboard's.
+    fn drag_paths_in(&self, state: &State) -> Vec<PathBuf> {
+        if cfg!(windows) {
+            state.hovered.clone()
+        } else {
+            self.platform.drag_paths()
         }
     }
 
@@ -729,6 +756,8 @@ impl WheelController {
                 // the ring neither opens nor closes.
                 if dragging && self.machine.borrow().is_open() {
                     self.ring_tick(started);
+                    #[cfg(windows)]
+                    self.close_without_files(sample.cursor, started);
                 }
                 if let Some(listener) = &*self.sample_listener.borrow() {
                     listener(&sample, dragging);
@@ -770,6 +799,8 @@ impl WheelController {
             state.highlighted = None;
             state.last_offset = Vec2 { x: 0.0, y: 0.0 };
             state.dropped.clear();
+            state.hovered.clear();
+            state.opened = Some((started, cursor));
             extent
         };
         self.label_cells();
@@ -1010,7 +1041,7 @@ impl WheelController {
         let action = self.state.borrow().settings.actions[source];
         let mut items = match action {
             ActionId::Convert => RingItems::Formats(ring_formats(
-                &self.platform.drag_paths(),
+                &self.drag_paths_in(&self.state.borrow()),
                 &vento_platform::convert_targets(),
             )),
             ActionId::Share => RingItems::Targets(ring_targets(&self.state.borrow().share_targets)),
@@ -1177,13 +1208,52 @@ impl WheelController {
     fn register_drop_handler(&self) {
         let this = self.this.clone();
         self.window.window().on_winit_window_event(move |_, event| {
-            if let WindowEvent::DroppedFile(path) = event
-                && let Some(controller) = this.upgrade()
-            {
-                controller.file_dropped(path.clone());
+            if let Some(controller) = this.upgrade() {
+                match event {
+                    WindowEvent::DroppedFile(path) => controller.file_dropped(path.clone()),
+                    WindowEvent::HoveredFile(path) => controller.file_hovered(path.clone()),
+                    _ => {}
+                }
             }
             EventResult::Propagate
         });
+    }
+
+    /// A file the drag over the open wheel carries; each comes again when
+    /// the drag comes back over the wheel. On Windows they label the cells.
+    fn file_hovered(&self, path: PathBuf) {
+        if !self.machine.borrow().is_open() {
+            return;
+        }
+        {
+            let mut state = self.state.borrow_mut();
+            if state.hovered.contains(&path) {
+                return;
+            }
+            state.hovered.push(path);
+            debug!("the drag carries {} file(s)", state.hovered.len());
+        }
+        if cfg!(windows) {
+            self.label_cells();
+        }
+    }
+
+    /// Closes the wheel opened for a drag that, by now, has shown it holds
+    /// no files (see [`NO_FILES_AFTER`]).
+    #[cfg(windows)]
+    fn close_without_files(&self, cursor: Point, now: Instant) {
+        let none = {
+            let state = self.state.borrow();
+            state.hovered.is_empty()
+                && state.opened.is_some_and(|(at, from)| {
+                    now.duration_since(at) >= NO_FILES_AFTER
+                        && (cursor.x - from.x).hypot(cursor.y - from.y) >= NO_FILES_MOVE
+                })
+        };
+        if none {
+            self.dismiss();
+            debug!("closed: the drag carries no files");
+        }
     }
 
     fn file_dropped(&self, path: PathBuf) {
@@ -1257,6 +1327,8 @@ impl WheelController {
         {
             let mut state = self.state.borrow_mut();
             state.dropped.clear();
+            state.hovered.clear();
+            state.opened = None;
             state.highlighted = None;
             state.tracker.reset();
         }

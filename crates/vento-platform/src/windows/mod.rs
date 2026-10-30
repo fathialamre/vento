@@ -1,9 +1,9 @@
 //! Windows [`Platform`], through Win32.
 //!
 //! The port is under way (see W0–W7 in the port plan): what is done here
-//! is the pointer and keys, the monitors, one Vento per session, and
-//! vento's own windows kept off the taskbar and out of focus; every other
-//! call goes to the [`StubPlatform`] for now.
+//! is the pointer and keys, drags in other apps, the monitors, one Vento
+//! per session, and vento's own windows kept off the taskbar and out of
+//! focus; every other call goes to the [`StubPlatform`] for now.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -29,6 +29,7 @@ use crate::{
 };
 
 mod clicks;
+mod drag;
 mod instance;
 mod overlay;
 mod screens;
@@ -84,12 +85,24 @@ pub struct WindowsPlatform {
     focus_before: Cell<usize>,
     /// The monitors [`Platform::screens_changed`] last saw.
     screens_seen: RefCell<Option<Vec<screens::Seen>>>,
+    /// Counts the drags seen in other apps.
+    drags: RefCell<drag::DragCounter>,
 }
 
 impl WindowsPlatform {
     pub fn new() -> Self {
         Self::default()
     }
+}
+
+/// The window class of `window`.
+fn class_of(window: windows_sys::Win32::Foundation::HWND) -> String {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+
+    let mut name = [0u16; 64];
+    // SAFETY: the buffer's length is passed with it.
+    let len = unsafe { GetClassNameW(window, name.as_mut_ptr(), name.len() as i32) };
+    String::from_utf16_lossy(&name[..len.max(0) as usize])
 }
 
 /// Whether `window` is one of vento's own.
@@ -135,6 +148,7 @@ impl Platform for WindowsPlatform {
         } else {
             Point { x: 0.0, y: 0.0 }
         };
+        let dragging = drag::active();
         InputSample {
             left_down: key_down(primary_button()),
             modifiers: Modifiers {
@@ -144,16 +158,20 @@ impl Platform for WindowsPlatform {
                 meta: key_down(VK_LWIN) || key_down(VK_RWIN),
             },
             escape_down: key_down(VK_ESCAPE),
-            // Drags come with the wheel (W3).
-            drag_change_count: 0,
-            drag_has_files: false,
+            drag_change_count: self.drags.borrow_mut().feed(dragging),
+            // What an OLE drag carries cannot be read from outside it: any
+            // drag may be of files until the wheel, under the pointer, is
+            // told (see `drag`).
+            drag_has_files: dragging,
             clip_change_count: 0,
             cursor,
         }
     }
 
+    /// Always empty: the drag's files reach the wheel window itself, as
+    /// winit's `HoveredFile` (see `drag`).
     fn drag_paths(&self) -> Vec<PathBuf> {
-        self.stub.drag_paths()
+        Vec::new()
     }
 
     fn screens(&self) -> Vec<Rect> {

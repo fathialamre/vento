@@ -6,16 +6,18 @@
 use std::cell::RefCell;
 use std::ptr;
 
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows_sys::Win32::Foundation::{LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, FindWindowExW, FindWindowW, GA_ROOT, GetAncestor, GetClassNameW, GetWindowRect,
+    CallNextHookEx, FindWindowExW, FindWindowW, GA_ROOT, GetAncestor, GetWindowRect,
     GetWindowThreadProcessId, HC_ACTION, HHOOK, MSLLHOOKSTRUCT, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_RBUTTONDOWN,
     WM_XBUTTONDOWN, WindowFromPoint,
 };
 use windows_sys::w;
+
+use super::class_of;
 
 /// The hook, and what a press outside calls.
 type Watch = (HHOOK, Box<dyn Fn()>);
@@ -120,12 +122,4 @@ fn in_notification_area(at: POINT) -> bool {
             && at.y >= r.top
             && at.y < r.bottom
     }
-}
-
-/// The window class of `window`.
-fn class_of(window: HWND) -> String {
-    let mut name = [0u16; 64];
-    // SAFETY: the buffer's length is passed with it.
-    let len = unsafe { GetClassNameW(window, name.as_mut_ptr(), name.len() as i32) };
-    String::from_utf16_lossy(&name[..len.max(0) as usize])
 }
