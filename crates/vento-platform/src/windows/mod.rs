@@ -190,8 +190,17 @@ impl Platform for WindowsPlatform {
         self.stub.pick_folder(start)
     }
 
+    /// The top middle of the primary monitor. A taskbar along the top
+    /// counts as its menu bar, so the island sits below it.
     fn pocket_home(&self) -> Option<IslandHome> {
-        self.stub.pocket_home()
+        let primary = *screens::monitors().first()?;
+        let (frame, work) = (primary.logical_frame(), primary.logical_work());
+        Some(IslandHome {
+            screen: frame,
+            notch: None,
+            menu_bar_h: (work.y - frame.y).max(0.0),
+            slot: None,
+        })
     }
 
     fn make_overlay(
@@ -310,6 +319,15 @@ mod tests {
             y: screens[0].y + screens[0].h / 2.0,
         };
         assert!(p.scale_factor_at(centre) >= 1.0);
+    }
+
+    #[test]
+    fn the_island_lives_on_the_primary_monitor() {
+        let p = WindowsPlatform::new();
+        let home = p.pocket_home().expect("a primary monitor");
+        let work = p.screens()[0];
+        assert!(home.screen.w >= work.w && home.screen.h >= work.h);
+        assert!(home.menu_bar_h >= 0.0 && home.notch.is_none());
     }
 
     #[test]

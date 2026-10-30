@@ -38,6 +38,11 @@ impl Monitor {
         logical(&self.work, self.scale)
     }
 
+    /// The whole monitor in logical points.
+    pub fn logical_frame(&self) -> Rect {
+        logical(&self.frame, self.scale)
+    }
+
     fn holds(&self, x: i32, y: i32) -> bool {
         x >= self.frame.left && x < self.frame.right && y >= self.frame.top && y < self.frame.bottom
     }
