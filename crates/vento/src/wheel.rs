@@ -704,8 +704,10 @@ impl WheelController {
             WARM_HIDE_TICK => {
                 // On Linux the window exists by now: make it override-
                 // redirect, or GNOME places it itself and gives it focus.
-                // macOS places the wheel where it is put as it is.
-                #[cfg(target_os = "linux")]
+                // On Windows it would show on the taskbar and take the
+                // focus from the app the files come from. macOS places the
+                // wheel where it is put as it is.
+                #[cfg(any(target_os = "linux", windows))]
                 self.make_overlay();
                 self.hide_window();
                 self.register_drop_handler();
@@ -1276,15 +1278,19 @@ impl WheelController {
 
     /// Keeps the wheel above every window, out of focus, exactly where it
     /// is placed. Needs the native window, which exists once it was shown.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     fn make_overlay(&self) {
         use raw_window_handle::HasWindowHandle;
 
         let result = match self.window.window().window_handle().window_handle() {
-            Ok(handle) => self
-                .platform
-                .make_overlay(handle.as_raw())
-                .map_err(|e| e.to_string()),
+            Ok(handle) => {
+                let made = self.platform.make_overlay(handle.as_raw());
+                // Windows needs a second step to keep the focus where the
+                // drag began; X11's override-redirect does both.
+                #[cfg(windows)]
+                let made = made.and_then(|()| self.platform.make_non_key(handle.as_raw()));
+                made.map_err(|e| e.to_string())
+            }
             Err(e) => Err(e.to_string()),
         };
         match result {

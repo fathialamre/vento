@@ -247,8 +247,9 @@ export component QuickPanel inherits Window {
     animate reveal { duration: self.revealed ? 160ms : 0ms; easing: ease-out; }
 
     // The arrow's height above the body, and the body's corner radius (the
-    // panel code relies on both, and on the arrow's width and blend).
-    property <length> arrow-h: 10px;
+    // panel code relies on both, and on the arrow's width and blend). vento
+    // sets no arrow (0) when the panel stands above a taskbar at the bottom.
+    in property <length> arrow-h: 10px;
     property <length> radius: 16px;
 
     // The height the window takes: the arrow above the height the panel's

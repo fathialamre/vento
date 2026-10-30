@@ -196,6 +196,10 @@ impl InfoController {
             self.platform.deactivate_app();
             return;
         }
+        // winit shows a new window without activating it on Windows; the
+        // window takes the keyboard for Esc.
+        #[cfg(windows)]
+        window.window().with_winit_window(|w| w.focus_window());
         if !was_open {
             self.watch_outside_clicks();
         }

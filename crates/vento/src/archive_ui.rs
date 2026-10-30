@@ -10,6 +10,8 @@ use std::time::Duration;
 
 use log::{info, warn};
 use raw_window_handle::HasWindowHandle;
+#[cfg(windows)]
+use slint::winit_030::WinitWindowAccessor;
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Timer, TimerMode};
 use vento_core::archive::{Progress, Zeroizing};
 use vento_core::geometry::Point;
@@ -363,6 +365,9 @@ impl PasswordView {
             self.finish(None);
             return;
         }
+        // winit shows a new window without activating it on Windows.
+        #[cfg(windows)]
+        window.window().with_winit_window(|w| w.focus_window());
         window.invoke_focus_field();
     }
 

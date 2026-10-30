@@ -48,6 +48,26 @@ impl Monitor {
     }
 }
 
+/// What [`Platform::screens_changed`](crate::Platform::screens_changed)
+/// compares: a monitor's frame, work area and scale.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Seen {
+    frame: [i32; 4],
+    work: [i32; 4],
+    scale: u64,
+}
+
+impl Seen {
+    pub fn of(m: &Monitor) -> Self {
+        let edges = |r: &RECT| [r.left, r.top, r.right, r.bottom];
+        Self {
+            frame: edges(&m.frame),
+            work: edges(&m.work),
+            scale: m.scale.to_bits(),
+        }
+    }
+}
+
 /// `r` divided by `scale`.
 fn logical(r: &RECT, scale: f64) -> Rect {
     Rect {

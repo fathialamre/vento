@@ -1,10 +1,11 @@
 //! Windows [`Platform`], through Win32.
 //!
 //! The port is under way (see W0–W7 in the port plan): what is done here
-//! is the pointer and keys, the monitors and one Vento per session; every
-//! other call goes to the [`StubPlatform`] for now.
+//! is the pointer and keys, the monitors, one Vento per session, and
+//! vento's own windows kept off the taskbar and out of focus; every other
+//! call goes to the [`StubPlatform`] for now.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -12,18 +13,24 @@ use vento_core::clip::ClipSnapshot;
 use vento_core::geometry::{Point, Rect};
 use vento_core::trigger::{InputSample, Modifiers};
 use windows_sys::Win32::Foundation::POINT;
+use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_LBUTTON, VK_LWIN, VK_MENU, VK_RBUTTON,
     VK_RWIN, VK_SHIFT,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetSystemMetrics, SM_SWAPBUTTON};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindowThreadProcessId, IsWindow,
+    SM_SWAPBUTTON, SetForegroundWindow,
+};
 
 use crate::{
     AppInfo, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage, StubPlatform,
     TerminalApp,
 };
 
+mod clicks;
 mod instance;
+mod overlay;
 mod screens;
 /// Linux's thumbnails need only the `image` crate.
 #[path = "../linux/thumbs.rs"]
@@ -72,11 +79,26 @@ pub struct WindowsPlatform {
     stub: StubPlatform,
     /// Runs when another launch asks this Vento to open.
     on_reopen: RefCell<Option<Handler>>,
+    /// The window of another app that had the focus when vento took it
+    /// ([`Platform::activate_app`]), as an address; 0 for none.
+    focus_before: Cell<usize>,
+    /// The monitors [`Platform::screens_changed`] last saw.
+    screens_seen: RefCell<Option<Vec<screens::Seen>>>,
 }
 
 impl WindowsPlatform {
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+/// Whether `window` is one of vento's own.
+fn is_vento(window: windows_sys::Win32::Foundation::HWND) -> bool {
+    let mut pid = 0;
+    // SAFETY: plain calls; a stale handle just yields no process.
+    unsafe {
+        GetWindowThreadProcessId(window, &mut pid);
+        pid == GetCurrentProcessId()
     }
 }
 
@@ -203,25 +225,31 @@ impl Platform for WindowsPlatform {
         })
     }
 
+    /// Off the taskbar and out of Alt+Tab; above the others it already is,
+    /// through Slint's `always-on-top`.
     fn make_overlay(
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
-        self.stub.make_overlay(window)
+        overlay::keep(window, overlay::OFF_TASKBAR)
     }
 
+    /// Never activated, so the app in front keeps the keyboard; off the
+    /// taskbar too, as every such window is a passing one.
     fn make_non_key(
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
-        self.stub.make_non_key(window)
+        overlay::keep(window, overlay::OFF_TASKBAR | overlay::NO_ACTIVATE)
     }
 
+    /// Windows leaves a window where it is put; the Quick panel only needs
+    /// keeping off the taskbar.
     fn keep_window_frame(
         &self,
         window: raw_window_handle::RawWindowHandle,
     ) -> Result<(), PlatformError> {
-        self.stub.keep_window_frame(window)
+        overlay::keep(window, overlay::OFF_TASKBAR)
     }
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
@@ -241,7 +269,11 @@ impl Platform for WindowsPlatform {
     }
 
     fn screens_changed(&self) -> bool {
-        self.stub.screens_changed()
+        let now: Vec<_> = screens::monitors().iter().map(screens::Seen::of).collect();
+        match self.screens_seen.replace(Some(now.clone())) {
+            Some(before) => before != now,
+            None => false,
+        }
     }
 
     fn on_terminate(&self, f: Box<dyn Fn()>) {
@@ -252,9 +284,28 @@ impl Platform for WindowsPlatform {
         *self.on_reopen.borrow_mut() = Some(Handler(f));
     }
 
-    fn activate_app(&self) {}
+    /// Remembers the other app's window in front, for
+    /// [`Platform::deactivate_app`]; the window that shows next takes the
+    /// focus itself (winit's `focus_window`).
+    fn activate_app(&self) {
+        // SAFETY: plain call.
+        let front = unsafe { GetForegroundWindow() };
+        if !front.is_null() && !is_vento(front) {
+            self.focus_before.set(front as usize);
+        }
+    }
 
-    fn deactivate_app(&self) {}
+    fn deactivate_app(&self) {
+        let before = self.focus_before.replace(0) as windows_sys::Win32::Foundation::HWND;
+        // SAFETY: plain calls; `before` is checked to still be a window.
+        unsafe {
+            let front = GetForegroundWindow();
+            let ours = front.is_null() || is_vento(front);
+            if ours && !before.is_null() && IsWindow(before) != 0 {
+                SetForegroundWindow(before);
+            }
+        }
+    }
 
     /// There is no app menu bar on Windows.
     fn suspend_app_menu(&self) {}
@@ -262,11 +313,11 @@ impl Platform for WindowsPlatform {
     fn restore_app_menu(&self) {}
 
     fn watch_outside_clicks(&self, f: Box<dyn Fn()>) {
-        self.stub.watch_outside_clicks(f);
+        clicks::watch(f);
     }
 
     fn stop_watching_outside_clicks(&self) {
-        self.stub.stop_watching_outside_clicks();
+        clicks::stop();
     }
 
     fn scale_factor_at(&self, p: Point) -> f64 {
