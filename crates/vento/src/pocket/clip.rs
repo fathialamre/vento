@@ -1707,6 +1707,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        windows,
+        ignore = "file URLs of Windows paths come with the Windows clipboard (W5)"
+    )]
     fn to_pocket_leaves_missing_files_out() {
         let (tmp, fake, c) = setup(true);
         let here = tmp.path().join("here.txt");

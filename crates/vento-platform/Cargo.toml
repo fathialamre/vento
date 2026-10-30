@@ -148,6 +148,22 @@ x11rb = { version = "0.13", features = ["shape"] }
 # so vento can tidy up on its main thread before it goes.
 signal-hook = "0.3"
 
+[target.'cfg(windows)'.dependencies]
+# Picture thumbnails, as on Linux (`linux/thumbs.rs`).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "gif", "bmp", "webp"] }
+# Already in the app through winit; only the Win32 parts vento calls itself.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [dev-dependencies]
 # The probe example prints the platform's logs (`RUST_LOG=debug`).
 env_logger = "0.11"

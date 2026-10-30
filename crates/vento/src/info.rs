@@ -554,9 +554,13 @@ mod tests {
         let gone = dir.path().join("gone");
         assert_eq!(existing_paths(vec![a.clone(), gone.clone()]), vec![a]);
         assert!(existing_paths(vec![gone.clone()]).is_empty());
-        let link = dir.path().join("link");
-        std::os::unix::fs::symlink(&gone, &link).unwrap();
-        assert_eq!(existing_paths(vec![link.clone()]), vec![link]);
+        // Windows lets only admins and developer mode make links.
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("link");
+            std::os::unix::fs::symlink(&gone, &link).unwrap();
+            assert_eq!(existing_paths(vec![link.clone()]), vec![link]);
+        }
     }
 
     #[test]

@@ -9,13 +9,15 @@ use std::process::Command;
 use std::rc::Rc;
 
 use log::warn;
-use tray_icon::menu::{
-    CheckMenuItem, ContextMenu, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem,
-};
+#[cfg(target_os = "macos")]
+use tray_icon::menu::ContextMenu;
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
-use vento_core::i18n::{current, tr};
+#[cfg(target_os = "macos")]
+use vento_core::i18n::current;
+use vento_core::i18n::tr;
 use vento_core::settings::{Settings, settings_path};
 use vento_platform::Platform;
 
@@ -27,16 +29,19 @@ use crate::quit;
 use crate::settings_hub::SettingsHub;
 
 /// The flame mark as a black template image, 36 px: an 18 pt glyph at 2x.
+#[cfg_attr(windows, allow(dead_code))]
 const FLAME_PNG: &[u8] = include_bytes!("../assets/menu-bar-flame@2x.png");
 /// The Keep Awake cup, the same way.
 const CUP_PNG: &[u8] = include_bytes!("../assets/menu-bar-cup@2x.png");
 /// Side length of the flame and the cup in pixels.
+#[cfg_attr(windows, allow(dead_code))]
 const FLAME_SIZE: u32 = 36;
 /// The cup's tray icon id, which tells its clicks from Vento's.
 const CUP_ID: &str = "vento-keep-awake";
 /// Side length of the menu-bar icon in pixels. tray-icon shows an image
 /// taller than 22 pt at 22 pt, so the 44 px icon lands at 22 pt and the
 /// flame centred in it at 18 pt, sharp on Retina screens.
+#[cfg_attr(windows, allow(dead_code))]
 const ICON_SIZE: u32 = 44;
 
 /// Acts on a clicked menu item.
@@ -148,10 +153,56 @@ struct Texted {
 /// Lays the tray's menu out right to left in a right-to-left language and
 /// left to right otherwise. AppKit reads the direction when the menu is
 /// shown, so this goes with every change of the text.
+#[cfg(target_os = "macos")]
 fn set_menu_direction(menu: &Menu) {
     // SAFETY: `ns_menu` is the live NSMenu muda made for `menu`, which the
     // caller holds; the pointer is used at once on the main thread.
     unsafe { vento_platform::set_ns_menu_direction(menu.ns_menu(), current().rtl) };
+}
+
+/// Windows lays the menu out left to right for now.
+#[cfg(windows)]
+fn set_menu_direction(_menu: &Menu) {}
+
+/// The tray mark Linux's top bar shows, 32 px and white, which Windows
+/// scales to the taskbar's icon size.
+#[cfg(windows)]
+const MARK_PNG: &[u8] = include_bytes!("../assets/tray-mark-32.png");
+
+/// The bundled RGBA8 PNG `mark` as a tray icon in one colour: black on a
+/// light taskbar, white on a dark one. Windows does not tint tray icons
+/// as macOS tints templates.
+///
+/// # Panics
+/// If `mark` is not an RGBA8 PNG.
+#[cfg(windows)]
+fn taskbar_icon(mark: &[u8]) -> Icon {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(mark))
+        .read_info()
+        .expect("the bundled mark is a PNG");
+    let mut rgba = vec![
+        0u8;
+        reader
+            .output_buffer_size()
+            .expect("the mark fits in memory")
+    ];
+    let info = reader
+        .next_frame(&mut rgba)
+        .expect("the bundled mark decodes");
+    assert_eq!(
+        (info.color_type, info.bit_depth),
+        (png::ColorType::Rgba, png::BitDepth::Eight),
+        "the bundled mark is RGBA8"
+    );
+    let ink = if vento_platform::taskbar_is_light() {
+        0
+    } else {
+        255
+    };
+    for pixel in rgba.as_chunks_mut::<4>().0 {
+        pixel[..3].fill(ink);
+    }
+    Icon::from_rgba(rgba, info.width, info.height).expect("the mark has a valid size")
 }
 
 /// A 44x44 RGBA image of the bundled 36x36 `mark` (the flame or the cup)
@@ -160,6 +211,7 @@ fn set_menu_direction(menu: &Menu) {
 ///
 /// # Panics
 /// If `mark` is not a 36x36 RGBA PNG.
+#[cfg_attr(windows, allow(dead_code))]
 fn tray_icon_rgba(mark: &[u8]) -> Vec<u8> {
     let mut reader = png::Decoder::new(std::io::Cursor::new(mark))
         .read_info()
@@ -278,10 +330,14 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     .expect("cannot build the tray menu");
     set_menu_direction(&menu);
 
-    let icon = Icon::from_rgba(tray_icon_rgba(FLAME_PNG), ICON_SIZE, ICON_SIZE)
-        .expect("tray icon has a valid size");
-    let tray = TrayIconBuilder::new()
-        .with_icon_templated(icon)
+    #[cfg(target_os = "macos")]
+    let builder = TrayIconBuilder::new().with_icon_templated(
+        Icon::from_rgba(tray_icon_rgba(FLAME_PNG), ICON_SIZE, ICON_SIZE)
+            .expect("tray icon has a valid size"),
+    );
+    #[cfg(windows)]
+    let builder = TrayIconBuilder::new().with_icon(taskbar_icon(MARK_PNG));
+    let tray = builder
         .with_tooltip("Vento")
         .with_menu(Box::new(menu.clone()))
         .with_menu_on_left_click(false)
@@ -513,11 +569,15 @@ fn cup_tooltip() -> String {
 /// The Keep Awake cup's menu-bar icon, with no menu: a click opens the
 /// panel. `None`, logged, when macOS will not make it.
 fn build_cup() -> Option<TrayIcon> {
-    let icon = Icon::from_rgba(tray_icon_rgba(CUP_PNG), ICON_SIZE, ICON_SIZE)
-        .expect("the cup has a valid size");
-    TrayIconBuilder::new()
+    #[cfg(target_os = "macos")]
+    let builder = TrayIconBuilder::new().with_icon_templated(
+        Icon::from_rgba(tray_icon_rgba(CUP_PNG), ICON_SIZE, ICON_SIZE)
+            .expect("the cup has a valid size"),
+    );
+    #[cfg(windows)]
+    let builder = TrayIconBuilder::new().with_icon(taskbar_icon(CUP_PNG));
+    builder
         .with_id(CUP_ID)
-        .with_icon_templated(icon)
         .with_tooltip(cup_tooltip())
         .build()
         .inspect_err(|e| warn!("cannot show the Keep Awake cup: {e}"))
@@ -535,14 +595,20 @@ pub(crate) fn open_settings_file(_platform: &dyn Platform) {
         warn!("cannot create {}: {e}", path.display());
         return;
     }
+    // `.toml` has no app of its own on a fresh Windows; Notepad is always
+    // there.
+    #[cfg(target_os = "macos")]
+    let (program, args): (&str, &[&str]) = ("open", &["-t"]);
+    #[cfg(windows)]
+    let (program, args): (&str, &[&str]) = ("notepad", &[]);
     // Waited for on a thread of its own: unwaited, `open` would stay a
     // zombie, and waiting here would stall the menu.
     let opener = std::thread::Builder::new()
         .name("open-settings".into())
         .spawn(
-            move || match Command::new("open").arg("-t").arg(&path).status() {
+            move || match Command::new(program).args(args).arg(&path).status() {
                 Ok(status) if status.success() => {}
-                Ok(status) => warn!("open -t {} failed: {status}", path.display()),
+                Ok(status) => warn!("{program} {} failed: {status}", path.display()),
                 Err(e) => warn!("cannot open {}: {e}", path.display()),
             },
         );

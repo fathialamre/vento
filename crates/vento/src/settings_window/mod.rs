@@ -63,8 +63,10 @@ const TRIGGERS: [Modifier; 4] = [
 /// elsewhere.
 #[cfg(target_os = "macos")]
 const TRIGGER_NAMES: [&str; 4] = ["Control", "Option", "Shift", "Command"];
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
+#[cfg(windows)]
+const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
 
 /// The licences of Vento and of what it bundles: the README's License
@@ -1167,16 +1169,21 @@ fn close_with(
 /// would stall the window.
 fn open_link(url: &'static str) {
     #[cfg(target_os = "macos")]
-    const OPENER: &str = "open";
-    #[cfg(not(target_os = "macos"))]
-    const OPENER: &str = "xdg-open";
+    const OPENER: &[&str] = &["open"];
+    #[cfg(target_os = "linux")]
+    const OPENER: &[&str] = &["xdg-open"];
+    // Unlike `explorer`, it exits 0 once the browser has the link.
+    #[cfg(windows)]
+    const OPENER: &[&str] = &["rundll32", "url.dll,FileProtocolHandler"];
     let opener = std::thread::Builder::new()
         .name("open-link".into())
-        .spawn(move || match Command::new(OPENER).arg(url).status() {
-            Ok(status) if status.success() => {}
-            Ok(status) => warn!("{OPENER} {url} failed: {status}"),
-            Err(e) => warn!("cannot open {url}: {e}"),
-        });
+        .spawn(
+            move || match Command::new(OPENER[0]).args(&OPENER[1..]).arg(url).status() {
+                Ok(status) if status.success() => {}
+                Ok(status) => warn!("{} {url} failed: {status}", OPENER[0]),
+                Err(e) => warn!("cannot open {url}: {e}"),
+            },
+        );
     if let Err(e) = opener {
         warn!("cannot start opening {url}: {e}");
     }

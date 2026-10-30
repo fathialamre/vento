@@ -488,10 +488,16 @@ impl PocketController {
 /// Opens `url` (a web link) in the default browser.
 fn open_link(url: &str) {
     #[cfg(target_os = "macos")]
-    let opener = "open";
-    #[cfg(not(target_os = "macos"))]
-    let opener = "xdg-open";
-    match std::process::Command::new(opener).arg(url).spawn() {
+    let opener: &[&str] = &["open"];
+    #[cfg(target_os = "linux")]
+    let opener: &[&str] = &["xdg-open"];
+    #[cfg(windows)]
+    let opener: &[&str] = &["rundll32", "url.dll,FileProtocolHandler"];
+    match std::process::Command::new(opener[0])
+        .args(&opener[1..])
+        .arg(url)
+        .spawn()
+    {
         Ok(_) => debug!("clipboard: opened a link"),
         Err(e) => warn!("cannot open a link: {e}"),
     }

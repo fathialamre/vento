@@ -1,8 +1,9 @@
 //! Operating-system access for vento: global input sampling, screens,
 //! clipboard, terminals and the folder picker, behind one [`Platform`] trait.
 //!
-//! macOS has a real implementation and Linux (GNOME) a partial one; every
-//! other OS gets a [`StubPlatform`] so the workspace still compiles there.
+//! macOS has a real implementation, Linux (GNOME) a partial one and Windows
+//! a starting one; every other OS gets a [`StubPlatform`] so the workspace
+//! still compiles there.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -35,6 +36,11 @@ pub use linux::{
     APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, claim_instance,
     end_startup, start_file_drag, tray_icon_frame,
 };
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::{WindowsPlatform, claim_instance, taskbar_is_light};
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -711,7 +717,11 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     {
         linux::picture_thumbnail(path, short_px, max_ratio)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::picture_thumbnail(path, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (path, short_px, max_ratio);
         None
@@ -730,7 +740,11 @@ pub fn picture_data_thumbnail(bytes: &[u8], short_px: u32, max_ratio: u32) -> Op
     {
         linux::picture_data_thumbnail(bytes, short_px, max_ratio)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::picture_data_thumbnail(bytes, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (bytes, short_px, max_ratio);
         None
@@ -840,7 +854,11 @@ pub fn current() -> Rc<dyn Platform> {
     {
         Rc::new(LinuxPlatform::new())
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        Rc::new(WindowsPlatform::new())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         Rc::new(StubPlatform)
     }
