@@ -1,9 +1,10 @@
 // The Settings window: an ordinary titled window with a sidebar of pages on
 // the left (the right in a right-to-left language), one per feature, and
-// the chosen page beside it under its name. It follows the Appearance setting through `Theme`.
+// the chosen page beside it under its name, its settings on one panel. It follows the Appearance setting through `Theme`.
 
 import { LineText, Theme } from "theme.slint";
-import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
+import { Panel, RowSeparator } from "controls.slint";
+import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
 // One row of the sidebar. `id` names the page whatever its label says:
@@ -11,8 +12,8 @@ import { ActionRow, FolderRow, Notice, WheelPage, MovePage, PocketPage, Clipboar
 // 6 Keep Awake, 7 About (the order of `Page` in `settings_window/mod.rs`).
 export struct PageItem { icon: image, label: string, id: int }
 
-// A sidebar row: the page's icon and name, on the accent's faint tint while
-// it is the page shown.
+// A sidebar row: the page's icon and name, in the accent on its faint tint
+// while it is the page shown.
 component SidebarRow inherits Rectangle {
     in property <image> icon;
     in property <string> label;
@@ -21,7 +22,7 @@ component SidebarRow inherits Rectangle {
 
     height: 30px;
     border-radius: 7px;
-    background: self.chosen ? Theme.accent-soft : (touch.has-hover ? Theme.surface : transparent);
+    background: self.chosen ? Theme.sidebar-chosen : (touch.has-hover ? Theme.text.transparentize(0.95) : transparent);
     accessible-role: tab;
     accessible-label: self.label;
     accessible-item-selected: self.chosen;
@@ -68,7 +69,7 @@ export component SettingsWindow inherits Window {
     preferred-height: 520px;
     min-width: 560px;
     min-height: 420px;
-    background: Theme.bg;
+    background: Theme.page;
 
     // The sidebar's rows, in order, and the one shown (an index into them).
     // The page shown is found by its id, so a page left out (Copy from
@@ -141,6 +142,8 @@ export component SettingsWindow inherits Window {
     in property <bool> awake-screen-off;
     // The running version, for About.
     in property <string> version;
+    // By page id: the user closed that page's How to card.
+    in property <[bool]> how-to-closed;
 
     // A control asks for a change; vento applies and saves it and sets the
     // properties above from the result.
@@ -171,7 +174,9 @@ export component SettingsWindow inherits Window {
     // "Clear history": the history empties at once, with no Undo.
     callback clip-history-cleared();
     callback awake-screen-off-toggled(bool);
-    // About's "Open settings file" and "View licenses".
+    // A page's How to card opened (true) or closed, by page id.
+    callback how-to-toggled(int, bool);
+    // About's Settings file and Licenses buttons.
     callback open-settings-file();
     callback open-licenses();
     // The Pocket's, the Clipboard's or Copy from screen's shortcut field
@@ -191,6 +196,61 @@ export component SettingsWindow inherits Window {
     property <int> page-id: root.page < root.pages.length ? root.pages[root.page].id : -1;
 
     forward-focus: keys;
+
+    // How to use the feature of the page with id `id`, a step a line; none
+    // for About. Shortcuts and the trigger are the ones set now.
+    pure function how-to-steps(id: int) -> [string] {
+        if id == 0 {
+            return [
+                @tr("Start dragging a file, then press {} while still dragging.", root.trigger-names[root.trigger]),
+                @tr("Or shake the pointer quickly back and forth while dragging, if Shake to open is on."),
+                @tr("Let go on an action in the wheel, or anywhere else to drop the file as usual."),
+            ];
+        }
+        if id == 1 {
+            return [
+                @tr("Switch an action on to show it on the wheel, or off to hide it."),
+                @tr("Drag a row by its grip to change where the action sits."),
+                @tr("Hold on Move, Copy to or Convert for a moment to open a ring of choices."),
+            ];
+        }
+        if id == 2 {
+            return [
+                @tr("Let go on Move in the wheel and pick a folder."),
+                @tr("Or hold on Move for a moment: a ring of your pinned and recent folders opens. Let go on one."),
+                @tr("Changed your mind? Click Undo on the notice."),
+            ];
+        }
+        if id == 3 {
+            return [
+                @tr("Let go on Pocket in the wheel: the file waits in the island at the top of the screen."),
+                @tr("Press {} to open the island at any time, and drop more files on it.", root.shortcut),
+                @tr("Drag items from the island into any folder or app. Removing one never deletes your file."),
+            ];
+        }
+        if id == 4 {
+            return [
+                @tr("Copy as usual: Vento remembers what you copy."),
+                @tr("Press {} to open the history.", root.clip-shortcut),
+                @tr("Click a copy to put it back on the clipboard, then paste it anywhere."),
+            ];
+        }
+        if id == 5 {
+            return [
+                @tr("Press {}: the screen dims.", root.screen-shortcut),
+                @tr("Drag a rectangle over the text you want and let go."),
+                @tr("The text is on your clipboard, ready to paste. Esc cancels."),
+            ];
+        }
+        if id == 6 {
+            return [
+                @tr("Click the Vento icon, then the Keep Awake tile, to start or stop it."),
+                @tr("Pick how long under the tile, or leave it on until you stop it."),
+                @tr("While it runs, a small cup shows beside the Vento icon."),
+            ];
+        }
+        return [];
+    }
 
     // Ends a shortcut recording without a change and gives the keyboard
     // back to the window.
@@ -230,29 +290,18 @@ export component SettingsWindow inherits Window {
         }
 
         HorizontalLayout {
-            Rectangle {
+            VerticalLayout {
                 layout-order: Theme.rtl ? 2 : 0;
-                width: 180px;
-                background: Theme.card;
+                width: 168px;
+                padding: 10px;
+                spacing: 2px;
+                alignment: start;
 
-                VerticalLayout {
-                    padding: 10px;
-                    spacing: 2px;
-                    alignment: start;
-
-                    for item[i] in root.pages: SidebarRow {
-                        icon: item.icon;
-                        label: item.label;
-                        chosen: i == root.page;
-                        clicked => { root.page = i; }
-                    }
-                }
-
-                // The hairline between the sidebar and the page.
-                Rectangle {
-                    x: Theme.rtl ? 0px : parent.width - 1px;
-                    width: 1px;
-                    background: Theme.separator;
+                for item[i] in root.pages: SidebarRow {
+                    icon: item.icon;
+                    label: item.label;
+                    chosen: i == root.page;
+                    clicked => { root.page = i; }
                 }
             }
 
@@ -265,7 +314,9 @@ export component SettingsWindow inherits Window {
                 body := VerticalLayout {
                     width: flick.width;
                     height: max(flick.height, self.preferred-height);
-                    padding: 20px;
+                    padding: 16px;
+                    padding-left: Theme.rtl ? 16px : 6px;
+                    padding-right: Theme.rtl ? 6px : 16px;
                     spacing: 12px;
                     alignment: start;
 
@@ -281,88 +332,98 @@ export component SettingsWindow inherits Window {
                         text: root.notice;
                     }
 
-                    if root.page-id == 0: GeneralPage {
-                        language-names: root.language-names;
-                        language: root.language;
-                        language-chosen(i) => { root.language-chosen(i); }
-                        appearance: root.appearance;
-                        theme-names: root.theme-names;
-                        theme: root.theme;
-                        trigger-names: root.trigger-names;
-                        trigger: root.trigger;
-                        shake-to-open: root.shake-to-open;
-                        terminals: root.terminals;
-                        terminal: root.terminal;
-                        path-format: root.path-format;
-                        appearance-chosen(i) => { root.appearance-chosen(i); }
-                        theme-chosen(i) => { root.theme-chosen(i); }
-                        trigger-chosen(i) => { root.trigger-chosen(i); }
-                        shake-to-open-toggled(on) => { root.shake-to-open-toggled(on); }
-                        terminal-chosen(i) => { root.terminal-chosen(i); }
-                        path-format-chosen(i) => { root.path-format-chosen(i); }
-                    }
-                    if root.page-id == 1: WheelPage {
-                        wheel-layout: root.wheel-layout;
-                        actions: root.actions;
-                        shown-actions: root.shown-actions;
-                        layout-chosen(i) => { root.layout-chosen(i); }
-                        action-toggled(i, on) => { root.action-toggled(i, on); }
-                        action-moved(from, to) => { root.action-moved(from, to); }
-                    }
-                    if root.page-id == 2: MovePage {
-                        pinned: root.pinned;
-                        pinned-full: root.pinned-full;
-                        recent: root.recent;
-                        has-history: root.recent-history;
-                        can-pin: !root.pinned-full;
-                        hold: root.hold;
-                        hold-can-decrease: root.hold-can-decrease;
-                        hold-can-increase: root.hold-can-increase;
-                        add-folder => { root.add-folder(); }
-                        pinned-moved(from, to) => { root.pinned-moved(from, to); }
-                        unpinned(i) => { root.unpinned(i); }
-                        recent-pinned(i) => { root.recent-pinned(i); }
-                        recent-cleared => { root.recent-cleared(); }
-                        hold-stepped(step) => { root.hold-stepped(step); }
-                    }
-                    if root.page-id == 3: PocketPage {
-                        shortcut: root.shortcut;
-                        shortcut-error <=> root.shortcut-error;
-                        recording <=> root.shortcut-recording;
-                        remove-after-drop: root.remove-after-drop;
-                        keep-copies: root.keep-copies;
-                        pocket-view: root.pocket-view;
-                        recording-started => { root.shortcut-recording-started(); }
-                        recording-cancelled => { root.stop-recording(); }
-                        remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
-                        keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
-                        pocket-view-chosen(i) => { root.pocket-view-chosen(i); }
-                    }
-                    if root.page-id == 4: ClipboardPage {
-                        history: root.clip-history;
-                        shortcut: root.clip-shortcut;
-                        shortcut-error <=> root.clip-shortcut-error;
-                        recording <=> root.clip-shortcut-recording;
-                        history-toggled(on) => { root.clip-history-toggled(on); }
-                        recording-started => { root.clip-shortcut-recording-started(); }
-                        recording-cancelled => { root.stop-recording(); }
-                        history-cleared => { root.clip-history-cleared(); }
-                    }
-                    if root.page-id == 5 && root.screen-text-supported: CopyFromScreenPage {
-                        shortcut: root.screen-shortcut;
-                        shortcut-error <=> root.screen-shortcut-error;
-                        recording <=> root.screen-shortcut-recording;
-                        recording-started => { root.screen-shortcut-recording-started(); }
-                        recording-cancelled => { root.stop-recording(); }
-                    }
-                    if root.page-id == 6: KeepAwakePage {
-                        screen-off: root.awake-screen-off;
-                        screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
-                    }
-                    if root.page-id == 7: AboutPage {
-                        version: root.version;
-                        open-settings-file => { root.open-settings-file(); }
-                        open-licenses => { root.open-licenses(); }
+                    Panel {
+                        if root.page-id == 0: GeneralPage {
+                            language-names: root.language-names;
+                            language: root.language;
+                            language-chosen(i) => { root.language-chosen(i); }
+                            appearance: root.appearance;
+                            theme-names: root.theme-names;
+                            theme: root.theme;
+                            trigger-names: root.trigger-names;
+                            trigger: root.trigger;
+                            shake-to-open: root.shake-to-open;
+                            terminals: root.terminals;
+                            terminal: root.terminal;
+                            path-format: root.path-format;
+                            appearance-chosen(i) => { root.appearance-chosen(i); }
+                            theme-chosen(i) => { root.theme-chosen(i); }
+                            trigger-chosen(i) => { root.trigger-chosen(i); }
+                            shake-to-open-toggled(on) => { root.shake-to-open-toggled(on); }
+                            terminal-chosen(i) => { root.terminal-chosen(i); }
+                            path-format-chosen(i) => { root.path-format-chosen(i); }
+                        }
+                        if root.page-id == 1: WheelPage {
+                            wheel-layout: root.wheel-layout;
+                            actions: root.actions;
+                            shown-actions: root.shown-actions;
+                            layout-chosen(i) => { root.layout-chosen(i); }
+                            action-toggled(i, on) => { root.action-toggled(i, on); }
+                            action-moved(from, to) => { root.action-moved(from, to); }
+                        }
+                        if root.page-id == 2: MovePage {
+                            pinned: root.pinned;
+                            pinned-full: root.pinned-full;
+                            recent: root.recent;
+                            has-history: root.recent-history;
+                            can-pin: !root.pinned-full;
+                            hold: root.hold;
+                            hold-can-decrease: root.hold-can-decrease;
+                            hold-can-increase: root.hold-can-increase;
+                            add-folder => { root.add-folder(); }
+                            pinned-moved(from, to) => { root.pinned-moved(from, to); }
+                            unpinned(i) => { root.unpinned(i); }
+                            recent-pinned(i) => { root.recent-pinned(i); }
+                            recent-cleared => { root.recent-cleared(); }
+                            hold-stepped(step) => { root.hold-stepped(step); }
+                        }
+                        if root.page-id == 3: PocketPage {
+                            shortcut: root.shortcut;
+                            shortcut-error <=> root.shortcut-error;
+                            recording <=> root.shortcut-recording;
+                            remove-after-drop: root.remove-after-drop;
+                            keep-copies: root.keep-copies;
+                            pocket-view: root.pocket-view;
+                            recording-started => { root.shortcut-recording-started(); }
+                            recording-cancelled => { root.stop-recording(); }
+                            remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
+                            keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
+                            pocket-view-chosen(i) => { root.pocket-view-chosen(i); }
+                        }
+                        if root.page-id == 4: ClipboardPage {
+                            history: root.clip-history;
+                            shortcut: root.clip-shortcut;
+                            shortcut-error <=> root.clip-shortcut-error;
+                            recording <=> root.clip-shortcut-recording;
+                            history-toggled(on) => { root.clip-history-toggled(on); }
+                            recording-started => { root.clip-shortcut-recording-started(); }
+                            recording-cancelled => { root.stop-recording(); }
+                            history-cleared => { root.clip-history-cleared(); }
+                        }
+                        if root.page-id == 5 && root.screen-text-supported: CopyFromScreenPage {
+                            shortcut: root.screen-shortcut;
+                            shortcut-error <=> root.screen-shortcut-error;
+                            recording <=> root.screen-shortcut-recording;
+                            recording-started => { root.screen-shortcut-recording-started(); }
+                            recording-cancelled => { root.stop-recording(); }
+                        }
+                        if root.page-id == 6: KeepAwakePage {
+                            screen-off: root.awake-screen-off;
+                            screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
+                        }
+                        if root.page-id == 7: AboutPage {
+                            version: root.version;
+                            open-settings-file => { root.open-settings-file(); }
+                            open-licenses => { root.open-licenses(); }
+                        }
+
+                        // The last row, so the settings come first.
+                        if root.how-to-steps(root.page-id).length > 0: RowSeparator { }
+                        if root.how-to-steps(root.page-id).length > 0: HowTo {
+                            steps: root.how-to-steps(root.page-id);
+                            open: !root.how-to-closed[root.page-id];
+                            toggled(open) => { root.how-to-toggled(root.page-id, open); }
+                        }
                     }
                 }
             }

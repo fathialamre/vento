@@ -15,8 +15,8 @@ Vento lives in the menu bar.
   Vento Settings window, whose pages are General (trigger, shake to open,
   terminal, Copy path format, Appearance), Wheel (layout, which actions show and
   in what order), Move (pinned and recent folders, the hold delay), Pocket
-  (shortcut, remove after drag-out, keep a copy, List, Scroll or Stacks for a
-  full Pocket), Clipboard (history on or off,
+  (shortcut, remove after drag-out, keep a copy, whether it opens by kind or
+  as a list), Clipboard (history on or off,
   its shortcut, Clear history), Copy from screen (its shortcut), Keep Awake (let
   the screen turn off) and About (the version, Open settings file). Changes
   apply and are saved at once.
@@ -50,9 +50,10 @@ trigger = "ctrl"
 shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to", "archive", "info", "convert", "pdf". A file that
-# already lists `actions` must add "pocket", "copy_to", "archive", "info",
-# "convert" or "pdf" to show it. "pdf" is macOS only, and is ignored elsewhere.
+# "terminal", "copy_to", "archive", "info", "convert", "pdf", "share". A file
+# that already lists `actions` must add "pocket", "copy_to", "archive", "info",
+# "convert", "pdf" or "share" to show it. "pdf" and "share" are macOS only, and
+# are ignored elsewhere.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
 # Actions turned off in the Settings window
@@ -130,6 +131,11 @@ pdf_image_format = "png"
 # PDF window, Images: the quality last picked, in dots per inch: 300
 # (Print) or 150 (Screen); any other value means 300
 pdf_image_dpi = 300
+
+# Settings window pages whose How to card you closed: any of "general",
+# "wheel", "move", "pocket", "clipboard", "copy_from_screen", "keep_awake".
+# The other pages open with it showing
+closed_how_to = []
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

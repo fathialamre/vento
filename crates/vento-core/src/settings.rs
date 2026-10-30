@@ -143,6 +143,10 @@ pub struct Settings {
     /// one on or off never moves it. Ignored when its shown actions are not
     /// in `actions`' order (a hand-edited file); empty in older files.
     pub action_order: Vec<ActionId>,
+    /// The Settings window's pages whose How to card the user closed, by
+    /// key (`"general"`, `"pocket"`, ...; unique). A page's card is open
+    /// until then.
+    pub closed_how_to: Vec<String>,
     /// The PDF window's To images format: `"png"` or `"jpeg"`. Any other
     /// value reads as `"png"`.
     pub pdf_image_format: String,
@@ -213,6 +217,7 @@ impl Default for Settings {
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
             action_order: Vec::new(),
+            closed_how_to: Vec::new(),
             pdf_image_format: "png".to_owned(),
             pdf_image_dpi: 300,
         }
@@ -245,6 +250,7 @@ struct RawSettings {
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
     action_order: Vec<String>,
+    closed_how_to: Vec<String>,
     pdf_image_format: String,
     pdf_image_dpi: u32,
 }
@@ -283,6 +289,7 @@ impl From<&Settings> for RawSettings {
                 .map(|a| a.key().to_owned())
                 .collect(),
             action_order: s.action_order.iter().map(|a| a.key().to_owned()).collect(),
+            closed_how_to: s.closed_how_to.clone(),
             pdf_image_format: s.pdf_image_format.clone(),
             pdf_image_dpi: s.pdf_image_dpi,
         }
@@ -338,6 +345,12 @@ impl From<RawSettings> for Settings {
             }
         }
         pinned_folders.truncate(MAX_PINNED);
+        let mut closed_how_to: Vec<String> = Vec::new();
+        for page in raw.closed_how_to {
+            if !closed_how_to.contains(&page) {
+                closed_how_to.push(page);
+            }
+        }
         // Round to the nearest 100 (halves up), then keep within bounds.
         let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
             .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
@@ -363,6 +376,7 @@ impl From<RawSettings> for Settings {
             move_hold_ms,
             hidden_actions,
             action_order,
+            closed_how_to,
             pdf_image_format: if raw.pdf_image_format == "jpeg" {
                 raw.pdf_image_format
             } else {
@@ -946,6 +960,22 @@ mod tests {
     }
 
     #[test]
+    fn how_to_cards_start_open_and_closed_ones_round_trip() {
+        assert!(Settings::default().closed_how_to.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        // A page listed twice counts once.
+        std::fs::write(&p, "closed_how_to = [\"pocket\", \"wheel\", \"pocket\"]\n").unwrap();
+        assert_eq!(Settings::load(&p).closed_how_to, ["pocket", "wheel"]);
+        let s = Settings {
+            closed_how_to: vec!["general".into()],
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
     fn shake_to_open_defaults_on_and_round_trips() {
         assert!(Settings::default().shake_to_open);
         let dir = tempfile::tempdir().unwrap();
@@ -1165,7 +1195,7 @@ mod tests {
         assert_eq!(s.action_rows().last(), Some(&last_action_row()));
     }
 
-    /// The last row the Wheel page offers on this platform: PDF where it is
+    /// The last row the Wheel page offers on this platform: Share where it is
     /// available, Convert elsewhere.
     fn last_action_row() -> (ActionId, bool) {
         let last = ActionId::ALL.iter().rev().find(|a| a.available());
@@ -1173,17 +1203,30 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_actions_are_dropped() {
+    fn macos_only_actions_are_dropped_elsewhere() {
         let (_dir, p) = write_temp(
-            "actions = [\"copy\", \"pdf\"]\nhidden_actions = [\"pdf\"]\naction_order = [\"pdf\", \"copy\"]\n",
+            "actions = [\"copy\", \"pdf\", \"share\"]\naction_order = [\"pdf\", \"share\", \"copy\"]\n",
         );
-        let s = Settings::load(&p);
+        let shown = Settings::load(&p);
+        // Hidden in a file of their own: an action both shown and hidden
+        // counts as shown.
+        let (_hidden_dir, hidden_p) =
+            write_temp("actions = [\"copy\"]\nhidden_actions = [\"pdf\", \"share\"]\n");
+        let hidden = Settings::load(&hidden_p);
         if cfg!(target_os = "macos") {
-            assert_eq!(s.actions, [ActionId::Copy, ActionId::Pdf]);
+            assert_eq!(
+                shown.actions,
+                [ActionId::Copy, ActionId::Pdf, ActionId::Share]
+            );
+            assert_eq!(
+                shown.action_order,
+                [ActionId::Pdf, ActionId::Share, ActionId::Copy]
+            );
+            assert_eq!(hidden.hidden_actions, [ActionId::Pdf, ActionId::Share]);
         } else {
-            assert_eq!(s.actions, [ActionId::Copy]);
-            assert!(s.hidden_actions.is_empty());
-            assert!(!s.action_order.contains(&ActionId::Pdf));
+            assert_eq!(shown.actions, [ActionId::Copy]);
+            assert_eq!(shown.action_order, [ActionId::Copy]);
+            assert!(hidden.hidden_actions.is_empty());
         }
     }
 
@@ -1270,6 +1313,9 @@ mod tests {
         if ActionId::Pdf.available() {
             expected.push((ActionId::Pdf, false));
         }
+        if ActionId::Share.available() {
+            expected.push((ActionId::Share, false));
+        }
         assert_eq!(Settings::load(&p).action_rows(), expected);
     }
 
@@ -1291,6 +1337,9 @@ mod tests {
         ];
         if ActionId::Pdf.available() {
             rows.push((ActionId::Pdf, false));
+        }
+        if ActionId::Share.available() {
+            rows.push((ActionId::Share, false));
         }
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);

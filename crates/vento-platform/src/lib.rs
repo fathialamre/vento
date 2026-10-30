@@ -11,6 +11,7 @@ use vento_core::clip::ClipSnapshot;
 use vento_core::convert::{ConvertError, ImageFormat};
 use vento_core::geometry::{Point, Rect};
 use vento_core::screen_text::{Selection, TextBox};
+use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
 mod stub;
@@ -242,6 +243,10 @@ pub enum PlatformError {
         program: String,
         error: std::io::Error,
     },
+    /// Another share, or the share popover, is still open. Worded when
+    /// shown, in the interface language.
+    #[error("{}", vento_core::i18n::tr("another share is still open"))]
+    ShareOpen,
     #[error("unsupported on this platform")]
     Unsupported,
 }
@@ -516,6 +521,50 @@ pub trait Platform {
         at: Point,
         entries: &[MenuEntry],
     ) -> Option<u32>;
+    /// The services [`Platform::share`] can hand items to on this machine:
+    /// those of AirDrop, Messages, Mail and Notes that exist, in that order.
+    /// Never [`ShareTarget::More`], which [`Platform::share_picker`] shows.
+    /// Empty where unsupported. Main thread only.
+    fn share_targets(&self) -> Vec<ShareTarget> {
+        Vec::new()
+    }
+    /// Whether `target`'s service takes all of `paths` (Notes takes no
+    /// folder together with files). Always true for [`ShareTarget::More`];
+    /// false where unsupported, when `paths` is empty or when the service is
+    /// missing. Main thread only.
+    fn can_share(&self, target: ShareTarget, paths: &[PathBuf]) -> bool {
+        let _ = (target, paths);
+        false
+    }
+    /// Hand `paths` to `target`'s service, which shows its own window, and
+    /// return. `on_done` is called at most once, on the main thread, when
+    /// the service reports back how the share ended, with focus already back
+    /// with the app that had it; a service may never report back.
+    /// [`ShareTarget::More`] is an error (it is [`Platform::share_picker`]),
+    /// as are a service that cannot take `paths` (see
+    /// [`Platform::can_share`]) and a call while another call's service has
+    /// not reported back or the share popover is open (a service picked from
+    /// the popover does not count). Main thread only.
+    fn share(
+        &self,
+        target: ShareTarget,
+        paths: &[PathBuf],
+        on_done: Box<dyn Fn(ShareOutcome)>,
+    ) -> Result<(), PlatformError> {
+        let _ = (target, paths, on_done);
+        Err(PlatformError::Unsupported)
+    }
+    /// Show the system's share popover for `paths`, pointing at `at` (global
+    /// logical point, top-left origin), and return. The popover closes
+    /// itself. A service picked from it runs on its own and reports nothing
+    /// to the caller; focus goes back to the app that had it when that
+    /// service reports back. While the popover is on screen, this and
+    /// [`Platform::share`] are errors; once a service is picked from it, they
+    /// work again, even if that service never reports back. Main thread only.
+    fn share_picker(&self, paths: &[PathBuf], at: Point) -> Result<(), PlatformError> {
+        let _ = (paths, at);
+        Err(PlatformError::Unsupported)
+    }
 }
 
 /// What Copy from screen needs from the operating system, apart from
@@ -876,6 +925,21 @@ mod tests {
             assert_eq!(text.to_string(), "رفضت الحافظة النص");
             assert_eq!(files.to_string(), "رفضت الحافظة الملفات");
         });
+    }
+
+    #[test]
+    fn a_share_still_open_is_worded_when_shown() {
+        use vento_core::i18n::with_language;
+        let open = PlatformError::ShareOpen;
+        assert_eq!(open.to_string(), "another share is still open");
+        with_language("ar", || {
+            assert_eq!(open.to_string(), "هناك مشاركة أخرى مفتوحة");
+        });
+        // Made in Arabic, read again in English for the log line.
+        assert_eq!(
+            with_language("ar", || with_language("en", || open.to_string())),
+            "another share is still open"
+        );
     }
 
     #[test]

@@ -111,8 +111,9 @@ files, like the wheel itself; turn it off with **Shake to open** in the
 ## The actions
 
 The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
-**Copy to, Archive, Convert, Info** and **PDF** are off until you switch them on in
-the **Wheel** page of the Settings window, where you can also change the order.
+**Copy to, Archive, Convert, Info, PDF** and **Share** are off until you switch them
+on in the **Wheel** page of the Settings window, where you can also change the
+order.
 
 ### Pocket
 
@@ -220,6 +221,28 @@ there, on the notice once the window has closed, or from the menu bar icon,
 moves what was written to the Trash. A PDF that is locked with a password is
 skipped.
 
+### Share *(off at first)*
+
+Sends what you dragged with the Mac's own sharing (macOS only for now). Let go
+on **Share** and AirDrop opens with your files in it, ready for you to pick a
+device. On a Mac without AirDrop, the system's share menu opens instead.
+
+**Hold** on Share for a moment and a ring opens: **Messages, Mail, Notes** and
+**More…**. Let go on one and its window opens with your files in it. **More…**
+opens the system's share menu, which lists every app that can share, such as
+WhatsApp or Telegram when their share extensions are on. A Mac without
+Messages, Mail or Notes simply has fewer cells on the ring.
+
+Everything goes as it is, folders too. AirDrop sends a folder, and Mail zips it
+itself. When a service cannot take what you dropped, a notice says so. Notes
+cannot take a folder together with files: drop the folder on its own, or zip it
+with **Archive** first (switch Archive on in **Settings → Wheel** if it is not
+on the wheel).
+
+Share writes nothing, so there is nothing to **Undo**, and it asks for no
+permission. A notice appears only when something goes wrong; otherwise the
+service's own window is all you see.
+
 ### Copy path
 
 Copies the full path of the file, ready to paste into a terminal, a chat or a
@@ -301,7 +324,11 @@ back.
 
 Choose **Settings…** to open the **Vento Settings** window. It stays open while
 you work, and choosing Settings… again brings it forward. Pick a page on the left;
-changes apply right away.
+changes apply right away. Each page shows its settings on one panel, most with
+a short line on what they do; General shows the looks and the themes as small
+pictures to click. Every page but About ends with a **How to use** section that
+shows how to use its feature in a few steps. Click its header to close it;
+it stays closed until you open it again.
 
 | Page | What it holds |
 |---|---|
