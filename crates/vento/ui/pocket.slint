@@ -287,6 +287,8 @@ component ChipRow inherits Rectangle {
         content-width: chips-layout.preferred-width;
 
         TouchArea {
+            x: 0px;
+            y: 0px;
             width: flick.span;
             height: flick.height;
             scroll-event(e) => {
@@ -755,6 +757,7 @@ component ClipList inherits Rectangle {
             clip: true;
 
             touch := TouchArea {
+                y: 0px;
                 height: root.line-h;
                 // A missing entry has nothing to put back.
                 clicked => {
@@ -846,6 +849,7 @@ component ClipList inherits Rectangle {
                 actions := HorizontalLayout {
                     x: Theme.rtl ? 8px + 28px + 6px : parent.width - 8px - 28px - 6px - self.width;
                     y: (parent.height - 28px) / 2;
+                    width: self.preferred-width;
                     height: 28px;
                     spacing: 6px;
                     visible: touch.has-hover;
@@ -993,6 +997,7 @@ component PocketKinds inherits Rectangle {
 
     flick := Flickable {
         x: root.pad;
+        y: 0px;
         width: parent.width - 2 * root.pad;
         height: parent.height;
         // Presses belong to the tiles; the groups scroll by wheel only.
@@ -1006,6 +1011,7 @@ component PocketKinds inherits Rectangle {
             // The group's name: opens the list on its kind.
             Rectangle {
                 x: Theme.rtl ? parent.width - self.width : 0px;
+                y: 0px;
                 width: head.preferred-width;
                 height: 22px;
                 accessible-role: button;
@@ -1057,6 +1063,7 @@ component PocketKinds inherits Rectangle {
             // Drags every item of the group out.
             Rectangle {
                 x: Theme.rtl ? 0px : parent.width - self.width;
+                y: 0px;
                 width: drag-text.preferred-width + 20px;
                 height: 22px;
                 border-radius: 11px;
@@ -1479,6 +1486,7 @@ component PocketList inherits Rectangle {
             clip: true;
 
             touch := TouchArea {
+                y: 0px;
                 height: root.line-h;
                 // As a tile's: a press drags the item (or the selection it is
                 // part of) out, a click selects it.
@@ -1570,6 +1578,7 @@ component PocketList inherits Rectangle {
                 actions := HorizontalLayout {
                     x: Theme.rtl ? 8px + 28px + 6px : parent.width - 8px - 28px - 6px - self.width;
                     y: (parent.height - 28px) / 2;
+                    width: self.preferred-width;
                     height: 28px;
                     spacing: 6px;
                     visible: touch.has-hover;
@@ -2019,6 +2028,7 @@ export component PocketIsland inherits Window {
             // line as the Pocket goes.
             ClipList {
                 x: root.on-clip ? 0px : (Theme.rtl ? 24px : -24px);
+                y: 0px;
                 width: parent.width;
                 height: parent.view-h;
                 opacity: root.on-clip ? 1 : 0;
@@ -2062,6 +2072,7 @@ export component PocketIsland inherits Window {
             // from the end of the line.
             Rectangle {
                 x: !root.on-clip ? 0px : (Theme.rtl ? -24px : 24px);
+                y: 0px;
                 width: parent.width;
                 height: parent.view-h;
                 opacity: !root.on-clip ? 1 : 0;
@@ -2072,6 +2083,7 @@ export component PocketIsland inherits Window {
 
                 kinds := PocketKinds {
                     x: !root.on-list ? 0px : (Theme.rtl ? parent.width : -parent.width);
+                    y: 0px;
                     width: parent.width;
                     height: parent.height;
                     visible: self.x > -self.width && self.x < self.width;
@@ -2150,6 +2162,7 @@ export component PocketIsland inherits Window {
 
                 PocketList {
                     x: root.on-list ? 0px : (Theme.rtl ? -parent.width : parent.width);
+                    y: 0px;
                     width: parent.width;
                     height: parent.height;
                     visible: self.x > -self.width && self.x < self.width;
@@ -2200,6 +2213,7 @@ export component PocketIsland inherits Window {
 
                 Rectangle {
                     x: root.pad;
+                    y: 0px;
                     width: parent.width - 2 * root.pad;
                     height: 1px;
                     background: #ffffff14;
