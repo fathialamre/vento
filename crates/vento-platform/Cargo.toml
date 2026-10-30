@@ -149,8 +149,11 @@ x11rb = { version = "0.13", features = ["shape"] }
 signal-hook = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-# Picture thumbnails, as on Linux (`linux/thumbs.rs`).
+# Picture thumbnails and the Convert action, as on Linux (`linux/thumbs.rs`,
+# `linux/image_io.rs`).
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "gif", "bmp", "webp"] }
+# Writes lossy WebP for the Convert action, as on the other two (`webp.rs`).
+libwebp-sys = "0.14"
 # Already in the app through winit; only the Win32 parts vento calls itself.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

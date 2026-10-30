@@ -30,6 +30,11 @@ use crate::{
 
 mod clicks;
 mod drag;
+mod heif;
+/// Linux's Convert needs only the `image` crate and libwebp, with
+/// `heif` standing in for libheif.
+#[path = "../linux/image_io.rs"]
+pub(crate) mod image_io;
 mod instance;
 mod overlay;
 mod screens;

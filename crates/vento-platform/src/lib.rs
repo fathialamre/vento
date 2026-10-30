@@ -20,7 +20,7 @@ pub use stub::{StubPlatform, StubScreenText};
 
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod webp;
 #[cfg(target_os = "macos")]
 pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
@@ -764,20 +764,28 @@ pub fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
     {
         linux::image_io::probe_image(path)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::image_io::probe_image(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         stub::probe_image(path)
     }
 }
 
 /// The formats Convert can write here, in the ring's order: on Linux, HEIC
-/// only with libheif's encoder.
+/// only with libheif's encoder; on Windows, no HEIC.
 pub fn convert_targets() -> Vec<ImageFormat> {
     #[cfg(target_os = "linux")]
     {
         linux::image_io::targets()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        windows::image_io::targets()
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         ImageFormat::TARGETS.to_vec()
     }
@@ -796,7 +804,11 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
     {
         linux::image_io::write_image(src, dst, format)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::image_io::write_image(src, dst, format)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         stub::write_image(src, dst, format)
     }
