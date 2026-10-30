@@ -101,6 +101,20 @@ impl Page {
         self as i32
     }
 
+    /// The page's name in `closed_how_to` in the settings file.
+    fn key(self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::Wheel => "wheel",
+            Self::Move => "move",
+            Self::Pocket => "pocket",
+            Self::Clipboard => "clipboard",
+            Self::CopyFromScreen => "copy_from_screen",
+            Self::KeepAwake => "keep_awake",
+            Self::About => "about",
+        }
+    }
+
     /// The page's name, in the sidebar and over the page, in the interface
     /// language. Shown only: the page is told apart by [`Page::id`].
     fn label(self) -> String {
@@ -151,6 +165,14 @@ pub fn pages(screen_text_supported: bool) -> Vec<Page> {
     .into_iter()
     .filter(|&page| page != CopyFromScreen || screen_text_supported)
     .collect()
+}
+
+/// Opens or closes `page`'s How to card in `settings`.
+fn set_how_to_open(settings: &mut Settings, page: Page, open: bool) {
+    settings.closed_how_to.retain(|k| k != page.key());
+    if !open {
+        settings.closed_how_to.push(page.key().to_owned());
+    }
 }
 
 /// Which of vento's shortcuts is meant.
@@ -526,6 +548,15 @@ impl SettingsWindowController {
                 controller.apply(|s| s.keep_awake_screen_off = on);
             }
         });
+        let this = self.this.clone();
+        window.on_how_to_toggled(move |id, open| {
+            let Some(page) = pages(true).into_iter().find(|p| p.id() == id) else {
+                return;
+            };
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| set_how_to_open(s, page, open));
+            }
+        });
         // While recording, the menu bar is away, so ⌘Q and ⌘H reach the
         // recorder instead of quitting or hiding vento.
         let this = self.this.clone();
@@ -851,6 +882,11 @@ impl SettingsWindowController {
         window.set_pocket_layout(choice_index(&PocketLayout::ALL, settings.pocket_layout));
         window.set_clip_history(settings.clipboard_history);
         window.set_awake_screen_off(settings.keep_awake_screen_off);
+        let closed: Vec<bool> = pages(true)
+            .into_iter()
+            .map(|page| settings.closed_how_to.iter().any(|k| k == page.key()))
+            .collect();
+        window.set_how_to_closed(ModelRc::from(closed.as_slice()));
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
     }
@@ -2046,6 +2082,17 @@ mod tests {
         );
         assert!(!pages(false).contains(&CopyFromScreen));
         assert_eq!(pages(false).len(), 7);
+    }
+
+    #[test]
+    fn closing_a_how_to_card_saves_its_page_once_and_opening_forgets_it() {
+        let mut s = Settings::default();
+        set_how_to_open(&mut s, Page::Pocket, false);
+        set_how_to_open(&mut s, Page::Pocket, false);
+        set_how_to_open(&mut s, Page::CopyFromScreen, false);
+        assert_eq!(s.closed_how_to, ["pocket", "copy_from_screen"]);
+        set_how_to_open(&mut s, Page::Pocket, true);
+        assert_eq!(s.closed_how_to, ["copy_from_screen"]);
     }
 
     #[test]

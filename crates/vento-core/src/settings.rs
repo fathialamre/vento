@@ -145,6 +145,10 @@ pub struct Settings {
     /// one on or off never moves it. Ignored when its shown actions are not
     /// in `actions`' order (a hand-edited file); empty in older files.
     pub action_order: Vec<ActionId>,
+    /// The Settings window's pages whose How to card the user closed, by
+    /// key (`"general"`, `"pocket"`, ...; unique). A page's card is open
+    /// until then.
+    pub closed_how_to: Vec<String>,
     /// The PDF window's To images format: `"png"` or `"jpeg"`. Any other
     /// value reads as `"png"`.
     pub pdf_image_format: String,
@@ -215,6 +219,7 @@ impl Default for Settings {
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
             action_order: Vec::new(),
+            closed_how_to: Vec::new(),
             pdf_image_format: "png".to_owned(),
             pdf_image_dpi: 300,
         }
@@ -247,6 +252,7 @@ struct RawSettings {
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
     action_order: Vec<String>,
+    closed_how_to: Vec<String>,
     pdf_image_format: String,
     pdf_image_dpi: u32,
 }
@@ -285,6 +291,7 @@ impl From<&Settings> for RawSettings {
                 .map(|a| a.key().to_owned())
                 .collect(),
             action_order: s.action_order.iter().map(|a| a.key().to_owned()).collect(),
+            closed_how_to: s.closed_how_to.clone(),
             pdf_image_format: s.pdf_image_format.clone(),
             pdf_image_dpi: s.pdf_image_dpi,
         }
@@ -340,6 +347,12 @@ impl From<RawSettings> for Settings {
             }
         }
         pinned_folders.truncate(MAX_PINNED);
+        let mut closed_how_to: Vec<String> = Vec::new();
+        for page in raw.closed_how_to {
+            if !closed_how_to.contains(&page) {
+                closed_how_to.push(page);
+            }
+        }
         // Round to the nearest 100 (halves up), then keep within bounds.
         let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
             .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
@@ -365,6 +378,7 @@ impl From<RawSettings> for Settings {
             move_hold_ms,
             hidden_actions,
             action_order,
+            closed_how_to,
             pdf_image_format: if raw.pdf_image_format == "jpeg" {
                 raw.pdf_image_format
             } else {
@@ -940,6 +954,22 @@ mod tests {
         let p = dir.path().join("settings.toml");
         let s = Settings {
             screen_text_shortcut: "cmd+shift+e".into(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn how_to_cards_start_open_and_closed_ones_round_trip() {
+        assert!(Settings::default().closed_how_to.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        // A page listed twice counts once.
+        std::fs::write(&p, "closed_how_to = [\"pocket\", \"wheel\", \"pocket\"]\n").unwrap();
+        assert_eq!(Settings::load(&p).closed_how_to, ["pocket", "wheel"]);
+        let s = Settings {
+            closed_how_to: vec!["general".into()],
             ..Settings::default()
         };
         s.save(&p).unwrap();
