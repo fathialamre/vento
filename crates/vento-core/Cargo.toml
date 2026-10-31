@@ -19,6 +19,7 @@ sevenz-rust2 = { version = "0.24", default-features = false, features = ["aes256
 rars = { version = "0.11", default-features = false, features = ["encryption"] }
 zeroize = "1"
 percent-encoding = "2"
+sha2 = "0.10"
 imagesize = "0.15"
 sys-locale = "0.3"
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
