@@ -237,7 +237,7 @@ msgstr ""
 msgid "Click the Vento icon, then the Keep Awake tile, to start or stop it."
 msgstr ""
 
-#: crates/vento/src/main.rs:480
+#: crates/vento-core/src/update/features.rs:73
 msgid "Clipboard"
 msgstr ""
 
@@ -327,7 +327,7 @@ msgstr ""
 msgid "Copy as usual: Vento remembers what you copy."
 msgstr ""
 
-#: crates/vento/src/main.rs:226
+#: crates/vento-core/src/update/features.rs:79
 msgid "Copy from screen"
 msgstr ""
 
@@ -701,7 +701,7 @@ msgstr ""
 msgid "KB"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:132
+#: crates/vento-core/src/update/features.rs:115
 msgid "Keep Awake"
 msgstr ""
 
@@ -1003,6 +1003,10 @@ msgstr ""
 msgid "PDF"
 msgstr ""
 
+#: crates/vento-core/src/update/features.rs:91
+msgid "PDF Pages"
+msgstr ""
+
 #: crates/vento/src/pdf/logic.rs:537
 msgid "Page {pages}"
 msgid_plural "Pages {pages}"
@@ -1221,6 +1225,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1136
 msgid "Set up Vento again"
+msgstr ""
+
+#: crates/vento-core/src/update/features.rs:127
+msgid "Settings"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1124
@@ -1469,6 +1477,10 @@ msgstr ""
 msgid "Up to 7 folders"
 msgstr ""
 
+#: crates/vento-core/src/update/features.rs:121
+msgid "Updates"
+msgstr ""
+
 #: crates/vento/src/settings_window/mod.rs:1291
 msgid "Use a modifier with a letter or digit"
 msgstr ""
@@ -1533,6 +1545,10 @@ msgstr ""
 msgid "View licenses"
 msgstr ""
 
+#: crates/vento-core/src/update/features.rs:133
+msgid "Welcome setup"
+msgstr ""
+
 #: crates/vento/ui/welcome.slint:545
 msgid "Welcome to Vento"
 msgstr ""
@@ -1541,7 +1557,7 @@ msgstr ""
 msgid "What do you do most?"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:126
+#: crates/vento-core/src/update/features.rs:55
 msgid "Wheel"
 msgstr ""
 
@@ -2099,7 +2115,7 @@ msgctxt "month"
 msgid "Sep"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:128
+#: crates/vento-core/src/update/features.rs:61
 msgctxt "page"
 msgid "Move"
 msgstr ""

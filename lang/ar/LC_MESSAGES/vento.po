@@ -239,7 +239,7 @@ msgstr "انقر بين الصفحات لإضافة علامة قطع أو إز�
 msgid "Click the Vento icon, then the Keep Awake tile, to start or stop it."
 msgstr "انقر أيقونة Vento، ثم مربع «إبقاء الجهاز مستيقظاً»، لتشغيله أو إيقافه."
 
-#: crates/vento/src/main.rs:480
+#: crates/vento-core/src/update/features.rs:73
 msgid "Clipboard"
 msgstr "الحافظة"
 
@@ -341,7 +341,7 @@ msgstr "نسخ"
 msgid "Copy as usual: Vento remembers what you copy."
 msgstr "انسخ كالمعتاد: يتذكر Vento ما تنسخه."
 
-#: crates/vento/src/main.rs:226
+#: crates/vento-core/src/update/features.rs:79
 msgid "Copy from screen"
 msgstr "النسخ من الشاشة"
 
@@ -743,7 +743,7 @@ msgstr "عناصره حسب النوع أو كقائمة، والشريط تحت
 msgid "KB"
 msgstr "ك.ب"
 
-#: crates/vento/src/settings_window/mod.rs:132
+#: crates/vento-core/src/update/features.rs:115
 msgid "Keep Awake"
 msgstr "إبقاء الجهاز مستيقظا"
 
@@ -1073,6 +1073,10 @@ msgstr "أخرى"
 msgid "PDF"
 msgstr "‏PDF"
 
+#: crates/vento-core/src/update/features.rs:91
+msgid "PDF Pages"
+msgstr "صفحات PDF"
+
 #: crates/vento/src/pdf/logic.rs:537
 msgid "Page {pages}"
 msgid_plural "Pages {pages}"
@@ -1325,6 +1329,10 @@ msgstr "أرسل بالرسائل"
 msgid "Set up Vento again"
 msgstr "إعداد Vento من جديد"
 
+#: crates/vento-core/src/update/features.rs:127
+msgid "Settings"
+msgstr "الإعدادات"
+
 #: crates/vento/ui/settings_pages.slint:1124
 msgid "Settings file"
 msgstr "ملف الإعدادات"
@@ -1575,6 +1583,10 @@ msgstr "حتى…"
 msgid "Up to 7 folders"
 msgstr "7 مجلدات كحد أقصى"
 
+#: crates/vento-core/src/update/features.rs:121
+msgid "Updates"
+msgstr "التحديثات"
+
 #: crates/vento/src/settings_window/mod.rs:1291
 msgid "Use a modifier with a letter or digit"
 msgstr "استخدم مفتاح تعديل مع حرف أو رقم"
@@ -1639,6 +1651,10 @@ msgstr "عرض"
 msgid "View licenses"
 msgstr "عرض التراخيص"
 
+#: crates/vento-core/src/update/features.rs:133
+msgid "Welcome setup"
+msgstr "إعداد الترحيب"
+
 #: crates/vento/ui/welcome.slint:545
 msgid "Welcome to Vento"
 msgstr "مرحباً بك في Vento"
@@ -1647,7 +1663,7 @@ msgstr "مرحباً بك في Vento"
 msgid "What do you do most?"
 msgstr "ماذا تفعل أكثر؟"
 
-#: crates/vento/src/settings_window/mod.rs:126
+#: crates/vento-core/src/update/features.rs:55
 msgid "Wheel"
 msgstr "العجلة"
 
@@ -2285,7 +2301,7 @@ msgctxt "month"
 msgid "Sep"
 msgstr "سبتمبر"
 
-#: crates/vento/src/settings_window/mod.rs:128
+#: crates/vento-core/src/update/features.rs:61
 msgctxt "page"
 msgid "Move"
 msgstr "النقل"
