@@ -144,19 +144,21 @@ fn main() -> Result<(), slint::PlatformError> {
         hub.current(),
         recent.clone(),
         Box::new(move |drop: wheel::WheelDrop| {
-            if drop_welcome
-                .borrow()
-                .upgrade()
-                .is_some_and(|w| w.catch_practice_drop(&drop))
-            {
-                return;
-            }
-            match drop.action {
-                ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
-                ActionId::Info => drop_info.open(drop.paths, drop.at),
-                ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
-                _ => drop_executor.run(drop),
-            }
+            welcome_window::route_drop(
+                drop,
+                |drop| {
+                    drop_welcome
+                        .borrow()
+                        .upgrade()
+                        .is_some_and(|w| w.catch_practice_drop(drop))
+                },
+                |drop| match drop.action {
+                    ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
+                    ActionId::Info => drop_info.open(drop.paths, drop.at),
+                    ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
+                    _ => drop_executor.run(drop),
+                },
+            );
         }),
     );
     controller.start();

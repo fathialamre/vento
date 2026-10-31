@@ -69,6 +69,18 @@ fn is_practice_drop(open: bool, dir: Option<&Path>, paths: &[PathBuf]) -> bool {
     open && dir.is_some_and(|d| matches!(paths, [only] if only.parent() == Some(d)))
 }
 
+/// Sends a wheel drop on its way: `run` takes it unless `catch` does (the
+/// practice drop, which goes no further).
+pub fn route_drop(
+    drop: WheelDrop,
+    catch: impl Fn(&WheelDrop) -> bool,
+    run: impl FnOnce(WheelDrop),
+) {
+    if !catch(&drop) {
+        run(drop);
+    }
+}
+
 /// Writes `text` to `dir/name` unless that file exists (its contents are
 /// then left alone), creating `dir` as needed. Returns the file's path.
 ///
@@ -345,6 +357,25 @@ mod tests {
         ));
         // Without a data folder, nothing is practice.
         assert!(!is_practice_drop(true, None, &[s]));
+    }
+
+    #[test]
+    fn a_caught_drop_never_runs() {
+        let mut ran = false;
+        route_drop(
+            drop_of(ActionId::Move, vec![sample()]),
+            |_| true,
+            |_| ran = true,
+        );
+        assert!(!ran);
+    }
+
+    #[test]
+    fn an_uncaught_drop_runs_as_it_was() {
+        let mut ran = None;
+        let drop = drop_of(ActionId::Move, vec![sample()]);
+        route_drop(drop.clone(), |_| false, |d| ran = Some(d));
+        assert_eq!(ran, Some(drop));
     }
 
     #[test]

@@ -45,6 +45,8 @@ use crate::settings_window::{
 use crate::ui::{FolderChip, FolderRow, PresetCard, ShortcutLine, Theme, WelcomeWindow};
 use practice::{TRY_IT_STEP, remove_samples, sample_dir};
 
+pub use practice::route_drop;
+
 /// The window's size, in logical points (matches `welcome.slint`).
 const WIDTH: f64 = 680.0;
 const HEIGHT: f64 = 520.0;
