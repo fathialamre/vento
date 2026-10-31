@@ -17,7 +17,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use log::{debug, warn};
-use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{
     CloseRequestResponse, ComponentHandle, Image, LogicalPosition, Model, ModelRc, SharedString,
     Timer, VecModel,
@@ -38,9 +38,9 @@ use crate::pocket::out::PressLatch;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::settings_window::{
-    APPEARANCES, FOLDER_ICON_PX, LAYOUTS, TRIGGER_NAMES, TRIGGERS, centred_on, choice,
+    APPEARANCES, FOLDER_ICON_PX, LAYOUTS, TRIGGER_NAMES, TRIGGERS, Turn, centred_on, choice,
     choice_index, folder_row, hands_focus_back, pin_folder, shortcut_text, show_title_bar,
-    terminal_index, unpin_folder,
+    terminal_index, turn, unpin_folder,
 };
 use crate::ui::{FolderChip, FolderRow, PresetCard, ShortcutLine, Theme, WelcomeWindow};
 use practice::{TRY_IT_STEP, remove_samples, sample_dir};
@@ -90,6 +90,9 @@ pub struct WelcomeController {
     /// Whether another vento window is open; main sets it. That window
     /// keeps the focus when this one closes.
     other_window_open: RefCell<Option<Box<dyn Fn() -> bool>>>,
+    /// Runs when the user turns to the window; main closes the panel and
+    /// the Info window then.
+    on_activated: RefCell<Option<Box<dyn Fn()>>>,
     this: Weak<Self>,
 }
 
@@ -123,6 +126,7 @@ impl WelcomeController {
             latch: PressLatch::default(),
             on_open_settings: RefCell::new(None),
             other_window_open: RefCell::new(None),
+            on_activated: RefCell::new(None),
             this: this.clone(),
         });
         practice::register(&controller);
@@ -148,6 +152,12 @@ impl WelcomeController {
     /// Has Open Settings call `f` once it has closed the window.
     pub fn set_on_open_settings(&self, f: Box<dyn Fn()>) {
         *self.on_open_settings.borrow_mut() = Some(f);
+    }
+
+    /// Has the window call `f` when the user turns to it (a click in it, or
+    /// it becoming the key window).
+    pub fn set_on_activated(&self, f: Box<dyn Fn()>) {
+        *self.on_activated.borrow_mut() = Some(f);
     }
 
     /// Has the window ask `f` whether another vento window is open as it
@@ -199,6 +209,13 @@ impl WelcomeController {
                 controller.close();
             }
             CloseRequestResponse::KeepWindowShown
+        });
+        let this = self.this.clone();
+        window.window().on_winit_window_event(move |_, event| {
+            if let Some(controller) = this.upgrade() {
+                controller.turned_to(turn(event));
+            }
+            EventResult::Propagate
         });
         // Esc, Skip setup and the close button all end the setup.
         let this = self.this.clone();
@@ -391,6 +408,40 @@ impl WelcomeController {
         if let Some(folder) = picked {
             self.apply(|s| pin_folder(s, &folder));
         }
+    }
+
+    /// Tells main the user turned to the window, at once for `Turn::Now`,
+    /// and for `Turn::IfStillKey` on the next turn of the event loop if the
+    /// window is still key then.
+    fn turned_to(&self, turn: Turn) {
+        match turn {
+            Turn::No => {}
+            Turn::Now => self.activated(),
+            Turn::IfStillKey => {
+                let this = self.this.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(controller) = this.upgrade()
+                        && controller.is_open()
+                        && controller.has_focus()
+                    {
+                        controller.activated();
+                    }
+                });
+            }
+        }
+    }
+
+    fn activated(&self) {
+        if let Some(f) = self.on_activated.borrow().as_ref() {
+            f();
+        }
+    }
+
+    /// Whether the window is the key window (it takes the keyboard).
+    fn has_focus(&self) -> bool {
+        self.existing()
+            .and_then(|window| window.window().with_winit_window(|w| w.has_focus()))
+            .unwrap_or(false)
     }
 
     /// Makes the open window the key window again.

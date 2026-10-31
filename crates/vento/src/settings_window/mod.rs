@@ -1123,7 +1123,7 @@ impl SettingsWindowController {
 
 /// What an event of the window says about the user turning to it.
 #[derive(Debug, PartialEq)]
-enum Turn {
+pub(crate) enum Turn {
     /// A click in the window: the user turned to it.
     Now,
     /// The window became key. Whether the user turned to it shows on the
@@ -1135,7 +1135,7 @@ enum Turn {
 }
 
 /// What `event` says about the user turning to the window.
-fn turn(event: &WindowEvent) -> Turn {
+pub(crate) fn turn(event: &WindowEvent) -> Turn {
     match event {
         WindowEvent::MouseInput {
             state: ElementState::Pressed,
