@@ -88,6 +88,13 @@ pub struct Shot {
     pub dims: Option<(u32, u32)>,
 }
 
+/// Width and height of the picture at `path`, read from its header; `None`
+/// when the file cannot be read or is no picture `imagesize` knows.
+pub fn dims_of(path: &Path) -> Option<(u32, u32)> {
+    let d = imagesize::size(path).ok()?;
+    Some((u32::try_from(d.width).ok()?, u32::try_from(d.height).ok()?))
+}
+
 /// Tells a finished file from one still being written: a file counts once
 /// its size has stayed the same for [`SETTLE`].
 #[derive(Debug, Default)]
@@ -104,9 +111,11 @@ impl Settler {
 
     /// Looks at one scan, taken at `now`. Returns the files whose size is
     /// the one seen at least [`SETTLE`] earlier, and whether some file is
-    /// still unsettled (the caller scans again after [`SETTLE`]). Hidden
-    /// entries and folders are not looked at: a hidden file is a temporary
-    /// one that will be renamed, and the rename is a change of its own.
+    /// still unsettled (the caller scans again after [`SETTLE`]). Callers
+    /// pass only facts that pass [`is_shot_candidate`], so an unrelated file
+    /// never asks for a scan again. Hidden entries and folders are not
+    /// looked at: a hidden file is a temporary one that will be renamed, and
+    /// the rename is a change of its own.
     pub fn settled(&mut self, facts: &[FileFacts], now: Instant) -> (Vec<PathBuf>, bool) {
         let mut done = Vec::new();
         let mut waiting = false;
@@ -516,6 +525,24 @@ mod tests {
         assert!(wait_for_open(true, Some("a"), "b"));
         assert!(!wait_for_open(true, Some("b"), "b"));
         assert!(!wait_for_open(false, None, "b"));
+    }
+
+    #[test]
+    fn dims_come_from_the_file_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("Screenshot.png");
+        // Signature and IHDR only: the size is in the header.
+        let mut b = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        b.extend_from_slice(&13u32.to_be_bytes());
+        b.extend_from_slice(b"IHDR");
+        b.extend_from_slice(&1440u32.to_be_bytes());
+        b.extend_from_slice(&900u32.to_be_bytes());
+        b.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+        std::fs::write(&p, b).unwrap();
+        assert_eq!(dims_of(&p), Some((1440, 900)));
+        std::fs::write(&p, b"not a picture").unwrap();
+        assert_eq!(dims_of(&p), None);
+        assert_eq!(dims_of(&dir.path().join("gone.png")), None);
     }
 
     #[test]

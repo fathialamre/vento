@@ -27,6 +27,7 @@ mod list_view;
 mod menu;
 pub(crate) mod out;
 mod owned;
+mod shots;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -71,6 +72,7 @@ use out::{
     removes_after_drop,
 };
 use owned::{PendingTrash, trash_kept, trash_owned};
+use shots::{Access, ShotsController};
 
 /// Icon size of a tile or a row, in points.
 const ICON_PX: u32 = 40;
@@ -258,6 +260,8 @@ pub struct PocketController {
     pointer_in: Cell<bool>,
     /// The clipboard history.
     clip: Rc<ClipController>,
+    /// The screenshots in the screenshot folder.
+    shots: Rc<ShotsController>,
     /// The view shown expanded (or last shown).
     view: Cell<View>,
     /// The Clipboard view's rows.
@@ -331,6 +335,7 @@ impl PocketController {
             last_cursor: Cell::new(None),
             pointer_in: Cell::new(false),
             clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
+            shots: Self::screenshots(&clip_settings, this.clone()),
             view: Cell::new(View::Pocket),
             clip_view,
             pocket_view: Cell::new(pocket_view),
@@ -364,6 +369,21 @@ impl PocketController {
                     c.refresh();
                 }
             }),
+        )
+    }
+
+    /// The screenshots, refreshing the island through `this` when a listing
+    /// changes them.
+    fn screenshots(settings: &RefCell<Settings>, this: Weak<Self>) -> Rc<ShotsController> {
+        ShotsController::new(
+            settings,
+            Box::new(move || {
+                if let Some(c) = this.upgrade() {
+                    c.refresh();
+                }
+            }),
+            // The card for a new screenshot comes later.
+            Box::new(|_| {}),
         )
     }
 
@@ -1540,6 +1560,17 @@ impl PocketController {
         self.refresh();
         // The view shown, and so the ring in sight, may have changed.
         self.run_undo_timer();
+    }
+
+    /// Follows the screenshots setting of `s`: switched on, the folder is
+    /// listed at once, so the system asks for access right then; switched
+    /// off, the watch and the list go.
+    pub fn apply_shot_settings(&self, s: &Settings) {
+        if s.screenshots == (self.shots.access() != Access::Off) {
+            return;
+        }
+        self.shots.apply(s);
+        self.refresh();
     }
 
     /// Follows the Pocket look of `s`: a change shows it at once.
