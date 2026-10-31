@@ -1082,6 +1082,8 @@ export component AboutPage inherits VerticalLayout {
     // The running version, "0.2.0".
     in property <string> version;
     callback open-settings-file();
+    // Opens the Welcome setup again.
+    callback open-welcome();
     // Opens the licences, on the web.
     callback open-licenses();
 
@@ -1125,6 +1127,18 @@ export component AboutPage inherits VerticalLayout {
             label: @tr("Open");
             name: @tr("Open settings file");
             clicked => { root.open-settings-file(); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Set up Vento again");
+
+        RowButton {
+            label: @tr("Open");
+            name: @tr("Open the Welcome setup");
+            clicked => { root.open-welcome(); }
         }
     }
 

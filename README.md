@@ -79,6 +79,8 @@ xattr -dr com.apple.quarantine /Applications/Vento.app
 It removes the "downloaded from the internet" mark from Vento only.
 </details>
 
+Vento opens a short setup the first time: pick a language and a look, try the wheel on a sample file, and choose what it shows.
+
 Vento lives in the menu bar, not in the Dock. Look for this icon at the top of
 your screen: <img src=".github/assets/menu-bar.png" alt="Vento menu bar icon" height="22">
 

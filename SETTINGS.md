@@ -136,6 +136,10 @@ pdf_image_dpi = 300
 # "wheel", "move", "pocket", "clipboard", "copy_from_screen", "keep_awake".
 # The other pages open with it showing
 closed_how_to = []
+
+# true once the Welcome setup was finished, skipped or closed; Vento writes
+# false only on a fresh install, and opens the setup while it is false
+welcome_done = true
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

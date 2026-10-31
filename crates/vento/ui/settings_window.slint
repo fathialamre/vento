@@ -176,8 +176,9 @@ export component SettingsWindow inherits Window {
     callback awake-screen-off-toggled(bool);
     // A page's How to card opened (true) or closed, by page id.
     callback how-to-toggled(int, bool);
-    // About's Settings file and Licenses buttons.
+    // About's Settings file, Set up Vento again and Licenses buttons.
     callback open-settings-file();
+    callback open-welcome();
     callback open-licenses();
     // The Pocket's, the Clipboard's or Copy from screen's shortcut field
     // started recording, and either recording ended (each way it can end
@@ -414,6 +415,7 @@ export component SettingsWindow inherits Window {
                         if root.page-id == 7: AboutPage {
                             version: root.version;
                             open-settings-file => { root.open-settings-file(); }
+                            open-welcome => { root.open-welcome(); }
                             open-licenses => { root.open-licenses(); }
                         }
 

@@ -1,0 +1,1199 @@
+// The Welcome window: the setup shown on the first launch, and again from
+// Settings → About. An ordinary titled window of six screens, one at a time,
+// under a common frame: the step dots, Skip setup, Back and Next. It looks
+// like the Settings window (`Theme`, the same controls) and follows the
+// Appearance and Theme settings as they change, so the window is its own
+// preview. Every choice applies at once: a control asks for the change
+// through a callback and vento sets the properties from the result.
+
+import { LineText, Theme, ThemeColors } from "theme.slint";
+import { Icons } from "wheel.slint";
+import {
+    PanelIcons, Panel, RowSeparator, SectionHeading, SettingRow, RowBody, Switch, Segmented,
+    MenuField, TextButton, IconButton, WrapText,
+} from "controls.slint";
+import { FolderRow } from "settings_pages.slint";
+
+// Tabler Icons (MIT, see icons/LICENSE-tabler), embedded at build time; the
+// two layout pictures are drawn in Tabler's style (five cells each).
+global WelcomeIcons {
+    out property <image> file: @image-url("icons/file-text.svg");
+    out property <image> check: @image-url("icons/check.svg");
+    out property <image> plus: @image-url("icons/plus.svg");
+    out property <image> honeycomb: @image-url("icons/layout-honeycomb.svg");
+    out property <image> petals: @image-url("icons/layout-petals.svg");
+}
+
+// A card of the Wheel screen: what the preset is called and what it puts on
+// the wheel, in a few words.
+export struct PresetCard { title: string, summary: string }
+// A suggested folder of the Folders screen, and whether it is pinned now.
+export struct FolderChip { name: string, pinned: bool }
+// A row of the Done screen: the keys, or the gesture, and what they do.
+export struct ShortcutLine { keys: string, what: string }
+
+// The screen's name, at the start of the line.
+component ScreenTitle inherits Text {
+    horizontal-alignment: Theme.rtl ? right : left;
+    font-size: 22px;
+    font-weight: 600;
+    color: Theme.text;
+}
+
+// Text that wraps and is centred, as tall as its lines (as `WrapText` is,
+// at the start of the line).
+component CenteredText {
+    in property <string> text;
+    in property <length> font-size;
+    in property <int> font-weight;
+    in property <brush> color;
+
+    min-height: lines.preferred-height;
+
+    lines := Text {
+        width: root.width;
+        height: root.height;
+        text: root.text;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        color: root.color;
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// A name at the start of the line and what it sets after it, vertically
+// centred on each other; the children are the control (and more).
+component FieldRow inherits HorizontalLayout {
+    in property <string> label;
+
+    spacing: 14px;
+    alignment: Theme.rtl ? end : start;
+
+    Text {
+        layout-order: Theme.rtl ? 1 : 0;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+        text: root.label;
+        font-size: 13px;
+        font-weight: 500;
+        color: Theme.text;
+    }
+
+    HorizontalLayout {
+        layout-order: Theme.rtl ? 0 : 1;
+        spacing: 12px;
+
+        @children
+    }
+}
+
+// The step dots: the ones up to the screen shown in the accent. They are
+// not buttons. The first is at the start of the line.
+component StepDots inherits Rectangle {
+    in property <int> step;
+    in property <int> count;
+
+    property <length> dot: 7px;
+    property <length> gap: 7px;
+
+    width: root.count * root.dot + (root.count - 1) * root.gap;
+    height: root.dot;
+
+    for i in root.count: Rectangle {
+        x: (Theme.rtl ? root.count - 1 - i : i) * (root.dot + root.gap);
+        width: root.dot;
+        height: root.dot;
+        border-radius: root.dot / 2;
+        background: i <= root.step ? Theme.accent : Theme.switch-off;
+        animate background { duration: 120ms; }
+    }
+}
+
+// A button with a filled face: the accent for the one the screen leads to
+// (`primary`), a field's colours for the others.
+component WelcomeButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <bool> primary;
+    callback clicked();
+
+    property <color> ink: root.primary ? (Theme.dark ? #101012 : #ffffff) : Theme.text;
+
+    height: 28px;
+    min-width: 78px;
+    border-radius: 7px;
+    background: root.primary
+        ? (touch.pressed ? Theme.accent.darker(0.15) : touch.has-hover ? Theme.accent.brighter(0.1) : Theme.accent)
+        : (touch.has-hover ? Theme.field-hover : Theme.field);
+    border-width: root.primary || Theme.dark ? 0px : 1px;
+    border-color: Theme.separator;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 6px;
+        alignment: center;
+
+        if root.has-icon: VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 14px;
+                height: 14px;
+                colorize: root.ink;
+            }
+        }
+
+        Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.primary ? 600 : 500;
+            color: root.ink;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// An outline of dashes round a box (Slint draws no dashed border): `dx`
+// and `dy` stretch each dash so a row of them fills a side to the corner.
+component DashedBox inherits Rectangle {
+    in property <brush> stroke: Theme.muted;
+
+    property <length> dash: 7px;
+    property <length> gap: 5px;
+    property <length> thick: 1.5px;
+    property <int> nx: max(2, floor((root.width + root.gap) / (root.dash + root.gap)));
+    property <int> ny: max(2, floor((root.height + root.gap) / (root.dash + root.gap)));
+    property <length> dx: (root.width - (root.nx - 1) * root.gap) / root.nx;
+    property <length> dy: (root.height - (root.ny - 1) * root.gap) / root.ny;
+
+    for i in root.nx: Rectangle {
+        x: i * (root.dx + root.gap);
+        y: 0px;
+        width: root.dx;
+        height: root.thick;
+        border-radius: root.thick / 2;
+        background: root.stroke;
+    }
+    for i in root.nx: Rectangle {
+        x: i * (root.dx + root.gap);
+        y: root.height - root.thick;
+        width: root.dx;
+        height: root.thick;
+        border-radius: root.thick / 2;
+        background: root.stroke;
+    }
+    for j in root.ny: Rectangle {
+        x: 0px;
+        y: j * (root.dy + root.gap);
+        width: root.thick;
+        height: root.dy;
+        border-radius: root.thick / 2;
+        background: root.stroke;
+    }
+    for j in root.ny: Rectangle {
+        x: root.width - root.thick;
+        y: j * (root.dy + root.gap);
+        width: root.thick;
+        height: root.dy;
+        border-radius: root.thick / 2;
+        background: root.stroke;
+    }
+}
+
+// The themes as small cards of their own colours (a page with a panel, two
+// lines of text and an accent pill, the name under them), four to a row,
+// the chosen one ringed in the accent.
+component ThemeCards inherits Rectangle {
+    in property <[string]> names;
+    in property <int> current;
+    callback chosen(int);
+
+    property <int> columns: 4;
+    property <length> gap: 12px;
+    property <length> cell-w: (root.width - (root.columns - 1) * root.gap) / root.columns;
+    property <length> cell-h: 84px;
+
+    height: ceil(root.names.length / root.columns) * (root.cell-h + root.gap) - root.gap;
+    accessible-role: radio-group;
+    accessible-label: @tr("Theme");
+
+    for name[i] in root.names: swatch := Rectangle {
+        property <bool> on: i == root.current;
+        property <int> column: mod(i, root.columns);
+        property <ThemeColors> look: Theme.look(i, Theme.dark);
+
+        x: (Theme.rtl ? root.columns - 1 - self.column : self.column) * (root.cell-w + root.gap);
+        y: floor(i / root.columns) * (root.cell-h + root.gap);
+        width: root.cell-w;
+        height: root.cell-h;
+        border-radius: 10px;
+        background: self.look.bg;
+        border-width: self.on ? 2px : 1px;
+        border-color: self.on ? Theme.accent : self.look.line;
+        accessible-role: radio-button;
+        accessible-label: name;
+        accessible-checkable: true;
+        accessible-checked: self.on;
+        accessible-action-default => { root.chosen(i); }
+
+        // A small panel with two lines of text and the accent.
+        Rectangle {
+            x: 10px;
+            y: 10px;
+            width: parent.width - 20px;
+            height: 34px;
+            border-radius: 6px;
+            background: parent.look.card;
+            border-width: 1px;
+            border-color: parent.look.line;
+
+            Rectangle {
+                x: Theme.rtl ? parent.width - 8px - self.width : 8px;
+                y: 9px;
+                width: 44px;
+                height: 5px;
+                border-radius: 2.5px;
+                background: swatch.look.text;
+            }
+
+            Rectangle {
+                x: Theme.rtl ? parent.width - 8px - self.width : 8px;
+                y: 20px;
+                width: 70px;
+                height: 5px;
+                border-radius: 2.5px;
+                background: swatch.look.muted;
+            }
+
+            Rectangle {
+                x: Theme.rtl ? 8px : parent.width - 8px - self.width;
+                y: (parent.height - self.height) / 2;
+                width: 22px;
+                height: 12px;
+                border-radius: 6px;
+                background: swatch.look.accent;
+            }
+        }
+
+        LineText {
+            x: 10px;
+            y: 54px;
+            width: parent.width - 20px;
+            horizontal-alignment: Theme.rtl ? right : left;
+            text: name;
+            font-size: 12px;
+            font-weight: parent.on ? 600 : 500;
+            color: parent.look.text;
+        }
+
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.chosen(i); }
+        }
+    }
+}
+
+// The presets as cards in a row, the chosen one ringed in the accent; none
+// is chosen while `current` is -1.
+component PresetCards inherits Rectangle {
+    in property <[PresetCard]> cards;
+    in property <int> current;
+    callback chosen(int);
+
+    property <length> gap: 10px;
+    property <length> cell-w: (root.width - (root.cards.length - 1) * root.gap) / max(1, root.cards.length);
+
+    height: 96px;
+    accessible-role: radio-group;
+
+    for card[i] in root.cards: Rectangle {
+        property <bool> on: i == root.current;
+
+        x: (Theme.rtl ? root.cards.length - 1 - i : i) * (root.cell-w + root.gap);
+        width: root.cell-w;
+        height: root.height;
+        border-radius: 10px;
+        background: self.on ? Theme.accent-soft : touch.has-hover ? Theme.field : Theme.panel;
+        border-width: self.on ? 2px : 1px;
+        border-color: self.on ? Theme.accent : Theme.panel-border;
+        accessible-role: radio-button;
+        accessible-label: card.title;
+        accessible-description: card.summary;
+        accessible-checkable: true;
+        accessible-checked: self.on;
+        accessible-action-default => { root.chosen(i); }
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 4px;
+            alignment: start;
+
+            Text {
+                horizontal-alignment: Theme.rtl ? right : left;
+                text: card.title;
+                font-size: 14px;
+                font-weight: 600;
+                color: on ? Theme.accent : Theme.text;
+            }
+
+            WrapText {
+                text: card.summary;
+                font-size: 11.5px;
+                color: Theme.muted;
+            }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.chosen(i); }
+        }
+    }
+}
+
+// A suggested folder, or the button that adds another: a plus to pin it, a
+// check once it is, drawn chosen (the accent, faint) while it is. A chip
+// that is not `enabled` is dimmed and does nothing.
+component PinChip inherits Rectangle {
+    in property <string> label;
+    in property <string> name;
+    in property <image> icon;
+    in property <bool> chosen;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 28px;
+    border-radius: 8px;
+    background: root.chosen ? Theme.accent-soft : root.enabled && touch.has-hover ? Theme.hover : Theme.surface;
+    opacity: root.enabled ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: root.name;
+    accessible-checkable: true;
+    accessible-checked: root.chosen;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if (root.enabled) {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 2 : 0;
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                width: 13px;
+                height: 13px;
+                colorize: root.chosen ? Theme.accent : Theme.muted;
+            }
+        }
+
+        Text {
+            layout-order: Theme.rtl ? 1 : 0;
+            text: root.label;
+            font-size: 12px;
+            color: root.chosen ? Theme.accent : Theme.text;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A pinned folder: its icon, name and where it is, and a button to unpin
+// it; a hairline under it unless it is the last.
+component PinnedRow inherits Rectangle {
+    in property <FolderRow> folder;
+    in property <bool> last;
+    callback unpin();
+
+    height: 36px;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 8px;
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 3 : 0;
+            alignment: center;
+
+            if root.folder.has-icon: Image {
+                source: root.folder.icon;
+                width: 16px;
+                height: 16px;
+                opacity: root.folder.missing ? 0.4 : 1;
+            }
+            if !root.folder.has-icon: Image {
+                source: PanelIcons.folder;
+                width: 16px;
+                height: 16px;
+                colorize: Theme.muted;
+                opacity: root.folder.missing ? 0.4 : 1;
+            }
+        }
+
+        LineText {
+            layout-order: Theme.rtl ? 2 : 1;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+            text: root.folder.name;
+            font-size: 13px;
+            color: root.folder.missing ? Theme.muted : Theme.text;
+            horizontal-stretch: 0;
+            max-width: 220px;
+        }
+
+        LineText {
+            layout-order: Theme.rtl ? 1 : 2;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+            text: root.folder.missing ? @tr("Missing") : root.folder.place;
+            font-size: 11px;
+            color: Theme.muted;
+            horizontal-stretch: 1;
+        }
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 0 : 3;
+            alignment: center;
+
+            IconButton {
+                icon: Icons.remove;
+                label: @tr("Unpin {}", root.folder.name);
+                clicked => { root.unpin(); }
+            }
+        }
+    }
+
+    if !root.last: Rectangle {
+        y: root.height - 1px;
+        height: 1px;
+        background: Theme.panel-line;
+    }
+}
+
+// A row of the Done screen: the keys or gesture at the start of the line,
+// what they do after them.
+component ShortcutRow inherits Rectangle {
+    in property <ShortcutLine> line;
+    in property <bool> last;
+
+    height: 38px;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 16px;
+
+        LineText {
+            layout-order: Theme.rtl ? 1 : 0;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+            text: root.line.keys;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.text;
+            horizontal-stretch: 0;
+            width: 270px;
+        }
+
+        LineText {
+            layout-order: Theme.rtl ? 0 : 1;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+            text: root.line.what;
+            font-size: 13px;
+            color: Theme.muted;
+            horizontal-stretch: 1;
+        }
+    }
+
+    if !root.last: Rectangle {
+        y: root.height - 1px;
+        height: 1px;
+        background: Theme.panel-line;
+    }
+}
+
+export component WelcomeWindow inherits Window {
+    default-font-family: Theme.font-family;
+    title: @tr("Welcome to Vento");
+    default-font-size: 13px;
+    // Fixed at 680 × 520; the screens are laid out for it.
+    preferred-width: 680px;
+    preferred-height: 520px;
+    min-width: 680px;
+    max-width: 680px;
+    min-height: 520px;
+    max-height: 520px;
+    background: Theme.page;
+
+    // The screen shown: 0 Welcome and language, 1 Look, 2 Try it, 3 Wheel,
+    // 4 Folders and clipboard, 5 Done.
+    in-out property <int> step: 0;
+
+    // Welcome: the languages by name, and the one in use.
+    in property <[string]> language-names;
+    in property <int> language;
+    // Look: 0 System, 1 Light, 2 Dark; the themes by name, and the one in use.
+    in property <int> appearance;
+    in property <[string]> theme-names;
+    in property <int> theme;
+    // Try it: 0 Control, 1 Option, 2 Shift, 3 Command, called by
+    // `trigger-names` (the platform's own names), and whether a shake during
+    // a drag opens the wheel too.
+    in property <[string]> trigger-names;
+    in property <int> trigger;
+    in property <bool> shake;
+    // Whether the sample file can be dragged out of the window; without it
+    // the screen shows the three steps alone.
+    in property <bool> can-drag;
+    // The sample file's name and icon, and whether it was dropped on the
+    // wheel (the practice worked).
+    in property <string> sample-name;
+    in property <image> sample-icon;
+    in property <bool> practiced;
+    // Vento is paused, so the wheel would not open.
+    in property <bool> paused;
+    // Wheel: the presets, the one the actions equal now (-1 for none), the
+    // layout (0 Honeycomb, 1 Petals), and the installed terminals and the
+    // one in use (shown with the second preset, Developer).
+    in property <[PresetCard]> presets;
+    in property <int> preset: -1;
+    in property <int> layout;
+    in property <[string]> terminals;
+    in property <int> terminal;
+    // Folders: the folders suggested, the pinned ones in ring order, whether
+    // there is room to pin more, and the clipboard history's switch and
+    // shortcut as symbols.
+    in property <[FolderChip]> suggestions;
+    in property <[FolderRow]> pinned;
+    in property <bool> can-pin;
+    in property <bool> clipboard-history;
+    in property <string> clip-shortcut;
+    // What the history stores, and where (this Mac, or this computer).
+    in property <string> clipboard-note;
+    // Done: the keys and what they do.
+    in property <[ShortcutLine]> shortcuts;
+
+    // Next and Back move between screens; vento changes `step` and ends the
+    // setup after the last (Done), Skip setup and the close button.
+    callback next();
+    callback back();
+    callback skip();
+    // Esc: vento closes the window as its close button does.
+    callback close-requested();
+    // Done's Open Settings button.
+    callback open-settings();
+    // A control asks for a change; vento applies and saves it and sets the
+    // properties above from the result.
+    callback language-chosen(int);
+    callback appearance-chosen(int);
+    callback theme-chosen(int);
+    callback trigger-chosen(int);
+    callback shake-toggled(bool);
+    // The sample file's tile: pressed, moved by this much since (a drag to
+    // start), and let go.
+    callback sample-pressed();
+    callback sample-moved(length, length);
+    callback sample-released();
+    // "Resume", on the paused line.
+    callback resume();
+    callback preset-chosen(int);
+    callback layout-chosen(int);
+    callback terminal-chosen(int);
+    // A suggested folder's chip, pinning it or unpinning it.
+    callback suggestion-toggled(int);
+    // "Add folder…": vento shows the folder picker.
+    callback add-folder();
+    callback unpin(int);
+    callback clipboard-toggled(bool);
+
+    // The screens in all, for the step dots.
+    property <int> screens: 6;
+    property <bool> last: root.step == root.screens - 1;
+
+    forward-focus: keys;
+
+    keys := FocusScope {
+        // Return is Next (Done on the last screen), Esc closes. No control
+        // here takes the keyboard, so these reach the window.
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-requested();
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                // Only the first press advances: a held key repeats, and
+                // would run through every screen to Done.
+                if (!event.repeat) {
+                    root.next();
+                }
+                return accept;
+            }
+            return reject;
+        }
+
+        VerticalLayout {
+            // The screen.
+            VerticalLayout {
+                vertical-stretch: 1;
+                padding-top: 32px;
+                padding-bottom: 20px;
+                padding-left: 40px;
+                padding-right: 40px;
+
+                // 1. Welcome and language.
+                if root.step == 0: VerticalLayout {
+                    alignment: center;
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        alignment: center;
+
+                        Image {
+                            source: @image-url("../assets/app-icon.svg");
+                            width: 88px;
+                            height: 88px;
+                        }
+                    }
+
+                    Text {
+                        horizontal-alignment: center;
+                        text: @tr("Welcome to Vento");
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: Theme.text;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+
+                        CenteredText {
+                            width: 400px;
+                            text: @tr("A wheel of quick actions that opens under the file you are dragging.");
+                            font-size: 15px;
+                            color: Theme.muted;
+                        }
+                    }
+
+                    Rectangle { height: 14px; }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 14px;
+
+                        Text {
+                            layout-order: Theme.rtl ? 1 : 0;
+                            vertical-alignment: center;
+                            text: @tr("Language");
+                            font-size: 13px;
+                            font-weight: 500;
+                            color: Theme.text;
+                        }
+
+                        VerticalLayout {
+                            layout-order: Theme.rtl ? 0 : 1;
+                            alignment: center;
+
+                            Segmented {
+                                width: min(360px, max(200px, 110px * root.language-names.length));
+                                items: root.language-names;
+                                current: root.language;
+                                chosen(i) => { root.language-chosen(i); }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Look.
+                if root.step == 1: VerticalLayout {
+                    alignment: start;
+                    spacing: 16px;
+
+                    ScreenTitle { text: @tr("Choose a look"); }
+
+                    FieldRow {
+                        label: @tr("Appearance");
+
+                        VerticalLayout {
+                            alignment: center;
+
+                            Segmented {
+                                width: 270px;
+                                items: [@tr("System"), @tr("Light"), @tr("Dark")];
+                                current: root.appearance;
+                                chosen(i) => { root.appearance-chosen(i); }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        SectionHeading { text: @tr("Theme"); }
+
+                        ThemeCards {
+                            names: root.theme-names;
+                            current: root.theme;
+                            chosen(i) => { root.theme-chosen(i); }
+                        }
+                    }
+                }
+
+                // 3. Try it.
+                if root.step == 2: VerticalLayout {
+                    alignment: start;
+                    spacing: 14px;
+
+                    ScreenTitle { text: @tr("Try it"); }
+
+                    VerticalLayout {
+                        spacing: 10px;
+
+                        Text {
+                            horizontal-alignment: Theme.rtl ? right : left;
+                            text: @tr("1. Drag this file a little.");
+                            font-size: 15px;
+                            color: Theme.text;
+                        }
+
+                        // The trigger sits inside the step it changes.
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: Theme.rtl ? end : start;
+
+                            Text {
+                                layout-order: Theme.rtl ? 1 : 0;
+                                vertical-alignment: center;
+                                text: @tr("2. While dragging, press");
+                                font-size: 15px;
+                                color: Theme.text;
+                            }
+
+                            VerticalLayout {
+                                layout-order: Theme.rtl ? 0 : 1;
+                                alignment: center;
+
+                                MenuField {
+                                    width: 120px;
+                                    label: @tr("Trigger");
+                                    items: root.trigger-names;
+                                    current: root.trigger;
+                                    chosen(i) => { root.trigger-chosen(i); }
+                                }
+                            }
+                        }
+
+                        Text {
+                            horizontal-alignment: Theme.rtl ? right : left;
+                            text: @tr("3. Let go over any action on the wheel.");
+                            font-size: 15px;
+                            color: Theme.text;
+                        }
+                    }
+
+                    if root.paused: Rectangle {
+                        border-radius: 8px;
+                        background: Theme.surface;
+
+                        HorizontalLayout {
+                            padding: 8px;
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 8px;
+
+                            VerticalLayout {
+                                layout-order: Theme.rtl ? 3 : 0;
+                                alignment: center;
+
+                                Image {
+                                    source: PanelIcons.pause;
+                                    width: 14px;
+                                    height: 14px;
+                                    colorize: Theme.muted;
+                                }
+                            }
+
+                            Text {
+                                layout-order: Theme.rtl ? 2 : 1;
+                                horizontal-alignment: Theme.rtl ? right : left;
+                                vertical-alignment: center;
+                                text: @tr("Vento is paused, so the wheel won't open.");
+                                font-size: 12px;
+                                color: Theme.text;
+                                horizontal-stretch: 1;
+                            }
+
+                            VerticalLayout {
+                                layout-order: Theme.rtl ? 0 : 2;
+                                alignment: center;
+
+                                TextButton {
+                                    label: @tr("Resume");
+                                    icon: PanelIcons.resume;
+                                    has-icon: true;
+                                    clicked => { root.resume(); }
+                                }
+                            }
+                        }
+                    }
+
+                    // The file to drag: a dashed tile that starts a real file
+                    // drag, so the real wheel opens over it.
+                    if root.can-drag && !root.practiced: Rectangle {
+                        height: 104px;
+                        background: tile-touch.has-hover ? Theme.panel : transparent;
+                        border-radius: 10px;
+                        accessible-role: button;
+                        accessible-label: root.sample-name;
+
+                        DashedBox { }
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 8px;
+
+                            HorizontalLayout {
+                                alignment: center;
+
+                                // The file's own icon, else a plain one in grey.
+                                Image {
+                                    source: root.sample-icon.width > 0 ? root.sample-icon : WelcomeIcons.file;
+                                    width: 40px;
+                                    height: 40px;
+                                    colorize: root.sample-icon.width > 0 ? transparent : Theme.muted;
+                                }
+                            }
+
+                            Text {
+                                horizontal-alignment: center;
+                                text: root.sample-name;
+                                font-size: 13px;
+                                color: Theme.text;
+                            }
+                        }
+
+                        tile-touch := TouchArea {
+                            mouse-cursor: MouseCursor.grab;
+                            pointer-event(event) => {
+                                if (event.button == PointerEventButton.left) {
+                                    if (event.kind == PointerEventKind.down) {
+                                        root.sample-pressed();
+                                    } else if (event.kind == PointerEventKind.up
+                                        || event.kind == PointerEventKind.cancel) {
+                                        root.sample-released();
+                                    }
+                                }
+                            }
+                            moved => {
+                                root.sample-moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                            }
+                        }
+                    }
+
+                    // After a practice drop.
+                    if root.practiced: Rectangle {
+                        border-radius: 10px;
+                        background: Theme.accent-soft;
+
+                        HorizontalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+
+                            VerticalLayout {
+                                layout-order: Theme.rtl ? 1 : 0;
+                                alignment: center;
+
+                                Image {
+                                    source: WelcomeIcons.check;
+                                    width: 22px;
+                                    height: 22px;
+                                    colorize: Theme.accent;
+                                }
+                            }
+
+                            WrapText {
+                                layout-order: Theme.rtl ? 0 : 1;
+                                text: @tr("You've got it. This works on any file, in Finder or anywhere you drag files from.");
+                                font-size: 14px;
+                                color: Theme.text;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+
+                    Panel {
+                        SettingRow {
+                            label: @tr("Shake to open");
+                            description: @tr("Shake the pointer while dragging to open the wheel");
+
+                            Switch {
+                                label: @tr("Shake to open");
+                                on: root.shake;
+                                toggled(on) => { root.shake-toggled(on); }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Wheel.
+                if root.step == 3: VerticalLayout {
+                    alignment: start;
+                    spacing: 16px;
+
+                    ScreenTitle { text: @tr("What do you do most?"); }
+
+                    PresetCards {
+                        cards: root.presets;
+                        current: root.preset;
+                        chosen(i) => { root.preset-chosen(i); }
+                    }
+
+                    if root.preset == 1: FieldRow {
+                        label: @tr("Terminal");
+
+                        MenuField {
+                            width: 200px;
+                            label: @tr("Terminal");
+                            items: root.terminals;
+                            current: root.terminal;
+                            chosen(i) => { root.terminal-chosen(i); }
+                        }
+                    }
+
+                    FieldRow {
+                        label: @tr("Layout");
+
+                        VerticalLayout {
+                            alignment: center;
+
+                            Segmented {
+                                width: 200px;
+                                items: [@tr("Honeycomb"), @tr("Petals")];
+                                current: root.layout;
+                                chosen(i) => { root.layout-chosen(i); }
+                            }
+                        }
+
+                        Image {
+                            source: root.layout == 1 ? WelcomeIcons.petals : WelcomeIcons.honeycomb;
+                            width: 60px;
+                            height: 60px;
+                            colorize: Theme.muted;
+                        }
+                    }
+
+                    WrapText {
+                        text: @tr("You can pick each action in Settings → Wheel.");
+                        font-size: 12px;
+                        color: Theme.muted;
+                    }
+                }
+
+                // 5. Folders and clipboard.
+                if root.step == 4: VerticalLayout {
+                    alignment: start;
+                    spacing: 12px;
+
+                    ScreenTitle { text: @tr("Folders you use often"); }
+
+                    WrapText {
+                        text: @tr("Pinned folders sit on the ring of Move and Copy to.");
+                        font-size: 13px;
+                        color: Theme.muted;
+                    }
+
+                    // The chips, then the button; in a right-to-left language
+                    // the first chip sits at the right and the button at the
+                    // left.
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: Theme.rtl ? end : start;
+
+                        for chip[i] in root.suggestions: PinChip {
+                            layout-order: Theme.rtl ? -i : i;
+                            label: chip.name;
+                            name: chip.pinned ? @tr("Unpin {}", chip.name) : @tr("Pin {}", chip.name);
+                            icon: chip.pinned ? WelcomeIcons.check : WelcomeIcons.plus;
+                            chosen: chip.pinned;
+                            enabled: chip.pinned || root.can-pin;
+                            clicked => { root.suggestion-toggled(i); }
+                        }
+
+                        PinChip {
+                            layout-order: Theme.rtl ? -1000 : 1000;
+                            label: @tr("Add folder…");
+                            name: @tr("Add folder…");
+                            icon: WelcomeIcons.plus;
+                            enabled: root.can-pin;
+                            clicked => { root.add-folder(); }
+                        }
+                    }
+
+                    Panel {
+                        // The pinned folders, up to five rows before the list
+                        // scrolls.
+                        if root.pinned.length > 0: Flickable {
+                            height: min(root.pinned.length, 5) * 36px;
+                            content-width: self.width;
+                            content-height: root.pinned.length * 36px;
+
+                            for folder[i] in root.pinned: PinnedRow {
+                                y: i * 36px;
+                                width: parent.width;
+                                folder: folder;
+                                last: i == root.pinned.length - 1;
+                                unpin => { root.unpin(i); }
+                            }
+                        }
+
+                        if root.pinned.length > 0: RowSeparator { }
+
+                        SettingRow {
+                            label: @tr("Clipboard history");
+                            description: @tr("Keeps the last 50 things you copy. Open it with {}.", root.clip-shortcut);
+                            padding-bottom: 4px;
+
+                            Switch {
+                                label: @tr("Clipboard history");
+                                on: root.clipboard-history;
+                                toggled(on) => { root.clipboard-toggled(on); }
+                            }
+                        }
+
+                        RowBody {
+                            WrapText {
+                                text: root.clipboard-note;
+                                font-size: 12px;
+                                color: Theme.muted;
+                            }
+                        }
+                    }
+                }
+
+                // 6. Done.
+                if root.step == 5: VerticalLayout {
+                    alignment: start;
+                    spacing: 12px;
+
+                    ScreenTitle { text: @tr("You're all set"); }
+
+                    WrapText {
+                        text: @tr("Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu.");
+                        font-size: 13px;
+                        color: Theme.muted;
+                    }
+
+                    Rectangle { height: 4px; }
+
+                    Panel {
+                        for line[i] in root.shortcuts: ShortcutRow {
+                            line: line;
+                            last: i == root.shortcuts.length - 1;
+                        }
+                    }
+
+                    Rectangle { height: 4px; }
+
+                    HorizontalLayout {
+                        alignment: Theme.rtl ? end : start;
+
+                        WelcomeButton {
+                            label: @tr("Open Settings");
+                            clicked => { root.open-settings(); }
+                        }
+                    }
+                }
+            }
+
+            // The frame: a hairline, then the step dots at the start of the
+            // line and the buttons at the end.
+            Rectangle {
+                height: 1px;
+                background: Theme.panel-border;
+            }
+
+            HorizontalLayout {
+                height: 56px;
+                padding-left: 24px;
+                padding-right: 24px;
+                spacing: 8px;
+
+                VerticalLayout {
+                    layout-order: Theme.rtl ? 4 : 0;
+                    alignment: center;
+
+                    StepDots {
+                        step: root.step;
+                        count: root.screens;
+                    }
+                }
+
+                Rectangle {
+                    layout-order: Theme.rtl ? 3 : 1;
+                    horizontal-stretch: 1;
+                }
+
+                // The middle of the five: it stays in place when mirrored.
+                // Written out all the same, as the rows_mirror test wants
+                // every child of the row to order by direction.
+                if !root.last: VerticalLayout {
+                    layout-order: Theme.rtl ? 2 : 2;
+                    alignment: center;
+
+                    TextButton {
+                        label: @tr("Skip setup");
+                        clicked => { root.skip(); }
+                    }
+                }
+
+                if root.step > 0: VerticalLayout {
+                    layout-order: Theme.rtl ? 1 : 3;
+                    alignment: center;
+
+                    WelcomeButton {
+                        label: @tr("Back");
+                        clicked => { root.back(); }
+                    }
+                }
+
+                VerticalLayout {
+                    layout-order: Theme.rtl ? 0 : 4;
+                    alignment: center;
+
+                    WelcomeButton {
+                        label: root.last ? @tr("Done") : @tr("Next");
+                        primary: true;
+                        clicked => { root.next(); }
+                    }
+                }
+            }
+        }
+    }
+}
