@@ -110,16 +110,18 @@ fn is_vento_or_tray(at: POINT) -> bool {
 
 /// Whether `at` lies in the primary taskbar's notification area.
 fn in_notification_area(at: POINT) -> bool {
+    notification_area()
+        .is_some_and(|r| at.x >= r.left && at.x < r.right && at.y >= r.top && at.y < r.bottom)
+}
+
+/// The primary taskbar's notification area (the clock and the icons beside
+/// it), in physical pixels; `None` without a taskbar (Explorer not running).
+pub(super) fn notification_area() -> Option<RECT> {
     // SAFETY: plain calls with live arguments.
     unsafe {
         let taskbar = FindWindowW(w!("Shell_TrayWnd"), ptr::null());
         let area = FindWindowExW(taskbar, ptr::null_mut(), w!("TrayNotifyWnd"), ptr::null());
         let mut r = RECT::default();
-        !area.is_null()
-            && GetWindowRect(area, &mut r) != 0
-            && at.x >= r.left
-            && at.x < r.right
-            && at.y >= r.top
-            && at.y < r.bottom
+        (!area.is_null() && GetWindowRect(area, &mut r) != 0).then_some(r)
     }
 }

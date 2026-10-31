@@ -68,6 +68,20 @@ pub struct IslandHome {
     /// bar keeps some for it); the island then sits there, as beside a
     /// notch, rather than in the middle of the screen.
     pub slot: Option<Rect>,
+    /// Where the island lives instead of the top of the screen, on desktops
+    /// with no menu bar (Windows): the bottom corner by the taskbar's clock.
+    pub tray_corner: Option<TrayCorner>,
+}
+
+/// The bottom corner of a screen's work area by the taskbar's clock, where
+/// the island grows up from (Windows).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrayCorner {
+    /// The screen less the taskbar.
+    pub work: Rect,
+    /// The clock is at the left end of the taskbar (a right-to-left
+    /// Windows): the bottom-left corner, not the bottom-right.
+    pub left: bool,
 }
 
 /// How [`Platform::keep_awake`] holds the computer awake.

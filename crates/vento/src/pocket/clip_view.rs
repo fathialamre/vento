@@ -404,6 +404,9 @@ impl PocketController {
 
     /// What the expanded island holds below the menu bar.
     pub(super) fn panel(&self) -> Panel {
+        if self.drop_box.get() {
+            return Panel::Drop;
+        }
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
             View::Pocket if self.list_shown() => Panel::List,

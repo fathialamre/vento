@@ -272,6 +272,7 @@ impl Platform for LinuxPlatform {
             notch: None,
             menu_bar_h: (primary.work.y - primary.frame.y).max(0.0),
             slot,
+            tray_corner: None,
         })
     }
 

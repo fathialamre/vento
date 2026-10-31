@@ -294,6 +294,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 || settings.upgrade().is_some_and(|s| s.is_open())
         }));
     }
+    // The panel opens above the tray icon, where the island lives on
+    // Windows: the island gives way to it.
+    {
+        let panel = Rc::downgrade(&panel);
+        pocket.set_corner_taken(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+        }));
+    }
     {
         let panel = Rc::downgrade(&panel);
         pause.on_change(Box::new(move |paused| {

@@ -27,7 +27,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::{
     AppInfo, AwakeHold, DropCatcher, IslandHome, MenuEntry, Platform, PlatformError, RgbaImage,
-    StubPlatform, TerminalApp,
+    StubPlatform, TerminalApp, TrayCorner,
 };
 
 mod catcher;
@@ -368,16 +368,24 @@ impl Platform for WindowsPlatform {
         pick_folder(start)
     }
 
-    /// The top middle of the primary monitor. A taskbar along the top
-    /// counts as its menu bar, so the island sits below it.
+    /// The primary monitor's bottom corner by the taskbar's clock: the top
+    /// of the screen is where maximized windows keep their title bars and
+    /// tabs. The clock sits at the left end of a mirrored (right-to-left)
+    /// taskbar.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *screens::monitors().first()?;
-        let (frame, work) = (primary.logical_frame(), primary.logical_work());
+        let frame = primary.logical_frame();
+        let mid = (primary.frame.left + primary.frame.right) / 2;
+        let left = clicks::notification_area().is_some_and(|r| (r.left + r.right) / 2 < mid);
         Some(IslandHome {
             screen: frame,
             notch: None,
-            menu_bar_h: (work.y - frame.y).max(0.0),
+            menu_bar_h: 0.0,
             slot: None,
+            tray_corner: Some(TrayCorner {
+                work: primary.logical_work(),
+                left,
+            }),
         })
     }
 
@@ -614,7 +622,11 @@ mod tests {
         let home = p.pocket_home().expect("a primary monitor");
         let work = p.screens()[0];
         assert!(home.screen.w >= work.w && home.screen.h >= work.h);
-        assert!(home.menu_bar_h >= 0.0 && home.notch.is_none());
+        assert!(home.menu_bar_h == 0.0 && home.notch.is_none());
+        // By the clock, inside the screen.
+        let corner = home.tray_corner.expect("a corner by the clock");
+        assert!(corner.work.w > 0.0 && corner.work.h > 0.0);
+        assert!(corner.work.x >= home.screen.x && corner.work.y >= home.screen.y);
     }
 
     #[test]

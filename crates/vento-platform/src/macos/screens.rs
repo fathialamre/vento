@@ -216,6 +216,7 @@ pub(super) fn pocket_home() -> Option<IslandHome> {
         notch,
         menu_bar_h,
         slot: None,
+        tray_corner: None,
     })
 }
 
