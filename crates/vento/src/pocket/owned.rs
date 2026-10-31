@@ -222,22 +222,27 @@ mod tests {
         // Already gone: nothing to trash.
         assert!(!owned_gone(&note, ItemSource::Saved));
 
-        // A link in the folder goes; what it points to stays.
-        let link = dir.join("saved/link");
-        std::os::unix::fs::symlink(&outside, &link).unwrap();
-        assert!(owned_gone(&link, ItemSource::Saved));
-        assert!(fs::symlink_metadata(&link).is_err());
-        assert!(outside.exists());
-
         let canonical = |p: &Path| {
             fs::canonicalize(p.parent().unwrap())
                 .unwrap()
                 .join(p.file_name().unwrap())
         };
-        assert_eq!(
-            *bin.moved.borrow(),
-            vec![canonical(&note), canonical(&folder), canonical(&link)]
-        );
+        #[cfg_attr(not(unix), allow(unused_mut))]
+        let mut trashed = vec![canonical(&note), canonical(&folder)];
+
+        // A link in the folder goes; what it points to stays. (Windows lets
+        // only admins and developer mode make links.)
+        #[cfg(unix)]
+        {
+            let link = dir.join("saved/link");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(owned_gone(&link, ItemSource::Saved));
+            assert!(fs::symlink_metadata(&link).is_err());
+            assert!(outside.exists());
+            trashed.push(canonical(&link));
+        }
+
+        assert_eq!(*bin.moved.borrow(), trashed);
     }
 
     #[test]

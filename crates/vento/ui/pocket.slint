@@ -1832,6 +1832,12 @@ export component PocketIsland inherits Window {
     in property <length> notch-w;
     // Height of the menu bar (or the notch, if taller).
     in property <length> top-h;
+    // The island lives in the corner by the taskbar's clock (Windows): it
+    // grows up from the window's bottom edge and draws nothing collapsed.
+    in property <bool> corner-style;
+    // In that corner while something is dragged: only where to drop, with
+    // no bar.
+    in property <bool> drop-box;
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
@@ -1949,9 +1955,12 @@ export component PocketIsland inherits Window {
     property <length> pad: 16px;
     property <length> bar-h: 44px;
 
-    property <length> collapsed-w: root.notch-style ? root.notch-w + 2 * root.wing : 120px;
-    property <length> collapsed-h: root.notch-style ? root.top-h : 28px;
+    property <length> collapsed-w: root.corner-style ? root.width : root.notch-style ? root.notch-w + 2 * root.wing : 120px;
+    property <length> collapsed-h: root.corner-style ? 0px : root.notch-style ? root.top-h : 28px;
     property <length> collapsed-y: root.notch-style ? 0px : root.top-h + 4px;
+    // Where the top of an island hanging from the top edge goes.
+    property <length> top-y: root.expanded ? 0px : root.collapsed-y;
+    animate top-y { duration: 160ms; easing: ease-out; }
     property <length> pill-r: root.notch-style ? 0px : 14px;
     property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
     property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
@@ -1965,23 +1974,24 @@ export component PocketIsland inherits Window {
         width: root.expanded ? root.width : root.collapsed-w;
         height: root.expanded ? root.top-h + root.panel-h : root.collapsed-h;
         x: (root.width - self.width) / 2;
-        y: root.expanded ? 0px : root.collapsed-y;
-        animate width, y { duration: 160ms; easing: ease-out; }
+        // In the corner by the clock, its bottom stays on the window's.
+        y: root.corner-style ? root.height - self.height : root.top-y;
+        animate width { duration: 160ms; easing: ease-out; }
         animate height { duration: 240ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
         background: root.bar-hover && !root.expanded ? #2b2b2b : #000000;
         animate background { duration: 120ms; }
         clip: true;
-        border-top-left-radius: root.expanded ? 0px : root.pill-r;
-        border-top-right-radius: root.expanded ? 0px : root.pill-r;
-        border-bottom-left-radius: root.expanded ? 22px : (root.notch-style ? 10px : 14px);
+        border-top-left-radius: root.corner-style ? 14px : root.expanded ? 0px : root.pill-r;
+        border-top-right-radius: self.border-top-left-radius;
+        border-bottom-left-radius: root.corner-style ? 14px : root.expanded ? 22px : (root.notch-style ? 10px : 14px);
         border-bottom-right-radius: self.border-bottom-left-radius;
 
         // Collapsed: the stack icon on the left, the item count on the right
         // (the other way round in a right-to-left language);
         // with an empty Pocket but some history, the clipboard icon alone;
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
-        if !root.expanded: Rectangle {
+        if !root.expanded && !root.corner-style: Rectangle {
             if root.undo-active: TouchArea {
                 clicked => {
                     root.undo();
@@ -2015,14 +2025,15 @@ export component PocketIsland inherits Window {
 
         // Expanded: fixed in window coordinates while the island grows around
         // it, and as tall as the island below the menu bar, so the bottom bar
-        // moves with its edge as it grows or shrinks.
+        // moves with its edge as it grows or shrinks. In the corner by the
+        // clock it sits on the window's bottom edge, with the island's.
         if root.expanded: Rectangle {
             x: (parent.width - root.width) / 2;
-            y: root.top-h - parent.y;
+            y: (root.corner-style ? root.height - root.panel-h : root.top-h) - parent.y;
             width: root.width;
             height: max(0px, parent.height - self.y);
 
-            property <length> view-h: max(0px, self.height - root.bar-h);
+            property <length> view-h: max(0px, self.height - (root.drop-box ? 0px : root.bar-h));
 
             // The Clipboard view, sliding and fading in from the start of the
             // line as the Pocket goes.
@@ -2119,7 +2130,7 @@ export component PocketIsland inherits Window {
                     }
 
                     // Cleared, while its Undo is offered.
-                    if root.count == 0 && root.pocket-undo && !root.hint: Text {
+                    if root.count == 0 && root.pocket-undo && !root.hint && !root.drop-box: Text {
                         text: @tr("Pocket cleared");
                         color: #ffffff66;
                         font-size: 13px;
@@ -2128,8 +2139,9 @@ export component PocketIsland inherits Window {
                         vertical-alignment: center;
                     }
 
-                    // Empty, or a drag hovers: say what a drop does.
-                    if root.hint || (root.count == 0 && !root.pocket-undo): DashedBox {
+                    // Empty, a drag hovers, or the drop box: say what a drop
+                    // does.
+                    if root.hint || root.drop-box || (root.count == 0 && !root.pocket-undo): DashedBox {
                         x: 10px;
                         y: 8px;
                         width: parent.width - 20px;
@@ -2206,7 +2218,7 @@ export component PocketIsland inherits Window {
             // Under either view: a tab for each (with the history on), and at
             // the end the shown view's controls: the Pocket's look, "Drag"
             // and Clear (or Undo), or the Clipboard's Clear (or Undo).
-            Rectangle {
+            if !root.drop-box: Rectangle {
                 y: parent.view-h;
                 width: parent.width;
                 height: root.bar-h;

@@ -148,6 +148,50 @@ x11rb = { version = "0.13", features = ["shape"] }
 # so vento can tidy up on its main thread before it goes.
 signal-hook = "0.3"
 
+[target.'cfg(windows)'.dependencies]
+# Picture thumbnails and the Convert action, as on Linux (`linux/thumbs.rs`,
+# `linux/image_io.rs`).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "gif", "bmp", "webp"] }
+# Writes lossy WebP for the Convert action, as on the other two (`webp.rs`).
+libwebp-sys = "0.14"
+# The folder and PDF pickers, as on the Mac.
+rfd = "0.17"
+# The Shell's COM interfaces: file icons, Open With, the Recycle Bin. Already
+# in the app through Slint (accesskit, fontique).
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# `windows`'s `implement` macro, for the Pocket's OLE drop target, names
+# this crate itself.
+windows-core = "0.62"
+# Already in the app through winit; only the Win32 parts vento calls itself.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Power",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [dev-dependencies]
 # The probe example prints the platform's logs (`RUST_LOG=debug`).
 env_logger = "0.11"

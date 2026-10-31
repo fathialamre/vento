@@ -31,6 +31,15 @@ fn toast_position(at: Point, screens: &[Rect]) -> (f64, f64) {
     position_below(at, (WIDTH, HEIGHT), screens)
 }
 
+/// The point to show a toast at so that it sits as far above `top` as it
+/// would sit below the point.
+pub(crate) fn anchor_above(top: Point) -> Point {
+    Point {
+        x: top.x,
+        y: top.y - 2.0 * OFFSET_Y - HEIGHT,
+    }
+}
+
 /// Top-left corner of a window of `size` (width, height) anchored 24 px
 /// below `at`, horizontally centred on it and clamped to the screen work
 /// area that contains (or is nearest to) `at`. The other small windows that

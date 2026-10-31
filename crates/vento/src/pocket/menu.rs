@@ -59,13 +59,17 @@ const REMOVE: u32 = 4;
 const FIRST_APP: u32 = 100;
 
 /// The file manager's name in "Show in …".
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 fn reveal_title() -> String {
     tr("Show in Finder")
 }
 #[cfg(target_os = "linux")]
 fn reveal_title() -> String {
     tr("Show in Files")
+}
+#[cfg(windows)]
+fn reveal_title() -> String {
+    tr("Show in Explorer")
 }
 
 /// A cell's context menu: its entries, and the action behind each id.

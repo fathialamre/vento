@@ -1,8 +1,9 @@
 //! Operating-system access for vento: global input sampling, screens,
 //! clipboard, terminals and the folder picker, behind one [`Platform`] trait.
 //!
-//! macOS has a real implementation and Linux (GNOME) a partial one; every
-//! other OS gets a [`StubPlatform`] so the workspace still compiles there.
+//! macOS has a real implementation, Linux (GNOME) a partial one and Windows
+//! a starting one; every other OS gets a [`StubPlatform`] so the workspace
+//! still compiles there.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -19,7 +20,7 @@ pub use stub::{StubPlatform, StubScreenText};
 
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod webp;
 #[cfg(target_os = "macos")]
 pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
@@ -35,6 +36,11 @@ pub use linux::{
     APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, claim_instance,
     end_startup, start_file_drag, tray_icon_frame,
 };
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::{WindowsPlatform, claim_instance, taskbar_is_light};
 
 /// A terminal application that can be launched in a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +68,20 @@ pub struct IslandHome {
     /// bar keeps some for it); the island then sits there, as beside a
     /// notch, rather than in the middle of the screen.
     pub slot: Option<Rect>,
+    /// Where the island lives instead of the top of the screen, on desktops
+    /// with no menu bar (Windows): the bottom corner by the taskbar's clock.
+    pub tray_corner: Option<TrayCorner>,
+}
+
+/// The bottom corner of a screen's work area by the taskbar's clock, where
+/// the island grows up from (Windows).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrayCorner {
+    /// The screen less the taskbar.
+    pub work: Rect,
+    /// The clock is at the left end of the taskbar (a right-to-left
+    /// Windows): the bottom-left corner, not the bottom-right.
+    pub left: bool,
 }
 
 /// How [`Platform::keep_awake`] holds the computer awake.
@@ -645,7 +665,11 @@ pub fn quarantine_of(path: &Path) -> Option<Vec<u8>> {
     {
         macos::quarantine_of(path)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows::quarantine_of(path)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         stub::quarantine_of(path)
     }
@@ -659,7 +683,11 @@ pub fn set_quarantine(path: &Path, value: &[u8]) -> std::io::Result<()> {
     {
         macos::set_quarantine(path, value)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows::set_quarantine(path, value)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         stub::set_quarantine(path, value)
     }
@@ -691,7 +719,11 @@ pub fn file_icon_at(path: &Path, px: u32, scale: f64) -> Option<RgbaImage> {
     {
         linux::file_icon_at(path, px, scale)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::file_icon_at(path, px, scale)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (path, px, scale);
         None
@@ -711,7 +743,11 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     {
         linux::picture_thumbnail(path, short_px, max_ratio)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::picture_thumbnail(path, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (path, short_px, max_ratio);
         None
@@ -730,7 +766,11 @@ pub fn picture_data_thumbnail(bytes: &[u8], short_px: u32, max_ratio: u32) -> Op
     {
         linux::picture_data_thumbnail(bytes, short_px, max_ratio)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::picture_data_thumbnail(bytes, short_px, max_ratio)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (bytes, short_px, max_ratio);
         None
@@ -750,20 +790,28 @@ pub fn probe_image(path: &Path) -> Result<Option<ImageFormat>, ConvertError> {
     {
         linux::image_io::probe_image(path)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::image_io::probe_image(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         stub::probe_image(path)
     }
 }
 
 /// The formats Convert can write here, in the ring's order: on Linux, HEIC
-/// only with libheif's encoder.
+/// only with libheif's encoder; on Windows, no HEIC.
 pub fn convert_targets() -> Vec<ImageFormat> {
     #[cfg(target_os = "linux")]
     {
         linux::image_io::targets()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        windows::image_io::targets()
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         ImageFormat::TARGETS.to_vec()
     }
@@ -782,7 +830,11 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
     {
         linux::image_io::write_image(src, dst, format)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        windows::image_io::write_image(src, dst, format)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         stub::write_image(src, dst, format)
     }
@@ -796,7 +848,11 @@ pub fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
     {
         macos::pick_pdfs(start)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        windows::pick_pdfs(start)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         stub::pick_pdfs(start)
     }
@@ -840,7 +896,11 @@ pub fn current() -> Rc<dyn Platform> {
     {
         Rc::new(LinuxPlatform::new())
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(windows)]
+    {
+        Rc::new(WindowsPlatform::new())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         Rc::new(StubPlatform)
     }
