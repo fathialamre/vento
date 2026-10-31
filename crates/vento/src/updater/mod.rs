@@ -179,6 +179,32 @@ thread_local! {
 /// in its last read when the next one starts, in the same folder.
 static ON_DISK: Mutex<()> = Mutex::new(());
 
+/// Whether a download began in this run; set under [`ON_DISK`], so the
+/// clean-up at start never removes a download that began before it ran.
+static DOWNLOAD_BEGAN: AtomicBool = AtomicBool::new(false);
+
+/// Removes the downloads an earlier run left in `root`, on a short thread.
+fn remove_downloads_later(root: PathBuf) {
+    let spawned = std::thread::Builder::new()
+        .name("vento-update-clean".into())
+        .spawn(move || {
+            let _one = ON_DISK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if DOWNLOAD_BEGAN.load(Ordering::Relaxed) {
+                return;
+            }
+            if let Err(e) = fs::remove_dir_all(&root)
+                && e.kind() != io::ErrorKind::NotFound
+            {
+                warn!("cannot remove {}: {e}", root.display());
+            }
+        });
+    if let Err(e) = spawned {
+        warn!("cannot remove the old downloads: {e}");
+    }
+}
+
 /// Hands `report` to the controller on the main thread.
 fn report(report: Report) {
     let sent = slint::invoke_from_event_loop(move || {
@@ -202,9 +228,16 @@ fn replaceable_bundle() -> Result<PathBuf, SwapError> {
 /// Asks GitHub for the latest release and picks the update for this copy.
 /// A latest release that is not a final one is no update.
 fn check(url: &str, running: Option<Version>) -> Result<Option<Update>, Failure> {
+    let Some(running) = running else {
+        warn!(
+            "cannot read this copy's version {:?}: no update is looked for",
+            env!("CARGO_PKG_VERSION")
+        );
+        return Ok(None);
+    };
     let body = net::fetch_latest(url).map_err(Failure::Net)?;
     match release::parse_latest(&body) {
-        Ok(latest) => Ok(running.and_then(|r| latest.update_for(r, AssetPlatform::MacArm64))),
+        Ok(latest) => Ok(latest.update_for(running, AssetPlatform::MacArm64)),
         Err(ReleaseError::NotARelease) => Ok(None),
         Err(e @ ReleaseError::Json(_)) => {
             warn!("cannot read the latest release: {e}");
@@ -234,6 +267,7 @@ fn prepare(
     let _one = ON_DISK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    DOWNLOAD_BEGAN.store(true, Ordering::Relaxed);
     let dir = version_dir(data_dir, update.version);
     let result = prepare_in(
         &dir,
@@ -391,14 +425,7 @@ impl UpdateController {
                 checked_at: file.last_check,
             },
         };
-        if !matches!(*self.state.borrow(), UpdateState::Ready(_)) {
-            let root = updates_root(&self.data_dir);
-            if let Err(e) = fs::remove_dir_all(&root)
-                && e.kind() != io::ErrorKind::NotFound
-            {
-                warn!("cannot remove {}: {e}", root.display());
-            }
-        }
+        remove_downloads_later(updates_root(&self.data_dir));
         self.set_state(state);
         let this = self.this.clone();
         slint::Timer::single_shot(FIRST_CHECK, move || {
@@ -417,7 +444,8 @@ impl UpdateController {
         });
     }
 
-    /// Checks when the daily check is on and due, and nothing else runs.
+    /// Checks when the daily check is on and due (a check that ended,
+    /// failed or not, a day ago), and nothing else runs.
     fn daily_tick(&self) {
         let last = UpdateFile::load(&UpdateFile::path(&self.data_dir)).last_check;
         if should_check(self.hub.current().check_for_updates, last, now()) && !self.state().busy() {
@@ -443,21 +471,29 @@ impl UpdateController {
         }
     }
 
+    /// Remembers in `update.json` that a check ended at `at`.
+    fn save_last_check(&self, at: i64) {
+        let path = UpdateFile::path(&self.data_dir);
+        let mut file = UpdateFile::load(&path);
+        file.last_check = Some(at);
+        if let Err(e) = file.save(&path) {
+            warn!("cannot save the last check: {e}");
+        }
+    }
+
     /// A worker's result, on the main thread.
     fn on_report(&self, report: Report) {
         match report {
             Report::Checked(Ok(found)) => {
                 let at = now();
-                let path = UpdateFile::path(&self.data_dir);
-                let mut file = UpdateFile::load(&path);
-                file.last_check = Some(at);
-                if let Err(e) = file.save(&path) {
-                    warn!("cannot save the last check: {e}");
-                }
+                self.save_last_check(at);
                 self.apply(UpdateEvent::Checked { found, at });
             }
+            // A failed check counts too: the next automatic try is a day
+            // later (Check now works any time).
             Report::Checked(Err(failure)) => {
                 warn!("update check failed: {failure}");
+                self.save_last_check(now());
                 self.apply(UpdateEvent::CheckFailed(failure.user_text()));
             }
             Report::Progress { job, fraction } => {
@@ -484,6 +520,18 @@ impl UpdateController {
                 }
             }
         }
+    }
+
+    /// Makes `downloading` the state with a new download job: its number
+    /// and cancel flag. Reports of any earlier job no longer count.
+    fn start_job(&self, downloading: UpdateState) -> (u64, Arc<AtomicBool>) {
+        let job = self.job.get() + 1;
+        self.job.set(job);
+        let cancel = Arc::new(AtomicBool::new(false));
+        *self.cancel.borrow_mut() = Some(cancel.clone());
+        *self.unpacked.borrow_mut() = None;
+        self.set_state(downloading);
+        (job, cancel)
     }
 
     /// Whether `job` is the download running now.
@@ -594,8 +642,21 @@ impl UpdateController {
 
     /// Downloads the available update (or the failed one again), checks
     /// it, unpacks it and quits to install it. A copy that cannot be
-    /// replaced fails before anything is downloaded.
+    /// replaced fails before anything is downloaded. Does nothing while a
+    /// download runs or a quit for the update is asking (a Ready update
+    /// goes through [`restart`](Self::restart)).
     pub fn update(&self) {
+        let can_start = matches!(
+            self.state(),
+            UpdateState::Available(_)
+                | UpdateState::Failed {
+                    update: Some(_),
+                    ..
+                }
+        );
+        if !can_start || self.quitting.get() {
+            return;
+        }
         let start = state::reduce(&self.state(), UpdateEvent::DownloadStarted);
         let UpdateState::Downloading { update, .. } = start.clone() else {
             return;
@@ -606,12 +667,7 @@ impl UpdateController {
             self.set_state(failed);
             return;
         }
-        let job = self.job.get() + 1;
-        self.job.set(job);
-        let cancel = Arc::new(AtomicBool::new(false));
-        *self.cancel.borrow_mut() = Some(cancel.clone());
-        *self.unpacked.borrow_mut() = None;
-        self.set_state(start);
+        let (job, cancel) = self.start_job(start);
         let data_dir = self.data_dir.clone();
         let spawned = std::thread::Builder::new()
             .name("vento-update-download".into())
@@ -629,7 +685,9 @@ impl UpdateController {
     }
 
     /// Stops the download: the banner goes back to the update at once, and
-    /// whatever the download still reports is dropped.
+    /// whatever the download still reports is dropped. Once the download is
+    /// done and the quit question is open (PDF windows with unsaved edits),
+    /// there is nothing left to cancel and this does nothing.
     pub fn cancel(&self) {
         let Some(flag) = self.cancel.borrow_mut().take() else {
             return;
@@ -665,10 +723,14 @@ impl UpdateController {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::path::{Path, PathBuf};
+    use std::rc::Rc;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use vento_core::update::release::{Asset, Update};
-    use vento_core::update::state::{FailedUpdate, UpdateState};
+    use vento_core::update::state::{self, FailedUpdate, UpdateEvent, UpdateFile, UpdateState};
     use vento_core::update::version::Version;
 
     use super::net::NetError;
@@ -845,5 +907,336 @@ mod tests {
             watcher_program(Path::new("/Applications/Vento.app.old")),
             PathBuf::from("/Applications/Vento.app.old/Contents/MacOS/vento")
         );
+    }
+
+    /// The callbacks one `quit_for_update` call was handed.
+    struct Quit {
+        swap: Box<dyn FnOnce() -> Result<(), String>>,
+        on_cancel: Box<dyn FnOnce()>,
+        on_fail: Box<dyn FnOnce(String)>,
+    }
+
+    impl Quit {
+        /// Every window agreed: the swap runs, and its error goes to
+        /// `on_fail`, as `quit_for_update` does.
+        fn agree(self) {
+            if let Err(reason) = (self.swap)() {
+                (self.on_fail)(reason);
+            }
+        }
+    }
+
+    /// A controller over a temporary data folder whose quit only records
+    /// what it was handed, with every state it went through.
+    struct Harness {
+        controller: Rc<UpdateController>,
+        quits: Rc<RefCell<Vec<Quit>>>,
+        states: Rc<RefCell<Vec<UpdateState>>>,
+        dir: tempfile::TempDir,
+    }
+
+    fn harness() -> Harness {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = crate::settings_hub::SettingsHub::new(dir.path().join("settings.json"));
+        let quits: Rc<RefCell<Vec<Quit>>> = Rc::default();
+        let held = quits.clone();
+        let controller = UpdateController::new(
+            hub,
+            dir.path().join("data"),
+            Box::new(move |swap, on_cancel, on_fail| {
+                held.borrow_mut().push(Quit {
+                    swap,
+                    on_cancel,
+                    on_fail,
+                })
+            }),
+            Box::new(|| true),
+        );
+        let states: Rc<RefCell<Vec<UpdateState>>> = Rc::default();
+        let seen = states.clone();
+        controller.on_change(Box::new(move |s| seen.borrow_mut().push(s.clone())));
+        Harness {
+            controller,
+            quits,
+            states,
+            dir,
+        }
+    }
+
+    impl Harness {
+        /// A download of 0.4.0 running as `update()` starts one, without
+        /// its worker: its job and cancel flag.
+        fn downloading(&self) -> (u64, Arc<AtomicBool>) {
+            let c = &self.controller;
+            if !matches!(c.state(), UpdateState::Available(_)) {
+                c.set_state(UpdateState::Available(update("0.4.0")));
+            }
+            let start = state::reduce(&c.state(), UpdateEvent::DownloadStarted);
+            c.start_job(start)
+        }
+
+        /// A folder standing in for the unpacked `Vento.app`.
+        fn app(&self) -> PathBuf {
+            let app = self.dir.path().join("Vento.app");
+            std::fs::create_dir_all(&app).unwrap();
+            app
+        }
+
+        fn take_quit(&self) -> Quit {
+            self.quits.borrow_mut().remove(0)
+        }
+
+        fn update_file(&self) -> UpdateFile {
+            UpdateFile::load(&UpdateFile::path(&self.dir.path().join("data")))
+        }
+    }
+
+    fn downloading(progress: f32) -> UpdateState {
+        UpdateState::Downloading {
+            update: update("0.4.0"),
+            progress,
+        }
+    }
+
+    #[test]
+    fn cancel_is_immediate_and_late_reports_are_dropped() {
+        let h = harness();
+        let (job, flag) = h.downloading();
+        h.controller.cancel();
+        assert!(flag.load(Ordering::Relaxed), "the worker is told to stop");
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Available(update("0.4.0"))
+        );
+        h.controller
+            .on_report(Report::Progress { job, fraction: 0.5 });
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Ok(h.app()),
+        });
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Err(Failure::Net(NetError::Cancelled)),
+        });
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Available(update("0.4.0"))
+        );
+        assert!(h.quits.borrow().is_empty(), "no quit for a cancelled job");
+    }
+
+    #[test]
+    fn reports_of_an_older_job_are_dropped() {
+        let h = harness();
+        let (old, _) = h.downloading();
+        h.controller.cancel();
+        let (new, _) = h.downloading();
+        h.controller.on_report(Report::Progress {
+            job: old,
+            fraction: 0.9,
+        });
+        assert_eq!(h.controller.state(), downloading(0.0));
+        h.controller.on_report(Report::Progress {
+            job: new,
+            fraction: 0.3,
+        });
+        assert_eq!(h.controller.state(), downloading(0.3));
+    }
+
+    #[test]
+    fn a_second_update_does_nothing_while_downloading() {
+        let h = harness();
+        let (job, flag) = h.downloading();
+        h.controller.update();
+        assert_eq!(h.controller.job.get(), job, "no second job");
+        let kept = h.controller.cancel.borrow().clone().unwrap();
+        assert!(Arc::ptr_eq(&kept, &flag), "the running job's flag is kept");
+        assert_eq!(h.controller.state(), downloading(0.0));
+    }
+
+    #[test]
+    fn update_does_nothing_while_the_quit_question_is_open() {
+        let h = harness();
+        let (job, _) = h.downloading();
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Ok(h.app()),
+        });
+        assert_eq!(h.controller.state(), downloading(1.0));
+        assert_eq!(h.quits.borrow().len(), 1);
+        h.controller.update();
+        h.controller.cancel();
+        h.controller.restart();
+        assert_eq!(h.controller.job.get(), job, "no new job");
+        assert_eq!(h.controller.state(), downloading(1.0));
+        assert_eq!(h.quits.borrow().len(), 1, "asked once");
+        assert!(h.app().is_dir(), "the unpacked app is left alone");
+    }
+
+    #[test]
+    fn update_fails_before_downloading_when_vento_cannot_be_replaced() {
+        // The test binary is not inside an `.app` bundle.
+        let h = harness();
+        h.controller
+            .set_state(UpdateState::Available(update("0.4.0")));
+        h.controller.update();
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Failed {
+                update: Some(update("0.4.0")),
+                version: v("0.4.0"),
+                reason: "Move Vento to Applications to update it".into(),
+            }
+        );
+        assert_eq!(h.controller.job.get(), 0, "nothing downloaded");
+        assert!(h.controller.cancel.borrow().is_none());
+    }
+
+    #[test]
+    fn a_cancelled_quit_is_ready_and_restart_reuses_the_app() {
+        let h = harness();
+        let (job, _) = h.downloading();
+        let app = h.app();
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Ok(app.clone()),
+        });
+        (h.take_quit().on_cancel)();
+        assert_eq!(h.controller.state(), UpdateState::Ready(update("0.4.0")));
+        assert!(
+            !h.states
+                .borrow()
+                .iter()
+                .any(|s| matches!(s, UpdateState::Restarting(_))),
+            "no Restarting before the quit was agreed"
+        );
+        h.controller.restart();
+        assert_eq!(h.quits.borrow().len(), 1, "asked again");
+        assert_eq!(*h.controller.unpacked.borrow(), Some(app));
+        assert_eq!(h.controller.state(), UpdateState::Ready(update("0.4.0")));
+    }
+
+    #[test]
+    fn restart_without_the_unpacked_app_fails_and_keeps_the_update() {
+        let h = harness();
+        let (job, _) = h.downloading();
+        let app = h.app();
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Ok(app.clone()),
+        });
+        (h.take_quit().on_cancel)();
+        std::fs::remove_dir(&app).unwrap();
+        h.controller.restart();
+        assert!(h.quits.borrow().is_empty());
+        assert!(matches!(
+            h.controller.state(),
+            UpdateState::Failed {
+                update: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_failed_swap_is_failed_after_restarting() {
+        // The swap itself fails at once here: the test binary is not in a
+        // bundle, so nothing on disk is touched but `update.json`.
+        let h = harness();
+        let (job, _) = h.downloading();
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Ok(h.app()),
+        });
+        h.take_quit().agree();
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "Move Vento to Applications to update it".into(),
+            }
+        );
+        let states = h.states.borrow();
+        let n = states.len();
+        assert_eq!(states[n - 2], UpdateState::Restarting(v("0.4.0")));
+        assert!(h.update_file().had_screen_access, "saved before the swap");
+    }
+
+    #[test]
+    fn a_failed_download_keeps_the_update_for_try_again() {
+        let h = harness();
+        let (job, _) = h.downloading();
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Err(Failure::Checksum),
+        });
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Failed {
+                update: Some(update("0.4.0")),
+                version: v("0.4.0"),
+                reason: "The download didn't match its checksum".into(),
+            }
+        );
+        assert!(h.controller.cancel.borrow().is_none());
+        assert!(h.quits.borrow().is_empty());
+    }
+
+    #[test]
+    fn every_ended_check_saves_the_last_check() {
+        let h = harness();
+        h.controller.set_state(UpdateState::Checking);
+        h.controller
+            .on_report(Report::Checked(Err(Failure::Net(NetError::Offline(
+                "x".into(),
+            )))));
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::CheckFailed {
+                reason: "You're offline".into()
+            }
+        );
+        let failed_at = h.update_file().last_check.expect("saved on failure");
+        assert!(
+            !should_check(true, Some(failed_at), now()),
+            "not again today"
+        );
+        h.controller.set_state(UpdateState::Checking);
+        h.controller
+            .on_report(Report::Checked(Ok(Some(update("0.4.0")))));
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Available(update("0.4.0"))
+        );
+        assert!(h.update_file().last_check.is_some());
+    }
+
+    #[test]
+    fn start_turns_a_recorded_failure_into_the_state_and_clears_it() {
+        let h = harness();
+        let path = UpdateFile::path(&h.dir.path().join("data"));
+        UpdateFile {
+            last_check: Some(7),
+            failed: Some(FailedUpdate {
+                version: v("0.4.0"),
+                reason: watch::NOT_STARTED_REASON.into(),
+            }),
+            ..UpdateFile::default()
+        }
+        .save(&path)
+        .unwrap();
+        h.controller.start();
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "The new version didn't start.".into(),
+            }
+        );
+        let file = h.update_file();
+        assert_eq!(file.failed, None);
+        assert_eq!(file.last_check, Some(7));
     }
 }
