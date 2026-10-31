@@ -648,7 +648,11 @@ export component WelcomeWindow inherits Window {
                 return accept;
             }
             if (event.text == Key.Return) {
-                root.next();
+                // Only the first press advances: a held key repeats, and
+                // would run through every screen to Done.
+                if (!event.repeat) {
+                    root.next();
+                }
                 return accept;
             }
             return reject;
