@@ -1,8 +1,849 @@
 //! Self-update for the macOS build: asks GitHub for the latest release,
 //! downloads it and swaps the app in place, with a watcher process that
-//! starts the new copy and rolls back when it does not start. A later task
-//! adds the controller here.
+//! starts the new copy and rolls back when it does not start.
+//! [`UpdateController`] runs that flow from the event loop for the banner,
+//! the About rows and the tray dot.
 
 pub mod net;
 pub mod swap;
 pub mod watch;
+
+use std::cell::{Cell, RefCell};
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use log::{debug, warn};
+use vento_core::i18n::tr;
+use vento_core::update::release::{self, AssetPlatform, ReleaseError, Update};
+use vento_core::update::state::{self, FailedUpdate, UpdateEvent, UpdateFile, UpdateState};
+use vento_core::update::version::Version;
+
+use crate::settings_hub::SettingsHub;
+use net::NetError;
+use swap::SwapError;
+
+/// The first check runs this long after start, never at launch.
+const FIRST_CHECK: Duration = Duration::from_secs(3 * 60);
+
+/// After the first, whether a check is due is asked this often.
+const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
+
+/// Quits Vento for an update ([`crate::quit::quit_for_update`] bound to the
+/// executor and the PDF windows): the swap to run once the quit is agreed,
+/// what to do on a Cancel, and what to do with a swap's failure.
+pub type QuitForUpdate = Box<
+    dyn Fn(Box<dyn FnOnce() -> Result<(), String>>, Box<dyn FnOnce()>, Box<dyn FnOnce(String)>),
+>;
+
+/// Told the new state after every change.
+pub type Listener = Box<dyn Fn(&UpdateState)>;
+
+/// Whether the daily check runs now: it is on, and a day has passed since
+/// `last_check` (Unix seconds), or it never ran.
+pub fn should_check(enabled: bool, last_check: Option<i64>, now: i64) -> bool {
+    enabled && state::check_due(last_check, now)
+}
+
+/// The version and release notes of the update `state` holds out, for the
+/// What's new preview.
+fn notes_of(state: &UpdateState) -> Option<(Version, String)> {
+    match state {
+        UpdateState::Available(u)
+        | UpdateState::Downloading { update: u, .. }
+        | UpdateState::Ready(u) => Some((u.version, u.notes.clone())),
+        _ => None,
+    }
+}
+
+/// The state a failure the watcher recorded starts in. The watcher writes
+/// its reasons in English; the two it knows are shown in the interface
+/// language, anything else as it was written.
+fn failed_state(failed: &FailedUpdate) -> UpdateState {
+    let reason = match failed.reason.as_str() {
+        watch::NOT_STARTED_REASON => tr("The new version didn't start."),
+        watch::NOT_QUIT_REASON => tr("Vento didn't quit"),
+        other => other.to_owned(),
+    };
+    UpdateState::Failed {
+        update: None,
+        version: failed.version,
+        reason,
+    }
+}
+
+/// Where the downloads of every version go: removed at start.
+fn updates_root(data_dir: &Path) -> PathBuf {
+    data_dir.join("updates")
+}
+
+/// Where one version's archive and checksum list are downloaded.
+fn version_dir(data_dir: &Path, version: Version) -> PathBuf {
+    updates_root(data_dir).join(version.to_string())
+}
+
+/// Where one version's archive is unpacked.
+fn unpack_dir(data_dir: &Path, version: Version) -> PathBuf {
+    version_dir(data_dir, version).join("unpacked")
+}
+
+/// The share of a download done, 0.0 to 1.0: of `total` as the server says
+/// it, else of `expected` as the release says it, else 0.
+fn fraction(done: u64, total: u64, expected: u64) -> f32 {
+    let of = if total > 0 { total } else { expected };
+    if of == 0 {
+        return 0.0;
+    }
+    (done as f64 / of as f64).clamp(0.0, 1.0) as f32
+}
+
+/// The binary the watcher runs from: the old copy's, at its `.old` path.
+fn watcher_program(old: &Path) -> PathBuf {
+    old.join("Contents/MacOS/vento")
+}
+
+/// The time now in Unix seconds.
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+}
+
+/// The version of this copy.
+fn running_version() -> Option<Version> {
+    Version::parse(env!("CARGO_PKG_VERSION"))
+}
+
+/// Why a check, a download or a restart failed.
+#[derive(Debug)]
+enum Failure {
+    /// The request or the download did not complete.
+    Net(NetError),
+    /// The app could not be unpacked or replaced.
+    Swap(SwapError),
+    /// The archive does not match its line in the checksum list.
+    Checksum,
+    /// GitHub's answer is not a release Vento can read.
+    Unreadable,
+}
+
+impl Failure {
+    /// The reason in the interface language, for the banner and About.
+    fn user_text(&self) -> String {
+        match self {
+            Failure::Net(e) => e.user_text(),
+            Failure::Swap(e) => e.user_text(),
+            Failure::Checksum => tr("The download didn't match its checksum"),
+            Failure::Unreadable => tr("GitHub's answer couldn't be read"),
+        }
+    }
+}
+
+impl std::fmt::Display for Failure {
+    /// The reason in English, for the log.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Failure::Net(e) => write!(f, "{e}"),
+            Failure::Swap(e) => write!(f, "{e}"),
+            Failure::Checksum => write!(f, "checksum mismatch"),
+            Failure::Unreadable => write!(f, "unreadable release"),
+        }
+    }
+}
+
+/// What a worker thread tells the controller, on the main thread.
+enum Report {
+    /// A check ended.
+    Checked(Result<Option<Update>, Failure>),
+    /// Download `job` got this far.
+    Progress { job: u64, fraction: f32 },
+    /// Download `job` ended: the unpacked app, or why not.
+    Prepared {
+        job: u64,
+        result: Result<PathBuf, Failure>,
+    },
+}
+
+thread_local! {
+    /// The controller the workers report to; set on the main thread, which
+    /// owns the non-`Send` controller.
+    static MAIN_UPDATER: RefCell<Weak<UpdateController>> = const { RefCell::new(Weak::new()) };
+}
+
+/// One download at a time on disk: a job that was cancelled may still be
+/// in its last read when the next one starts, in the same folder.
+static ON_DISK: Mutex<()> = Mutex::new(());
+
+/// Hands `report` to the controller on the main thread.
+fn report(report: Report) {
+    let sent = slint::invoke_from_event_loop(move || {
+        if let Some(controller) = MAIN_UPDATER.with(|slot| slot.borrow().upgrade()) {
+            controller.on_report(report);
+        }
+    });
+    if let Err(e) = sent {
+        warn!("cannot hand an update result back: {e}");
+    }
+}
+
+/// The running bundle, once it is known to be replaceable.
+fn replaceable_bundle() -> Result<PathBuf, SwapError> {
+    let bundle = swap::running_bundle()
+        .ok_or_else(|| SwapError::NotABundle(std::env::current_exe().unwrap_or_default()))?;
+    swap::check_replaceable(&bundle)?;
+    Ok(bundle)
+}
+
+/// Asks GitHub for the latest release and picks the update for this copy.
+/// A latest release that is not a final one is no update.
+fn check(url: &str, running: Option<Version>) -> Result<Option<Update>, Failure> {
+    let body = net::fetch_latest(url).map_err(Failure::Net)?;
+    match release::parse_latest(&body) {
+        Ok(latest) => Ok(running.and_then(|r| latest.update_for(r, AssetPlatform::MacArm64))),
+        Err(ReleaseError::NotARelease) => Ok(None),
+        Err(e @ ReleaseError::Json(_)) => {
+            warn!("cannot read the latest release: {e}");
+            Err(Failure::Unreadable)
+        }
+    }
+}
+
+/// Removes `dir` (if there) and makes it again, empty.
+fn fresh_dir(dir: &Path) -> io::Result<()> {
+    match fs::remove_dir_all(dir) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    fs::create_dir_all(dir)
+}
+
+/// Downloads `update`, checks it against its checksum and unpacks it, on a
+/// worker thread: the unpacked `Vento.app`. On any failure, a cancel
+/// included, the version's folder is removed.
+fn prepare(
+    data_dir: &Path,
+    update: &Update,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(f32),
+) -> Result<PathBuf, Failure> {
+    let _one = ON_DISK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let dir = version_dir(data_dir, update.version);
+    let result = prepare_in(
+        &dir,
+        &unpack_dir(data_dir, update.version),
+        update,
+        cancel,
+        progress,
+    );
+    if result.is_err()
+        && let Err(e) = fs::remove_dir_all(&dir)
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        warn!("cannot remove {}: {e}", dir.display());
+    }
+    result
+}
+
+fn prepare_in(
+    dir: &Path,
+    unpacked: &Path,
+    update: &Update,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(f32),
+) -> Result<PathBuf, Failure> {
+    let io_failure = |e: io::Error| Failure::Net(NetError::Io(e.to_string()));
+    fresh_dir(dir).map_err(io_failure)?;
+    // The two names are exactly `SHA256SUMS.txt` and the platform's
+    // archive name (`Release::update_for` picks them by name), so they
+    // stay inside `dir`.
+    let sums_path = dir.join(&update.sums.name);
+    net::download(&update.sums.url, &sums_path, cancel, &mut |_, _| {}).map_err(Failure::Net)?;
+    let archive = dir.join(&update.archive.name);
+    let expected = update.archive.size;
+    // One report per whole percent, not one per chunk.
+    let mut shown = -1i32;
+    net::download(&update.archive.url, &archive, cancel, &mut |done, total| {
+        let f = fraction(done, total, expected);
+        let percent = (f * 100.0) as i32;
+        if percent != shown {
+            shown = percent;
+            progress(f);
+        }
+    })
+    .map_err(Failure::Net)?;
+    let sums = fs::read_to_string(&sums_path).map_err(io_failure)?;
+    release::verify(&archive, &update.archive.name, &sums).map_err(|e| {
+        warn!("update {} failed its check: {e}", update.version);
+        Failure::Checksum
+    })?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(Failure::Net(NetError::Cancelled));
+    }
+    // `unpack` wants an empty folder of its own.
+    fresh_dir(unpacked).map_err(io_failure)?;
+    swap::unpack(&archive, unpacked).map_err(Failure::Swap)
+}
+
+/// Starts the watcher `program` with `args` in a session of its own, so it
+/// outlives this copy, with no stdio tied to it, and does not wait for it.
+fn spawn_watcher(program: &Path, args: &[String]) -> io::Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // `setsid` also gives the child a process group of its own; `process_group`
+    // is not used with it, as a group leader cannot start a session.
+    // SAFETY: `setsid` is async-signal-safe and touches only the child.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    command.spawn().map(drop)
+}
+
+/// Runs the update flow on the event loop: the daily check, Check now, the
+/// download and the restart. Work runs on worker threads; their results
+/// come back to the main thread, which alone reads and writes
+/// `update.json`.
+pub struct UpdateController {
+    hub: Rc<SettingsHub>,
+    data_dir: PathBuf,
+    quit_for_update: QuitForUpdate,
+    had_screen_access: Box<dyn Fn() -> bool>,
+    state: RefCell<UpdateState>,
+    listeners: RefCell<Vec<Listener>>,
+    /// The download whose reports count; any other job's are dropped.
+    job: Cell<u64>,
+    /// The running download's cancel flag; `None` when none runs.
+    cancel: RefCell<Option<Arc<AtomicBool>>>,
+    /// The unpacked app of the update that is ready.
+    unpacked: RefCell<Option<PathBuf>>,
+    /// Whether a quit for the update is asking or under way.
+    quitting: Cell<bool>,
+    /// The hourly timer, after the first check.
+    timer: slint::Timer,
+    this: Weak<UpdateController>,
+}
+
+impl UpdateController {
+    /// A controller with nothing checked yet; [`start`](Self::start) reads
+    /// `update.json` and arms the daily check. Call on the main thread.
+    pub fn new(
+        hub: Rc<SettingsHub>,
+        data_dir: PathBuf,
+        quit_for_update: QuitForUpdate,
+        had_screen_access: Box<dyn Fn() -> bool>,
+    ) -> Rc<Self> {
+        let controller = Rc::new_cyclic(|this| UpdateController {
+            hub,
+            data_dir,
+            quit_for_update,
+            had_screen_access,
+            state: RefCell::new(UpdateState::UpToDate { checked_at: None }),
+            listeners: RefCell::new(Vec::new()),
+            job: Cell::new(0),
+            cancel: RefCell::new(None),
+            unpacked: RefCell::new(None),
+            quitting: Cell::new(false),
+            timer: slint::Timer::default(),
+            this: this.clone(),
+        });
+        MAIN_UPDATER.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
+        controller
+    }
+
+    /// Where the flow stands.
+    pub fn state(&self) -> UpdateState {
+        self.state.borrow().clone()
+    }
+
+    /// Reads `update.json`: a failure the watcher recorded becomes the
+    /// state, and is cleared from the file. Removes the downloads left from
+    /// an earlier run, then arms the daily check: first in 3 minutes, then
+    /// asked every hour.
+    pub fn start(&self) {
+        let path = UpdateFile::path(&self.data_dir);
+        let mut file = UpdateFile::load(&path);
+        let state = match file.failed.take() {
+            Some(failed) => {
+                if let Err(e) = file.save(&path) {
+                    warn!("cannot clear the failed update: {e}");
+                }
+                failed_state(&failed)
+            }
+            None => UpdateState::UpToDate {
+                checked_at: file.last_check,
+            },
+        };
+        if !matches!(*self.state.borrow(), UpdateState::Ready(_)) {
+            let root = updates_root(&self.data_dir);
+            if let Err(e) = fs::remove_dir_all(&root)
+                && e.kind() != io::ErrorKind::NotFound
+            {
+                warn!("cannot remove {}: {e}", root.display());
+            }
+        }
+        self.set_state(state);
+        let this = self.this.clone();
+        slint::Timer::single_shot(FIRST_CHECK, move || {
+            let Some(controller) = this.upgrade() else {
+                return;
+            };
+            controller.daily_tick();
+            let this = controller.this.clone();
+            controller
+                .timer
+                .start(slint::TimerMode::Repeated, CHECK_EVERY, move || {
+                    if let Some(controller) = this.upgrade() {
+                        controller.daily_tick();
+                    }
+                });
+        });
+    }
+
+    /// Checks when the daily check is on and due, and nothing else runs.
+    fn daily_tick(&self) {
+        let last = UpdateFile::load(&UpdateFile::path(&self.data_dir)).last_check;
+        if should_check(self.hub.current().check_for_updates, last, now()) && !self.state().busy() {
+            self.begin_check();
+        }
+    }
+
+    /// Starts a check on a worker, when the state allows one.
+    fn begin_check(&self) {
+        let next = state::reduce(&self.state(), UpdateEvent::CheckStarted);
+        if next != UpdateState::Checking {
+            return;
+        }
+        self.set_state(next);
+        let url = net::api_url();
+        let spawned = std::thread::Builder::new()
+            .name("vento-update-check".into())
+            .spawn(move || report(Report::Checked(check(&url, running_version()))));
+        if let Err(e) = spawned {
+            warn!("cannot start the update check: {e}");
+            let failure = Failure::Net(NetError::Offline(e.to_string()));
+            self.apply(UpdateEvent::CheckFailed(failure.user_text()));
+        }
+    }
+
+    /// A worker's result, on the main thread.
+    fn on_report(&self, report: Report) {
+        match report {
+            Report::Checked(Ok(found)) => {
+                let at = now();
+                let path = UpdateFile::path(&self.data_dir);
+                let mut file = UpdateFile::load(&path);
+                file.last_check = Some(at);
+                if let Err(e) = file.save(&path) {
+                    warn!("cannot save the last check: {e}");
+                }
+                self.apply(UpdateEvent::Checked { found, at });
+            }
+            Report::Checked(Err(failure)) => {
+                warn!("update check failed: {failure}");
+                self.apply(UpdateEvent::CheckFailed(failure.user_text()));
+            }
+            Report::Progress { job, fraction } => {
+                if self.is_current(job) {
+                    self.apply(UpdateEvent::Progress(fraction));
+                }
+            }
+            Report::Prepared { job, result } => {
+                if !self.is_current(job) {
+                    debug!("dropped the result of a cancelled download");
+                    return;
+                }
+                self.cancel.borrow_mut().take();
+                match result {
+                    Ok(app) => {
+                        self.apply(UpdateEvent::Progress(1.0));
+                        *self.unpacked.borrow_mut() = Some(app.clone());
+                        self.ask_restart(app);
+                    }
+                    Err(failure) => {
+                        warn!("update download failed: {failure}");
+                        self.apply(UpdateEvent::Failed(failure.user_text()));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether `job` is the download running now.
+    fn is_current(&self, job: u64) -> bool {
+        job == self.job.get() && self.cancel.borrow().is_some()
+    }
+
+    /// Quits for the update with the unpacked `app`, once nothing objects:
+    /// a Cancel leaves it Ready, a failed swap Failed.
+    fn ask_restart(&self, app: PathBuf) {
+        let version = match &*self.state.borrow() {
+            UpdateState::Downloading { update, .. } | UpdateState::Ready(update) => update.version,
+            _ => return,
+        };
+        if self.quitting.replace(true) {
+            return;
+        }
+        let (swapper, cancelled, failed) =
+            (self.this.clone(), self.this.clone(), self.this.clone());
+        (self.quit_for_update)(
+            Box::new(move || match swapper.upgrade() {
+                Some(controller) => controller.swap_and_watch(&app, version),
+                None => Err(SwapError::Io("no update controller".into()).user_text()),
+            }),
+            Box::new(move || {
+                if let Some(controller) = cancelled.upgrade() {
+                    controller.quitting.set(false);
+                    controller.apply(UpdateEvent::QuitCancelled);
+                }
+            }),
+            Box::new(move |reason| {
+                if let Some(controller) = failed.upgrade() {
+                    controller.quitting.set(false);
+                    controller.apply(UpdateEvent::Failed(reason));
+                }
+            }),
+        );
+    }
+
+    /// The quit was agreed: saves whether Screen Recording was granted,
+    /// moves the new copy in and starts the watcher from the old one. When
+    /// the watcher cannot start, the old copy is put back.
+    fn swap_and_watch(&self, new_app: &Path, version: Version) -> Result<(), String> {
+        let path = UpdateFile::path(&self.data_dir);
+        let mut file = UpdateFile::load(&path);
+        file.had_screen_access = (self.had_screen_access)();
+        if let Err(e) = file.save(&path) {
+            warn!("cannot save the Screen Recording grant: {e}");
+        }
+        self.apply(UpdateEvent::Restarting);
+        let fail = |e: SwapError| {
+            warn!("update to {version}: {e}");
+            e.user_text()
+        };
+        let bundle = replaceable_bundle().map_err(fail)?;
+        let old = swap::swap(&bundle, new_app).map_err(fail)?;
+        let args = watch::to_args(&watch::WatchArgs {
+            old_pid: std::process::id(),
+            bundle: bundle.clone(),
+            old: old.clone(),
+            data_dir: self.data_dir.clone(),
+            version,
+        });
+        if let Err(e) = spawn_watcher(&watcher_program(&old), &args) {
+            if let Err(back) = swap::restore(&bundle, &old) {
+                warn!("cannot put {} back: {back}", old.display());
+            }
+            return Err(fail(SwapError::Io(format!(
+                "cannot start the watcher: {e}"
+            ))));
+        }
+        Ok(())
+    }
+
+    /// Applies `event` and tells the listeners when the state changed.
+    fn apply(&self, event: UpdateEvent) {
+        self.set_state(state::reduce(&self.state(), event));
+    }
+
+    /// Makes `next` the state and tells the listeners, when it differs.
+    fn set_state(&self, next: UpdateState) {
+        if *self.state.borrow() == next {
+            return;
+        }
+        *self.state.borrow_mut() = next.clone();
+        for listener in self.listeners.borrow().iter() {
+            listener(&next);
+        }
+    }
+}
+
+// The banner (Task 7), the About rows (Task 8), the tray dot (Task 9) and
+// What's new (Task 10) call these.
+#[allow(dead_code)]
+impl UpdateController {
+    /// Calls `f` with the new state after every change. A listener must not
+    /// add listeners.
+    pub fn on_change(&self, f: Listener) {
+        self.listeners.borrow_mut().push(f);
+    }
+
+    /// Checks now, whether or not the daily check is on.
+    pub fn check_now(&self) {
+        if !self.state().busy() {
+            self.begin_check();
+        }
+    }
+
+    /// Downloads the available update (or the failed one again), checks
+    /// it, unpacks it and quits to install it. A copy that cannot be
+    /// replaced fails before anything is downloaded.
+    pub fn update(&self) {
+        let start = state::reduce(&self.state(), UpdateEvent::DownloadStarted);
+        let UpdateState::Downloading { update, .. } = start.clone() else {
+            return;
+        };
+        if let Err(e) = replaceable_bundle() {
+            warn!("update to {}: {e}", update.version);
+            let failed = state::reduce(&start, UpdateEvent::Failed(e.user_text()));
+            self.set_state(failed);
+            return;
+        }
+        let job = self.job.get() + 1;
+        self.job.set(job);
+        let cancel = Arc::new(AtomicBool::new(false));
+        *self.cancel.borrow_mut() = Some(cancel.clone());
+        *self.unpacked.borrow_mut() = None;
+        self.set_state(start);
+        let data_dir = self.data_dir.clone();
+        let spawned = std::thread::Builder::new()
+            .name("vento-update-download".into())
+            .spawn(move || {
+                let mut progress = |fraction| report(Report::Progress { job, fraction });
+                let result = prepare(&data_dir, &update, &cancel, &mut progress);
+                report(Report::Prepared { job, result });
+            });
+        if let Err(e) = spawned {
+            warn!("cannot start the update download: {e}");
+            self.cancel.borrow_mut().take();
+            let failure = Failure::Net(NetError::Io(e.to_string()));
+            self.apply(UpdateEvent::Failed(failure.user_text()));
+        }
+    }
+
+    /// Stops the download: the banner goes back to the update at once, and
+    /// whatever the download still reports is dropped.
+    pub fn cancel(&self) {
+        let Some(flag) = self.cancel.borrow_mut().take() else {
+            return;
+        };
+        flag.store(true, Ordering::Relaxed);
+        self.job.set(self.job.get() + 1);
+        self.apply(UpdateEvent::Cancelled);
+    }
+
+    /// From Ready (a quit that was cancelled): quits again with the app
+    /// already unpacked.
+    pub fn restart(&self) {
+        if !matches!(self.state(), UpdateState::Ready(_)) {
+            return;
+        }
+        let app = self.unpacked.borrow().clone();
+        match app {
+            Some(app) if app.is_dir() => self.ask_restart(app),
+            _ => {
+                let gone = SwapError::Unpack("the unpacked app is gone".into());
+                warn!("restart for the update: {gone}");
+                self.apply(UpdateEvent::Failed(gone.user_text()));
+            }
+        }
+    }
+
+    /// The version and release notes of the update on offer, downloading
+    /// or ready, for the What's new preview.
+    pub fn pending_notes(&self) -> Option<(Version, String)> {
+        notes_of(&self.state())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use vento_core::update::release::{Asset, Update};
+    use vento_core::update::state::{FailedUpdate, UpdateState};
+    use vento_core::update::version::Version;
+
+    use super::net::NetError;
+    use super::swap::SwapError;
+    use super::*;
+
+    fn v(s: &str) -> Version {
+        Version::parse(s).unwrap()
+    }
+
+    fn update(ver: &str) -> Update {
+        let asset = |name: &str| Asset {
+            name: name.to_owned(),
+            url: format!("https://example.com/{name}"),
+            size: 10,
+        };
+        Update {
+            version: v(ver),
+            notes: format!("notes for {ver}"),
+            archive: asset("vento.zip"),
+            sums: asset("SHA256SUMS.txt"),
+        }
+    }
+
+    #[test]
+    fn no_daily_check_when_turned_off() {
+        assert!(!should_check(false, None, 0));
+    }
+
+    #[test]
+    fn daily_check_when_due() {
+        assert!(should_check(true, None, 0));
+        assert!(!should_check(true, Some(0), 10));
+    }
+
+    #[test]
+    fn daily_check_after_a_day_or_when_the_clock_went_back() {
+        let day = vento_core::update::state::DAY;
+        assert!(should_check(true, Some(100), 100 + day));
+        assert!(!should_check(true, Some(100), 100 + day - 1));
+        assert!(should_check(true, Some(100), 5));
+        assert!(!should_check(false, Some(100), 100 + day));
+    }
+
+    #[test]
+    fn pending_notes_for_the_states_with_an_update() {
+        let u = update("0.4.0");
+        let want = Some((v("0.4.0"), "notes for 0.4.0".to_owned()));
+        assert_eq!(notes_of(&UpdateState::Available(u.clone())), want);
+        assert_eq!(
+            notes_of(&UpdateState::Downloading {
+                update: u.clone(),
+                progress: 0.5
+            }),
+            want
+        );
+        assert_eq!(notes_of(&UpdateState::Ready(u.clone())), want);
+    }
+
+    #[test]
+    fn no_pending_notes_otherwise() {
+        let u = update("0.4.0");
+        for s in [
+            UpdateState::UpToDate { checked_at: None },
+            UpdateState::Checking,
+            UpdateState::CheckFailed { reason: "x".into() },
+            UpdateState::Restarting(v("0.4.0")),
+            UpdateState::Failed {
+                update: Some(u.clone()),
+                version: v("0.4.0"),
+                reason: "x".into(),
+            },
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "x".into(),
+            },
+        ] {
+            assert_eq!(notes_of(&s), None, "{s:?}");
+        }
+    }
+
+    #[test]
+    fn a_recorded_failure_becomes_the_failed_state_in_the_language() {
+        let failed = |reason: &str| FailedUpdate {
+            version: v("0.4.0"),
+            reason: reason.to_owned(),
+        };
+        assert_eq!(
+            failed_state(&failed(watch::NOT_STARTED_REASON)),
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "The new version didn't start.".into(),
+            }
+        );
+        assert_eq!(
+            failed_state(&failed(watch::NOT_QUIT_REASON)),
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "Vento didn't quit".into(),
+            }
+        );
+        // Any other text is shown as it was recorded.
+        assert_eq!(
+            failed_state(&failed("disk full")),
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "disk full".into(),
+            }
+        );
+        vento_core::i18n::with_language("ar", || {
+            let UpdateState::Failed { reason, .. } =
+                failed_state(&failed(watch::NOT_STARTED_REASON))
+            else {
+                panic!("not failed");
+            };
+            assert_ne!(reason, watch::NOT_STARTED_REASON);
+            let UpdateState::Failed { reason, .. } = failed_state(&failed(watch::NOT_QUIT_REASON))
+            else {
+                panic!("not failed");
+            };
+            assert_ne!(reason, watch::NOT_QUIT_REASON);
+        });
+    }
+
+    #[test]
+    fn failure_texts() {
+        assert_eq!(
+            Failure::Net(NetError::Http(403)).user_text(),
+            "GitHub answered 403"
+        );
+        assert_eq!(
+            Failure::Swap(SwapError::Translocated).user_text(),
+            "Move Vento to Applications to update it"
+        );
+        assert_eq!(
+            Failure::Checksum.user_text(),
+            "The download didn't match its checksum"
+        );
+        assert_eq!(
+            Failure::Unreadable.user_text(),
+            "GitHub's answer couldn't be read"
+        );
+    }
+
+    #[test]
+    fn download_paths_under_the_data_folder() {
+        let data = Path::new("/data");
+        assert_eq!(updates_root(data), PathBuf::from("/data/updates"));
+        assert_eq!(
+            version_dir(data, v("0.4.0")),
+            PathBuf::from("/data/updates/0.4.0")
+        );
+        assert_eq!(
+            unpack_dir(data, v("0.4.0")),
+            PathBuf::from("/data/updates/0.4.0/unpacked")
+        );
+    }
+
+    #[test]
+    fn progress_falls_back_to_the_release_size() {
+        assert_eq!(fraction(5, 10, 99), 0.5);
+        assert_eq!(fraction(5, 0, 20), 0.25);
+        assert_eq!(fraction(5, 0, 0), 0.0);
+        assert_eq!(fraction(30, 0, 20), 1.0);
+    }
+
+    #[test]
+    fn the_watcher_is_the_old_binary() {
+        assert_eq!(
+            watcher_program(Path::new("/Applications/Vento.app.old")),
+            PathBuf::from("/Applications/Vento.app.old/Contents/MacOS/vento")
+        );
+    }
+}

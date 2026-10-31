@@ -683,6 +683,10 @@ msgstr "عام"
 msgid "GitHub answered {code}"
 msgstr "ردّ GitHub بالرمز {code}"
 
+#: crates/vento/src/updater/mod.rs:139
+msgid "GitHub's answer couldn't be read"
+msgstr "تعذّرت قراءة ردّ GitHub"
+
 #: crates/vento/ui/pdf.slint:1040
 msgid "Hide files"
 msgstr "إخفاء الملفات"
@@ -1047,7 +1051,7 @@ msgstr "فتح في المتصفح"
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
-#: crates/vento/src/main.rs:211
+#: crates/vento/src/main.rs:221
 msgid "Open the Pocket"
 msgstr "فتح الجيب"
 
@@ -1055,7 +1059,7 @@ msgstr "فتح الجيب"
 msgid "Open the Welcome setup"
 msgstr "فتح إعداد الترحيب"
 
-#: crates/vento/src/main.rs:215
+#: crates/vento/src/main.rs:225
 msgid "Open the clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1519,6 +1523,14 @@ msgstr "الجيب يستخدم هذا الاختصار"
 msgid "The download couldn't be opened"
 msgstr "تعذّر فتح التنزيل"
 
+#: crates/vento/src/updater/mod.rs:138
+msgid "The download didn't match its checksum"
+msgstr "التنزيل لا يطابق مجموعه الاختباري"
+
+#: crates/vento/src/updater/mod.rs:66
+msgid "The new version didn't start."
+msgstr "لم يبدأ تشغيل الإصدار الجديد."
+
 #: crates/vento/ui/pdf.slint:1761
 msgid "The original stays as it is."
 msgstr "يبقى الملف الأصلي كما هو."
@@ -1634,6 +1646,10 @@ msgstr "كلمة سر الأرشيف في Vento"
 #: crates/vento/ui/archive.slint:11
 msgid "Vento archive progress"
 msgstr "تقدّم الأرشيف في Vento"
+
+#: crates/vento/src/updater/mod.rs:67
+msgid "Vento didn't quit"
+msgstr "لم يُغلَق Vento"
 
 #: crates/vento/ui/info.slint:98
 msgid "Vento info"
@@ -2037,7 +2053,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:604
+#: crates/vento/src/main.rs:670
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 

@@ -41,9 +41,7 @@ mod toast;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
 mod tray;
-// The controller (a later task) uses what this module offers.
 #[cfg(target_os = "macos")]
-#[allow(dead_code)]
 mod updater;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod welcome_window;
@@ -318,6 +316,31 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    // Updates (macOS): the daily check, the download and the restart. Its
+    // quit asks the PDF windows with unsaved edits first, as any quit does.
+    #[cfg(target_os = "macos")]
+    let updates = match welcome::data_dir() {
+        Some(data_dir) => {
+            let (exec, pdf) = (Rc::downgrade(&executor), Rc::downgrade(&pdf));
+            Some(updater::UpdateController::new(
+                hub.clone(),
+                data_dir,
+                Box::new(
+                    move |swap, on_cancel, on_fail| match (exec.upgrade(), pdf.upgrade()) {
+                        (Some(exec), Some(pdf)) => {
+                            quit::quit_for_update(&exec, &pdf, swap, on_cancel, on_fail);
+                        }
+                        _ => on_cancel(),
+                    },
+                ),
+                Box::new(|| vento_platform::screen_text().has_access()),
+            ))
+        }
+        None => {
+            log::warn!("no data folder: updates are off");
+            None
+        }
+    };
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));
     }
@@ -558,6 +581,8 @@ fn main() -> Result<(), slint::PlatformError> {
         open_on(pocket::View::Clipboard),
         open_on(pocket::View::Pocket),
     );
+    #[cfg(target_os = "macos")]
+    let start_updates = updates.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
@@ -581,17 +606,23 @@ fn main() -> Result<(), slint::PlatformError> {
                 .map(|controller| Box::new(move || controller.start()) as Box<dyn Fn()>),
         }));
         // Started by the update watcher: the tray and shortcuts are up, so
-        // tell it this copy works.
+        // tell it this copy works. A minute later, with the watcher long
+        // gone, the old copy it kept is deleted.
         #[cfg(target_os = "macos")]
         if std::env::args().any(|a| a == updater::watch::AFTER_UPDATE) {
             let running = vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION"));
             if let (Some(data_dir), Some(running)) = (welcome::data_dir(), running) {
-                if let Err(e) = updater::watch::write_marker(&data_dir, running) {
-                    log::warn!("cannot write the update marker: {e}");
+                match updater::watch::write_marker(&data_dir, running) {
+                    Ok(()) => remove_old_copy_later(),
+                    Err(e) => log::warn!("cannot write the update marker: {e}"),
                 }
             } else {
                 log::warn!("cannot write the update marker: no data folder");
             }
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(updates) = start_updates {
+            updates.start();
         }
     });
     let result = slint::run_event_loop_until_quit();
@@ -599,6 +630,29 @@ fn main() -> Result<(), slint::PlatformError> {
     info.dismiss();
     pocket.flush_pending();
     result
+}
+
+/// Deletes the old copy an update left beside the bundle
+/// (`Vento.app.old`), 60 seconds from now and off the main thread.
+#[cfg(target_os = "macos")]
+fn remove_old_copy_later() {
+    let Some(bundle) = updater::swap::running_bundle() else {
+        return;
+    };
+    let old = updater::swap::old_path(&bundle);
+    slint::Timer::single_shot(std::time::Duration::from_secs(60), move || {
+        let removed = std::thread::Builder::new()
+            .name("vento-remove-old".into())
+            .spawn(move || match std::fs::remove_dir_all(&old) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    log::warn!("cannot remove {}: {e}", old.display());
+                }
+                _ => {}
+            });
+        if let Err(e) = removed {
+            log::warn!("cannot remove the old copy: {e}");
+        }
+    });
 }
 
 /// The code of the language the `language` setting asks for now: the
