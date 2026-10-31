@@ -1463,7 +1463,7 @@ msgstr "اطّلع على تفاصيل الملفات والمجلدات"
 
 #: crates/vento/ui/quick.slint:277
 msgid "See what's new"
-msgstr "اطّلع على الجديد"
+msgstr "عرض الجديد"
 
 #: crates/vento/ui/pdf.slint:1066
 msgid "Select all"
@@ -1865,7 +1865,7 @@ msgstr "تم تنزيل Vento ‎{v}"
 
 #: crates/vento/ui/settings_pages.slint:1259
 msgid "Version {}"
-msgstr "الإصدار {}"
+msgstr "الإصدار ‎{}"
 
 #: crates/vento-core/src/pocket_kind.rs:39
 msgid "Video"

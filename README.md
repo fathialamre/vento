@@ -35,6 +35,11 @@ takes a minute, once. You can also read the code, or
 
 On an Intel Mac, [build it yourself](BUILDING.md).
 
+On macOS, Vento checks for new versions and updates itself (see
+[Privacy and network](#privacy-and-network)). Versions before 0.3.0 cannot do
+this yet, so if you have one, update it by hand once: download the latest zip
+and replace `Vento.app` as in [Install](#install-and-first-launch) below.
+
 > **This is the macOS version.** Support for Linux and Windows is in progress:
 > the core already builds and is tested on both, and the parts that talk to the
 > system (drag detection, the wheel window, the Pocket) are being written for each.
@@ -341,7 +346,7 @@ it stays closed until you open it again.
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
 | Keep Awake | Whether the screen may turn off while Keep Awake runs. |
-| About | The version, a button that opens the settings file, and one that shows the licenses. |
+| About | The version, and on macOS the update status with **Check now** and a switch for the daily check; what's new in this version; a button that opens the settings file, and one that shows the licenses. |
 
 The wheel, the Pocket and the notices that offer Undo keep their dark look
 whichever Appearance or Theme you choose.
@@ -367,6 +372,19 @@ the `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG` variables) and falls back to
 English; English and العربية are listed under their own names. Or set
 `language` in `settings.toml` (see [SETTINGS.md](SETTINGS.md)). To add another
 language, see [lang/README.md](lang/README.md).
+
+## Privacy and network
+
+On macOS, Vento makes one request a day to GitHub to look for a new version,
+and nothing else: it sends no data about you or your files, and has no
+analytics. When a newer version exists, Vento downloads it only after you click
+**Update** in the Quick panel or in **Settings → About**, and checks the
+download against the checksums published with the release before it replaces
+itself. Everything else, including Copy from screen, runs on your Mac.
+
+Turn the daily check off with **Settings → About → Check for updates
+automatically**. **Check now** still works when you ask for it. The update check
+is on macOS only for now.
 
 ## Uninstall
 
