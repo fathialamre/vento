@@ -130,6 +130,11 @@ impl WelcomeController {
             this: this.clone(),
         });
         practice::register(&controller);
+        // A setup quit midway left its sample folder behind; the window is
+        // never open yet.
+        if let Some(dir) = sample_dir() {
+            remove_samples(&dir);
+        }
         // A change made in the Settings window or by hand shows here too.
         let this = Rc::downgrade(&controller);
         controller.hub.on_change(Box::new(move |_, _| {
