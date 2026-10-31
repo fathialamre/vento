@@ -5,8 +5,8 @@
 //! the screen shows (and again when the tile is pressed, should it have gone
 //! missing); the folder goes when the window closes. Dragging the tile starts
 //! a real file drag, as the Pocket's tiles do, so the real wheel opens over
-//! it. A drop of the sample alone, on any action or ring cell, is caught
-//! before it reaches the action: nothing happens to the file.
+//! it. A drop of one file from that folder alone, on any action or ring
+//! cell, is caught before it reaches the action: nothing happens to the file.
 
 use std::cell::RefCell;
 use std::fs;
@@ -62,10 +62,11 @@ fn sample_text() -> String {
 }
 
 /// Whether a wheel drop of `paths` is practice: the window is `open` and
-/// the drop is of the sample alone. The action and any ring cell dropped on
-/// play no part.
-fn is_practice_drop(open: bool, sample: Option<&Path>, paths: &[PathBuf]) -> bool {
-    open && sample.is_some_and(|s| matches!(paths, [only] if only == s))
+/// the drop is of one file alone, in the sample folder `dir`. The file's
+/// name (it follows the interface language) and the action and any ring
+/// cell dropped on play no part.
+fn is_practice_drop(open: bool, dir: Option<&Path>, paths: &[PathBuf]) -> bool {
+    open && dir.is_some_and(|d| matches!(paths, [only] if only.parent() == Some(d)))
 }
 
 /// Writes `text` to `dir/name` unless that file exists (its contents are
@@ -132,8 +133,7 @@ impl WelcomeController {
     /// the screen says it worked and the drop goes no further (`true`).
     /// Any other drop is left for its action (`false`).
     pub fn catch_practice_drop(&self, drop: &WheelDrop) -> bool {
-        let sample = self.sample_path();
-        if !is_practice_drop(self.is_open(), sample.as_deref(), &drop.paths) {
+        if !is_practice_drop(self.is_open(), sample_dir().as_deref(), &drop.paths) {
             return false;
         }
         info!("practice drop on {:?} caught", drop.action);
@@ -271,8 +271,12 @@ mod tests {
 
     use crate::wheel::WheelDrop;
 
+    fn dir() -> PathBuf {
+        PathBuf::from("/Users/me/Library/Application Support/vento/welcome")
+    }
+
     fn sample() -> PathBuf {
-        PathBuf::from("/Users/me/Library/Application Support/vento/welcome/Try me.txt")
+        dir().join("Try me.txt")
     }
 
     fn drop_of(action: ActionId, paths: Vec<PathBuf>) -> WheelDrop {
@@ -288,8 +292,15 @@ mod tests {
 
     #[test]
     fn practice_drop_is_caught() {
-        let s = sample();
-        assert!(is_practice_drop(true, Some(&s), std::slice::from_ref(&s)));
+        assert!(is_practice_drop(true, Some(&dir()), &[sample()]));
+    }
+
+    #[test]
+    fn the_samples_name_does_not_matter() {
+        // The name follows the interface language, which may have changed
+        // since the file was written.
+        let named_in_arabic = dir().join("جرّبني.txt");
+        assert!(is_practice_drop(true, Some(&dir()), &[named_in_arabic]));
     }
 
     #[test]
@@ -308,29 +319,37 @@ mod tests {
             ..drop_of(ActionId::Share, vec![s.clone()])
         };
         for drop in [on_folder, on_format, on_target] {
-            assert!(is_practice_drop(true, Some(&s), &drop.paths), "{drop:?}");
+            assert!(
+                is_practice_drop(true, Some(&dir()), &drop.paths),
+                "{drop:?}"
+            );
         }
     }
 
     #[test]
     fn drop_with_more_than_the_sample_runs_as_usual() {
-        let s = sample();
+        let (d, s) = (dir(), sample());
         let other = PathBuf::from("/Users/me/Desktop/report.pdf");
         assert!(!is_practice_drop(
             true,
-            Some(&s),
+            Some(&d),
             &[s.clone(), other.clone()]
         ));
-        assert!(!is_practice_drop(true, Some(&s), &[other]));
-        assert!(!is_practice_drop(true, Some(&s), &[]));
-        // Without a sample (no data folder), nothing is practice.
+        assert!(!is_practice_drop(true, Some(&d), &[other]));
+        assert!(!is_practice_drop(true, Some(&d), &[]));
+        // A file in a folder inside the sample folder is not the sample.
+        assert!(!is_practice_drop(
+            true,
+            Some(&d),
+            &[d.join("sub").join("x.txt")]
+        ));
+        // Without a data folder, nothing is practice.
         assert!(!is_practice_drop(true, None, &[s]));
     }
 
     #[test]
     fn closed_window_catches_nothing() {
-        let s = sample();
-        assert!(!is_practice_drop(false, Some(&s), std::slice::from_ref(&s)));
+        assert!(!is_practice_drop(false, Some(&dir()), &[sample()]));
     }
 
     #[test]
