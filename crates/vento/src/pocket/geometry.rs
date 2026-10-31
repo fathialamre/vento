@@ -41,6 +41,9 @@ const FALLBACK_TOP_H: f64 = 32.0;
 const CORNER_GAP: f64 = 12.0;
 /// Height of the drop box the island in that corner shows during a drag.
 const DROP_H: f64 = 150.0;
+/// Height of the card a new screenshot shows below the menu bar: its
+/// picture and actions, with no bar.
+pub(super) const CARD_H: f64 = 158.0;
 
 /// A shape no pointer is ever in: it has a negative size.
 pub(super) const NOWHERE: Rect = Rect {
@@ -65,6 +68,8 @@ pub(super) enum Panel {
     /// Only where to drop, with no bar: the island in the corner by the
     /// taskbar's clock while something is dragged.
     Drop,
+    /// The card of a screenshot just saved, with no bar.
+    Card,
 }
 
 /// The island's rects for one home, in logical top-left global coordinates.
@@ -205,6 +210,7 @@ fn panel_h(panel: Panel) -> f64 {
         Panel::Kinds { groups } => GROUPS_TOP + groups.clamp(1, GROUPS_SHOWN) as f64 * GROUP_H,
         Panel::List | Panel::Clipboard | Panel::Screenshots => LIST_H,
         Panel::Drop => return DROP_H,
+        Panel::Card => return CARD_H,
     };
     view + BAR_H
 }
@@ -567,6 +573,16 @@ mod tests {
             frames(&small, Panel::List).expanded,
             rect(20.0, 0.0, 460.0, 24.0 + 408.0 + 44.0)
         );
+    }
+
+    #[test]
+    fn card_panel_has_no_bar() {
+        assert_eq!(panel_h(Panel::Card), CARD_H);
+        // As wide as every other view.
+        let card = frames(&notched(200.0, 37.0), Panel::Card);
+        let kinds = frames(&notched(200.0, 37.0), TWO);
+        assert_eq!(card.expanded.w, kinds.expanded.w);
+        assert_eq!(card.expanded.h, card.top_h + CARD_H);
     }
 
     #[test]

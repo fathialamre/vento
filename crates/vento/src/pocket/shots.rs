@@ -317,8 +317,6 @@ impl ShotsController {
     }
 
     /// Whether the folder could be read.
-    // The card (Task 7) reads it; nothing else does yet.
-    #[allow(dead_code)]
     pub(super) fn enabled(&self) -> bool {
         self.access.get() == Access::Granted
     }

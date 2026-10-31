@@ -41,8 +41,9 @@ export struct PocketChip { label: string, count: int }
 
 // One screenshot's tile: its place in the list the app keeps (`index`, as
 // the presses and buttons report it), the time and size under it and its
-// thumbnail (empty until made); `missing`, its picture could not be read.
-export struct ShotTile { index: int, time: string, size: string, picture: image, missing: bool }
+// thumbnail (empty until made); `missing`, its file is gone; `unreadable`,
+// its file is there but no picture can be made of it (a PDF screenshot).
+export struct ShotTile { index: int, time: string, size: string, picture: image, missing: bool, unreadable: bool }
 
 // One day's section of the Screenshots view: its heading, how many
 // screenshots it holds and their tiles, newest first.
@@ -1759,8 +1760,10 @@ component ShotGrid inherits Rectangle {
                 }
             }
 
-            Text {
+            // A long name is cut, so the chips keep their room.
+            LineText {
                 layout-order: Theme.rtl ? 1 : 0;
+                max-width: 150px;
                 text: root.folder-name;
                 color: folder-touch.has-hover ? white : #ffffffc0;
                 font-size: 12px;
@@ -1909,7 +1912,7 @@ component ShotGrid inherits Rectangle {
                                 }
 
                                 if tile.picture.width == 0: Image {
-                                    source: Icons.photo;
+                                    source: tile.unreadable ? Icons.file : Icons.photo;
                                     colorize: #ffffff50;
                                     width: 22px;
                                     height: 22px;
@@ -2285,6 +2288,210 @@ component ShotGrid inherits Rectangle {
     }
 }
 
+// The card the island drops down with when a screenshot is saved: the
+// picture at the start (it drags out as the file; a click opens it in the
+// Screenshots view), what it is, a hint, and its actions, with Move to
+// Trash at the far end. It fades in and settles a little after the island
+// starts to grow.
+component ShotCardPanel inherits Rectangle {
+    in property <image> picture;
+    in property <string> meta;
+    // Copy text can run here.
+    in property <bool> can-read;
+    callback pressed();
+    callback moved(length, length);
+    callback released();
+    callback copy();
+    callback copy-text();
+    callback pocket();
+    callback trash();
+
+    property <length> pad: 16px;
+    property <length> pic-w: 212px;
+    property <length> pic-h: 133px;
+    property <length> pic-y: 4px;
+    // The column beside the picture.
+    property <length> col-w: root.width - root.pic-w - 3 * root.pad;
+    property <length> col-x: Theme.rtl ? root.pad : root.pad + root.pic-w + root.pad;
+    property <length> buttons-y: root.pic-y + root.pic-h - 30px;
+    property <bool> shown;
+
+    init => {
+        self.shown = true;
+    }
+
+    opacity: root.shown ? 1 : 0;
+    animate opacity { duration: 260ms; delay: 140ms; easing: ease; }
+
+    Rectangle {
+        x: Theme.rtl ? root.width - root.pad - root.pic-w : root.pad;
+        y: root.pic-y + (root.shown ? 0px : -10px);
+        animate y { duration: 420ms; delay: 140ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+        width: root.pic-w;
+        height: root.pic-h;
+        border-radius: 10px;
+        background: #1d1d21;
+        clip: true;
+
+        if root.picture.width > 0: Image {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            source: root.picture;
+            image-fit: cover;
+        }
+
+        if root.picture.width == 0: Image {
+            source: Icons.photo;
+            colorize: #ffffff50;
+            width: 26px;
+            height: 26px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            border-radius: 10px;
+            border-width: pic-touch.has-hover ? 2px : 1px;
+            border-color: pic-touch.has-hover ? #ffffff40 : #ffffff18;
+            animate border-color { duration: 200ms; }
+        }
+
+        pic-touch := TouchArea {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            mouse-cursor: grab;
+            accessible-role: button;
+            accessible-label: @tr("Screenshots");
+            accessible-action-default => {
+                root.pressed();
+                root.released();
+            }
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                    root.pressed();
+                } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                    || e.kind == PointerEventKind.cancel {
+                    root.released();
+                }
+            }
+            moved => {
+                if self.pressed {
+                    root.moved(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                }
+            }
+        }
+    }
+
+    // The words and buttons, settling with the picture.
+    Rectangle {
+        x: root.col-x;
+        y: root.shown ? 0px : -10px;
+        animate y { duration: 420ms; delay: 140ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+        width: root.col-w;
+        height: root.height;
+
+        LineText {
+            x: 0px;
+            y: root.pic-y + 4px;
+            width: parent.width;
+            height: 18px;
+            text: @tr("Screenshot saved");
+            color: #f2f2f2;
+            font-size: 14px;
+            font-weight: 600;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+        }
+
+        LineText {
+            x: 0px;
+            y: root.pic-y + 26px;
+            width: parent.width;
+            height: 16px;
+            text: root.meta;
+            color: #ffffff90;
+            font-size: 12px;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+        }
+
+        Text {
+            x: 0px;
+            y: root.pic-y + 48px;
+            width: parent.width;
+            height: root.buttons-y - self.y - 6px;
+            text: @tr("Drag the picture anywhere, or keep it for later.");
+            color: #ffffff60;
+            font-size: 11.5px;
+            wrap: word-wrap;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: top;
+        }
+
+        HorizontalLayout {
+            x: Theme.rtl ? parent.width - self.width : 0px;
+            y: root.buttons-y;
+            width: self.preferred-width;
+            height: 30px;
+            spacing: 6px;
+
+            PillButton {
+                layout-order: Theme.rtl ? 3 : 0;
+                height: 30px;
+                border-radius: 15px;
+                text: @tr("Copy");
+                primary: true;
+                clicked => {
+                    root.copy();
+                }
+            }
+
+            if root.can-read: PillButton {
+                layout-order: Theme.rtl ? 2 : 0;
+                height: 30px;
+                border-radius: 15px;
+                text: @tr("Copy text");
+                icon: PanelIcons.scan-text;
+                clicked => {
+                    root.copy-text();
+                }
+            }
+
+            PillButton {
+                layout-order: Theme.rtl ? 1 : 0;
+                height: 30px;
+                border-radius: 15px;
+                text: @tr("Pocket");
+                icon: Icons.pocket;
+                clicked => {
+                    root.pocket();
+                }
+            }
+        }
+
+        RoundButton {
+            x: Theme.rtl ? 0px : parent.width - self.width;
+            y: root.buttons-y;
+            width: 30px;
+            icon: Icons.trash;
+            icon-size: 14px;
+            tint: #ff8f87;
+            label: @tr("Move to Trash");
+            clicked => {
+                root.trash();
+            }
+        }
+    }
+}
+
 // One tab of the bottom bar: a view's name and its count, raised while that
 // view is shown.
 component TabButton inherits Rectangle {
@@ -2517,8 +2724,10 @@ export component PocketIsland inherits Window {
     in property <image> list-peek-picture;
     in property <[PeekLine]> list-peek-lines;
     // Collapsed with an empty Pocket but some history: the wings show the
-    // clipboard icon and no count.
+    // clipboard icon and no count; with no history but some screenshots,
+    // the photo icon.
     in property <bool> clip-wing;
+    in property <bool> shot-wing;
     // The Screenshots view: how many are listed, their days, the chosen chip
     // (0 All, 1 Today, 2 Yesterday, 3 Earlier) and how many each lists, the
     // folder's name, and what it shows (0 the grid, 1 the line for an empty
@@ -2537,6 +2746,12 @@ export component PocketIsland inherits Window {
     in property <string> shot-peek-title;
     in property <string> shot-peek-meta;
     in property <string> shot-peek-path;
+    // The card of a screenshot just saved is up (it takes the whole panel,
+    // with no bar): its picture (empty until made) and the line under its
+    // title.
+    in property <bool> card;
+    in property <image> card-picture;
+    in property <string> card-meta;
 
     // A tile, by its item's place in the Pocket: `moved` offsets are
     // measured from the press point.
@@ -2605,6 +2820,15 @@ export component PocketIsland inherits Window {
     callback shot-trash(int);
     callback shot-peek-back();
     callback shots-allow();
+    // The card: its picture pressed, moved (from the press point) and
+    // released; its buttons.
+    callback card-pressed();
+    callback card-moved(length, length);
+    callback card-released();
+    callback card-copy();
+    callback card-copy-text();
+    callback card-pocket();
+    callback card-trash();
 
     width: root.panel-w;
     height: root.top-h + root.window-h;
@@ -2624,10 +2848,13 @@ export component PocketIsland inherits Window {
     property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
     property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
     property <bool> shots-undo: root.undo-active && root.undo-kind == 3;
-    property <bool> on-clip: root.view == 1;
+    // While the card is up, no view is in sight.
+    property <bool> on-clip: root.view == 1 && !root.card;
     property <bool> on-list: root.view == 2;
-    property <bool> on-pocket: root.view == 0 || root.view == 2;
-    property <bool> on-shots: root.view == 3;
+    property <bool> on-pocket: (root.view == 0 || root.view == 2) && !root.card;
+    property <bool> on-shots: root.view == 3 && !root.card;
+    // The wings show an icon alone, no count.
+    property <bool> icon-wing: root.clip-wing || root.shot-wing;
     // What "Drag" takes: every item, or the kind the list shows.
     property <int> drag-count: root.on-list && root.list-filter > 0 && root.list-filter < root.list-chips.length
         ? root.list-chips[root.list-filter].count : root.count;
@@ -2651,7 +2878,8 @@ export component PocketIsland inherits Window {
 
         // Collapsed: the stack icon on the left, the item count on the right
         // (the other way round in a right-to-left language);
-        // with an empty Pocket but some history, the clipboard icon alone;
+        // with an empty Pocket but some history, the clipboard icon alone,
+        // or with only screenshots, the photo icon alone;
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
         if !root.expanded && !root.corner-style: Rectangle {
             if root.undo-active: TouchArea {
@@ -2662,8 +2890,9 @@ export component PocketIsland inherits Window {
 
             Image {
                 property <length> ltr-x: root.notch-style ? (root.wing - self.width) / 2
-                    : root.clip-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
-                source: !root.undo-active ? (root.clip-wing ? Icons.clipboard : Icons.pocket)
+                    : root.icon-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
+                source: !root.undo-active
+                    ? (root.clip-wing ? Icons.clipboard : root.shot-wing ? Icons.photo : Icons.pocket)
                     : (Theme.rtl ? Icons.undo-rtl : Icons.undo);
                 colorize: root.undo-active ? root.accent : white;
                 width: 16px;
@@ -2672,7 +2901,7 @@ export component PocketIsland inherits Window {
                 y: (parent.height - self.height) / 2;
             }
 
-            if root.undo-active || !root.clip-wing: Text {
+            if root.undo-active || !root.icon-wing: Text {
                 text: root.undo-active ? @tr("Undo") : root.count;
                 color: root.undo-active ? root.accent : white;
                 font-size: root.undo-active ? 11px : 13px;
@@ -2695,7 +2924,7 @@ export component PocketIsland inherits Window {
             width: root.width;
             height: max(0px, parent.height - self.y);
 
-            property <length> view-h: max(0px, self.height - (root.drop-box ? 0px : root.bar-h));
+            property <length> view-h: max(0px, self.height - (root.drop-box || root.card ? 0px : root.bar-h));
 
             // The Clipboard view, sliding and fading in from the start of the
             // line as the Pocket goes.
@@ -2939,11 +3168,43 @@ export component PocketIsland inherits Window {
                 }
             }
 
+            // The card of a screenshot just saved, over the whole panel.
+            if root.card: ShotCardPanel {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.view-h;
+                picture: root.card-picture;
+                meta: root.card-meta;
+                can-read: root.shots-can-read;
+                pressed => {
+                    root.card-pressed();
+                }
+                moved(dx, dy) => {
+                    root.card-moved(dx, dy);
+                }
+                released => {
+                    root.card-released();
+                }
+                copy => {
+                    root.card-copy();
+                }
+                copy-text => {
+                    root.card-copy-text();
+                }
+                pocket => {
+                    root.card-pocket();
+                }
+                trash => {
+                    root.card-trash();
+                }
+            }
+
             // Under every view: a tab for each view that is on (with two or
             // more), and at the end the shown view's controls: the Pocket's
             // look, "Drag" and Clear (or Undo), the Clipboard's Clear (or
             // Undo), or the Screenshots' Undo.
-            if !root.drop-box: Rectangle {
+            if !root.drop-box && !root.card: Rectangle {
                 y: parent.view-h;
                 width: parent.width;
                 height: root.bar-h;

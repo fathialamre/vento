@@ -91,7 +91,7 @@ msgstr "إضافة مجلد…"
 msgid "Add to Notes"
 msgstr "أضف إلى الملاحظات"
 
-#: crates/vento/ui/pocket.slint:884
+#: crates/vento/ui/pocket.slint:885
 msgid "Add to Pocket"
 msgstr "إضافة إلى الجيب"
 
@@ -131,7 +131,7 @@ msgstr "أرشفة"
 msgid "Archives"
 msgstr "أرشيفات"
 
-#: crates/vento/ui/pocket.slint:2360
+#: crates/vento/ui/pocket.slint:2567
 msgid "As a list"
 msgstr "كقائمة"
 
@@ -175,7 +175,7 @@ msgstr "مستيقظ حتى {time} غداً"
 msgid "Back"
 msgstr "السابق"
 
-#: crates/vento/ui/pocket.slint:1412
+#: crates/vento/ui/pocket.slint:1413
 msgid "Back to kinds"
 msgstr "العودة إلى الأنواع"
 
@@ -187,7 +187,7 @@ msgstr "الأكبر بالداخل"
 msgid "Busy — still working"
 msgstr "مشغول، العمل جارٍ"
 
-#: crates/vento/ui/pocket.slint:2360
+#: crates/vento/ui/pocket.slint:2567
 msgid "By kind"
 msgstr "حسب النوع"
 
@@ -215,7 +215,7 @@ msgstr "غيّرت رأيك؟ انقر «تراجع» في الإشعار."
 msgid "Choose a look"
 msgstr "اختر المظهر"
 
-#: crates/vento/ui/pocket.slint:331
+#: crates/vento/ui/pocket.slint:332
 msgid "Clear"
 msgstr "مسح"
 
@@ -251,7 +251,7 @@ msgstr "سجل الحافظة"
 msgid "Clipboard shortcut"
 msgstr "اختصار الحافظة"
 
-#: crates/vento/ui/pocket.slint:456
+#: crates/vento/ui/pocket.slint:457
 msgid "Close preview"
 msgstr "إغلاق المعاينة"
 
@@ -285,7 +285,7 @@ msgstr "جارٍ ضغط {name}…"
 msgid "Contains"
 msgstr "يحتوي"
 
-#: crates/vento/ui/pocket.slint:2063
+#: crates/vento/ui/pocket.slint:2066
 msgid "Continue"
 msgstr "متابعة"
 
@@ -323,11 +323,11 @@ msgstr "جارٍ التحويل"
 msgid "Converting {name}…"
 msgstr "جارٍ تحويل {name}…"
 
-#: crates/vento/src/pocket/shots_view.rs:583
+#: crates/vento/src/pocket/shots_view.rs:782
 msgid "Copied"
 msgstr "تم النسخ"
 
-#: crates/vento/src/pocket/shots_view.rs:638
+#: crates/vento/src/pocket/shots_view.rs:837
 msgid "Copied text"
 msgstr "تم نسخ النص"
 
@@ -369,11 +369,11 @@ msgstr "النسخ من الشاشة يستخدم هذا الاختصار"
 msgid "Copy path"
 msgstr "نسخ المسار"
 
-#: crates/vento/ui/pocket.slint:969
+#: crates/vento/ui/pocket.slint:970
 msgid "Copy something and it shows up here"
 msgstr "انسخ أي شيء وسيظهر هنا"
 
-#: crates/vento/ui/pocket.slint:1969
+#: crates/vento/ui/pocket.slint:1972
 msgid "Copy text"
 msgstr "نسخ النص"
 
@@ -463,7 +463,7 @@ msgstr "تعذّر فتح الطرفية: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "تعذّر الفتح: {reason}"
 
-#: crates/vento/src/pocket/shots_view.rs:629
+#: crates/vento/src/pocket/shots_view.rs:828
 msgid "Couldn't read the picture"
 msgstr "تعذّرت قراءة الصورة"
 
@@ -475,7 +475,7 @@ msgstr "تعذّرت قراءة الشاشة"
 msgid "Couldn't save settings: {error}"
 msgstr "تعذّر حفظ الإعدادات: {error}"
 
-#: crates/vento/src/pocket/mod.rs:1743
+#: crates/vento/src/pocket/mod.rs:1818
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
@@ -543,7 +543,7 @@ msgstr "ارسم مستطيلاً بالسحب فوق النص الذي تريد
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "اسحب الصف من مقبضه لتغيير مكان الإجراء."
 
-#: crates/vento/ui/pocket.slint:3015
+#: crates/vento/ui/pocket.slint:3276
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "اسحب الكل ({n})"
@@ -557,11 +557,15 @@ msgstr[5] "اسحب الكل ({n})"
 msgid "Drag items from the island into any folder or app. Removing one never deletes your file."
 msgstr "اسحب العناصر من الجزيرة إلى أي مجلد أو تطبيق. إزالة عنصر لا تحذف ملفك أبداً."
 
+#: crates/vento/ui/pocket.slint:2431
+msgid "Drag the picture anywhere, or keep it for later."
+msgstr "اسحب الصورة إلى أي مكان، أو احتفظ بها لوقت لاحق."
+
 #: crates/vento/ui/settings_pages.slint:476
 msgid "Drag to reorder"
 msgstr "اسحب لتغيير الترتيب"
 
-#: crates/vento/ui/pocket.slint:1087
+#: crates/vento/ui/pocket.slint:1088
 msgid "Drag {n}"
 msgid_plural "Drag {n}"
 msgstr[0] "اسحب {n}"
@@ -571,7 +575,7 @@ msgstr[3] "اسحب {n}"
 msgstr[4] "اسحب {n}"
 msgstr[5] "اسحب {n}"
 
-#: crates/vento/ui/pocket.slint:2829
+#: crates/vento/ui/pocket.slint:3058
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
@@ -793,7 +797,7 @@ msgstr[5] "تم إبقاء {n} عنصر: تغيّرت بعد إنشائها"
 msgid "Kind"
 msgstr "النوع"
 
-#: crates/vento/ui/pocket.slint:1436
+#: crates/vento/ui/pocket.slint:1437
 msgid "Kinds"
 msgstr "الأنواع"
 
@@ -851,7 +855,7 @@ msgstr "فاتح أو داكن، أو حسب إعداد نظامك"
 msgid "Link"
 msgstr "رابط"
 
-#: crates/vento/ui/pocket.slint:700
+#: crates/vento/ui/pocket.slint:701
 msgid "Links"
 msgstr "روابط"
 
@@ -911,9 +915,13 @@ msgstr "نقل"
 msgid "Move to"
 msgstr "نقل إلى"
 
-#: crates/vento/ui/pocket.slint:1981
+#: crates/vento/ui/pocket.slint:1984
 msgid "Move to Trash"
 msgstr "نقل إلى سلة المهملات"
+
+#: crates/vento/src/pocket/shots_view.rs:1077
+msgid "Moved to Trash"
+msgstr "نُقلت إلى سلة المهملات"
 
 #: crates/vento/src/exec/archive.rs:139
 msgid "Moved {name} to the Trash"
@@ -979,7 +987,7 @@ msgstr "لا توجد مجلدات مثبّتة"
 msgid "No recent folders"
 msgstr "لا توجد مجلدات حديثة"
 
-#: crates/vento/src/pocket/shots_view.rs:634
+#: crates/vento/src/pocket/shots_view.rs:833
 msgid "No text found"
 msgstr "لم يُعثر على نص"
 
@@ -999,7 +1007,7 @@ msgstr "الملاحظات لا تقبل مجلدًا مع ملفات. أفلت 
 msgid "Nothing left to remove"
 msgstr "لم يبقَ شيء لإزالته"
 
-#: crates/vento/ui/pocket.slint:970
+#: crates/vento/ui/pocket.slint:971
 msgid "Nothing of this kind yet"
 msgstr "لا يوجد شيء من هذا النوع بعد"
 
@@ -1043,7 +1051,7 @@ msgstr "فتح باستخدام"
 msgid "Open clipboard history"
 msgstr "فتح سجل الحافظة"
 
-#: crates/vento/ui/pocket.slint:935
+#: crates/vento/ui/pocket.slint:936
 msgid "Open in browser"
 msgstr "فتح في المتصفح"
 
@@ -1127,11 +1135,11 @@ msgstr "البتلات"
 msgid "Pick how long under the tile, or leave it on until you stop it."
 msgstr "اختر المدة تحت المربع، أو اتركه يعمل حتى توقفه."
 
-#: crates/vento/ui/pocket.slint:874
+#: crates/vento/ui/pocket.slint:875
 msgid "Pin"
 msgstr "تثبيت"
 
-#: crates/vento/ui/pocket.slint:970
+#: crates/vento/ui/pocket.slint:971
 msgid "Pin a copy to keep it here"
 msgstr "ثبّت نسخة لتبقى هنا"
 
@@ -1139,7 +1147,7 @@ msgstr "ثبّت نسخة لتبقى هنا"
 msgid "Pin {}"
 msgstr "تثبيت {}"
 
-#: crates/vento/ui/pocket.slint:700
+#: crates/vento/ui/pocket.slint:701
 msgid "Pinned"
 msgstr "المثبّتة"
 
@@ -1163,7 +1171,7 @@ msgstr "عادي"
 msgid "Pocket"
 msgstr "الجيب"
 
-#: crates/vento/ui/pocket.slint:2798
+#: crates/vento/ui/pocket.slint:3027
 msgid "Pocket cleared"
 msgstr "أُفرغ الجيب"
 
@@ -1191,7 +1199,7 @@ msgstr "اضغط ‎{} لفتح الجزيرة في أي وقت، وأسقط ع�
 msgid "Press {}: the screen dims."
 msgstr "اضغط ‎{}: تُعتّم الشاشة."
 
-#: crates/vento/ui/pocket.slint:456
+#: crates/vento/ui/pocket.slint:457
 msgid "Preview"
 msgstr "معاينة"
 
@@ -1219,7 +1227,7 @@ msgstr "الأخيرة"
 msgid "Remember what you copy"
 msgstr "يتذكر ما تنسخه"
 
-#: crates/vento/ui/pocket.slint:656
+#: crates/vento/ui/pocket.slint:657
 msgid "Remove"
 msgstr "إزالة"
 
@@ -1333,11 +1341,15 @@ msgstr[5] "تم حفظ {n} صورة في {folder}"
 msgid "Screen"
 msgstr "شاشة"
 
-#: crates/vento/ui/pocket.slint:2988
+#: crates/vento/ui/pocket.slint:2406
+msgid "Screenshot saved"
+msgstr "تم حفظ لقطة الشاشة"
+
+#: crates/vento/ui/pocket.slint:2372
 msgid "Screenshots"
 msgstr "لقطات الشاشة"
 
-#: crates/vento/ui/pocket.slint:2031
+#: crates/vento/ui/pocket.slint:2034
 msgid "Screenshots you take will show here."
 msgstr "ستظهر هنا لقطات الشاشة التي تلتقطها."
 
@@ -1397,7 +1409,7 @@ msgstr "بعلامات اقتباس للطرفية"
 msgid "Shortcut"
 msgstr "الاختصار"
 
-#: crates/vento/ui/pocket.slint:1030
+#: crates/vento/ui/pocket.slint:1031
 msgid "Show all {}"
 msgstr "إظهار كل {}"
 
@@ -1535,7 +1547,7 @@ msgstr "السمة"
 msgid "This shortcut can't be used"
 msgstr "لا يمكن استخدام هذا الاختصار"
 
-#: crates/vento/src/pocket/mod.rs:692
+#: crates/vento/src/pocket/mod.rs:726
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
@@ -1551,7 +1563,7 @@ msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسج
 msgid "Today"
 msgstr "اليوم"
 
-#: crates/vento/ui/pocket.slint:2278
+#: crates/vento/ui/pocket.slint:2281
 msgid "Trash"
 msgstr "سلة المهملات"
 
@@ -1591,11 +1603,11 @@ msgstr "تراجع عن آخر نسخ"
 msgid "Undo last move"
 msgstr "تراجع عن آخر نقل"
 
-#: crates/vento/ui/pocket.slint:194
+#: crates/vento/ui/pocket.slint:195
 msgid "Undo {}s"
 msgstr "تراجع ({} ث)"
 
-#: crates/vento/ui/pocket.slint:874
+#: crates/vento/ui/pocket.slint:875
 msgid "Unpin"
 msgstr "إلغاء التثبيت"
 
@@ -1659,7 +1671,7 @@ msgstr "يحتفظ Vento بنسخته الخاصة من كل ملف، لا بر�
 msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu."
 msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته للوحة السريعة، وانقر بزر الفأرة الأيمن للقائمة."
 
-#: crates/vento/ui/pocket.slint:2052
+#: crates/vento/ui/pocket.slint:2055
 msgid "Vento needs to see your Desktop again after the update."
 msgstr "يحتاج Vento إلى رؤية سطح المكتب مجددًا بعد التحديث."
 
@@ -1799,7 +1811,7 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start"
 msgstr "تعذّر البدء"
 
-#: crates/vento/src/pocket/mod.rs:1502
+#: crates/vento/src/pocket/mod.rs:1574
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
@@ -2223,7 +2235,7 @@ msgstr "‏{program} أوقفته إشارة"
 msgid "{program}: {reason}"
 msgstr "‏{program}: {reason}"
 
-#: crates/vento/ui/pocket.slint:364
+#: crates/vento/ui/pocket.slint:365
 msgid "{} {n}"
 msgid_plural "{} {n}"
 msgstr[0] "‏{} {n}"

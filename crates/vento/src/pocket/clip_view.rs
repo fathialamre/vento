@@ -418,6 +418,9 @@ impl PocketController {
         if self.drop_box.get() {
             return Panel::Drop;
         }
+        if self.card.is_up() {
+            return Panel::Card;
+        }
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
             View::Screenshots => Panel::Screenshots,
@@ -455,7 +458,28 @@ impl PocketController {
         w.set_show_clip_tab(clip_tab);
         w.set_show_shots_tab(shots_tab);
         w.set_view(self.window_view());
-        w.set_clip_wing(on && !self.clip.is_empty() && self.pocket.borrow().is_empty());
+        self.set_wings();
+    }
+
+    /// What the collapsed wings show with an empty Pocket: the clipboard
+    /// icon while there is some history, otherwise the photo icon while
+    /// there are screenshots.
+    pub(super) fn set_wings(&self) {
+        let empty = self.pocket.borrow().is_empty();
+        let clip = self.clip_has();
+        let w = &self.window;
+        w.set_clip_wing(empty && clip);
+        w.set_shot_wing(empty && !clip && self.shots_have());
+    }
+
+    /// The history is on and holds something.
+    pub(super) fn clip_has(&self) -> bool {
+        self.clip.enabled() && !self.clip.is_empty()
+    }
+
+    /// The Screenshots view is on and lists something.
+    pub(super) fn shots_have(&self) -> bool {
+        self.shots_on() && self.shots.count() > 0
     }
 
     /// Gives the window the open peek: the place of its row among those

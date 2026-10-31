@@ -5,12 +5,16 @@
 //! A tile's Trash hides the screenshot at once and offers the island's Undo;
 //! the file goes to the Trash only once Undo is no longer offered (there is
 //! no putting a file back from the Trash), or when vento quits.
+//!
+//! The card: when a screenshot is saved, the island drops down with its
+//! picture and actions for a few seconds ([`ShotCard`]). Its Trash works as
+//! a tile's, with the Undo in a toast since the card closes at once.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jiff::tz::TimeZone;
 use log::{debug, info, warn};
@@ -37,6 +41,7 @@ use super::shots::Access;
 use super::{
     ICON_PX, MAIN_POCKET, PocketController, UNDO_WINDOW, Undo, View, display_name, to_image,
 };
+use vento_core::pocket_zone::Presence;
 
 /// A tile's thumbnail: its shorter side in pixels (the tile is about
 /// 165 × 104 points), and how much longer the other side may be.
@@ -44,6 +49,9 @@ const THUMB_PX: u32 = 208;
 const THUMB_RATIO: u32 = 4;
 /// Width in points of the picture a screenshot is dragged out with.
 const DRAG_PT: u32 = 120;
+/// The card's picture: its shorter side in pixels (the picture is
+/// 212 × 133 points, drawn at twice that on most screens).
+const CARD_PX: u32 = 280;
 
 /// The day chips in the order the window shows them.
 const FILTERS: [ShotFilter; 4] = [
@@ -140,6 +148,129 @@ fn peek_meta(shot: &Shot) -> String {
     }
 }
 
+/// The line under the card's title: `width × height · size · folder`.
+fn card_meta(shot: &Shot, folder: &str) -> String {
+    format!("{} · {folder}", peek_meta(shot))
+}
+
+/// What a tile marks for the thumbnail made of its file: `made` is whether
+/// a picture came out and whether the file was gone then (`None` while not
+/// made yet). Returns `(missing, unreadable)`: the alert only for a file
+/// that is gone, a plain file icon for one whose picture can't be made
+/// (such as a PDF screenshot).
+fn tile_marks(made: Option<(bool, bool)>) -> (bool, bool) {
+    match made {
+        Some((false, gone)) => (gone, !gone),
+        _ => (false, false),
+    }
+}
+
+/// When the card closes by itself: `secs` after it was shown (`shown_at`),
+/// or after the last moment the pointer was over it (`hovered_at`).
+pub(super) fn card_deadline(hovered_at: Option<Instant>, shown_at: Instant, secs: u32) -> Instant {
+    hovered_at.map_or(shown_at, |h| h.max(shown_at)) + Duration::from_secs(u64::from(secs))
+}
+
+/// What decides whether a new screenshot shows the card.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CardGate {
+    /// The screenshots are on.
+    pub(super) feature: bool,
+    /// The card is on in the settings.
+    pub(super) card: bool,
+    /// The folder could be read.
+    pub(super) granted: bool,
+    /// The island is open on a view (the card itself does not count).
+    pub(super) expanded: bool,
+    pub(super) paused: bool,
+    /// A drag of any kind is under way.
+    pub(super) dragging: bool,
+    /// The island's own drag out is running.
+    pub(super) drag_out: bool,
+    /// The island by the clock shows its drop box.
+    pub(super) drop_box: bool,
+}
+
+/// Whether a new screenshot shows the card: both settings on, the folder
+/// read, and the island neither open on a view, paused nor in a drag.
+pub(super) fn card_allowed(g: CardGate) -> bool {
+    g.feature
+        && g.card
+        && g.granted
+        && !g.expanded
+        && !g.paused
+        && !g.dragging
+        && !g.drag_out
+        && !g.drop_box
+}
+
+/// The card of the screenshot just saved: its file, when it was shown, and
+/// until when it keeps the island open.
+#[derive(Default)]
+pub(super) struct ShotCard {
+    card: RefCell<Option<PathBuf>>,
+    shown_at: Cell<Option<Instant>>,
+    card_until: Cell<Option<Instant>>,
+    /// The picture it shows, kept for its drag.
+    picture: RefCell<Option<Image>>,
+}
+
+impl ShotCard {
+    /// Shows the card for `path` at `now`, for `secs`: a card already up
+    /// takes the new file and waits again from now.
+    pub(super) fn show(&self, path: PathBuf, now: Instant, secs: u32) {
+        *self.card.borrow_mut() = Some(path);
+        self.picture.take();
+        self.shown_at.set(Some(now));
+        self.card_until.set(Some(card_deadline(None, now, secs)));
+    }
+
+    /// The pointer is over the card at `now`: it waits `secs` from now.
+    pub(super) fn hovered(&self, now: Instant, secs: u32) {
+        if let Some(shown) = self.shown_at.get() {
+            self.card_until
+                .set(Some(card_deadline(Some(now), shown, secs)));
+        }
+    }
+
+    /// The file on the card, if one is up.
+    pub(super) fn path(&self) -> Option<PathBuf> {
+        self.card.borrow().clone()
+    }
+
+    pub(super) fn is_up(&self) -> bool {
+        self.card.borrow().is_some()
+    }
+
+    /// When the card closes by itself.
+    #[cfg(test)]
+    fn until(&self) -> Option<Instant> {
+        self.card_until.get()
+    }
+
+    /// Whether the card still keeps the island open at `now`.
+    pub(super) fn holds_open(&self, now: Instant) -> bool {
+        self.card_until.get().is_some_and(|until| until > now)
+    }
+
+    /// Takes the card down; returns its file, if one was up.
+    pub(super) fn close(&self) -> Option<PathBuf> {
+        self.shown_at.set(None);
+        self.card_until.set(None);
+        self.picture.take();
+        self.card.take()
+    }
+
+    /// Whether the card may stay with `shots` listed: none is up, or its
+    /// file is among them.
+    pub(super) fn listed_in(&self, shots: &[Shot]) -> bool {
+        self.card
+            .borrow()
+            .as_ref()
+            .is_none_or(|p| shots.iter().any(|s| &s.path == p))
+    }
+}
+
 /// Screenshots taken out of the grid whose files wait to go to the Trash,
 /// each under its own job.
 #[derive(Default)]
@@ -187,8 +318,9 @@ pub(super) struct ShotsView {
     /// The screenshots as last shown: a tile's index is its place here.
     shown: RefCell<Vec<Shot>>,
     /// Thumbnails by path, with the modification time they were made for;
-    /// an empty image when the picture could not be read.
-    thumbs: RefCell<HashMap<PathBuf, (u64, Image)>>,
+    /// an empty image when the picture could not be read, then whether the
+    /// file was gone.
+    thumbs: RefCell<HashMap<PathBuf, (u64, Image, bool)>>,
     /// Thumbnails being made on the worker.
     making: RefCell<HashSet<PathBuf>>,
     /// A refresh is due for thumbnails that came in.
@@ -260,24 +392,26 @@ impl ShotsView {
                     .iter()
                     .map(|&i| {
                         let s = &shots[i];
-                        let (picture, missing) = match thumbs.get(&s.path) {
-                            Some((made_for, picture)) => {
+                        let (picture, made) = match thumbs.get(&s.path) {
+                            Some((made_for, picture, gone)) => {
                                 if *made_for != s.modified_unix {
                                     wanted.push((s.path.clone(), s.modified_unix));
                                 }
-                                (picture.clone(), picture.size().width == 0)
+                                (picture.clone(), Some((picture.size().width > 0, *gone)))
                             }
                             None => {
                                 wanted.push((s.path.clone(), s.modified_unix));
-                                (no_picture(), false)
+                                (no_picture(), None)
                             }
                         };
+                        let (missing, unreadable) = tile_marks(made);
                         ShotTile {
                             index: count(i),
                             time: time_label(s.modified_unix, now_unix, &tz).into(),
                             size: human_size(s.len).into(),
                             picture,
                             missing,
+                            unreadable,
                         }
                     })
                     .collect();
@@ -354,9 +488,10 @@ impl ShotsView {
                     })
                     .ok()
                     .flatten();
+                    let gone = made.is_none() && !path.exists();
                     let delivered = slint::invoke_from_event_loop(move || {
                         if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
-                            c.shot_thumb_made(path, mtime, made.as_ref());
+                            c.shot_thumb_made(path, mtime, made.as_ref(), gone);
                         }
                     });
                     if let Err(e) = delivered {
@@ -490,10 +625,67 @@ impl PocketController {
                 c.refresh_shots();
             }
         });
+        let c = with.clone();
         w.on_shots_allow(move || {
-            if let Some(c) = with() {
+            if let Some(c) = c() {
                 c.shots.touch();
                 c.refresh();
+            }
+        });
+        self.connect_card(with);
+    }
+
+    /// Routes the card's picture and buttons to the controller. Each button
+    /// acts at once, then the card closes.
+    fn connect_card(&self, with: impl Fn() -> Option<Rc<Self>> + Clone + 'static) {
+        let w = &self.window;
+        let c = with.clone();
+        w.on_card_pressed(move || {
+            if let Some(c) = c() {
+                c.latch.press(Press::Card);
+            }
+        });
+        let c = with.clone();
+        w.on_card_moved(move |dx, dy| {
+            if let Some(c) = c() {
+                c.moved(dx, dy);
+            }
+        });
+        let c = with.clone();
+        w.on_card_released(move || {
+            if let Some(c) = c() {
+                c.released();
+            }
+        });
+        let c = with.clone();
+        w.on_card_copy(move || {
+            if let Some(c) = c()
+                && let Some(path) = c.card.path()
+            {
+                c.shot_copy(&path);
+                c.finish_card(|_| {});
+            }
+        });
+        let c = with.clone();
+        w.on_card_copy_text(move || {
+            if let Some(c) = c()
+                && let Some(path) = c.card.path()
+            {
+                c.shot_copy_text(path);
+                c.finish_card(|_| {});
+            }
+        });
+        let c = with.clone();
+        w.on_card_pocket(move || {
+            if let Some(c) = c()
+                && let Some(path) = c.card.path()
+            {
+                c.finish_card(move |c| c.shot_to_pocket(path));
+            }
+        });
+        w.on_card_trash(move || {
+            if let Some(c) = with() {
+                c.card_trash();
             }
         });
     }
@@ -506,14 +698,20 @@ impl PocketController {
 
     /// Pushes the screenshots' count, folder and state into the window, and
     /// the days and tiles while the view is in sight: a tile costs a
-    /// thumbnail, so none are made for a hidden view.
+    /// thumbnail, so none are made for a hidden view. A card whose file is
+    /// no longer listed closes.
     pub(super) fn refresh_shots(&self) {
         let w = &self.window;
         let on = self.shots_on();
+        if self.card.is_up() && !(on && self.card.listed_in(&self.shots.shots())) {
+            debug!("screenshot card: its file is gone");
+            self.close_card();
+        }
         let count = if on { self.shots.count() } else { 0 };
         w.set_shots_count(i32::try_from(count).unwrap_or(i32::MAX));
         w.set_shots_state(shots_state(self.shots.access(), count));
         w.set_shots_folder_name(display_name(&self.shots.folder()).into());
+        self.set_wings();
         if !on {
             self.shots_view.show(w, &[], super::clip::now_unix());
         } else if self.expanded() && self.shown_view() == View::Screenshots {
@@ -523,16 +721,19 @@ impl PocketController {
     }
 
     /// A thumbnail came in from the worker (`made`, `None` when the picture
-    /// could not be read): kept, and shown on the next turn of the event
-    /// loop, with any others that came in meanwhile.
-    fn shot_thumb_made(&self, path: PathBuf, mtime: u64, made: Option<&RgbaImage>) {
+    /// could not be read, `gone` when its file was gone then): kept, and
+    /// shown on the next turn of the event loop, with any others that came
+    /// in meanwhile.
+    fn shot_thumb_made(&self, path: PathBuf, mtime: u64, made: Option<&RgbaImage>, gone: bool) {
         let view = &self.shots_view;
         view.making.borrow_mut().remove(&path);
         let picture = made.and_then(to_image).unwrap_or_else(|| {
             debug!("screenshots: no thumbnail of {}", path.display());
             no_picture()
         });
-        view.thumbs.borrow_mut().insert(path, (mtime, picture));
+        view.thumbs
+            .borrow_mut()
+            .insert(path, (mtime, picture, gone));
         if view.refresh_due.replace(true) {
             return;
         }
@@ -655,9 +856,15 @@ impl PocketController {
     /// offered.
     pub(super) fn shot_trash(&self, path: PathBuf) {
         debug!("screenshot to the Trash: {}", path.display());
+        self.offer_undo(Undo::Shot(path.clone()));
+        self.trash_after_undo(path);
+    }
+
+    /// Takes the screenshot at `path` out of the grid at once; its file goes
+    /// to the Trash once Undo is no longer offered.
+    fn trash_after_undo(&self, path: PathBuf) {
         self.shots.hide(&path);
-        let job = self.shots_view.pending.add(path.clone());
-        self.offer_undo(Undo::Shot(path));
+        let job = self.shots_view.pending.add(path);
         self.refresh_shots();
         let this = self.this.clone();
         Timer::single_shot(UNDO_WINDOW, move || {
@@ -690,15 +897,24 @@ impl PocketController {
     }
 
     /// Starts one drag session with the screenshot at `path`, its
-    /// thumbnail as the image. The drag never removes anything. The press
-    /// latch is already marked running.
+    /// thumbnail (or the card's picture) as the image. The drag never
+    /// removes anything. The press latch is already marked running.
     pub(super) fn start_shot_drag(&self, path: PathBuf) {
-        let picture = self
+        let thumb = self
             .shots_view
             .thumbs
             .borrow()
             .get(&path)
-            .and_then(|(_, image)| image.to_rgba8())
+            .map(|(_, image, _)| image.clone())
+            .filter(|image| image.size().width > 0);
+        let card = || {
+            (self.card.path().as_ref() == Some(&path))
+                .then(|| self.card.picture.borrow().clone())
+                .flatten()
+        };
+        let picture = thumb
+            .or_else(card)
+            .and_then(|image| image.to_rgba8())
             .map(|buffer| RgbaImage {
                 width: buffer.width(),
                 height: buffer.height(),
@@ -734,6 +950,10 @@ impl PocketController {
                             at.x, at.y
                         );
                         c.release_grab(at);
+                        // A drag from the card is its action: it closes.
+                        if c.card.is_up() {
+                            c.finish_card(|_| {});
+                        }
                     }
                 });
                 if let Err(e) = delivered {
@@ -745,6 +965,166 @@ impl PocketController {
         if let Err(e) = result {
             warn!("cannot start the screenshot drag: {e}");
             self.latch.ended();
+        }
+    }
+
+    /// Whether a screenshot saved now shows the card (see [`card_allowed`]).
+    pub(super) fn card_allowed(&self) -> bool {
+        let (feature, card) = {
+            let s = self.settings.borrow();
+            (s.screenshots, s.screenshot_card)
+        };
+        self.warm.get()
+            && card_allowed(CardGate {
+                feature,
+                card,
+                granted: self.shots.enabled(),
+                expanded: self.expanded() && !self.card.is_up(),
+                paused: self.paused.get(),
+                dragging: self.was_dragging.get(),
+                drag_out: self.latch.running(),
+                drop_box: self.drop_box.get(),
+            })
+    }
+
+    /// A screenshot was saved at `path`: the island drops down with its
+    /// card, unless it may not now. A card already up takes the new one.
+    pub(super) fn show_card(&self, path: PathBuf) {
+        if !self.card_allowed() {
+            debug!("screenshot card not shown now");
+            return;
+        }
+        let Some(shot) = self.shots.shots().into_iter().find(|s| s.path == path) else {
+            return;
+        };
+        let secs = self.settings.borrow().screenshot_card_secs;
+        self.card.show(path.clone(), Instant::now(), secs);
+        let w = &self.window;
+        let folder = display_name(&self.shots.folder());
+        w.set_card_meta(card_meta(&shot, &folder).into());
+        w.set_card_picture(no_picture());
+        w.set_card(true);
+        self.make_card_picture(path);
+        self.fit_panel();
+        self.run_undo_timer();
+        info!("screenshot card shown");
+    }
+
+    /// Takes the card down, leaving the island as it is.
+    pub(super) fn close_card(&self) {
+        if self.card.close().is_none() {
+            return;
+        }
+        debug!("screenshot card closed");
+        let w = &self.window;
+        w.set_card(false);
+        w.set_card_picture(no_picture());
+        self.fit_panel();
+        self.run_undo_timer();
+    }
+
+    /// After an action on the card: on the next turn of the event loop,
+    /// once the window has finished with the click, the card closes, `then`
+    /// runs, and the island goes back to rest.
+    pub(super) fn finish_card(&self, then: impl FnOnce(&Self) + 'static) {
+        let this = self.this.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            let Some(c) = this.upgrade() else {
+                return;
+            };
+            c.close_card();
+            then(&c);
+            if c.warm.get() && !c.paused.get() && c.expanded() {
+                c.settle_now();
+            }
+        });
+    }
+
+    /// A click on the card's picture: the Screenshots view opens with that
+    /// screenshot peeked, on the next turn of the event loop, once the
+    /// window has finished with the click.
+    pub(super) fn card_clicked(&self) {
+        let this = self.this.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            let Some(c) = this.upgrade() else {
+                return;
+            };
+            let Some(path) = c.card.path() else {
+                return;
+            };
+            c.close_card();
+            *c.shots_view.peek.borrow_mut() = Some(path);
+            c.set_view(View::Screenshots);
+            c.hold_open_briefly();
+        });
+    }
+
+    /// The card's Move to Trash: the card closes and a toast offers Undo,
+    /// as the island's own ring can't be seen once the card is gone. The
+    /// file goes to the Trash as a tile's does.
+    fn card_trash(&self) {
+        let Some(path) = self.card.path() else {
+            return;
+        };
+        let at = self.toast_at();
+        debug!("screenshot to the Trash from the card");
+        self.finish_card(move |c| {
+            c.trash_after_undo(path.clone());
+            let this = c.this.clone();
+            let undo = move || {
+                if let Some(c) = this.upgrade() {
+                    c.undo_shot_trash(&path);
+                }
+            };
+            c.toast
+                .show(&tr("Moved to Trash"), Some(Box::new(undo)), at);
+        });
+    }
+
+    /// Makes the card's picture of `path` on a worker thread and shows it,
+    /// if the card still shows that file.
+    fn make_card_picture(&self, path: PathBuf) {
+        let spawned = std::thread::Builder::new()
+            .name("vento-shot-card".into())
+            .spawn(move || {
+                let made = std::panic::catch_unwind(|| {
+                    vento_platform::picture_thumbnail(&path, CARD_PX, THUMB_RATIO)
+                })
+                .ok()
+                .flatten();
+                let delivered = slint::invoke_from_event_loop(move || {
+                    if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
+                        c.card_picture_made(&path, made.as_ref());
+                    }
+                });
+                if let Err(e) = delivered {
+                    warn!("cannot hand the card's picture over: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            warn!("cannot start making the card's picture: {e}");
+        }
+    }
+
+    /// The card's picture came in (`None` when it could not be made).
+    fn card_picture_made(&self, path: &Path, made: Option<&RgbaImage>) {
+        if self.card.path().as_deref() != Some(path) {
+            return;
+        }
+        let Some(picture) = made.and_then(to_image) else {
+            debug!("screenshots: no card picture of {}", path.display());
+            return;
+        };
+        *self.card.picture.borrow_mut() = Some(picture.clone());
+        self.window.set_card_picture(picture);
+    }
+
+    /// While the card is up and the island shows it (`presence`), the
+    /// pointer over it (`over`) at `now` keeps it the full wait longer.
+    pub(super) fn card_hover(&self, presence: Presence, over: bool, now: Instant) {
+        if over && presence == Presence::Expanded && self.card.is_up() {
+            let secs = self.settings.borrow().screenshot_card_secs;
+            self.card.hovered(now, secs);
         }
     }
 }
@@ -841,5 +1221,137 @@ mod tests {
         assert_eq!(peek_meta(&s), human_size(0));
         s.dims = Some((1512, 982));
         assert_eq!(peek_meta(&s), format!("1512 × 982 · {}", human_size(0)));
+    }
+
+    fn secs(n: u64) -> Duration {
+        Duration::from_secs(n)
+    }
+
+    #[test]
+    fn card_waits_while_hovered_then_closes() {
+        let shown = Instant::now();
+        // Never hovered: it stays the wait from when it was shown.
+        assert_eq!(card_deadline(None, shown, 4), shown + secs(4));
+        // Hovered later: the full wait again from the last hover.
+        let hovered = shown + secs(3);
+        assert_eq!(card_deadline(Some(hovered), shown, 4), hovered + secs(4));
+        // A card that is hovered keeps being held open; once the pointer
+        // leaves, it closes after the wait.
+        let card = ShotCard::default();
+        card.show(PathBuf::from("/tmp/a.png"), shown, 4);
+        assert!(card.holds_open(shown + secs(3)));
+        assert!(!card.holds_open(shown + secs(4)));
+        card.hovered(hovered, 4);
+        assert!(card.holds_open(shown + secs(6)));
+        assert!(!card.holds_open(hovered + secs(4)));
+        assert_eq!(card.until(), Some(hovered + secs(4)));
+    }
+
+    #[test]
+    fn no_card_when_expanded_paused_or_dragging() {
+        let open = CardGate {
+            feature: true,
+            card: true,
+            granted: true,
+            expanded: false,
+            paused: false,
+            dragging: false,
+            drag_out: false,
+            drop_box: false,
+        };
+        assert!(card_allowed(open));
+        for gate in [
+            CardGate {
+                feature: false,
+                ..open
+            },
+            CardGate {
+                card: false,
+                ..open
+            },
+            CardGate {
+                granted: false,
+                ..open
+            },
+            CardGate {
+                expanded: true,
+                ..open
+            },
+            CardGate {
+                paused: true,
+                ..open
+            },
+            CardGate {
+                dragging: true,
+                ..open
+            },
+            CardGate {
+                drag_out: true,
+                ..open
+            },
+            CardGate {
+                drop_box: true,
+                ..open
+            },
+        ] {
+            assert!(!card_allowed(gate), "{gate:?}");
+        }
+    }
+
+    #[test]
+    fn second_shot_replaces_the_card() {
+        let t0 = Instant::now();
+        let card = ShotCard::default();
+        assert!(!card.is_up());
+        card.show(PathBuf::from("/tmp/a.png"), t0, 4);
+        card.hovered(t0 + secs(1), 4);
+        let t1 = t0 + secs(2);
+        card.show(PathBuf::from("/tmp/b.png"), t1, 4);
+        assert_eq!(card.path(), Some(PathBuf::from("/tmp/b.png")));
+        // The wait starts again from the second shot, not the old hover.
+        assert_eq!(card.until(), Some(t1 + secs(4)));
+        assert_eq!(card.close(), Some(PathBuf::from("/tmp/b.png")));
+        assert!(!card.is_up());
+        assert_eq!(card.until(), None);
+        assert!(!card.holds_open(t1));
+    }
+
+    #[test]
+    fn card_closes_when_its_file_vanishes() {
+        let card = ShotCard::default();
+        // No card: nothing to close.
+        assert!(card.listed_in(&[]));
+        card.show(PathBuf::from("/tmp/a.png"), Instant::now(), 4);
+        assert!(card.listed_in(&[shot("/tmp/b.png"), shot("/tmp/a.png")]));
+        // A refresh without the card's file: it must close.
+        assert!(!card.listed_in(&[shot("/tmp/b.png")]));
+    }
+
+    #[test]
+    fn card_meta_names_the_folder() {
+        let mut s = shot("/tmp/a.png");
+        s.len = 0;
+        s.dims = Some((1512, 982));
+        assert_eq!(
+            card_meta(&s, "Desktop"),
+            format!("1512 × 982 · {} · Desktop", human_size(0))
+        );
+        s.dims = None;
+        assert_eq!(
+            card_meta(&s, "Desktop"),
+            format!("{} · Desktop", human_size(0))
+        );
+    }
+
+    #[test]
+    fn a_tile_is_missing_only_when_its_file_is_gone() {
+        // Not made yet: neither.
+        assert_eq!(tile_marks(None), (false, false));
+        // Made: neither.
+        assert_eq!(tile_marks(Some((true, false))), (false, false));
+        // No picture, the file is there (a PDF screenshot): a plain file.
+        assert_eq!(tile_marks(Some((false, false))), (false, true));
+        // No picture and the file is gone: missing.
+        assert_eq!(tile_marks(Some((false, true))), (true, false));
     }
 }
