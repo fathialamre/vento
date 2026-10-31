@@ -23,6 +23,9 @@ use slint::{
     CloseRequestResponse, ComponentHandle, Image, LogicalPosition, Model, ModelRc, SharedString,
     Timer, VecModel,
 };
+use vento_core::awake::{
+    DEFAULT_TIMES, MAX_TIME, MAX_TIMES, MIN_TIME, duration_text, step_time, tidy_times,
+};
 use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
@@ -281,6 +284,8 @@ pub struct SettingsWindowController {
     folder_icons: RefCell<HashMap<PathBuf, Option<Image>>>,
     /// The installed terminals, as the Terminal menu lists them.
     terminals: RefCell<Vec<TerminalApp>>,
+    /// The time the Keep Awake page's Add adds, in minutes.
+    awake_new: Cell<u32>,
     /// The window has been placed since it was made (a new window opens
     /// centred; one shown again stays where the user left it).
     placed: Cell<bool>,
@@ -332,6 +337,7 @@ impl SettingsWindowController {
             recent_paths: RefCell::new(Vec::new()),
             folder_icons: RefCell::new(HashMap::new()),
             terminals: RefCell::new(Vec::new()),
+            awake_new: Cell::new(NEW_AWAKE_TIME),
             placed: Cell::new(false),
             open: Cell::new(false),
             modifiers: Cell::new(ModifiersState::empty()),
@@ -566,6 +572,7 @@ impl SettingsWindowController {
                 controller.apply(|s| s.keep_awake_screen_off = on);
             }
         });
+        self.connect_awake_page(window);
         let this = self.this.clone();
         window.on_how_to_toggled(move |id, open| {
             let Some(page) = pages(true).into_iter().find(|p| p.id() == id) else {
@@ -602,6 +609,45 @@ impl SettingsWindowController {
         window.on_shortcut_recording_stopped(move || {
             if let Some(controller) = this.upgrade() {
                 controller.platform.restore_app_menu();
+            }
+        });
+    }
+
+    fn connect_awake_page(&self, window: &SettingsWindow) {
+        let this = self.this.clone();
+        window.on_awake_time_removed(move |i| {
+            if let (Some(controller), Ok(i)) = (this.upgrade(), usize::try_from(i)) {
+                controller.apply(|s| remove_awake_time(s, i));
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_times_restored(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(restore_awake_times);
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_new_stepped(move |steps| {
+            let Some(controller) = this.upgrade() else {
+                return;
+            };
+            let new = step_time(controller.awake_new.get(), steps > 0);
+            controller.awake_new.set(new);
+            if let Some(window) = controller.existing() {
+                controller.show_awake(&window, &controller.hub.current());
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_time_added(move || {
+            if let Some(controller) = this.upgrade() {
+                let new = controller.awake_new.get();
+                controller.apply(|s| add_awake_time(s, new));
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_start_chosen(move |i| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| choose_awake_start(s, i));
             }
         });
     }
@@ -900,6 +946,7 @@ impl SettingsWindowController {
         window.set_pocket_view(choice_index(&PocketView::ALL, settings.pocket_view));
         window.set_clip_history(settings.clipboard_history);
         window.set_awake_screen_off(settings.keep_awake_screen_off);
+        self.show_awake(&window, &settings);
         let closed: Vec<bool> = pages(true)
             .into_iter()
             .map(|page| settings.closed_how_to.iter().any(|k| k == page.key()))
@@ -907,6 +954,30 @@ impl SettingsWindowController {
         window.set_how_to_closed(ModelRc::from(closed.as_slice()));
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+    }
+
+    /// Shows Keep Awake's times, the time Add adds and what the tile
+    /// starts, in the language now in use.
+    fn show_awake(&self, window: &SettingsWindow, settings: &Settings) {
+        let times = &settings.keep_awake_times;
+        let labels: Vec<SharedString> = times
+            .iter()
+            .map(|&m| duration_text(u64::from(m)).into())
+            .collect();
+        window.set_awake_times(ModelRc::from(labels.as_slice()));
+        window.set_awake_times_full(times.len() >= MAX_TIMES);
+        window.set_awake_times_usual(times.as_slice() == DEFAULT_TIMES);
+        let new = self.awake_new.get();
+        window.set_awake_new(duration_text(u64::from(new)).into());
+        window.set_awake_new_can_decrease(new > MIN_TIME);
+        window.set_awake_new_can_increase(new < MAX_TIME);
+        window.set_awake_can_add(can_add_awake_time(settings, new));
+        let names: Vec<SharedString> = std::iter::once(tr("Until stopped"))
+            .chain(times.iter().map(|&m| duration_text(u64::from(m))))
+            .map(Into::into)
+            .collect();
+        window.set_awake_start_names(ModelRc::from(names.as_slice()));
+        window.set_awake_start(awake_start_index(settings));
     }
 
     /// Writes the sidebar's page names again in the language now in use.
@@ -1382,6 +1453,66 @@ pub(crate) fn unpin_folder(settings: &mut Settings, index: usize) {
     }
 }
 
+/// The time the Keep Awake page's Add offers first, in minutes.
+const NEW_AWAKE_TIME: u32 = 45;
+
+/// Whether `minutes` can join Keep Awake's times: it is not one of them
+/// and there is room.
+fn can_add_awake_time(settings: &Settings, minutes: u32) -> bool {
+    settings.keep_awake_times.len() < MAX_TIMES && !settings.keep_awake_times.contains(&minutes)
+}
+
+/// Adds `minutes` to Keep Awake's times, in its place, when it can join.
+fn add_awake_time(settings: &mut Settings, minutes: u32) {
+    if can_add_awake_time(settings, minutes) {
+        settings.keep_awake_times.push(minutes);
+        settings.keep_awake_times = tidy_times(&settings.keep_awake_times);
+    }
+}
+
+/// Takes the time in row `index` off Keep Awake's times; a tile that
+/// started it starts until stopped instead.
+fn remove_awake_time(settings: &mut Settings, index: usize) {
+    if index < settings.keep_awake_times.len() {
+        let minutes = settings.keep_awake_times.remove(index);
+        if settings.keep_awake_start == minutes {
+            settings.keep_awake_start = 0;
+        }
+    }
+}
+
+/// Puts back the usual times; a tile starting a time no longer among them
+/// starts until stopped instead.
+fn restore_awake_times(settings: &mut Settings) {
+    settings.keep_awake_times = DEFAULT_TIMES.to_vec();
+    if !settings
+        .keep_awake_times
+        .contains(&settings.keep_awake_start)
+    {
+        settings.keep_awake_start = 0;
+    }
+}
+
+/// Makes the tile start item `i` of the page's menu: until stopped, then
+/// each time.
+fn choose_awake_start(settings: &mut Settings, i: i32) {
+    let Ok(i) = usize::try_from(i) else { return };
+    if i == 0 {
+        settings.keep_awake_start = 0;
+    } else if let Some(&minutes) = settings.keep_awake_times.get(i - 1) {
+        settings.keep_awake_start = minutes;
+    }
+}
+
+/// Where what the tile starts is in the page's menu.
+fn awake_start_index(settings: &Settings) -> i32 {
+    settings
+        .keep_awake_times
+        .iter()
+        .position(|&m| m == settings.keep_awake_start)
+        .map_or(0, |i| i32::try_from(i + 1).unwrap_or(0))
+}
+
 /// Moves the hold delay `steps` steps up (or down, when negative), within
 /// its bounds.
 fn step_hold(settings: &mut Settings, steps: i32) {
@@ -1717,6 +1848,63 @@ mod tests {
         let before = s.clone();
         unpin_folder(&mut s, 9);
         assert_eq!(s, before);
+    }
+
+    #[test]
+    fn keep_awake_times_are_added_in_place_once_and_up_to_six() {
+        let mut s = Settings {
+            keep_awake_times: vec![15, 60],
+            ..Settings::default()
+        };
+        add_awake_time(&mut s, 45);
+        assert_eq!(s.keep_awake_times, [15, 45, 60]);
+        assert!(!can_add_awake_time(&s, 45));
+        add_awake_time(&mut s, 45);
+        assert_eq!(s.keep_awake_times, [15, 45, 60]);
+        for m in [90, 180, 300] {
+            add_awake_time(&mut s, m);
+        }
+        assert_eq!(s.keep_awake_times.len(), MAX_TIMES);
+        assert!(!can_add_awake_time(&s, 600));
+        add_awake_time(&mut s, 600);
+        assert_eq!(s.keep_awake_times, [15, 45, 60, 90, 180, 300]);
+    }
+
+    #[test]
+    fn taking_off_the_time_the_tile_starts_makes_it_start_until_stopped() {
+        let mut s = Settings::default();
+        choose_awake_start(&mut s, 3);
+        assert_eq!(s.keep_awake_start, 60);
+        assert_eq!(awake_start_index(&s), 3);
+        remove_awake_time(&mut s, 0);
+        assert_eq!(s.keep_awake_times, [30, 60, 120, 240, 480]);
+        assert_eq!(s.keep_awake_start, 60);
+        assert_eq!(awake_start_index(&s), 2);
+        remove_awake_time(&mut s, 1);
+        assert_eq!(s.keep_awake_start, 0);
+        assert_eq!(awake_start_index(&s), 0);
+        // Out of range does nothing.
+        remove_awake_time(&mut s, 9);
+        choose_awake_start(&mut s, 9);
+        choose_awake_start(&mut s, -1);
+        assert_eq!(s.keep_awake_times, [30, 120, 240, 480]);
+        assert_eq!(s.keep_awake_start, 0);
+    }
+
+    #[test]
+    fn the_usual_times_come_back_and_keep_a_start_among_them() {
+        let mut s = Settings {
+            keep_awake_times: vec![45, 120],
+            keep_awake_start: 120,
+            ..Settings::default()
+        };
+        restore_awake_times(&mut s);
+        assert_eq!(s.keep_awake_times, DEFAULT_TIMES);
+        assert_eq!(s.keep_awake_start, 120);
+        s.keep_awake_times = vec![45];
+        s.keep_awake_start = 45;
+        restore_awake_times(&mut s);
+        assert_eq!(s.keep_awake_start, 0);
     }
 
     #[test]

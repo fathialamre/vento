@@ -317,8 +317,10 @@ things you reach for most one click away:
 - **Keep Awake** keeps your Mac awake, and its screen on unless you choose
   otherwise on the Keep Awake page of Settings. Click the tile to start or
   stop it, or pick how long below it: from 15 minutes up to 8 hours, until a time you
-  choose, or until you stop it. While it runs a small cup shows beside the Vento
-  icon; click the cup to open the panel.
+  choose, or until you stop it. The Keep Awake page of Settings picks those
+  times (up to six, from 5 minutes to 24 hours) and what a click on the tile
+  starts. While it runs a small cup shows beside the Vento icon; click the cup
+  to open the panel.
 
 After a move, copy or archive, an **Undo** row appears at the bottom. While Vento
 is paused, Copy text, Clipboard and Pocket are greyed out; **Resume** brings them
@@ -340,7 +342,7 @@ it stays closed until you open it again.
 | Pocket | The Pocket shortcut, what happens after you drag items out, and which look it opens on: By kind or List. |
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
-| Keep Awake | Whether the screen may turn off while Keep Awake runs. |
+| Keep Awake | The times the Quick panel offers, what a click on the tile starts, and whether the screen may turn off while Keep Awake runs. |
 | About | The version, a button that opens the settings file, and one that shows the licenses. |
 
 The wheel, the Pocket and the notices that offer Undo keep their dark look

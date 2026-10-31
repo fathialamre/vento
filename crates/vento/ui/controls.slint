@@ -775,8 +775,11 @@ export component DragGrip inherits Rectangle {
 export component AwakeChips inherits VerticalLayout {
     // Whether anything is held: Stop is enabled only then.
     in property <bool> on;
-    // The running chip: 0 to 5 the timed ones, 6 until stopped, 7 until a
-    // time; -1 none.
+    // The timed chips' labels, set by vento from the settings (at most six,
+    // one row; none hides the row).
+    in property <[string]> times;
+    // The running chip: the timed ones by place, then until stopped
+    // (`times.length`) and until a time (`times.length + 1`); -1 none.
     in property <int> chip;
     // The time the Until popup shows, set by vento as the panel opens.
     in-out property <int> until-hour;
@@ -787,7 +790,8 @@ export component AwakeChips inherits VerticalLayout {
     callback until-started(int, int);
     callback stop-clicked();
 
-    property <[string]> times: [@tr("15 min"), @tr("30 min"), @tr("1 h"), @tr("2 h"), @tr("4 h"), @tr("8 h")];
+    property <int> forever: self.times.length;
+    property <int> until: self.times.length + 1;
 
     function two-digits(n: int) -> string {
         return (n < 10 ? "0" : "") + n;
@@ -795,7 +799,7 @@ export component AwakeChips inherits VerticalLayout {
 
     spacing: 4px;
 
-    HorizontalLayout {
+    if root.times.length > 0: HorizontalLayout {
         spacing: 4px;
 
         for time[i] in root.times: Chip {
@@ -817,18 +821,18 @@ export component AwakeChips inherits VerticalLayout {
                 layout-order: Theme.rtl ? 3 : 0;
                 horizontal-stretch: 1;
                 label: @tr("Until stopped");
-                chosen: root.chip == 6;
-                clicked => { root.chip-clicked(6); }
+                chosen: root.chip == root.forever;
+                clicked => { root.chip-clicked(root.forever); }
             }
 
             Chip {
                 layout-order: Theme.rtl ? 2 : 0;
                 horizontal-stretch: 1;
                 label: @tr("Until…");
-                chosen: root.chip == 7;
+                chosen: root.chip == root.until;
                 clicked => {
-                    if (root.chip == 7) {
-                        root.chip-clicked(7);
+                    if (root.chip == root.until) {
+                        root.chip-clicked(root.until);
                     } else {
                         until-popup.show();
                     }
