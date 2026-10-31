@@ -40,7 +40,7 @@ thread_local! {
 
 /// Whether vento lists the screenshot folder, and how that went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Access {
+pub enum Access {
     /// The feature is off: no watch, no list.
     Off,
     /// A protected folder this build was not let into yet: nothing is

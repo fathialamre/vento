@@ -75,7 +75,8 @@ use out::{
     removes_after_drop,
 };
 use owned::{PendingTrash, trash_kept, trash_owned};
-use shots::{Access, ShotsController};
+pub use shots::Access;
+use shots::ShotsController;
 use shots_view::{ShotCard, ShotsView};
 
 /// Icon size of a tile or a row, in points.
@@ -307,6 +308,9 @@ pub struct PocketController {
     clip: Rc<ClipController>,
     /// The screenshots in the screenshot folder.
     shots: Rc<ShotsController>,
+    /// Tells the Settings window the access to the screenshot folder may
+    /// have changed.
+    on_shots_changed: RefCell<Option<Box<dyn Fn()>>>,
     /// The view shown expanded (or last shown).
     view: Cell<View>,
     /// The Clipboard view's rows.
@@ -389,6 +393,7 @@ impl PocketController {
             pointer_in: Cell::new(false),
             clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
             shots: Self::screenshots(&clip_settings, this.clone()),
+            on_shots_changed: RefCell::new(None),
             view: Cell::new(View::Pocket),
             clip_view,
             shots_view,
@@ -438,6 +443,7 @@ impl PocketController {
             Box::new(move || {
                 if let Some(c) = this.upgrade() {
                     c.refresh();
+                    c.shots_changed();
                 }
             }),
             Box::new(move |path| {
@@ -1715,8 +1721,37 @@ impl PocketController {
             self.set_view(View::Pocket);
         }
         self.refresh();
+        self.shots_changed();
         // The view shown, and so the ring in sight, may have changed.
         self.run_undo_timer();
+    }
+
+    /// Whether the screenshot folder is being read, and the folder (read
+    /// from the system when the feature was last switched on or
+    /// [`shots_touch`](Self::shots_touch)ed): for the Settings page.
+    pub fn shots_access(&self) -> (Access, PathBuf) {
+        (self.shots.access(), self.shots.folder())
+    }
+
+    /// The Settings page of the screenshots opened: reads the folder again,
+    /// as opening the tab does, and refreshes the island with the result.
+    pub fn shots_touch(&self) {
+        self.shots.touch();
+        self.refresh();
+        self.shots_changed();
+    }
+
+    /// Has the Settings window call `f` whenever the access to the
+    /// screenshot folder may have changed (a listing came back, the feature
+    /// went on or off, the page was opened).
+    pub fn set_on_shots_changed(&self, f: Box<dyn Fn()>) {
+        *self.on_shots_changed.borrow_mut() = Some(f);
+    }
+
+    fn shots_changed(&self) {
+        if let Some(f) = self.on_shots_changed.borrow().as_ref() {
+            f();
+        }
     }
 
     /// Follows the Pocket look of `s`: a change shows it at once.

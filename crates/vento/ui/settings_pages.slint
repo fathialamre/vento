@@ -1061,6 +1061,119 @@ export component CopyFromScreenPage inherits VerticalLayout {
     }
 }
 
+// The screenshots in the island: whether they show, the card for a new one,
+// and the folder they come from.
+export component ScreenshotsPage inherits VerticalLayout {
+    in property <bool> on;
+    // A card shows when a screenshot is saved, and for how long ("4 s").
+    in property <bool> card-on;
+    in property <string> card-secs;
+    in property <bool> card-can-decrease;
+    in property <bool> card-can-increase;
+    // The folder vento watches, the file manager's name for the button
+    // that shows it, and whether the system refuses to let vento read it.
+    in property <string> folder;
+    in property <string> reveal-label;
+    in property <bool> denied;
+    // On a Mac: the note about the floating thumbnail, and the button that
+    // opens Privacy & Security.
+    in property <bool> macos;
+    callback toggled(bool);
+    callback card-toggled(bool);
+    callback card-stepped(int);
+    callback show-folder();
+    callback open-privacy();
+
+    SettingRow {
+        label: @tr("Show screenshots in the island");
+
+        Switch {
+            label: @tr("Show screenshots in the island");
+            on: root.on;
+            toggled(on) => { root.toggled(on); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Show a card when a screenshot is saved");
+        enabled: root.on;
+
+        Switch {
+            label: @tr("Show a card when a screenshot is saved");
+            on: root.card-on;
+            enabled: root.on;
+            toggled(on) => { root.card-toggled(on); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Card stays for");
+        enabled: root.on && root.card-on;
+
+        Stepper {
+            text: root.card-secs;
+            label: @tr("Card stays for");
+            can-decrease: root.on && root.card-on && root.card-can-decrease;
+            can-increase: root.on && root.card-on && root.card-can-increase;
+            decrease => { root.card-stepped(-1); }
+            increase => { root.card-stepped(1); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Folder");
+        padding-bottom: 4px;
+
+        RowButton {
+            label: root.reveal-label;
+            clicked => { root.show-folder(); }
+        }
+    }
+
+    RowBody {
+        LineText {
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+            text: root.folder;
+            font-size: 12px;
+            color: Theme.muted;
+        }
+    }
+
+    if root.on && root.denied: RowError {
+        text: @tr("Vento can't read this folder.");
+    }
+
+    if root.on && root.denied && root.macos: RowBody {
+        HorizontalLayout {
+            alignment: Theme.rtl ? end : start;
+
+            RowButton {
+                label: @tr("Open Privacy & Security");
+                clicked => { root.open-privacy(); }
+            }
+        }
+    }
+
+    if root.macos: RowSeparator { }
+
+    if root.macos: RowBody {
+        padding-top: 12px;
+
+        WrapText {
+            text: @tr("macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options.");
+            font-size: 12px;
+            color: Theme.muted;
+        }
+    }
+}
+
 // Keep Awake's one option; starting and stopping it is the panel's.
 export component KeepAwakePage inherits VerticalLayout {
     in property <bool> screen-off;

@@ -5,11 +5,11 @@
 import { LineText, Theme } from "theme.slint";
 import { Panel, RowSeparator } from "controls.slint";
 import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
-    CopyFromScreenPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
+    CopyFromScreenPage, ScreenshotsPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
 // One row of the sidebar. `id` names the page whatever its label says:
 // 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Clipboard, 5 Copy from screen,
-// 6 Keep Awake, 7 About (the order of `Page` in `settings_window/mod.rs`).
+// 6 Screenshots, 7 Keep Awake, 8 About (the order of `Page` in `settings_window/mod.rs`).
 export struct PageItem { icon: image, label: string, id: int }
 
 // A sidebar row: the page's icon and name, in the accent on its faint tint
@@ -138,6 +138,19 @@ export component SettingsWindow inherits Window {
     in property <string> screen-shortcut;
     in-out property <string> screen-shortcut-error;
     in-out property <bool> screen-shortcut-recording;
+    // The Screenshots page: the island shows screenshots, a card shows for
+    // a new one and for how long ("4 s"), the folder watched, its file
+    // manager's button text, whether the system refuses it, and whether
+    // this is a Mac.
+    in property <bool> shots-on;
+    in property <bool> shot-card-on;
+    in property <string> shot-card-secs;
+    in property <bool> shot-card-can-decrease;
+    in property <bool> shot-card-can-increase;
+    in property <string> shots-folder;
+    in property <string> shots-reveal-label;
+    in property <bool> shots-denied;
+    in property <bool> shots-macos;
     // Keep Awake lets the screen turn off.
     in property <bool> awake-screen-off;
     // The running version, for About.
@@ -174,6 +187,15 @@ export component SettingsWindow inherits Window {
     // "Clear history": the history empties at once, with no Undo.
     callback clip-history-cleared();
     callback awake-screen-off-toggled(bool);
+    callback shots-toggled(bool);
+    callback shot-card-toggled(bool);
+    // The card time's − (-1) or + (1).
+    callback shot-card-stepped(int);
+    // The Folder row's button, and Open Privacy & Security.
+    callback shots-show-folder();
+    callback shots-open-privacy();
+    // The page with this id was turned to.
+    callback page-shown(int);
     // A page's How to card opened (true) or closed, by page id.
     callback how-to-toggled(int, bool);
     // About's Settings file, Set up Vento again and Licenses buttons.
@@ -245,6 +267,15 @@ export component SettingsWindow inherits Window {
         }
         if id == 6 {
             return [
+                @tr("Turn on Show screenshots in the island."),
+                root.shots-macos
+                    ? @tr("Take a screenshot as usual, with {}.", "⇧⌘4")
+                    : @tr("Take a screenshot with your system's screenshot key."),
+                @tr("Open the Screenshots tab in the island to see your recent screenshots."),
+            ];
+        }
+        if id == 7 {
+            return [
                 @tr("Click the Vento icon, then the Keep Awake tile, to start or stop it."),
                 @tr("Pick how long under the tile, or leave it on until you stop it."),
                 @tr("While it runs, a small cup shows beside the Vento icon."),
@@ -271,6 +302,7 @@ export component SettingsWindow inherits Window {
             || root.screen-shortcut-recording) {
             root.stop-recording();
         }
+        root.page-shown(root.page-id);
     }
 
     keys := FocusScope {
@@ -408,11 +440,27 @@ export component SettingsWindow inherits Window {
                             recording-started => { root.screen-shortcut-recording-started(); }
                             recording-cancelled => { root.stop-recording(); }
                         }
-                        if root.page-id == 6: KeepAwakePage {
+                        if root.page-id == 6: ScreenshotsPage {
+                            on: root.shots-on;
+                            card-on: root.shot-card-on;
+                            card-secs: root.shot-card-secs;
+                            card-can-decrease: root.shot-card-can-decrease;
+                            card-can-increase: root.shot-card-can-increase;
+                            folder: root.shots-folder;
+                            reveal-label: root.shots-reveal-label;
+                            denied: root.shots-denied;
+                            macos: root.shots-macos;
+                            toggled(on) => { root.shots-toggled(on); }
+                            card-toggled(on) => { root.shot-card-toggled(on); }
+                            card-stepped(step) => { root.shot-card-stepped(step); }
+                            show-folder => { root.shots-show-folder(); }
+                            open-privacy => { root.shots-open-privacy(); }
+                        }
+                        if root.page-id == 7: KeepAwakePage {
                             screen-off: root.awake-screen-off;
                             screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
                         }
-                        if root.page-id == 7: AboutPage {
+                        if root.page-id == 8: AboutPage {
                             version: root.version;
                             open-settings-file => { root.open-settings-file(); }
                             open-welcome => { root.open-welcome(); }

@@ -40,6 +40,7 @@ enum Action {
     CopyFromScreen,
     OpenClipboard,
     OpenPocket,
+    OpenScreenshots,
     ToggleKeepAwake,
     Undo,
     Pause(bool),
@@ -151,6 +152,8 @@ struct VentoTray {
     keep_awake_on: bool,
     /// Whether the clipboard history is on, which the clipboard item needs.
     clip_history: bool,
+    /// Whether the screenshots are on, which their item needs.
+    screenshots: bool,
 }
 
 impl Tray for VentoTray {
@@ -202,6 +205,11 @@ impl Tray for VentoTray {
                 Action::OpenClipboard,
             ),
             item(tr("Open the Pocket"), !self.paused, Action::OpenPocket),
+            item(
+                tr("Open screenshots"),
+                !self.paused && self.screenshots,
+                Action::OpenScreenshots,
+            ),
             MenuItem::Separator,
             item(
                 keep_awake_menu_text(self.keep_awake_on),
@@ -261,11 +269,14 @@ pub struct TrayDeps {
     pub on_open_clipboard: Box<dyn Fn()>,
     /// Opens the island on the Pocket.
     pub on_open_pocket: Box<dyn Fn()>,
+    /// Opens the island on the screenshots.
+    pub on_open_screenshots: Box<dyn Fn()>,
     /// Opens the Settings window.
     pub on_open_settings: Box<dyn Fn()>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
-    /// The settings, for whether the clipboard history is on.
+    /// The settings, for whether the clipboard history and the screenshots
+    /// are on.
     pub hub: Rc<SettingsHub>,
     /// Starts Copy from screen; `None` leaves the item out.
     pub on_copy_from_screen: Option<Box<dyn Fn()>>,
@@ -283,6 +294,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         on_open_panel,
         on_open_clipboard,
         on_open_pocket,
+        on_open_screenshots,
         on_open_settings,
         pause,
         hub,
@@ -302,6 +314,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         paused: pause.is_paused(),
         keep_awake_on: keep_awake.session().is_some(),
         clip_history: hub.current().clipboard_history,
+        screenshots: hub.current().screenshots,
     };
     let handle = match tray.spawn() {
         Ok(handle) => handle,
@@ -312,7 +325,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     };
 
     // Keep the Undo item, the Pause check, the Keep Awake item and the
-    // clipboard item in step with the app.
+    // clipboard and screenshots items in step with the app.
     {
         let handle = handle.clone();
         exec.on_undo_changed(Box::new(move |kind| {
@@ -339,8 +352,11 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     {
         let handle = handle.clone();
         hub.on_change(Box::new(move |_old, new| {
-            let history = new.clipboard_history;
-            handle.update(|tray| tray.clip_history = history);
+            let (history, screenshots) = (new.clipboard_history, new.screenshots);
+            handle.update(|tray| {
+                tray.clip_history = history;
+                tray.screenshots = screenshots;
+            });
         }));
     }
 
@@ -358,6 +374,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             Action::OpenSettings => on_open_settings(),
             Action::OpenClipboard => on_open_clipboard(),
             Action::OpenPocket => on_open_pocket(),
+            Action::OpenScreenshots => on_open_screenshots(),
             Action::ToggleKeepAwake => {
                 if keep_awake.session().is_some() {
                     keep_awake.stop();

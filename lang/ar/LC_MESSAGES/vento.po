@@ -23,7 +23,7 @@ msgstr "+{n} أخرى"
 msgid ", "
 msgstr "، "
 
-#: crates/vento/ui/controls.slint:790
+#: crates/vento/ui/controls.slint:795
 msgid "1 h"
 msgstr "1 س"
 
@@ -31,11 +31,11 @@ msgstr "1 س"
 msgid "1. Drag this file a little."
 msgstr "1. اسحب هذا الملف قليلاً."
 
-#: crates/vento/ui/controls.slint:790
+#: crates/vento/ui/controls.slint:795
 msgid "15 min"
 msgstr "15 د"
 
-#: crates/vento/ui/controls.slint:790
+#: crates/vento/ui/controls.slint:795
 msgid "2 h"
 msgstr "2 س"
 
@@ -47,15 +47,15 @@ msgstr "2. أثناء السحب، اضغط"
 msgid "3. Let go over any action on the wheel."
 msgstr "3. أفلته فوق أي إجراء في العجلة."
 
-#: crates/vento/ui/controls.slint:790
+#: crates/vento/ui/controls.slint:795
 msgid "30 min"
 msgstr "30 د"
 
-#: crates/vento/ui/controls.slint:790
+#: crates/vento/ui/controls.slint:795
 msgid "4 h"
 msgstr "4 س"
 
-#: crates/vento/ui/controls.slint:790
+#: crates/vento/ui/controls.slint:795
 msgid "8 h"
 msgstr "8 س"
 
@@ -67,7 +67,7 @@ msgstr "؛ "
 msgid "A wheel of quick actions that opens under the file you are dragging."
 msgstr "عجلة من الإجراءات السريعة تُفتح تحت الملف الذي تسحبه."
 
-#: crates/vento/src/settings_window/mod.rs:133
+#: crates/vento/src/settings_window/mod.rs:137
 msgid "About"
 msgstr "حول"
 
@@ -143,7 +143,7 @@ msgstr "عند علامات القطع"
 msgid "Audio"
 msgstr "صوت"
 
-#: crates/vento/src/settings_window/mod.rs:1311
+#: crates/vento/src/settings_window/mod.rs:1421
 msgid "Automatic (system language)"
 msgstr "تلقائي (لغة النظام)"
 
@@ -207,7 +207,11 @@ msgstr "أُلغي"
 msgid "Cannot keep the computer awake"
 msgstr "لا يمكن إبقاء الجهاز مستيقظاً"
 
-#: crates/vento/ui/settings_window.slint:222
+#: crates/vento/ui/settings_pages.slint:1114
+msgid "Card stays for"
+msgstr "مدة بقاء البطاقة"
+
+#: crates/vento/ui/settings_window.slint:244
 msgid "Changed your mind? Click Undo on the notice."
 msgstr "غيّرت رأيك؟ انقر «تراجع» في الإشعار."
 
@@ -227,7 +231,7 @@ msgstr "مسح السجل"
 msgid "Clear…"
 msgstr "مسح…"
 
-#: crates/vento/ui/settings_window.slint:236
+#: crates/vento/ui/settings_window.slint:258
 msgid "Click a copy to put it back on the clipboard, then paste it anywhere."
 msgstr "انقر نسخة لتعيدها إلى الحافظة، ثم ألصقها في أي مكان."
 
@@ -235,11 +239,11 @@ msgstr "انقر نسخة لتعيدها إلى الحافظة، ثم ألصقه
 msgid "Click between pages to add or remove a cut · {pieces}"
 msgstr "انقر بين الصفحات لإضافة علامة قطع أو إزالتها · {pieces}"
 
-#: crates/vento/ui/settings_window.slint:248
+#: crates/vento/ui/settings_window.slint:279
 msgid "Click the Vento icon, then the Keep Awake tile, to start or stop it."
 msgstr "انقر أيقونة Vento، ثم مربع «إبقاء الجهاز مستيقظاً»، لتشغيله أو إيقافه."
 
-#: crates/vento/src/main.rs:480
+#: crates/vento/src/main.rs:504
 msgid "Clipboard"
 msgstr "الحافظة"
 
@@ -323,11 +327,11 @@ msgstr "جارٍ التحويل"
 msgid "Converting {name}…"
 msgstr "جارٍ تحويل {name}…"
 
-#: crates/vento/src/pocket/shots_view.rs:782
+#: crates/vento/src/pocket/shots_view.rs:784
 msgid "Copied"
 msgstr "تم النسخ"
 
-#: crates/vento/src/pocket/shots_view.rs:837
+#: crates/vento/src/pocket/shots_view.rs:839
 msgid "Copied text"
 msgstr "تم نسخ النص"
 
@@ -345,7 +349,7 @@ msgstr[5] "تم نسخ {n} عنصر إلى {dest}"
 msgid "Copy"
 msgstr "نسخ"
 
-#: crates/vento/ui/settings_window.slint:234
+#: crates/vento/ui/settings_window.slint:256
 msgid "Copy as usual: Vento remembers what you copy."
 msgstr "انسخ كالمعتاد: يتذكر Vento ما تنسخه."
 
@@ -361,7 +365,7 @@ msgstr "النسخ من الشاشة يحتاج إذن تسجيل الشاشة"
 msgid "Copy from screen shortcut"
 msgstr "اختصار النسخ من الشاشة"
 
-#: crates/vento/src/settings_window/mod.rs:1296
+#: crates/vento/src/settings_window/mod.rs:1406
 msgid "Copy from screen uses this shortcut"
 msgstr "النسخ من الشاشة يستخدم هذا الاختصار"
 
@@ -459,11 +463,11 @@ msgstr "تعذّر فتح ملف PDF: {reason}"
 msgid "Couldn't open the terminal: {reason}"
 msgstr "تعذّر فتح الطرفية: {reason}"
 
-#: crates/vento/src/pocket/mod.rs:127
+#: crates/vento/src/pocket/mod.rs:128
 msgid "Couldn't open: {reason}"
 msgstr "تعذّر الفتح: {reason}"
 
-#: crates/vento/src/pocket/shots_view.rs:828
+#: crates/vento/src/pocket/shots_view.rs:830
 msgid "Couldn't read the picture"
 msgstr "تعذّرت قراءة الصورة"
 
@@ -471,11 +475,11 @@ msgstr "تعذّرت قراءة الصورة"
 msgid "Couldn't read the screen"
 msgstr "تعذّرت قراءة الشاشة"
 
-#: crates/vento/src/settings_window/mod.rs:1277
+#: crates/vento/src/settings_window/mod.rs:1387
 msgid "Couldn't save settings: {error}"
 msgstr "تعذّر حفظ الإعدادات: {error}"
 
-#: crates/vento/src/pocket/mod.rs:1818
+#: crates/vento/src/pocket/mod.rs:1882
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
@@ -535,11 +539,11 @@ msgstr "تم"
 msgid "Drag a file, press {key}"
 msgstr "اسحب ملفاً واضغط ‎{key}"
 
-#: crates/vento/ui/settings_window.slint:242
+#: crates/vento/ui/settings_window.slint:264
 msgid "Drag a rectangle over the text you want and let go."
 msgstr "ارسم مستطيلاً بالسحب فوق النص الذي تريده ثم أفلت."
 
-#: crates/vento/ui/settings_window.slint:214
+#: crates/vento/ui/settings_window.slint:236
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "اسحب الصف من مقبضه لتغيير مكان الإجراء."
 
@@ -553,7 +557,7 @@ msgstr[3] "اسحب الكل ({n})"
 msgstr[4] "اسحب الكل ({n})"
 msgstr[5] "اسحب الكل ({n})"
 
-#: crates/vento/ui/settings_window.slint:229
+#: crates/vento/ui/settings_window.slint:251
 msgid "Drag items from the island into any folder or app. Removing one never deletes your file."
 msgstr "اسحب العناصر من الجزيرة إلى أي مجلد أو تطبيق. إزالة عنصر لا تحذف ملفك أبداً."
 
@@ -683,11 +687,11 @@ msgstr "الصيغة"
 msgid "GB"
 msgstr "ج.ب"
 
-#: crates/vento/ui/settings_pages.slint:1163
+#: crates/vento/ui/settings_pages.slint:1276
 msgid "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed."
 msgstr "‏GPL-3.0-only. أيقونات العجلة من Tabler Icons 3.49.0 بترخيص MIT."
 
-#: crates/vento/src/settings_window/mod.rs:125
+#: crates/vento/src/settings_window/mod.rs:128
 msgid "General"
 msgstr "عام"
 
@@ -703,7 +707,7 @@ msgstr "اضغط مطوّلاً على «تحويل» لاختيار الصيغ�
 msgid "Hold on Move"
 msgstr "مدة الضغط قبل النقل"
 
-#: crates/vento/ui/settings_window.slint:215
+#: crates/vento/ui/settings_window.slint:237
 msgid "Hold on Move, Copy to or Convert for a moment to open a ring of choices."
 msgstr "اضغط مطوّلاً على «نقل» أو «نسخ إلى» أو «تحويل» لتفتح حلقة من الخيارات."
 
@@ -711,7 +715,7 @@ msgstr "اضغط مطوّلاً على «نقل» أو «نسخ إلى» أو «
 msgid "Honeycomb"
 msgstr "خلية النحل"
 
-#: crates/vento/ui/controls.slint:884
+#: crates/vento/ui/controls.slint:889
 msgid "Hour"
 msgstr "الساعة"
 
@@ -767,7 +771,7 @@ msgstr "عناصره حسب النوع أو كقائمة، والشريط تحت
 msgid "KB"
 msgstr "ك.ب"
 
-#: crates/vento/src/settings_window/mod.rs:132
+#: crates/vento/src/settings_window/mod.rs:136
 msgid "Keep Awake"
 msgstr "إبقاء الجهاز مستيقظا"
 
@@ -819,27 +823,27 @@ msgstr[3] "تم تخطي {n} عناصر لم تعد موجودة"
 msgstr[4] "تم تخطي {n} عنصراً لم تعد موجودة"
 msgstr[5] "تم تخطي {n} عنصر لم تعد موجودة"
 
-#: crates/vento/ui/controls.slint:583
+#: crates/vento/ui/controls.slint:588
 msgid "Less {}"
 msgstr "أقل: {}"
 
-#: crates/vento/ui/settings_window.slint:220
+#: crates/vento/ui/settings_window.slint:242
 msgid "Let go on Move in the wheel and pick a folder."
 msgstr "أفلت على «نقل» في العجلة واختر مجلداً."
 
-#: crates/vento/ui/settings_window.slint:227
+#: crates/vento/ui/settings_window.slint:249
 msgid "Let go on Pocket in the wheel: the file waits in the island at the top of the screen."
 msgstr "أفلت على «الجيب» في العجلة: ينتظرك الملف في الجزيرة أعلى الشاشة."
 
-#: crates/vento/ui/settings_window.slint:208
+#: crates/vento/ui/settings_window.slint:230
 msgid "Let go on an action in the wheel, or anywhere else to drop the file as usual."
 msgstr "أفلت على إجراء في العجلة، أو في أي مكان آخر لإسقاط الملف كالمعتاد."
 
-#: crates/vento/ui/settings_pages.slint:1070
+#: crates/vento/ui/settings_pages.slint:1183
 msgid "Let the screen turn off"
 msgstr "السماح بإطفاء الشاشة"
 
-#: crates/vento/ui/settings_pages.slint:1148
+#: crates/vento/ui/settings_pages.slint:1261
 msgid "Licenses"
 msgstr "التراخيص"
 
@@ -879,7 +883,7 @@ msgstr "البريد"
 msgid "Messages"
 msgstr "الرسائل"
 
-#: crates/vento/ui/controls.slint:900
+#: crates/vento/ui/controls.slint:905
 msgid "Minute"
 msgstr "الدقيقة"
 
@@ -899,7 +903,7 @@ msgstr "صفحات أكثر"
 msgid "More ways to share"
 msgstr "طرق مشاركة أخرى"
 
-#: crates/vento/ui/controls.slint:603
+#: crates/vento/ui/controls.slint:608
 msgid "More {}"
 msgstr "أكثر: {}"
 
@@ -919,7 +923,7 @@ msgstr "نقل إلى"
 msgid "Move to Trash"
 msgstr "نقل إلى سلة المهملات"
 
-#: crates/vento/src/pocket/shots_view.rs:1077
+#: crates/vento/src/pocket/shots_view.rs:1082
 msgid "Moved to Trash"
 msgstr "نُقلت إلى سلة المهملات"
 
@@ -987,11 +991,11 @@ msgstr "لا توجد مجلدات مثبّتة"
 msgid "No recent folders"
 msgstr "لا توجد مجلدات حديثة"
 
-#: crates/vento/src/pocket/shots_view.rs:833
+#: crates/vento/src/pocket/shots_view.rs:835
 msgid "No text found"
 msgstr "لم يُعثر على نص"
 
-#: crates/vento/ui/controls.slint:316
+#: crates/vento/ui/controls.slint:321
 msgid "None found"
 msgstr "لا يوجد شيء"
 
@@ -1031,13 +1035,17 @@ msgstr "لا يوجد شيء لنقله"
 msgid "Off"
 msgstr "متوقف"
 
-#: crates/vento/ui/settings_pages.slint:1071
+#: crates/vento/ui/settings_pages.slint:1184
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr "يبقى الجهاز وحده مستيقظاً؛ تُعتّم الشاشة وتُقفل كالمعتاد"
 
 #: crates/vento/src/pocket/menu.rs:132
 msgid "Open"
 msgstr "فتح"
+
+#: crates/vento/ui/settings_pages.slint:1158
+msgid "Open Privacy & Security"
+msgstr "فتح الخصوصية والأمان"
 
 #: crates/vento/ui/screen_access.slint:146
 msgid "Open Settings"
@@ -1047,7 +1055,7 @@ msgstr "فتح الإعدادات"
 msgid "Open With"
 msgstr "فتح باستخدام"
 
-#: crates/vento/src/tray.rs:293
+#: crates/vento/src/tray.rs:298
 msgid "Open clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1055,7 +1063,11 @@ msgstr "فتح سجل الحافظة"
 msgid "Open in browser"
 msgstr "فتح في المتصفح"
 
-#: crates/vento/src/tray.rs:310
+#: crates/vento/src/tray.rs:304
+msgid "Open screenshots"
+msgstr "فتح لقطات الشاشة"
+
+#: crates/vento/src/tray.rs:320
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
@@ -1063,7 +1075,11 @@ msgstr "فتح ملف الإعدادات"
 msgid "Open the Pocket"
 msgstr "فتح الجيب"
 
-#: crates/vento/ui/settings_pages.slint:1140
+#: crates/vento/ui/settings_window.slint:274
+msgid "Open the Screenshots tab in the island to see your recent screenshots."
+msgstr "افتح تبويب لقطات الشاشة في الجزيرة لترى أحدث لقطاتك."
+
+#: crates/vento/ui/settings_pages.slint:1253
 msgid "Open the Welcome setup"
 msgstr "فتح إعداد الترحيب"
 
@@ -1089,11 +1105,11 @@ msgstr "يفتح سجل الحافظة"
 msgid "Opens the island on the Pocket"
 msgstr "يفتح الجيب في الجزيرة"
 
-#: crates/vento/ui/settings_window.slint:221
+#: crates/vento/ui/settings_window.slint:243
 msgid "Or hold on Move for a moment: a ring of your pinned and recent folders opens. Let go on one."
 msgstr "أو اضغط مطوّلاً على «نقل»: تفتح حلقة بمجلداتك المثبّتة والأخيرة. أفلت على أحدها."
 
-#: crates/vento/ui/settings_window.slint:207
+#: crates/vento/ui/settings_window.slint:229
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr "أو هزّ المؤشر بسرعة ذهاباً وإياباً أثناء السحب، إن كان «الهز للفتح» مفعّلاً."
 
@@ -1123,7 +1139,7 @@ msgstr "كلمة السر"
 msgid "Pause"
 msgstr "إيقاف مؤقت"
 
-#: crates/vento/src/tray.rs:308
+#: crates/vento/src/tray.rs:318
 msgid "Pause Vento"
 msgstr "إيقاف Vento مؤقتاً"
 
@@ -1131,7 +1147,7 @@ msgstr "إيقاف Vento مؤقتاً"
 msgid "Petals"
 msgstr "البتلات"
 
-#: crates/vento/ui/settings_window.slint:249
+#: crates/vento/ui/settings_window.slint:280
 msgid "Pick how long under the tile, or leave it on until you stop it."
 msgstr "اختر المدة تحت المربع، أو اتركه يعمل حتى توقفه."
 
@@ -1179,7 +1195,7 @@ msgstr "أُفرغ الجيب"
 msgid "Pocket shortcut"
 msgstr "اختصار الجيب"
 
-#: crates/vento/ui/controls.slint:630
+#: crates/vento/ui/controls.slint:635
 msgid "Press a shortcut…"
 msgstr "اضغط اختصاراً…"
 
@@ -1187,15 +1203,15 @@ msgstr "اضغط اختصاراً…"
 msgid "Press it while dragging a file to open the wheel"
 msgstr "اضغطه أثناء سحب ملف لفتح العجلة"
 
-#: crates/vento/ui/settings_window.slint:235
+#: crates/vento/ui/settings_window.slint:257
 msgid "Press {} to open the history."
 msgstr "اضغط ‎{} لفتح السجل."
 
-#: crates/vento/ui/settings_window.slint:228
+#: crates/vento/ui/settings_window.slint:250
 msgid "Press {} to open the island at any time, and drop more files on it."
 msgstr "اضغط ‎{} لفتح الجزيرة في أي وقت، وأسقط عليها ملفات أخرى."
 
-#: crates/vento/ui/settings_window.slint:241
+#: crates/vento/ui/settings_window.slint:263
 msgid "Press {}: the screen dims."
 msgstr "اضغط ‎{}: تُعتّم الشاشة."
 
@@ -1215,7 +1231,7 @@ msgstr "الجودة"
 msgid "Quit"
 msgstr "إنهاء"
 
-#: crates/vento/src/tray.rs:311
+#: crates/vento/src/tray.rs:321
 msgid "Quit Vento"
 msgstr "إنهاء Vento"
 
@@ -1345,7 +1361,7 @@ msgstr "شاشة"
 msgid "Screenshot saved"
 msgstr "تم حفظ لقطة الشاشة"
 
-#: crates/vento/ui/pocket.slint:2372
+#: crates/vento/src/settings_window/mod.rs:135
 msgid "Screenshots"
 msgstr "لقطات الشاشة"
 
@@ -1365,15 +1381,15 @@ msgstr "أرسل بالبريد"
 msgid "Send with Messages"
 msgstr "أرسل بالرسائل"
 
-#: crates/vento/ui/settings_pages.slint:1136
+#: crates/vento/ui/settings_pages.slint:1249
 msgid "Set up Vento again"
 msgstr "إعداد Vento من جديد"
 
-#: crates/vento/ui/settings_pages.slint:1124
+#: crates/vento/ui/settings_pages.slint:1237
 msgid "Settings file"
 msgstr "ملف الإعدادات"
 
-#: crates/vento/src/tray.rs:309
+#: crates/vento/src/tray.rs:319
 msgid "Settings…"
 msgstr "الإعدادات…"
 
@@ -1409,6 +1425,10 @@ msgstr "بعلامات اقتباس للطرفية"
 msgid "Shortcut"
 msgstr "الاختصار"
 
+#: crates/vento/ui/settings_pages.slint:1100
+msgid "Show a card when a screenshot is saved"
+msgstr "إظهار بطاقة عند حفظ لقطة شاشة"
+
 #: crates/vento/ui/pocket.slint:1031
 msgid "Show all {}"
 msgstr "إظهار كل {}"
@@ -1428,6 +1448,10 @@ msgstr "إظهار في الملفات"
 #: crates/vento/src/info.rs:45
 msgid "Show in Finder"
 msgstr "إظهار في Finder"
+
+#: crates/vento/ui/settings_pages.slint:1088
+msgid "Show screenshots in the island"
+msgstr "إظهار لقطات الشاشة في الجزيرة"
 
 #: crates/vento/src/pocket/clip.rs:594
 msgid "Site"
@@ -1471,7 +1495,7 @@ msgstr "تقسيم {name}"
 msgid "Split…"
 msgstr "تقسيم…"
 
-#: crates/vento/ui/controls.slint:912
+#: crates/vento/ui/controls.slint:917
 msgid "Start"
 msgstr "بدء"
 
@@ -1479,15 +1503,15 @@ msgstr "بدء"
 msgid "Start Keep Awake"
 msgstr "بدء إبقاء الجهاز مستيقظاً"
 
-#: crates/vento/ui/settings_window.slint:206
+#: crates/vento/ui/settings_window.slint:228
 msgid "Start dragging a file, then press {} while still dragging."
 msgstr "ابدأ بسحب ملف، ثم اضغط ‎{} وأنت ما زلت تسحب."
 
-#: crates/vento/ui/controls.slint:873
+#: crates/vento/ui/controls.slint:878
 msgid "Stay awake until"
 msgstr "ابقَ مستيقظاً حتى"
 
-#: crates/vento/ui/controls.slint:843
+#: crates/vento/ui/controls.slint:848
 msgid "Stop"
 msgstr "إيقاف"
 
@@ -1503,7 +1527,7 @@ msgstr "يُخزَّن على هذا الجهاز دون تشفير. تُتجا�
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "يُخزَّن على هذا الحاسوب دون تشفير. تُتجاهل النسخ التي تعلّمها برامج إدارة كلمات السر على أنها خاصة."
 
-#: crates/vento/ui/settings_window.slint:213
+#: crates/vento/ui/settings_window.slint:235
 msgid "Switch an action on to show it on the wheel, or off to hide it."
 msgstr "فعّل الإجراء ليظهر في العجلة، أو أوقفه لإخفائه."
 
@@ -1515,6 +1539,14 @@ msgstr "النظام"
 msgid "TB"
 msgstr "ت.ب"
 
+#: crates/vento/ui/settings_window.slint:272
+msgid "Take a screenshot as usual, with {}."
+msgstr "التقط لقطة شاشة كالمعتاد باستخدام ‎{}."
+
+#: crates/vento/ui/settings_window.slint:273
+msgid "Take a screenshot with your system's screenshot key."
+msgstr "التقط لقطة شاشة بمفتاح لقطة الشاشة في نظامك."
+
 #: crates/vento-core/src/actions.rs:93
 msgid "Terminal"
 msgstr "الطرفية"
@@ -1523,11 +1555,11 @@ msgstr "الطرفية"
 msgid "Text"
 msgstr "نصوص"
 
-#: crates/vento/src/settings_window/mod.rs:1295
+#: crates/vento/src/settings_window/mod.rs:1405
 msgid "The Clipboard uses this shortcut"
 msgstr "الحافظة تستخدم هذا الاختصار"
 
-#: crates/vento/src/settings_window/mod.rs:1294
+#: crates/vento/src/settings_window/mod.rs:1404
 msgid "The Pocket uses this shortcut"
 msgstr "الجيب يستخدم هذا الاختصار"
 
@@ -1535,7 +1567,7 @@ msgstr "الجيب يستخدم هذا الاختصار"
 msgid "The original stays as it is."
 msgstr "يبقى الملف الأصلي كما هو."
 
-#: crates/vento/ui/settings_window.slint:243
+#: crates/vento/ui/settings_window.slint:265
 msgid "The text is on your clipboard, ready to paste. Esc cancels."
 msgstr "النص الآن في الحافظة، جاهز للصق. Esc يلغي."
 
@@ -1543,11 +1575,11 @@ msgstr "النص الآن في الحافظة، جاهز للصق. Esc يلغي.
 msgid "Theme"
 msgstr "السمة"
 
-#: crates/vento/src/settings_window/mod.rs:1293
+#: crates/vento/src/settings_window/mod.rs:1403
 msgid "This shortcut can't be used"
 msgstr "لا يمكن استخدام هذا الاختصار"
 
-#: crates/vento/src/pocket/mod.rs:726
+#: crates/vento/src/pocket/mod.rs:758
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
@@ -1578,6 +1610,10 @@ msgstr "جرّبها"
 #: crates/vento/src/welcome_window/practice.rs:141
 msgid "Try me.txt"
 msgstr "جرّبني.txt"
+
+#: crates/vento/ui/settings_window.slint:270
+msgid "Turn on Show screenshots in the island."
+msgstr "فعّل إظهار لقطات الشاشة في الجزيرة."
 
 #: crates/vento/src/pdf/window/edit.rs:134
 msgid "Undo"
@@ -1615,11 +1651,11 @@ msgstr "إلغاء التثبيت"
 msgid "Unpin {}"
 msgstr "إلغاء تثبيت {}"
 
-#: crates/vento/ui/controls.slint:819
+#: crates/vento/ui/controls.slint:824
 msgid "Until stopped"
 msgstr "حتى الإيقاف"
 
-#: crates/vento/ui/controls.slint:827
+#: crates/vento/ui/controls.slint:832
 msgid "Until…"
 msgstr "حتى…"
 
@@ -1627,7 +1663,7 @@ msgstr "حتى…"
 msgid "Up to 7 folders"
 msgstr "7 مجلدات كحد أقصى"
 
-#: crates/vento/src/settings_window/mod.rs:1291
+#: crates/vento/src/settings_window/mod.rs:1401
 msgid "Use a modifier with a letter or digit"
 msgstr "استخدم مفتاح تعديل مع حرف أو رقم"
 
@@ -1646,6 +1682,10 @@ msgstr "كلمة سر الأرشيف في Vento"
 #: crates/vento/ui/archive.slint:11
 msgid "Vento archive progress"
 msgstr "تقدّم الأرشيف في Vento"
+
+#: crates/vento/ui/settings_pages.slint:1150
+msgid "Vento can't read this folder."
+msgstr "لا يستطيع Vento قراءة هذا المجلد."
 
 #: crates/vento/ui/info.slint:98
 msgid "Vento info"
@@ -1679,7 +1719,7 @@ msgstr "يحتاج Vento إلى رؤية سطح المكتب مجددًا بعد
 msgid "Vento was here."
 msgstr "مرّ Vento من هنا."
 
-#: crates/vento/ui/settings_pages.slint:1115
+#: crates/vento/ui/settings_pages.slint:1228
 msgid "Version {}"
 msgstr "الإصدار {}"
 
@@ -1687,11 +1727,11 @@ msgstr "الإصدار {}"
 msgid "Video"
 msgstr "فيديو"
 
-#: crates/vento/ui/settings_pages.slint:1151
+#: crates/vento/ui/settings_pages.slint:1264
 msgid "View"
 msgstr "عرض"
 
-#: crates/vento/ui/settings_pages.slint:1152
+#: crates/vento/ui/settings_pages.slint:1265
 msgid "View licenses"
 msgstr "عرض التراخيص"
 
@@ -1703,7 +1743,7 @@ msgstr "مرحباً بك في Vento"
 msgid "What do you do most?"
 msgstr "ماذا تفعل أكثر؟"
 
-#: crates/vento/src/settings_window/mod.rs:126
+#: crates/vento/src/settings_window/mod.rs:129
 msgid "Wheel"
 msgstr "العجلة"
 
@@ -1719,7 +1759,7 @@ msgstr "المكان"
 msgid "Where the Terminal action opens"
 msgstr "ما يفتحه إجراء «الطرفية»"
 
-#: crates/vento/ui/settings_window.slint:250
+#: crates/vento/ui/settings_window.slint:281
 msgid "While it runs, a small cup shows beside the Vento icon."
 msgstr "أثناء عمله، يظهر كوب صغير بجانب أيقونة Vento."
 
@@ -1763,11 +1803,11 @@ msgstr "يتبع جهاز Mac إعدادات الطاقة المعتادة"
 msgid "Your computer follows its usual energy settings"
 msgstr "يتبع جهازك إعدادات الطاقة المعتادة"
 
-#: crates/vento/src/settings_window/mod.rs:1269
+#: crates/vento/src/settings_window/mod.rs:1379
 msgid "Your settings file can't be read ({error}); changing a setting here will replace it"
 msgstr "تعذّرت قراءة ملف الإعدادات ({error})؛ تغيير أي إعداد هنا سيستبدله"
 
-#: crates/vento/src/settings_window/mod.rs:1253
+#: crates/vento/src/settings_window/mod.rs:1363
 msgid "Your settings file has an error on line {line}: {message}; changing a setting here will replace it"
 msgstr "في ملف الإعدادات خطأ في السطر {line}: {message}؛ تغيير أي إعداد هنا سيستبدله"
 
@@ -1811,7 +1851,7 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start"
 msgstr "تعذّر البدء"
 
-#: crates/vento/src/pocket/mod.rs:1574
+#: crates/vento/src/pocket/mod.rs:1609
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
@@ -1887,7 +1927,11 @@ msgstr[5] "تم إبقاء {n} عنصر: تغيّرت بعد إنشائها"
 msgid "locked"
 msgstr "محمي بكلمة مرور"
 
-#: crates/vento/src/settings_window/mod.rs:1292
+#: crates/vento/ui/settings_pages.slint:1170
+msgid "macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options."
+msgstr "يحفظ macOS لقطة الشاشة بعد نحو 5 ثوانٍ من التقاطها ما دامت الصورة المصغرة العائمة مفعّلة. للحصول على البطاقة فوراً، أوقف «إظهار الصورة المصغرة العائمة» في تطبيق لقطة الشاشة (‎⇧⌘5) ← خيارات."
+
+#: crates/vento/src/settings_window/mod.rs:1402
 msgid "macOS uses this shortcut"
 msgstr "يستخدم macOS هذا الاختصار"
 
@@ -2023,7 +2067,7 @@ msgstr "{h} س"
 msgid "{h} h {m} min"
 msgstr "{h} س {m} د"
 
-#: crates/vento/src/settings_window/mod.rs:1284
+#: crates/vento/src/settings_window/mod.rs:1394
 msgid "{ms} ms"
 msgstr "{ms} م.ث"
 
@@ -2049,7 +2093,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:580
+#: crates/vento/src/main.rs:606
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 
@@ -2190,6 +2234,10 @@ msgstr[2] "صفحتان إلى صورتين"
 msgstr[3] "{n} صفحات إلى صور"
 msgstr[4] "{n} صفحة إلى صور"
 msgstr[5] "{n} صفحة إلى صور"
+
+#: crates/vento/src/settings_window/mod.rs:1513
+msgid "{n} s"
+msgstr "‏{n} ث"
 
 #: crates/vento/src/pdf/logic.rs:120
 msgid "{n} selected · page {pages}"
@@ -2345,7 +2393,7 @@ msgctxt "month"
 msgid "Sep"
 msgstr "سبتمبر"
 
-#: crates/vento/src/settings_window/mod.rs:128
+#: crates/vento/src/settings_window/mod.rs:131
 msgctxt "page"
 msgid "Move"
 msgstr "النقل"

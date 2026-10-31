@@ -141,6 +141,7 @@ struct Texted {
     copy_from_screen: Option<MenuItem>,
     clipboard: MenuItem,
     pocket: MenuItem,
+    screenshots: MenuItem,
     keep_awake: MenuItem,
     undo: MenuItem,
     pause: CheckMenuItem,
@@ -257,11 +258,14 @@ pub struct TrayDeps {
     pub on_open_clipboard: Box<dyn Fn()>,
     /// Opens the island on the Pocket.
     pub on_open_pocket: Box<dyn Fn()>,
+    /// Opens the island on the screenshots.
+    pub on_open_screenshots: Box<dyn Fn()>,
     /// Opens the Settings window.
     pub on_open_settings: Box<dyn Fn()>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
-    /// The settings, for whether the clipboard history is on.
+    /// The settings, for whether the clipboard history and the screenshots
+    /// are on.
     pub hub: Rc<SettingsHub>,
     /// Starts Copy from screen; `None` leaves the item out (macOS 13).
     pub on_copy_from_screen: Option<Box<dyn Fn()>>,
@@ -281,6 +285,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         on_open_panel,
         on_open_clipboard,
         on_open_pocket,
+        on_open_screenshots,
         on_open_settings,
         pause,
         hub,
@@ -295,6 +300,11 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         None,
     );
     let pocket = MenuItem::new(tr("Open the Pocket"), !paused, None);
+    let screenshots = MenuItem::new(
+        tr("Open screenshots"),
+        !paused && hub.current().screenshots,
+        None,
+    );
     let keep_awake_item = MenuItem::new(
         keep_awake_menu_text(keep_awake.session().is_some()),
         true,
@@ -317,6 +327,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     menu.append_items(&[
         &clipboard,
         &pocket,
+        &screenshots,
         &PredefinedMenuItem::separator(),
         &keep_awake_item,
         &undo,
@@ -354,21 +365,24 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     }
 
     // Pausing greys out the items that do nothing meanwhile, and the
-    // clipboard item is greyed too while the history is off. Both the
-    // Pause and the setting move, so each listener refreshes all three.
+    // clipboard item is greyed too while the history is off, the
+    // screenshots one while they are. Both the Pause and the settings move,
+    // so each listener refreshes all of them.
     let sync_gated = {
         let items = (
             copy_from_screen.as_ref().map(|(item, _)| item.clone()),
             clipboard.clone(),
             pocket.clone(),
+            screenshots.clone(),
         );
-        Rc::new(move |paused: bool, history: bool| {
-            let (copy, clipboard, pocket) = &items;
+        Rc::new(move |paused: bool, history: bool, shots: bool| {
+            let (copy, clipboard, pocket, screenshots) = &items;
             if let Some(copy) = copy {
                 copy.set_enabled(!paused);
             }
             clipboard.set_enabled(!paused && history);
             pocket.set_enabled(!paused);
+            screenshots.set_enabled(!paused && shots);
         })
     };
 
@@ -378,14 +392,15 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         let (sync_gated, hub) = (sync_gated.clone(), hub.clone());
         pause.on_change(Box::new(move |paused| {
             pause_item.set_checked(paused);
-            sync_gated(paused, hub.current().clipboard_history);
+            let current = hub.current();
+            sync_gated(paused, current.clipboard_history, current.screenshots);
         }));
     }
     {
         let pause = Rc::downgrade(&pause);
         hub.on_change(Box::new(move |_old, new| {
             if let Some(pause) = pause.upgrade() {
-                sync_gated(pause.is_paused(), new.clipboard_history);
+                sync_gated(pause.is_paused(), new.clipboard_history, new.screenshots);
             }
         }));
     }
@@ -406,6 +421,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         copy_from_screen: copy_from_screen.as_ref().map(|(item, _)| item.clone()),
         clipboard: clipboard.clone(),
         pocket: pocket.clone(),
+        screenshots: screenshots.clone(),
         keep_awake: keep_awake_item.clone(),
         undo: undo.clone(),
         pause: pause_item.clone(),
@@ -429,6 +445,8 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 on_open_clipboard();
             } else if id == pocket.id() {
                 on_open_pocket();
+            } else if id == screenshots.id() {
+                on_open_screenshots();
             } else if id == keep_awake_item.id() {
                 if menu_keep.session().is_some() {
                     menu_keep.stop();
@@ -537,6 +555,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             }
             texted.clipboard.set_text(tr("Open clipboard history"));
             texted.pocket.set_text(tr("Open the Pocket"));
+            texted.screenshots.set_text(tr("Open screenshots"));
             if let Some(keep) = keep.upgrade() {
                 texted
                     .keep_awake
