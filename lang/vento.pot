@@ -25,12 +25,24 @@ msgstr ""
 msgid "1 h"
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:776
+msgid "1. Drag this file a little."
+msgstr ""
+
 #: crates/vento/ui/controls.slint:790
 msgid "15 min"
 msgstr ""
 
 #: crates/vento/ui/controls.slint:790
 msgid "2 h"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:789
+msgid "2. While dragging, press"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:810
+msgid "3. Let go over any action on the wheel."
 msgstr ""
 
 #: crates/vento/ui/controls.slint:790
@@ -49,6 +61,10 @@ msgstr ""
 msgid "; "
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:694
+msgid "A wheel of quick actions that opens under the file you are dragging."
+msgstr ""
+
 #: crates/vento/src/settings_window/mod.rs:130
 msgid "About"
 msgstr ""
@@ -63,6 +79,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:641
 msgid "Add folder"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:1046
+msgid "Add folder…"
 msgstr ""
 
 #: crates/vento-core/src/share.rs:66
@@ -149,6 +169,10 @@ msgstr ""
 msgid "Awake until {time} tomorrow"
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:1176
+msgid "Back"
+msgstr ""
+
 #: crates/vento/ui/pocket.slint:1400
 msgid "Back to kinds"
 msgstr ""
@@ -183,6 +207,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_window.slint:221
 msgid "Changed your mind? Click Undo on the notice."
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:734
+msgid "Choose a look"
 msgstr ""
 
 #: crates/vento/ui/pocket.slint:321
@@ -573,6 +601,10 @@ msgstr ""
 msgid "Folders"
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:1019
+msgid "Folders you use often"
+msgstr ""
+
 #: crates/vento/ui/pdf.slint:1648
 msgid "Format"
 msgstr ""
@@ -671,6 +703,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:788
 msgid "Keep a copy"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:1075
+msgid "Keeps the last 50 things you copy. Open it with {}."
 msgstr ""
 
 #: crates/vento/src/exec/archive.rs:155
@@ -832,6 +868,10 @@ msgid "Moving {n} item…"
 msgid_plural "Moving {n} items…"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/vento/ui/welcome.slint:1186
+msgid "Next"
+msgstr ""
 
 #: crates/vento/src/exec/pdf.rs:74
 msgid "No PDFs to open"
@@ -999,6 +1039,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:872
 msgid "Pinned copies stay"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:1022
+msgid "Pinned folders sit on the ring of Move and Copy to."
 msgstr ""
 
 #: crates/vento/src/pdf/window/write.rs:215
@@ -1231,6 +1275,10 @@ msgstr ""
 msgid "Size"
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:1166
+msgid "Skip setup"
+msgstr ""
+
 #: crates/vento/ui/pdf.slint:1655
 msgid "Smaller file"
 msgstr ""
@@ -1279,6 +1327,10 @@ msgstr ""
 
 #: crates/vento/src/awake.rs:30
 msgid "Stop Keep Awake"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:1087
+msgid "Stored on this Mac without encryption. Copies that password managers mark as private are skipped."
 msgstr ""
 
 #: crates/vento/ui/settings_window.slint:212
@@ -1339,6 +1391,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:976
 msgid "Trigger"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:769
+msgid "Try it"
 msgstr ""
 
 #: crates/vento/src/pdf/window/edit.rs:134
@@ -1421,8 +1477,16 @@ msgstr ""
 msgid "Vento is paused"
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:842
+msgid "Vento is paused, so the wheel won't open."
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:789
 msgid "Vento keeps its own copy of each file, not only a link to it"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:1103
+msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu."
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1113
@@ -1439,6 +1503,14 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1138
 msgid "View licenses"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:546
+msgid "Welcome to Vento"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:965
+msgid "What do you do most?"
 msgstr ""
 
 #: crates/vento/src/settings_window/mod.rs:123
@@ -1473,8 +1545,20 @@ msgstr ""
 msgid "Wrong password"
 msgstr ""
 
+#: crates/vento/ui/welcome.slint:1008
+msgid "You can pick each action in Settings → Wheel."
+msgstr ""
+
 #: crates/vento/ui/pdf.slint:1589
 msgid "You pick where to cut"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:1100
+msgid "You're all set"
+msgstr ""
+
+#: crates/vento/ui/welcome.slint:938
+msgid "You've got it. This works on any file, in Finder or anywhere you drag files from."
 msgstr ""
 
 #: crates/vento/src/awake.rs:20
