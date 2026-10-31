@@ -15,10 +15,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use log::{debug, warn};
+use log::{debug, info, warn};
 use vento_core::i18n::tr;
 use vento_core::update::release::{self, AssetPlatform, ReleaseError, Update};
 use vento_core::update::state::{self, FailedUpdate, UpdateEvent, UpdateFile, UpdateState};
@@ -77,6 +77,37 @@ fn failed_state(failed: &FailedUpdate) -> UpdateState {
     }
 }
 
+/// What Try again does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Retry {
+    /// Download the failed update again.
+    Download,
+    /// Check again: the failed update is not known.
+    Check,
+    /// Nothing failed.
+    Nothing,
+}
+
+/// What Try again does from `state`.
+fn retry_for(state: &UpdateState) -> Retry {
+    match state {
+        UpdateState::Failed {
+            update: Some(_), ..
+        } => Retry::Download,
+        UpdateState::Failed { update: None, .. } => Retry::Check,
+        _ => Retry::Nothing,
+    }
+}
+
+/// The old copy an update to `running` left beside `bundle`, when the
+/// marker in `data_dir` says this version started after that update and the
+/// old copy is still there. A start with `--after-update` removes it a
+/// minute in; a copy that quit or was killed sooner leaves it behind.
+pub fn left_old_copy(data_dir: &Path, bundle: &Path, running: Version) -> Option<PathBuf> {
+    let old = swap::old_path(bundle);
+    (watch::read_marker(data_dir) == Some(running) && old.exists()).then_some(old)
+}
+
 /// Where the downloads of every version go: removed at start.
 fn updates_root(data_dir: &Path) -> PathBuf {
     data_dir.join("updates")
@@ -108,16 +139,20 @@ fn watcher_program(old: &Path) -> PathBuf {
 }
 
 /// The time now in Unix seconds.
-fn now() -> i64 {
+pub fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
-/// The version of this copy.
-fn running_version() -> Option<Version> {
-    Version::parse(env!("CARGO_PKG_VERSION"))
+/// The build releases carry for this Mac: Apple silicon only, so an Intel
+/// Mac is offered no update.
+fn mac_platform() -> Option<AssetPlatform> {
+    cfg!(target_arch = "aarch64").then_some(AssetPlatform::MacArm64)
 }
+
+/// Logs once per run why an Intel Mac looks for no update.
+static NO_BUILD_LOGGED: Once = Once::new();
 
 /// Why a check, a download or a restart failed.
 #[derive(Debug)]
@@ -226,8 +261,15 @@ fn replaceable_bundle() -> Result<PathBuf, SwapError> {
 }
 
 /// Asks GitHub for the latest release and picks the update for this copy.
-/// A latest release that is not a final one is no update.
+/// A latest release that is not a final one is no update, and a Mac with no
+/// build is never offered one (nothing is asked).
 fn check(url: &str, running: Option<Version>) -> Result<Option<Update>, Failure> {
+    let Some(platform) = mac_platform() else {
+        NO_BUILD_LOGGED.call_once(|| {
+            info!("releases are built for Apple silicon only: no update is looked for");
+        });
+        return Ok(None);
+    };
     let Some(running) = running else {
         warn!(
             "cannot read this copy's version {:?}: no update is looked for",
@@ -237,7 +279,7 @@ fn check(url: &str, running: Option<Version>) -> Result<Option<Update>, Failure>
     };
     let body = net::fetch_latest(url).map_err(Failure::Net)?;
     match release::parse_latest(&body) {
-        Ok(latest) => Ok(latest.update_for(running, AssetPlatform::MacArm64)),
+        Ok(latest) => Ok(latest.update_for(running, platform)),
         Err(ReleaseError::NotARelease) => Ok(None),
         Err(e @ ReleaseError::Json(_)) => {
             warn!("cannot read the latest release: {e}");
@@ -360,6 +402,9 @@ pub struct UpdateController {
     data_dir: PathBuf,
     quit_for_update: QuitForUpdate,
     had_screen_access: Box<dyn Fn() -> bool>,
+    /// Whether a Move, Copy, Extract, Convert or other job is running, which
+    /// a quit would cancel.
+    jobs_running: Box<dyn Fn() -> bool>,
     state: RefCell<UpdateState>,
     listeners: RefCell<Vec<Listener>>,
     /// The download whose reports count; any other job's are dropped.
@@ -377,18 +422,22 @@ pub struct UpdateController {
 
 impl UpdateController {
     /// A controller with nothing checked yet; [`start`](Self::start) reads
-    /// `update.json` and arms the daily check. Call on the main thread.
+    /// `update.json` and arms the daily check. `jobs_running` says whether a
+    /// job is running: the restart then waits for the user. Call on the main
+    /// thread.
     pub fn new(
         hub: Rc<SettingsHub>,
         data_dir: PathBuf,
         quit_for_update: QuitForUpdate,
         had_screen_access: Box<dyn Fn() -> bool>,
+        jobs_running: Box<dyn Fn() -> bool>,
     ) -> Rc<Self> {
         let controller = Rc::new_cyclic(|this| UpdateController {
             hub,
             data_dir,
             quit_for_update,
             had_screen_access,
+            jobs_running,
             state: RefCell::new(UpdateState::UpToDate { checked_at: None }),
             listeners: RefCell::new(Vec::new()),
             job: Cell::new(0),
@@ -448,7 +497,9 @@ impl UpdateController {
     /// failed or not, a day ago), and nothing else runs.
     fn daily_tick(&self) {
         let last = UpdateFile::load(&UpdateFile::path(&self.data_dir)).last_check;
-        if should_check(self.hub.current().check_for_updates, last, now()) && !self.state().busy() {
+        if should_check(self.hub.current().check_for_updates, last, unix_now())
+            && !self.state().busy()
+        {
             self.begin_check();
         }
     }
@@ -463,7 +514,7 @@ impl UpdateController {
         let url = net::api_url();
         let spawned = std::thread::Builder::new()
             .name("vento-update-check".into())
-            .spawn(move || report(Report::Checked(check(&url, running_version()))));
+            .spawn(move || report(Report::Checked(check(&url, crate::running_version()))));
         if let Err(e) = spawned {
             warn!("cannot start the update check: {e}");
             let failure = Failure::Net(NetError::Offline(e.to_string()));
@@ -471,11 +522,11 @@ impl UpdateController {
         }
     }
 
-    /// Remembers in `update.json` that a check ended at `at`.
-    fn save_last_check(&self, at: i64) {
+    /// Remembers in `update.json` when a check ended (`None`: forgets it).
+    fn save_last_check(&self, at: Option<i64>) {
         let path = UpdateFile::path(&self.data_dir);
         let mut file = UpdateFile::load(&path);
-        file.last_check = Some(at);
+        file.last_check = at;
         if let Err(e) = file.save(&path) {
             warn!("cannot save the last check: {e}");
         }
@@ -484,16 +535,20 @@ impl UpdateController {
     /// A worker's result, on the main thread.
     fn on_report(&self, report: Report) {
         match report {
+            // An update found is not kept across a restart, so that check
+            // is not counted: the time is forgotten, the first check after
+            // the next start is due and finds the update again, and About
+            // claims no check meanwhile.
             Report::Checked(Ok(found)) => {
-                let at = now();
-                self.save_last_check(at);
+                let at = unix_now();
+                self.save_last_check(found.is_none().then_some(at));
                 self.apply(UpdateEvent::Checked { found, at });
             }
             // A failed check counts too: the next automatic try is a day
             // later (Check now works any time).
             Report::Checked(Err(failure)) => {
                 warn!("update check failed: {failure}");
-                self.save_last_check(now());
+                self.save_last_check(Some(unix_now()));
                 self.apply(UpdateEvent::CheckFailed(failure.user_text()));
             }
             Report::Progress { job, fraction } => {
@@ -540,15 +595,23 @@ impl UpdateController {
     }
 
     /// Quits for the update with the unpacked `app`, once nothing objects:
-    /// a Cancel leaves it Ready, a failed swap Failed.
+    /// a Cancel leaves it Ready, a failed swap Failed. While a job runs it
+    /// does not ask at all (the quit would cancel the job): the update is
+    /// Ready, and the user's Restart asks again.
     fn ask_restart(&self, app: PathBuf) {
         let version = match &*self.state.borrow() {
             UpdateState::Downloading { update, .. } | UpdateState::Ready(update) => update.version,
             _ => return,
         };
-        if self.quitting.replace(true) {
+        if self.quitting.get() {
             return;
         }
+        if (self.jobs_running)() {
+            info!("update to {version}: a job is running, so the restart waits");
+            self.apply(UpdateEvent::QuitCancelled);
+            return;
+        }
+        self.quitting.set(true);
         let (swapper, cancelled, failed) =
             (self.this.clone(), self.this.clone(), self.this.clone());
         (self.quit_for_update)(
@@ -623,9 +686,7 @@ impl UpdateController {
     }
 }
 
-// The banner (Task 7), the About rows (Task 8), the tray dot (Task 9) and
-// What's new (Task 10) call these.
-#[allow(dead_code)]
+// What the banner, the About rows, the tray dot and What's new call.
 impl UpdateController {
     /// Calls `f` with the new state after every change. A listener must not
     /// add listeners.
@@ -697,8 +758,9 @@ impl UpdateController {
         self.apply(UpdateEvent::Cancelled);
     }
 
-    /// From Ready (a quit that was cancelled): quits again with the app
-    /// already unpacked.
+    /// From Ready (a quit that was cancelled, or one that waited for a
+    /// running job): quits again with the app already unpacked. While a job
+    /// still runs it stays Ready.
     pub fn restart(&self) {
         if !matches!(self.state(), UpdateState::Ready(_)) {
             return;
@@ -714,6 +776,17 @@ impl UpdateController {
         }
     }
 
+    /// Try again after a failure: downloads the failed update again when it
+    /// is known, and checks again when it is not (a failure the watcher
+    /// recorded before this start).
+    pub fn try_again(&self) {
+        match retry_for(&self.state()) {
+            Retry::Download => self.update(),
+            Retry::Check => self.check_now(),
+            Retry::Nothing => {}
+        }
+    }
+
     /// The version and release notes of the update on offer, downloading
     /// or ready, for the What's new preview.
     pub fn pending_notes(&self) -> Option<(Version, String)> {
@@ -723,7 +796,7 @@ impl UpdateController {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
     use std::sync::Arc;
@@ -797,7 +870,7 @@ mod tests {
             UpdateState::UpToDate { checked_at: None },
             UpdateState::Checking,
             UpdateState::CheckFailed { reason: "x".into() },
-            UpdateState::Restarting(v("0.4.0")),
+            UpdateState::Restarting(u.clone()),
             UpdateState::Failed {
                 update: Some(u.clone()),
                 version: v("0.4.0"),
@@ -932,6 +1005,8 @@ mod tests {
         controller: Rc<UpdateController>,
         quits: Rc<RefCell<Vec<Quit>>>,
         states: Rc<RefCell<Vec<UpdateState>>>,
+        /// Whether a job runs, as the controller is told.
+        jobs_running: Rc<Cell<bool>>,
         dir: tempfile::TempDir,
     }
 
@@ -940,6 +1015,8 @@ mod tests {
         let hub = crate::settings_hub::SettingsHub::new(dir.path().join("settings.json"));
         let quits: Rc<RefCell<Vec<Quit>>> = Rc::default();
         let held = quits.clone();
+        let jobs_running = Rc::new(Cell::new(false));
+        let running = jobs_running.clone();
         let controller = UpdateController::new(
             hub,
             dir.path().join("data"),
@@ -951,6 +1028,7 @@ mod tests {
                 })
             }),
             Box::new(|| true),
+            Box::new(move || running.get()),
         );
         let states: Rc<RefCell<Vec<UpdateState>>> = Rc::default();
         let seen = states.clone();
@@ -959,6 +1037,7 @@ mod tests {
             controller,
             quits,
             states,
+            jobs_running,
             dir,
         }
     }
@@ -1139,7 +1218,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_swap_is_failed_after_restarting() {
+    fn a_failed_swap_is_failed_after_restarting_and_keeps_the_update() {
         // The swap itself fails at once here: the test binary is not in a
         // bundle, so nothing on disk is touched but `update.json`.
         let h = harness();
@@ -1149,18 +1228,71 @@ mod tests {
             result: Ok(h.app()),
         });
         h.take_quit().agree();
-        assert_eq!(
-            h.controller.state(),
-            UpdateState::Failed {
-                update: None,
-                version: v("0.4.0"),
-                reason: "Move Vento to Applications to update it".into(),
-            }
-        );
-        let states = h.states.borrow();
-        let n = states.len();
-        assert_eq!(states[n - 2], UpdateState::Restarting(v("0.4.0")));
+        let failed = UpdateState::Failed {
+            update: Some(update("0.4.0")),
+            version: v("0.4.0"),
+            reason: "Move Vento to Applications to update it".into(),
+        };
+        assert_eq!(h.controller.state(), failed);
+        {
+            let states = h.states.borrow();
+            let n = states.len();
+            assert_eq!(states[n - 2], UpdateState::Restarting(update("0.4.0")));
+        }
         assert!(h.update_file().had_screen_access, "saved before the swap");
+        assert_eq!(retry_for(&failed), Retry::Download);
+        // Try again downloads it again: here it fails before downloading,
+        // as the test binary still cannot be replaced.
+        h.controller.try_again();
+        assert_eq!(h.controller.state(), failed);
+        assert!(h.quits.borrow().is_empty(), "no second quit");
+    }
+
+    #[test]
+    fn try_again_checks_again_when_the_update_is_not_known() {
+        let recorded = UpdateState::Failed {
+            update: None,
+            version: v("0.4.0"),
+            reason: "Vento didn't quit".into(),
+        };
+        assert_eq!(retry_for(&recorded), Retry::Check);
+        assert_eq!(
+            state::reduce(&recorded, UpdateEvent::CheckStarted),
+            UpdateState::Checking
+        );
+        for other in [
+            UpdateState::UpToDate { checked_at: None },
+            UpdateState::Checking,
+            UpdateState::Available(update("0.4.0")),
+            UpdateState::Ready(update("0.4.0")),
+            UpdateState::Restarting(update("0.4.0")),
+        ] {
+            assert_eq!(retry_for(&other), Retry::Nothing, "{other:?}");
+        }
+    }
+
+    #[test]
+    fn a_download_done_while_a_job_runs_waits_as_ready() {
+        let h = harness();
+        h.jobs_running.set(true);
+        let (job, _) = h.downloading();
+        let app = h.app();
+        h.controller.on_report(Report::Prepared {
+            job,
+            result: Ok(app.clone()),
+        });
+        assert_eq!(h.controller.state(), UpdateState::Ready(update("0.4.0")));
+        assert!(h.quits.borrow().is_empty(), "no quit over a running job");
+        assert!(!h.controller.quitting.get());
+        // Restart while the job still runs: still Ready, no quit.
+        h.controller.restart();
+        assert_eq!(h.controller.state(), UpdateState::Ready(update("0.4.0")));
+        assert!(h.quits.borrow().is_empty());
+        // Once the job is done, Restart asks to quit with the same app.
+        h.jobs_running.set(false);
+        h.controller.restart();
+        assert_eq!(h.quits.borrow().len(), 1);
+        assert_eq!(*h.controller.unpacked.borrow(), Some(app));
     }
 
     #[test]
@@ -1184,7 +1316,7 @@ mod tests {
     }
 
     #[test]
-    fn every_ended_check_saves_the_last_check() {
+    fn a_check_saves_the_last_check_unless_it_found_an_update() {
         let h = harness();
         h.controller.set_state(UpdateState::Checking);
         h.controller
@@ -1199,9 +1331,20 @@ mod tests {
         );
         let failed_at = h.update_file().last_check.expect("saved on failure");
         assert!(
-            !should_check(true, Some(failed_at), now()),
+            !should_check(true, Some(failed_at), unix_now()),
             "not again today"
         );
+        h.controller.set_state(UpdateState::Checking);
+        h.controller.on_report(Report::Checked(Ok(None)));
+        let none_at = h.update_file().last_check.expect("saved with no update");
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::UpToDate {
+                checked_at: Some(none_at)
+            }
+        );
+        // An update found is not kept across a restart: the time is
+        // forgotten, so the first check after the next start is due.
         h.controller.set_state(UpdateState::Checking);
         h.controller
             .on_report(Report::Checked(Ok(Some(update("0.4.0")))));
@@ -1209,7 +1352,86 @@ mod tests {
             h.controller.state(),
             UpdateState::Available(update("0.4.0"))
         );
-        assert!(h.update_file().last_check.is_some());
+        let last = h.update_file().last_check;
+        assert_eq!(last, None);
+        assert!(should_check(true, last, unix_now()));
+    }
+
+    #[test]
+    fn a_start_after_an_update_was_found_claims_no_check() {
+        let h = harness();
+        h.controller.set_state(UpdateState::Checking);
+        h.controller
+            .on_report(Report::Checked(Ok(Some(update("0.4.0")))));
+        let next = harness();
+        std::fs::create_dir_all(next.dir.path().join("data")).unwrap();
+        std::fs::copy(
+            UpdateFile::path(&h.dir.path().join("data")),
+            UpdateFile::path(&next.dir.path().join("data")),
+        )
+        .unwrap();
+        next.controller.start();
+        assert_eq!(
+            next.controller.state(),
+            UpdateState::UpToDate { checked_at: None }
+        );
+    }
+
+    #[test]
+    fn a_start_keeps_the_time_of_the_last_check() {
+        let h = harness();
+        let path = UpdateFile::path(&h.dir.path().join("data"));
+        UpdateFile {
+            last_check: Some(7),
+            ..UpdateFile::default()
+        }
+        .save(&path)
+        .unwrap();
+        h.controller.start();
+        assert_eq!(
+            h.controller.state(),
+            UpdateState::UpToDate {
+                checked_at: Some(7)
+            }
+        );
+    }
+
+    #[test]
+    fn updates_are_looked_for_on_apple_silicon_only() {
+        assert_eq!(
+            mac_platform(),
+            cfg!(target_arch = "aarch64").then_some(AssetPlatform::MacArm64)
+        );
+    }
+
+    /// An Intel Mac asks nothing: the unreachable address is never tried.
+    #[cfg(not(target_arch = "aarch64"))]
+    #[test]
+    fn an_intel_mac_is_offered_no_update() {
+        assert!(matches!(
+            check("http://127.0.0.1:9/never", Some(v("0.1.0"))),
+            Ok(None)
+        ));
+    }
+
+    #[test]
+    fn an_old_copy_is_left_only_after_a_finished_update_to_this_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let bundle = dir.path().join("Vento.app");
+        let old = swap::old_path(&bundle);
+        // No marker, no old copy.
+        assert_eq!(left_old_copy(&data, &bundle, v("0.4.0")), None);
+        watch::write_marker(&data, v("0.4.0")).unwrap();
+        assert_eq!(
+            left_old_copy(&data, &bundle, v("0.4.0")),
+            None,
+            "none there"
+        );
+        std::fs::create_dir_all(&old).unwrap();
+        assert_eq!(left_old_copy(&data, &bundle, v("0.4.0")), Some(old));
+        // A marker of another version: the update to it did not finish here.
+        assert_eq!(left_old_copy(&data, &bundle, v("0.3.0")), None);
     }
 
     #[test]

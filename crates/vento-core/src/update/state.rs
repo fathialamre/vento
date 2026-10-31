@@ -174,9 +174,12 @@ pub enum UpdateState {
     Downloading { update: Update, progress: f32 },
     /// Downloaded and verified; waiting for the user to restart.
     Ready(Update),
-    /// Quitting so the new copy can start.
-    Restarting(Version),
-    /// The install failed; `update` is kept (when known) for Try again.
+    /// Quitting so the new copy can start; the update is kept for Try
+    /// again, should the swap fail.
+    Restarting(Update),
+    /// The install failed; `update` is kept (when known) for Try again,
+    /// which downloads it again. A failure the watcher recorded at the
+    /// last start has none: Try again checks again instead.
     Failed {
         update: Option<Update>,
         version: Version,
@@ -197,7 +200,8 @@ pub enum UpdateEvent {
     Progress(f32),
     /// The user cancelled the download.
     Cancelled,
-    /// Something kept the app from quitting (a Quit that was cancelled).
+    /// Something kept the app from quitting (a Quit that was cancelled, or
+    /// a job still running).
     QuitCancelled,
     Restarting,
     Failed(String),
@@ -235,16 +239,14 @@ pub fn reduce(state: &UpdateState, event: UpdateEvent) -> UpdateState {
             S::Ready(update.clone())
         }
         (S::Downloading { update, .. } | S::Ready(update), E::Restarting) => {
-            S::Restarting(update.version)
+            S::Restarting(update.clone())
         }
-        (S::Downloading { update, .. } | S::Ready(update), E::Failed(reason)) => S::Failed {
+        (
+            S::Downloading { update, .. } | S::Ready(update) | S::Restarting(update),
+            E::Failed(reason),
+        ) => S::Failed {
             update: Some(update.clone()),
             version: update.version,
-            reason,
-        },
-        (S::Restarting(version), E::Failed(reason)) => S::Failed {
-            update: None,
-            version: *version,
             reason,
         },
         _ => state.clone(),
@@ -534,14 +536,23 @@ mod tests {
     fn restarting_and_its_failure() {
         let r = UpdateState::Ready(update("0.4.0"));
         let s = reduce(&r, UpdateEvent::Restarting);
-        assert_eq!(s, UpdateState::Restarting(v("0.4.0")));
+        assert_eq!(s, UpdateState::Restarting(update("0.4.0")));
         assert!(s.busy() && s.shows_banner());
+        // A swap that failed keeps the update, so Try again can download it.
+        let f = reduce(&s, UpdateEvent::Failed("boom".into()));
         assert_eq!(
-            reduce(&s, UpdateEvent::Failed("boom".into())),
+            f,
             UpdateState::Failed {
-                update: None,
+                update: Some(update("0.4.0")),
                 version: v("0.4.0"),
                 reason: "boom".into()
+            }
+        );
+        assert_eq!(
+            reduce(&f, UpdateEvent::DownloadStarted),
+            UpdateState::Downloading {
+                update: update("0.4.0"),
+                progress: 0.0
             }
         );
     }
@@ -611,7 +622,7 @@ mod tests {
                 true,
             ),
             (UpdateState::Ready(a.clone()), true, false),
-            (UpdateState::Restarting(a.version), true, true),
+            (UpdateState::Restarting(a.clone()), true, true),
             (
                 UpdateState::Failed {
                     update: Some(a.clone()),

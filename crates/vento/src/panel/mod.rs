@@ -77,8 +77,9 @@ pub struct UpdateView {
     pub detail: String,
     /// The share of the download done, 0.0 to 1.0 (kind 2).
     pub progress: f32,
-    /// Whether a failure (kind 5) offers Try again: it does when the failed
-    /// update is still known.
+    /// Whether a failure (kind 5) offers Try again: it always does, so a
+    /// failure is never a dead end. Try again downloads the failed update
+    /// again when it is still known, and checks again when it is not.
     pub can_retry: bool,
 }
 
@@ -120,8 +121,8 @@ pub fn update_view(state: &UpdateState, running: Version) -> UpdateView {
             tr("Restarting to finish\u{2026}"),
             tr("Vento will be back in a second"),
         ),
-        UpdateState::Failed { update, reason, .. } => UpdateView {
-            can_retry: update.is_some(),
+        UpdateState::Failed { reason, .. } => UpdateView {
+            can_retry: true,
             ..card(
                 5,
                 tr("Couldn't update"),
@@ -936,8 +937,7 @@ mod tests {
 
     #[test]
     fn restarting_has_no_button_text() {
-        let version = Version::parse("0.4.0").unwrap();
-        let view = update_view(&UpdateState::Restarting(version), running());
+        let view = update_view(&UpdateState::Restarting(update_of("0.4.0")), running());
         assert_eq!(view.kind, 4);
         assert_eq!(view.title, "Restarting to finish\u{2026}");
         assert_eq!(view.detail, "Vento will be back in a second");
@@ -963,7 +963,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failure_without_its_update_cannot_retry() {
+    fn a_failure_without_its_update_still_offers_try_again() {
         let state = UpdateState::Failed {
             update: None,
             version: Version::parse("0.4.0").unwrap(),
@@ -971,7 +971,7 @@ mod tests {
         };
         let view = update_view(&state, running());
         assert_eq!(view.kind, 5);
-        assert!(!view.can_retry);
+        assert!(view.can_retry, "Try again checks again");
     }
 
     #[test]

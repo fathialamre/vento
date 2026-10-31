@@ -376,6 +376,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     },
                 ),
                 Box::new(|| vento_platform::screen_text().has_access()),
+                {
+                    let exec = Rc::downgrade(&executor);
+                    Box::new(move || exec.upgrade().is_some_and(|exec| exec.is_busy()))
+                },
             ))
         }
         None => {
@@ -387,10 +391,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // and their buttons drive it. Both are written again when the language
     // changes.
     #[cfg(target_os = "macos")]
-    if let (Some(updates), Some(running)) = (
-        &updates,
-        vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION")),
-    ) {
+    if let (Some(updates), Some(running)) = (&updates, running_version()) {
         let show = {
             let (panel, settings, updates) = (
                 Rc::downgrade(&panel),
@@ -406,7 +407,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     settings.set_update(settings_window::about_update_view(
                         &state,
                         running,
-                        unix_now(),
+                        updater::unix_now(),
                     ));
                 }
             }
@@ -472,9 +473,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 }) as Box<dyn Fn()>,
+                // Try again: the failed update, or a new check when it is
+                // not known.
                 Box::new(move || {
                     if let Some(updates) = retry.upgrade() {
-                        updates.update();
+                        updates.try_again();
                     }
                 }) as Box<dyn Fn()>,
             )
@@ -798,18 +801,29 @@ fn main() -> Result<(), slint::PlatformError> {
         }));
         // Started by the update watcher: the tray and shortcuts are up, so
         // tell it this copy works. A minute later, with the watcher long
-        // gone, the old copy it kept is deleted.
+        // gone, the old copy it kept is deleted. Any other start after a
+        // finished update deletes an old copy left behind the same way.
         #[cfg(target_os = "macos")]
         if std::env::args().any(|a| a == updater::watch::AFTER_UPDATE) {
-            let running = vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION"));
-            if let (Some(data_dir), Some(running)) = (welcome::data_dir(), running) {
+            if let (Some(data_dir), Some(running)) = (welcome::data_dir(), running_version()) {
                 match updater::watch::write_marker(&data_dir, running) {
-                    Ok(()) => remove_old_copy_later(),
+                    Ok(()) => {
+                        if let Some(bundle) = updater::swap::running_bundle() {
+                            remove_old_copy_later(updater::swap::old_path(&bundle));
+                        }
+                    }
                     Err(e) => log::warn!("cannot write the update marker: {e}"),
                 }
             } else {
                 log::warn!("cannot write the update marker: no data folder");
             }
+        } else if let (Some(data_dir), Some(running), Some(bundle)) = (
+            welcome::data_dir(),
+            running_version(),
+            updater::swap::running_bundle(),
+        ) && let Some(old) = updater::left_old_copy(&data_dir, &bundle, running)
+        {
+            remove_old_copy_later(old);
         }
         show_whats_new_on_start(&start_whats_new, fresh);
         #[cfg(target_os = "macos")]
@@ -827,7 +841,7 @@ fn main() -> Result<(), slint::PlatformError> {
     result
 }
 
-/// The version running now.
+/// The version running now: this crate's, the app's.
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn running_version() -> Option<vento_core::update::version::Version> {
     vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION"))
@@ -870,14 +884,10 @@ fn show_whats_new_on_start(whats_new: &whats_new_window::WhatsNewController, fre
     }
 }
 
-/// Deletes the old copy an update left beside the bundle
+/// Deletes `old`, the old copy an update left beside the bundle
 /// (`Vento.app.old`), 60 seconds from now and off the main thread.
 #[cfg(target_os = "macos")]
-fn remove_old_copy_later() {
-    let Some(bundle) = updater::swap::running_bundle() else {
-        return;
-    };
-    let old = updater::swap::old_path(&bundle);
+fn remove_old_copy_later(old: std::path::PathBuf) {
     slint::Timer::single_shot(std::time::Duration::from_secs(60), move || {
         let removed = std::thread::Builder::new()
             .name("vento-remove-old".into())
@@ -1022,14 +1032,6 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn main() {
     println!("Vento: this platform is not supported yet");
-}
-
-/// The time now in Unix seconds.
-#[cfg(target_os = "macos")]
-fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "linux", windows)))]

@@ -728,6 +728,14 @@ impl Executor {
         self.last.borrow().as_ref().map(|last| last.op.kind())
     }
 
+    /// Whether a move, copy, archive, convert, PDF write or undo is running,
+    /// which quitting would cancel.
+    // Only the macOS update controller asks.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn is_busy(&self) -> bool {
+        self.busy.get()
+    }
+
     /// Toasts and returns `true` while a move or undo is running.
     fn refuse_if_busy(&self, at: Point) -> bool {
         if self.busy.get() {

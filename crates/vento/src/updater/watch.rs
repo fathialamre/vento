@@ -132,6 +132,12 @@ pub fn write_marker(data_dir: &Path, version: Version) -> io::Result<()> {
     fs::write(marker_path(data_dir), version.to_string())
 }
 
+/// The version the marker names, if there is a readable one.
+pub fn read_marker(data_dir: &Path) -> Option<Version> {
+    let text = fs::read_to_string(marker_path(data_dir)).ok()?;
+    Version::parse(text.trim())
+}
+
 /// The executable inside the bundle `app`.
 fn binary(app: &Path) -> PathBuf {
     app.join("Contents/MacOS/vento")
@@ -261,11 +267,8 @@ pub fn run(args: WatchArgs) -> ExitCode {
             move |program, program_args| spawn(&children, program, program_args)
         }),
         marker_says: Box::new({
-            let marker = marker.clone();
-            move || {
-                let text = fs::read_to_string(&marker).ok()?;
-                Version::parse(text.trim())
-            }
+            let data_dir = data_dir.clone();
+            move || read_marker(&data_dir)
         }),
         kill: Box::new(|pid| {
             if let Ok(pid) = i32::try_from(pid) {
@@ -277,12 +280,7 @@ pub fn run(args: WatchArgs) -> ExitCode {
         }),
         restore: Box::new(move || swap::restore(&bundle, &old)),
         record_failure: Box::new(move |failed| {
-            let path = UpdateFile::path(&data_dir);
-            let mut file = UpdateFile::load(&path);
-            file.failed = Some(failed);
-            if let Err(e) = file.save(&path) {
-                log::warn!("cannot record the failed update: {e}");
-            }
+            record_failure(&data_dir, failed, crate::running_version());
         }),
         sleep: Box::new(std::thread::sleep),
     };
@@ -299,6 +297,21 @@ pub fn run(args: WatchArgs) -> ExitCode {
             log::warn!("update to {} rolled back", args.version);
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Records `failed` in `update.json` for the old copy's banner, with
+/// `watcher` (this binary's version: the old copy, which runs next) as the
+/// version that ran last. The new copy may have saved itself as that
+/// before it was killed, which would cost What's new once the update does
+/// start.
+fn record_failure(data_dir: &Path, failed: FailedUpdate, watcher: Option<Version>) {
+    let path = UpdateFile::path(data_dir);
+    let mut file = UpdateFile::load(&path);
+    file.failed = Some(failed);
+    file.last_run_version = watcher.or(file.last_run_version);
+    if let Err(e) = file.save(&path) {
+        log::warn!("cannot record the failed update: {e}");
     }
 }
 
@@ -512,6 +525,37 @@ mod tests {
         write_marker(&data, Version::parse("0.3.0").unwrap()).unwrap();
         let text = fs::read_to_string(data.join("update-started")).unwrap();
         assert_eq!(text.trim(), "0.3.0");
+        assert_eq!(read_marker(&data), Version::parse("0.3.0"));
+        fs::write(marker_path(&data), "junk").unwrap();
+        assert_eq!(read_marker(&data), None);
+        assert_eq!(read_marker(&dir.path().join("missing")), None);
+    }
+
+    #[test]
+    fn a_recorded_failure_makes_the_watcher_the_last_that_ran() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = UpdateFile::path(dir.path());
+        let v = |s: &str| Version::parse(s).unwrap();
+        // The new copy saved itself before it was killed.
+        UpdateFile {
+            last_run_version: Some(v("0.4.0")),
+            last_check: Some(9),
+            ..UpdateFile::default()
+        }
+        .save(&path)
+        .unwrap();
+        let failed = FailedUpdate {
+            version: v("0.4.0"),
+            reason: NOT_STARTED_REASON.into(),
+        };
+        record_failure(dir.path(), failed.clone(), Some(v("0.3.0")));
+        let file = UpdateFile::load(&path);
+        assert_eq!(file.failed, Some(failed.clone()));
+        assert_eq!(file.last_run_version, Some(v("0.3.0")));
+        assert_eq!(file.last_check, Some(9), "the rest is kept");
+        // An unreadable own version leaves the last run as it was.
+        record_failure(dir.path(), failed, None);
+        assert_eq!(UpdateFile::load(&path).last_run_version, Some(v("0.3.0")));
     }
 
     #[test]

@@ -2514,11 +2514,15 @@ mod tests {
 
     #[test]
     fn the_other_states_read_as_the_panel_does() {
-        let version = Version::parse("0.4.0").unwrap();
-        let state = UpdateState::Restarting(version);
-        assert_eq!(
-            view_at(&state, utc(15, 0)),
-            crate::panel::update_view(&state, running())
-        );
+        // A failure the watcher recorded: no update known, yet Try again.
+        let state = UpdateState::Failed {
+            update: None,
+            version: Version::parse("0.4.0").unwrap(),
+            reason: "Vento didn't quit".into(),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view, crate::panel::update_view(&state, running()));
+        assert_eq!(view.kind, 5);
+        assert!(view.can_retry);
     }
 }
