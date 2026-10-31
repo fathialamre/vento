@@ -467,6 +467,10 @@ msgstr "تعذّر حفظ الإعدادات: {error}"
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
+#: crates/vento/src/updater/net.rs:67
+msgid "Couldn't save the download"
+msgstr "تعذّر حفظ التنزيل"
+
 #: crates/vento/src/exec/pdf.rs:32
 msgid "Couldn't save: {reason}"
 msgstr "تعذّر الحفظ: {reason}"
@@ -666,6 +670,10 @@ msgstr "‏GPL-3.0-only. أيقونات العجلة من Tabler Icons 3.49.0 ب
 #: crates/vento/src/settings_window/mod.rs:125
 msgid "General"
 msgstr "عام"
+
+#: crates/vento/src/updater/net.rs:63
+msgid "GitHub answered {code}"
+msgstr "ردّ GitHub بالرمز {code}"
 
 #: crates/vento/ui/pdf.slint:1040
 msgid "Hide files"
@@ -1027,7 +1035,7 @@ msgstr "فتح في المتصفح"
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
-#: crates/vento/src/main.rs:199
+#: crates/vento/src/main.rs:203
 msgid "Open the Pocket"
 msgstr "فتح الجيب"
 
@@ -1035,7 +1043,7 @@ msgstr "فتح الجيب"
 msgid "Open the Welcome setup"
 msgstr "فتح إعداد الترحيب"
 
-#: crates/vento/src/main.rs:203
+#: crates/vento/src/main.rs:207
 msgid "Open the clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1707,6 +1715,10 @@ msgstr "تختار أنت أماكن القطع"
 msgid "You're all set"
 msgstr "كل شيء جاهز"
 
+#: crates/vento/src/updater/net.rs:61
+msgid "You're offline"
+msgstr "أنت غير متصل بالإنترنت"
+
 #: crates/vento/ui/welcome.slint:943
 msgid "You've got it. This works on any file, in Finder or anywhere you drag files from."
 msgstr "أتقنتها. تعمل على أي ملف تسحبه، في Finder أو في أي مكان."
@@ -1807,7 +1819,7 @@ msgstr "خطأ داخلي"
 msgid "interrupted"
 msgstr "توقّف قبل أن يكتمل"
 
-#: crates/vento-core/src/settings.rs:590
+#: crates/vento-core/src/settings.rs:598
 msgid "invalid shortcut \"{spec}\""
 msgstr "اختصار غير صالح \"{spec}\""
 
@@ -2005,7 +2017,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:579
+#: crates/vento/src/main.rs:583
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 

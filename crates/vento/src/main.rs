@@ -41,6 +41,10 @@ mod toast;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
 mod tray;
+// The controller (a later task) uses what this module offers.
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+mod updater;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod welcome_window;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
