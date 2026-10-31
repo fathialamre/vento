@@ -519,6 +519,7 @@ impl WelcomeController {
         window.set_terminal(i32::try_from(terminal).unwrap_or(0));
         self.show_folders(&window, &s);
         window.set_clipboard_history(s.clipboard_history);
+        window.set_clipboard_note(clipboard_note().into());
         let clip = &s.clipboard_shortcut;
         window.set_clip_shortcut(shortcut_text(clip).unwrap_or_else(|| clip.clone()).into());
         let lines = shortcut_lines(&s, self.screen_text_supported)
@@ -700,6 +701,20 @@ pub fn first_launch(
 /// setup.
 fn next_step(step: i32) -> Option<i32> {
     (step < LAST_STEP).then(|| (step + 1).max(0))
+}
+
+/// The Folders screen's note on the clipboard history: the computer is a
+/// Mac on macOS and "this computer" elsewhere.
+fn clipboard_note() -> String {
+    if cfg!(target_os = "macos") {
+        tr(
+            "Stored on this Mac without encryption. Copies that password managers mark as private are skipped.",
+        )
+    } else {
+        tr(
+            "Stored on this computer without encryption. Copies that password managers mark as private are skipped.",
+        )
+    }
 }
 
 /// The Language control's choices: each language by its own name. Unlike

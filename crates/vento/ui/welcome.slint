@@ -597,6 +597,8 @@ export component WelcomeWindow inherits Window {
     in property <bool> can-pin;
     in property <bool> clipboard-history;
     in property <string> clip-shortcut;
+    // What the history stores, and where (this Mac, or this computer).
+    in property <string> clipboard-note;
     // Done: the keys and what they do.
     in property <[ShortcutLine]> shortcuts;
 
@@ -1088,7 +1090,7 @@ export component WelcomeWindow inherits Window {
 
                         RowBody {
                             WrapText {
-                                text: @tr("Stored on this Mac without encryption. Copies that password managers mark as private are skipped.");
+                                text: root.clipboard-note;
                                 font-size: 12px;
                                 color: Theme.muted;
                             }
