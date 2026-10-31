@@ -37,7 +37,6 @@ fn expand_tilde(home: &Path, path: &str) -> PathBuf {
 /// The folder macOS saves screenshots in: the `location` the Screenshot app
 /// sets, with `~` expanded, when it is a folder; else `~/Desktop`.
 pub(crate) fn screenshot_folder() -> PathBuf {
-    let home = home();
     let defaults = NSUserDefaults::initWithSuiteName(
         NSUserDefaults::alloc(),
         Some(ns_string!("com.apple.screencapture")),
@@ -45,8 +44,15 @@ pub(crate) fn screenshot_folder() -> PathBuf {
     let location = defaults
         .and_then(|defaults| defaults.stringForKey(ns_string!("location")))
         .map(|location| location.to_string());
+    folder_from(location.as_deref(), &home())
+}
+
+/// The screenshots folder for the Screenshot app's `location` setting: that
+/// folder (`~` expanded) when it is an existing absolute one, else
+/// `home/Desktop`.
+fn folder_from(location: Option<&str>, home: &Path) -> PathBuf {
     if let Some(location) = location {
-        let folder = expand_tilde(&home, &location);
+        let folder = expand_tilde(home, location);
         if folder.is_absolute() && folder.is_dir() {
             return folder;
         }
@@ -141,6 +147,24 @@ mod tests {
         std::fs::write(&file, b"x").unwrap();
         xattr::set(&file, SCREEN_CAPTURE, b"bplist00").unwrap();
         assert!(is_screen_capture(&file));
+    }
+
+    #[test]
+    fn the_screenshot_location_is_used_when_it_is_a_folder() {
+        let home = tempfile::tempdir().unwrap();
+        let shots = home.path().join("Shots");
+        std::fs::create_dir(&shots).unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let desktop = home.path().join("Desktop");
+        // A custom absolute folder.
+        let custom = elsewhere.path().to_str().unwrap();
+        assert_eq!(folder_from(Some(custom), home.path()), elsewhere.path());
+        // One under `~`.
+        assert_eq!(folder_from(Some("~/Shots"), home.path()), shots);
+        // Unset, missing, or not a folder: the Desktop.
+        assert_eq!(folder_from(None, home.path()), desktop);
+        assert_eq!(folder_from(Some("~/Nope"), home.path()), desktop);
+        assert_eq!(folder_from(Some("Shots"), home.path()), desktop);
     }
 
     #[test]
