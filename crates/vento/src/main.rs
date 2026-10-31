@@ -318,6 +318,8 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    // The menu-bar icon needs the running event loop, and lives as long as the app.
+    let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
     // Updates (macOS): the daily check, the download and the restart. Its
     // quit asks the PDF windows with unsaved edits first, as any quit does.
     #[cfg(target_os = "macos")]
@@ -373,7 +375,16 @@ fn main() -> Result<(), slint::PlatformError> {
         };
         let on_state = show.clone();
         let show_now = show.clone();
-        updates.on_change(Box::new(move |_| on_state()));
+        // The tray's dot follows the state too; the tray may not exist yet,
+        // and is given the state once it does.
+        let (dot_tray, dot_updates) = (tray_handle.clone(), Rc::downgrade(updates));
+        updates.on_change(Box::new(move |_| {
+            on_state();
+            if let (Some(tray), Some(updates)) = (dot_tray.borrow().as_ref(), dot_updates.upgrade())
+            {
+                tray.set_dot(updates.state().shows_dot());
+            }
+        }));
         hub.on_change(Box::new(move |old, new| {
             if old.language != new.language {
                 show();
@@ -659,8 +670,6 @@ fn main() -> Result<(), slint::PlatformError> {
         }));
     }
 
-    // The menu-bar icon needs the running event loop, and lives as long as the app.
-    let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
     // The menu is texted when it is made; a language change writes it
     // again. This listener comes after the first, which switches the
     // language.
@@ -723,6 +732,9 @@ fn main() -> Result<(), slint::PlatformError> {
         }
         #[cfg(target_os = "macos")]
         if let Some(updates) = start_updates {
+            if let Some(tray) = keep.borrow().as_ref() {
+                tray.set_dot(updates.state().shows_dot());
+            }
             updates.start();
         }
     });
