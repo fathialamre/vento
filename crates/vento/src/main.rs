@@ -38,6 +38,8 @@ mod toast;
 #[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
 mod tray;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+mod welcome_window;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod wheel;
 
 /// The `drag` crate needs GTK on Linux; the Pocket uses this stand-in.
@@ -59,8 +61,9 @@ fn main() -> Result<(), slint::PlatformError> {
 
     use vento_core::actions::ActionId;
     use vento_core::destinations::{RecentDestinations, recent_path};
-    use vento_core::i18n::tr;
+    use vento_core::i18n::{system_languages, tr};
     use vento_core::settings::{Settings, settings_path};
+    use vento_core::welcome;
 
     /// How long the island stays open to confirm an add from the wheel.
     const POCKET_CONFIRM: Duration = Duration::from_millis(1500);
@@ -74,6 +77,16 @@ fn main() -> Result<(), slint::PlatformError> {
         return Ok(());
     }
     select_backend()?;
+    // Before the hub reads the settings and anything writes to Vento's
+    // folders: a fresh install saves the settings it starts with, the
+    // Welcome setup still to do.
+    if let Err(e) = welcome_window::first_launch(
+        &settings_path(),
+        welcome::data_dir().as_deref(),
+        &system_languages(),
+    ) {
+        log::warn!("cannot save the first settings: {e}");
+    }
     let hub = settings_hub::SettingsHub::new(settings_path());
     if let Some(reason) = hub.load_error() {
         log::warn!("settings file not loaded, using the defaults: {reason}");
@@ -224,6 +237,22 @@ fn main() -> Result<(), slint::PlatformError> {
             }),
         )
     };
+    // The first-launch setup; Open Settings on its last screen ends it and
+    // opens the Settings window on General.
+    let welcome = welcome_window::WelcomeController::new(
+        platform.clone(),
+        hub.clone(),
+        pause.clone(),
+        supported,
+    );
+    {
+        let settings = Rc::downgrade(&settings);
+        welcome.set_on_open_settings(Box::new(move || {
+            if let Some(settings) = settings.upgrade() {
+                settings.open_on(settings_window::Page::General);
+            }
+        }));
+    }
     let panel = {
         let pause = pause.clone();
         panel::PanelController::new(
@@ -272,22 +301,36 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
-        let pdf = Rc::downgrade(&pdf);
+        let (pdf, welcome) = (Rc::downgrade(&pdf), Rc::downgrade(&welcome));
         settings.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || pdf.upgrade().is_some_and(|p| p.has_windows())
+                || welcome.upgrade().is_some_and(|w| w.is_open())
+        }));
+    }
+    // The Welcome window, closing, leaves the focus with any other vento
+    // window open, the Settings window its Open Settings opens included.
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let (pdf, settings) = (Rc::downgrade(&pdf), Rc::downgrade(&settings));
+        welcome.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
+                || pdf.upgrade().is_some_and(|p| p.has_windows())
+                || settings.upgrade().is_some_and(|s| s.is_open())
         }));
     }
     // The last PDF window to close leaves the focus with another vento
     // window that is open.
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
-        let settings = Rc::downgrade(&settings);
+        let (settings, welcome) = (Rc::downgrade(&settings), Rc::downgrade(&welcome));
         pdf.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || settings.upgrade().is_some_and(|s| s.is_open())
+                || welcome.upgrade().is_some_and(|w| w.is_open())
         }));
     }
     {
@@ -300,6 +343,12 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     pocket.start();
+    // A setup not finished (a fresh install, or Vento quit during it) opens
+    // once the event loop runs.
+    if !hub.current().welcome_done {
+        let welcome = welcome.clone();
+        slint::Timer::single_shot(Duration::ZERO, move || welcome.open());
+    }
     // Files waiting for the Trash go now when vento quits, also when the
     // system ends it (log out, shut down); a running file job is stopped so
     // it leaves no partial output behind.

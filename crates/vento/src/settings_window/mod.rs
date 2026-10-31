@@ -51,9 +51,10 @@ const WIDTH: f64 = 680.0;
 const HEIGHT: f64 = 520.0;
 
 /// The choices of the window's segmented controls, in the order shown.
-const APPEARANCES: [Appearance; 3] = [Appearance::System, Appearance::Light, Appearance::Dark];
-const LAYOUTS: [Layout; 2] = [Layout::Honeycomb, Layout::Petals];
-const TRIGGERS: [Modifier; 4] = [
+pub(crate) const APPEARANCES: [Appearance; 3] =
+    [Appearance::System, Appearance::Light, Appearance::Dark];
+pub(crate) const LAYOUTS: [Layout; 2] = [Layout::Honeycomb, Layout::Petals];
+pub(crate) const TRIGGERS: [Modifier; 4] = [
     Modifier::Ctrl,
     Modifier::Alt,
     Modifier::Shift,
@@ -62,9 +63,9 @@ const TRIGGERS: [Modifier; 4] = [
 /// What the Trigger choices are called: the Mac's names on a Mac, GNOME's
 /// elsewhere.
 #[cfg(target_os = "macos")]
-const TRIGGER_NAMES: [&str; 4] = ["Control", "Option", "Shift", "Command"];
+pub(crate) const TRIGGER_NAMES: [&str; 4] = ["Control", "Option", "Shift", "Command"];
 #[cfg(not(target_os = "macos"))]
-const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
+pub(crate) const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
 
 /// The licences of Vento and of what it bundles: the README's License
@@ -72,7 +73,7 @@ const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuote
 const LICENSES_URL: &str = "https://github.com/fathialamre/vento#license";
 
 /// Size of the Finder icons in the Move page, in points.
-const FOLDER_ICON_PX: u32 = 16;
+pub(crate) const FOLDER_ICON_PX: u32 = 16;
 
 /// Why a recorded shortcut was refused, as the English text that
 /// [`refusal_text`] translates.
@@ -954,17 +955,7 @@ impl SettingsWindowController {
         } else {
             None
         };
-        FolderRow {
-            has_icon: icon.is_some(),
-            icon: icon.unwrap_or_default(),
-            name: display_name(folder).into(),
-            place: folder
-                .parent()
-                .map(|p| display_path(p, self.home.as_deref()))
-                .unwrap_or_default()
-                .into(),
-            missing: !exists,
-        }
+        folder_row(folder, exists, icon, self.home.as_deref())
     }
 
     /// The Finder icon of `folder`, fetched once and then kept.
@@ -1058,6 +1049,15 @@ impl SettingsWindowController {
         debug!("settings window open");
     }
 
+    /// Opens the window on `page`, or turns the open window to it.
+    pub fn open_on(&self, page: Page) {
+        self.page.set(page);
+        if let Some(window) = self.existing() {
+            window.set_page(choice_index(&pages(self.screen_text_supported), page));
+        }
+        self.open();
+    }
+
     /// Hides the window (a recording in progress ends without a change),
     /// remembers its page for the next open, and hands focus back to the
     /// app that had it on the next turn of the event loop, unless the window
@@ -1132,15 +1132,20 @@ fn turn(event: &WindowEvent) -> Turn {
 /// Whether the closed window hands focus back to the app that had it:
 /// not when it is open again (`reopened`), nor while another vento window
 /// is open (`other_window_open`), which has the focus or is taking it.
-fn hands_focus_back(reopened: bool, other_window_open: bool) -> bool {
+pub(crate) fn hands_focus_back(reopened: bool, other_window_open: bool) -> bool {
     !reopened && !other_window_open
 }
 
-/// Gives the native title bar of `window` the Appearance setting, as
+/// Gives the native title bar of `window` (the Settings or the Welcome
+/// window) the Appearance setting, as
 /// [`appearance::title_bar_theme`] says: the platform draws it, so the
 /// window's `Theme` alone leaves it with the system's look. Does nothing
 /// before the window has its native window.
-fn show_title_bar(window: &SettingsWindow) {
+pub(crate) fn show_title_bar<T>(window: &T)
+where
+    T: ComponentHandle,
+    for<'a> Theme<'a>: slint::Global<'a, T>,
+{
     let theme =
         appearance::title_bar_theme(appearance::current(), window.global::<Theme>().get_dark());
     window.window().with_winit_window(|w| w.set_theme(theme));
@@ -1160,6 +1165,27 @@ fn close_with(
     }
     restore_app_menu();
     hide();
+}
+
+/// The row of a pinned or recent folder: its name, where it is (`home`
+/// written `~`), its `icon`, and whether it is missing (`!exists`).
+pub(crate) fn folder_row(
+    folder: &Path,
+    exists: bool,
+    icon: Option<Image>,
+    home: Option<&Path>,
+) -> FolderRow {
+    FolderRow {
+        has_icon: icon.is_some(),
+        icon: icon.unwrap_or_default(),
+        name: display_name(folder).into(),
+        place: folder
+            .parent()
+            .map(|p| display_path(p, home))
+            .unwrap_or_default()
+            .into(),
+        missing: !exists,
+    }
 }
 
 /// Opens `url` in the default browser. The opener is waited for on a
@@ -1249,7 +1275,7 @@ fn refusal_text(reason: &str) -> String {
 }
 
 /// The choice at index `i` of a segmented control; `None` out of range.
-fn choice<T: Copy>(choices: &[T], i: i32) -> Option<T> {
+pub(crate) fn choice<T: Copy>(choices: &[T], i: i32) -> Option<T> {
     usize::try_from(i)
         .ok()
         .and_then(|i| choices.get(i).copied())
@@ -1257,7 +1283,7 @@ fn choice<T: Copy>(choices: &[T], i: i32) -> Option<T> {
 
 /// The Language drop-down's items: Automatic, then each language under its
 /// own name, whatever the language in use.
-fn language_names() -> Vec<String> {
+pub(crate) fn language_names() -> Vec<String> {
     std::iter::once(tr("Automatic (system language)"))
         .chain(LANGUAGES.iter().map(|l| l.name.to_owned()))
         .collect()
@@ -1265,7 +1291,7 @@ fn language_names() -> Vec<String> {
 
 /// The `language` setting for the drop-down's item `i`: "auto" for the
 /// first, then the code of each language. An item out of range is "auto".
-fn language_setting(i: i32) -> String {
+pub(crate) fn language_setting(i: i32) -> String {
     usize::try_from(i)
         .ok()
         .and_then(|i| i.checked_sub(1))
@@ -1276,7 +1302,7 @@ fn language_setting(i: i32) -> String {
 
 /// The drop-down's item for the `language` setting `setting`. A value that
 /// names no language acts as Automatic, so it shows as that.
-fn language_index(setting: &str) -> i32 {
+pub(crate) fn language_index(setting: &str) -> i32 {
     lookup(setting)
         .and_then(|l| LANGUAGES.iter().position(|each| each == l))
         .and_then(|i| i32::try_from(i + 1).ok())
@@ -1284,7 +1310,7 @@ fn language_index(setting: &str) -> i32 {
 }
 
 /// Where `value` is among a segmented control's choices (0 if it is not).
-fn choice_index<T: PartialEq>(choices: &[T], value: T) -> i32 {
+pub(crate) fn choice_index<T: PartialEq>(choices: &[T], value: T) -> i32 {
     choices
         .iter()
         .position(|c| *c == value)
@@ -1294,7 +1320,7 @@ fn choice_index<T: PartialEq>(choices: &[T], value: T) -> i32 {
 
 /// The Terminal menu item for the terminal setting `id`: the first item
 /// when it is unset or not installed.
-fn terminal_index(terminals: &[TerminalApp], id: Option<&str>) -> usize {
+pub(crate) fn terminal_index(terminals: &[TerminalApp], id: Option<&str>) -> usize {
     id.and_then(|id| terminals.iter().position(|t| t.id == id))
         .unwrap_or(0)
 }
@@ -1318,7 +1344,7 @@ fn move_action(settings: &mut Settings, from: usize, to: usize) {
 
 /// Pins `folder` at the end of the pinned list, unless it is pinned
 /// already or the list is full.
-fn pin_folder(settings: &mut Settings, folder: &Path) {
+pub(crate) fn pin_folder(settings: &mut Settings, folder: &Path) {
     let pinned = &mut settings.pinned_folders;
     if pinned.len() < MAX_PINNED && !pinned.iter().any(|p| p == folder) {
         pinned.push(folder.to_path_buf());
@@ -1326,7 +1352,7 @@ fn pin_folder(settings: &mut Settings, folder: &Path) {
 }
 
 /// Unpins the folder in row `index` of the pinned list.
-fn unpin_folder(settings: &mut Settings, index: usize) {
+pub(crate) fn unpin_folder(settings: &mut Settings, index: usize) {
     if index < settings.pinned_folders.len() {
         settings.pinned_folders.remove(index);
     }
