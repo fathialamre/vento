@@ -23,6 +23,10 @@ pub const MAX_SHOTS: usize = 60;
 /// How long a file's size must stay the same before the file counts as
 /// saved.
 pub const SETTLE: Duration = Duration::from_millis(300);
+/// How recently a file must have been written to count as a new
+/// screenshot. A rename, a copy or a move keeps a file's time, so an older
+/// file that turns up under a new path is not a new screenshot.
+pub const NEW_SHOT_MAX_AGE: Duration = Duration::from_secs(60);
 
 /// Newest on-disk format of the grant file this build understands.
 const FORMAT_VERSION: u32 = 1;
@@ -149,12 +153,20 @@ pub fn recent(mut shots: Vec<Shot>, now_unix: u64) -> Vec<Shot> {
     shots
 }
 
-/// The paths in `after` that are not in `before`, in `after`'s order
-/// (newest first).
-pub fn new_shots(before: &HashSet<PathBuf>, after: &[Shot]) -> Vec<PathBuf> {
+/// Whether a file last written at `modified_unix` was written recently
+/// enough at `now_unix` to be a new screenshot (see [`NEW_SHOT_MAX_AGE`]).
+/// A time after now counts as recent.
+pub fn is_fresh(modified_unix: u64, now_unix: u64) -> bool {
+    now_unix.saturating_sub(modified_unix) <= NEW_SHOT_MAX_AGE.as_secs()
+}
+
+/// The new screenshots at `now_unix`: the paths in `after` that are not in
+/// `before` and were written recently (see [`is_fresh`]), in `after`'s
+/// order (newest first).
+pub fn new_shots(before: &HashSet<PathBuf>, after: &[Shot], now_unix: u64) -> Vec<PathBuf> {
     after
         .iter()
-        .filter(|s| !before.contains(&s.path))
+        .filter(|s| !before.contains(&s.path) && is_fresh(s.modified_unix, now_unix))
         .map(|s| s.path.clone())
         .collect()
 }
@@ -455,10 +467,36 @@ mod tests {
         let after = [shot("c.png", 30), shot("b.png", 20), shot("a.png", 10)];
         let before: HashSet<PathBuf> = [PathBuf::from("/shots/a.png")].into();
         assert_eq!(
-            new_shots(&before, &after),
+            new_shots(&before, &after, 40),
             [PathBuf::from("/shots/c.png"), PathBuf::from("/shots/b.png")]
         );
-        assert!(new_shots(&HashSet::new(), &[]).is_empty());
+        assert!(new_shots(&HashSet::new(), &[], 40).is_empty());
+    }
+
+    #[test]
+    fn an_old_file_under_a_new_path_is_not_new() {
+        let now = DAY0 + 3_600;
+        let max = NEW_SHOT_MAX_AGE.as_secs();
+        assert_eq!(max, 60);
+        // Renamed, duplicated or moved in: the file keeps its old time.
+        let after = [
+            shot("Screenshot just now.png", now - 2),
+            shot("Screenshot at the edge.png", now - max),
+            shot("bug.png", now - max - 1),
+            shot("Screenshot copy.png", now - 3_600),
+            // A clock a little behind the file's: still new.
+            shot("Screenshot ahead.png", now + 5),
+        ];
+        assert_eq!(
+            new_shots(&HashSet::new(), &after, now),
+            [
+                PathBuf::from("/shots/Screenshot just now.png"),
+                PathBuf::from("/shots/Screenshot at the edge.png"),
+                PathBuf::from("/shots/Screenshot ahead.png"),
+            ]
+        );
+        assert!(is_fresh(now, now));
+        assert!(!is_fresh(0, now));
     }
 
     #[test]

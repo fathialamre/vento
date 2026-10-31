@@ -518,7 +518,8 @@ impl ShotsController {
     }
 
     /// Takes a listing that worked, made at `at`. Returns the newest shot
-    /// that settled since the folder's first listing, if any.
+    /// that settled since the folder's first listing and was written just
+    /// now, if any.
     fn listed(&self, found: Vec<(FileFacts, Option<(u32, u32)>)>, at: Instant) -> Option<PathBuf> {
         self.access.set(Access::Granted);
         let facts: Vec<FileFacts> = found.iter().map(|(f, _)| f.clone()).collect();
@@ -534,10 +535,13 @@ impl ShotsController {
                 dims,
             })
             .collect();
-        let shots = recent(shots, unix_now());
+        let now_unix = unix_now();
+        let shots = recent(shots, now_unix);
         let newest = match self.seen.borrow_mut().as_mut() {
             Some(seen) => {
-                let fresh = new_shots(seen, &shots);
+                // A path not seen before whose file was written a while ago
+                // was renamed, copied or moved in: not new.
+                let fresh = new_shots(seen, &shots, now_unix);
                 seen.extend(done.iter().cloned());
                 fresh.into_iter().next()
             }
@@ -778,6 +782,54 @@ mod tests {
         r.c.scan_sync(t1 + SETTLE);
         assert_eq!(*r.news.borrow(), [b]);
         assert_eq!(r.c.count(), 4);
+    }
+
+    #[test]
+    fn renamed_or_copied_old_shots_are_not_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        let folder = dir.path().join("shots");
+        fs::create_dir(&folder).unwrap();
+        let hour_ago = std::time::SystemTime::now() - Duration::from_secs(3_600);
+        let old = folder.join("Screenshot old.png");
+        fs::write(&old, b"picture").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(hour_ago)
+            .unwrap();
+        let r = rig(true, &folder, false, &grant);
+        let t0 = Instant::now();
+        r.c.scan_sync(t0);
+        r.c.scan_sync(t0 + SETTLE);
+        assert_eq!(paths(&r.c), std::slice::from_ref(&old));
+
+        // Renamed: a path the folder never had, with the old file time.
+        let renamed = folder.join("Screenshot renamed.png");
+        fs::rename(&old, &renamed).unwrap();
+        // Duplicated (Finder keeps the file time too).
+        let copy = folder.join("Screenshot renamed copy.png");
+        fs::copy(&renamed, &copy).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&copy)
+            .unwrap()
+            .set_modified(hour_ago)
+            .unwrap();
+        let t1 = t0 + Duration::from_secs(1);
+        r.c.scan_sync(t1);
+        r.c.scan_sync(t1 + SETTLE);
+        assert_eq!(r.c.count(), 2, "both are listed");
+        assert!(r.news.borrow().is_empty(), "neither is new");
+
+        // A screenshot just taken still is.
+        let fresh = folder.join("Screenshot fresh.png");
+        fs::write(&fresh, b"picture").unwrap();
+        let t2 = t1 + Duration::from_secs(1);
+        r.c.scan_sync(t2);
+        r.c.scan_sync(t2 + SETTLE);
+        assert_eq!(*r.news.borrow(), [fresh]);
     }
 
     #[test]
