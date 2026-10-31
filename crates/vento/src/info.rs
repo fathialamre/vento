@@ -38,11 +38,13 @@ const WIDTH: f64 = 300.0;
 /// backing scale; it is shown at 32 pt).
 const ICON_PT: u32 = 32;
 
-/// The reveal button's text: the file manager is Finder on a Mac and Files
-/// elsewhere.
+/// The reveal button's text: the file manager is Finder on a Mac, Explorer
+/// on Windows and Files elsewhere.
 fn reveal_label() -> String {
     if cfg!(target_os = "macos") {
         tr("Show in Finder")
+    } else if cfg!(windows) {
+        tr("Show in Explorer")
     } else {
         tr("Show in Files")
     }
@@ -196,6 +198,10 @@ impl InfoController {
             self.platform.deactivate_app();
             return;
         }
+        // winit shows a new window without activating it on Windows; the
+        // window takes the keyboard for Esc.
+        #[cfg(windows)]
+        window.window().with_winit_window(|w| w.focus_window());
         if !was_open {
             self.watch_outside_clicks();
         }
@@ -554,9 +560,13 @@ mod tests {
         let gone = dir.path().join("gone");
         assert_eq!(existing_paths(vec![a.clone(), gone.clone()]), vec![a]);
         assert!(existing_paths(vec![gone.clone()]).is_empty());
-        let link = dir.path().join("link");
-        std::os::unix::fs::symlink(&gone, &link).unwrap();
-        assert_eq!(existing_paths(vec![link.clone()]), vec![link]);
+        // Windows lets only admins and developer mode make links.
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("link");
+            std::os::unix::fs::symlink(&gone, &link).unwrap();
+            assert_eq!(existing_paths(vec![link.clone()]), vec![link]);
+        }
     }
 
     #[test]

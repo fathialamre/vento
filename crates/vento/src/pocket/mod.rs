@@ -62,7 +62,7 @@ use crate::drag;
 use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
-use geometry::{Frames, frames, hits, hover_event, interactive_rect, island_inputs};
+use geometry::{Frames, frames, hits, hover_event, interactive_rect, island_inputs, window_frame};
 use kinds::Kinds;
 use list_view::ListView;
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
@@ -84,6 +84,9 @@ const WARM_DELAY: Duration = Duration::from_millis(200);
 /// How long the window stays as tall as before after the island shrinks, so
 /// the shrinking is seen: a little longer than the island's animation.
 const SHRINK_DELAY: Duration = Duration::from_millis(280);
+/// How long the island in the corner by the clock stays open after a drop
+/// on its drop box, to show what came in.
+const DROP_CONFIRM: Duration = Duration::from_millis(1500);
 /// How long the island offers Undo after a clear or an x.
 const UNDO_LIFETIME: Duration = Duration::from_secs(5);
 /// How often the Undo ring is redrawn while it counts down in sight.
@@ -215,6 +218,17 @@ pub struct PocketController {
     overlay_ready: Cell<bool>,
     /// `dragging` at the last sample, to spot the start of a drag.
     was_dragging: Cell<bool>,
+    /// The island in the corner by the clock shows only its drop box: a
+    /// drag from another app is under way.
+    drop_box: Cell<bool>,
+    /// Whether another window of vento's now fills the island's corner by
+    /// the clock; see [`set_corner_taken`](Self::set_corner_taken).
+    corner_taken: RefCell<Option<Box<dyn Fn() -> bool>>>,
+    /// The island gave way to that window at the last sample.
+    yielded: Cell<bool>,
+    /// Resting on the collapsed shape doesn't open the island until the
+    /// pointer leaves it, after giving way.
+    hover_blocked: Cell<bool>,
     /// Whether the window takes the pointer (otherwise it ignores it).
     hittest: Cell<bool>,
     /// Whether the platform sets where the window takes the pointer from
@@ -300,6 +314,10 @@ impl PocketController {
             warm: Cell::new(false),
             overlay_ready: Cell::new(false),
             was_dragging: Cell::new(false),
+            drop_box: Cell::new(false),
+            corner_taken: RefCell::new(None),
+            yielded: Cell::new(false),
+            hover_blocked: Cell::new(false),
             hittest: Cell::new(true),
             input_by_shape: Cell::new(true),
             input_shape: Cell::new(None),
@@ -695,7 +713,7 @@ impl PocketController {
             return;
         };
         let over = hits(&f, self.island.borrow().presence(), at);
-        for event in drag_end_events(&f.expanded, at, over) {
+        for event in drag_end_events(&self.window_frame(&f), at, over) {
             self.dispatch(event);
         }
         self.pointer_in.set(over);
@@ -897,6 +915,15 @@ impl PocketController {
         debug!("pocket paused: {after:?}");
     }
 
+    /// Tells the island in the corner by the clock whether another window of
+    /// vento's fills that corner now (the Quick panel, which opens above the
+    /// tray icon): while `taken` says so, the island rests, and a rest on the
+    /// taskbar opens it again only once the pointer has left the taskbar
+    /// under it. An island on top ignores it.
+    pub fn set_corner_taken(&self, taken: Box<dyn Fn() -> bool>) {
+        *self.corner_taken.borrow_mut() = Some(taken);
+    }
+
     /// Drops the island to its resting presence at once — no collapse delay,
     /// no waiting for the next poll tick — and releases the pointer. Used by
     /// pause and by closing the island with the shortcut.
@@ -1014,6 +1041,11 @@ impl PocketController {
             CatcherEvent::Dropped(d) => {
                 self.window.set_hint(false);
                 self.add_dropped(d);
+                // By the clock, the drop box gives way to the whole island
+                // for a moment, to show what came in.
+                if self.island_frames().is_some_and(|f| f.corner) {
+                    self.pin_until.set(Some(Instant::now() + DROP_CONFIRM));
+                }
             }
         }
     }
@@ -1060,11 +1092,37 @@ impl PocketController {
         let Some(home) = self.home.get() else {
             return;
         };
+        let corner = home.tray_corner.is_some();
+        // Another window of vento's in the corner (the Quick panel) has it
+        // to itself: the island rests at once. A drag still brings the drop
+        // box out.
+        let taken = corner && !dragging && self.corner_taken.borrow().as_ref().is_some_and(|f| f());
+        if self.yielded.replace(taken) != taken && taken {
+            debug!("pocket gives way to the quick panel");
+            self.settle_now();
+            self.hover_blocked.set(true);
+        }
+        if taken {
+            return;
+        }
+        self.show_drop_box(corner && dragging && !self.latch.running(), now);
         let f = self.frames_of(&home);
         let before = self.island.borrow().presence();
         let has_items = self.has_content();
         let pinned = self.pinned_open(now);
-        let inputs = island_inputs(&f, has_items, dragging, sample.cursor, pinned);
+        // The Pocket's own drag out leaves the island by the clock open only
+        // while the pointer is over it, as on top, not wherever it goes.
+        let drag_in = dragging && !(corner && self.latch.running());
+        // After giving way, a rest on the collapsed shape counts again only
+        // once the pointer has left it: it may still be on the tray icon
+        // that closed the panel.
+        if self.hover_blocked.get() && !geometry::contains(&f.collapsed, sample.cursor) {
+            self.hover_blocked.set(false);
+        }
+        let mut inputs = island_inputs(&f, has_items, drag_in, sample.cursor, pinned);
+        if self.hover_blocked.get() {
+            inputs.hover = geometry::NOWHERE;
+        }
         let after = self.island.borrow_mut().update(&inputs, now);
         let changed = after != before;
         if changed {
@@ -1103,13 +1161,32 @@ impl PocketController {
         }
     }
 
+    /// Turns the drop box of the island by the clock on or off. On, it shows
+    /// the Pocket, only where to drop. Off with no drop to show (the drag
+    /// ended elsewhere), the island goes back at once rather than growing
+    /// into the whole island on its way out.
+    fn show_drop_box(&self, on: bool, now: Instant) {
+        if self.drop_box.replace(on) == on {
+            return;
+        }
+        debug!("pocket drop box {on}");
+        self.window.set_drop_box(on);
+        if on {
+            self.close_pocket_list();
+            self.set_view(View::Pocket);
+        } else if !self.pinned_open(now) {
+            self.settle_now();
+        }
+        self.fit_panel();
+    }
+
     /// Passes hover moves over the expanded island to the window, which
     /// gets none from AppKit while vento isn't the active app. A press is
     /// left alone: its moves always arrive.
     fn replay_hover(&self, f: &Frames, presence: Presence, cursor: Point) {
-        let window = (presence == Presence::Expanded).then_some(&f.expanded);
+        let window = (presence == Presence::Expanded).then(|| self.window_frame(f));
         let last = self.last_cursor.replace(Some(cursor));
-        let (event, inside) = hover_event(window, cursor, last, self.pointer_in.get());
+        let (event, inside) = hover_event(window.as_ref(), cursor, last, self.pointer_in.get());
         self.pointer_in.set(inside);
         if let Some(event) = event {
             self.dispatch(event);
@@ -1182,10 +1259,11 @@ impl PocketController {
     fn input_rect(&self, presence: Presence) -> Option<Rect> {
         let f = self.island_frames()?;
         let r = interactive_rect(&f, presence)?;
+        let window = self.window_frame(&f);
         let scale = self.window.window().scale_factor() as f64;
         Some(Rect {
-            x: (r.x - f.expanded.x) * scale,
-            y: (r.y - f.expanded.y) * scale,
+            x: (r.x - window.x) * scale,
+            y: (r.y - window.y) * scale,
             w: r.w * scale,
             h: r.h * scale,
         })
@@ -1242,9 +1320,10 @@ impl PocketController {
         }
     }
 
-    /// Sizes the window for `home` and places it at the top centre. The
-    /// island grows or shrinks to its new height as it animates; a window
-    /// that shrinks waits for it, so the shrinking is seen.
+    /// Sizes the window for `home` and places it at the top centre (or in
+    /// the corner by the clock). The island grows or shrinks to its new
+    /// height as it animates; a window that shrinks waits for it, so the
+    /// shrinking is seen.
     fn apply_home(&self, home: &IslandHome) {
         let f = self.frames_of(home);
         let panel_h = (f.expanded.h - f.top_h) as f32;
@@ -1259,16 +1338,30 @@ impl PocketController {
                 .start(TimerMode::SingleShot, SHRINK_DELAY, move || {
                     if let Some(c) = this.upgrade() {
                         c.window.set_window_h(c.window.get_panel_h());
+                        if let Some(f) = c.island_frames() {
+                            c.place_window(&f);
+                        }
                     }
                 });
         }
+        self.window.set_corner_style(f.corner);
         self.window.set_notch_style(f.notch_style);
         self.window.set_notch_w(f.notch_w as f32);
         self.window.set_top_h(f.top_h as f32);
-        self.window.window().set_position(LogicalPosition::new(
-            f.expanded.x as f32,
-            f.expanded.y as f32,
-        ));
+        self.place_window(&f);
+    }
+
+    /// Moves the window to where it goes for `f`, as tall as it is now.
+    fn place_window(&self, f: &Frames) {
+        let w = self.window_frame(f);
+        self.window
+            .window()
+            .set_position(LogicalPosition::new(w.x as f32, w.y as f32));
+    }
+
+    /// The window's frame for `f`, as tall as it is now.
+    fn window_frame(&self, f: &Frames) -> Rect {
+        window_frame(f, f64::from(self.window.get_window_h()))
     }
 
     /// Adds `paths` (as references, or as kept copies when the Pocket keeps
@@ -1576,13 +1669,19 @@ impl PocketController {
         }
     }
 
-    /// Below the middle of the expanded island.
+    /// Below the middle of the expanded island; above it by the clock,
+    /// where the taskbar is below.
     fn toast_at(&self) -> Point {
         self.island_frames().map_or(Point { x: 0.0, y: 0.0 }, |f| {
             let e = f.expanded;
-            Point {
-                x: e.x + e.w / 2.0,
-                y: e.y + e.h,
+            let mid = e.x + e.w / 2.0;
+            if f.corner {
+                crate::toast::anchor_above(Point { x: mid, y: e.y })
+            } else {
+                Point {
+                    x: mid,
+                    y: e.y + e.h,
+                }
             }
         })
     }

@@ -50,6 +50,9 @@ const GAP: f64 = TIP_GAP - TIP_INSET;
 /// The least distance from the panel to the left, right and bottom edges
 /// of the work area.
 const INSET: f64 = 8.0;
+/// The arrow's height above the body when the panel hangs under the icon
+/// (matches `quick.slint`).
+const ARROW_H: f32 = 10.0;
 /// The panel body's corner radius and the arrow's base width (both match
 /// `quick.slint`).
 const CORNER_RADIUS: f64 = 16.0;
@@ -471,8 +474,14 @@ impl PanelController {
         let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
         window.set_awake_until_hour(hour.into());
         window.set_awake_until_minute(minute.into());
+        let screens = self.platform.screens();
+        window.set_arrow_h(if hangs_under(icon, &screens) {
+            ARROW_H
+        } else {
+            0.0
+        });
         let height = f64::from(window.get_window_height());
-        let Placement { x, y, arrow_x } = panel_position(icon, height, &self.platform.screens());
+        let Placement { x, y, arrow_x } = panel_position(icon, height, &screens);
         window.set_arrow_x(arrow_x as f32);
         window
             .window()
@@ -497,6 +506,10 @@ impl PanelController {
                 .window()
                 .set_position(LogicalPosition::new(x as f32, y as f32));
         }
+        // winit shows a new window without activating it on Windows; the
+        // panel takes the keyboard for Esc.
+        #[cfg(windows)]
+        window.window().with_winit_window(|w| w.focus_window());
         self.watch_outside_clicks();
         let this = self.this.clone();
         Timer::single_shot(Duration::ZERO, move || {
@@ -654,6 +667,20 @@ struct Placement {
     arrow_x: f64,
 }
 
+/// Whether the panel hangs under `icon` from its arrow: the icon is in the
+/// top half of the screen the panel goes on (the menu bar, a taskbar along
+/// the top). Over a taskbar along the bottom, where Windows has it by
+/// default, the panel stands above it instead, with no arrow, as Windows'
+/// own flyouts do.
+fn hangs_under(icon: Rect, screens: &[Rect]) -> bool {
+    let below = Point {
+        x: icon.x + icon.w / 2.0,
+        y: icon.y + icon.h + GAP,
+    };
+    let centre_y = icon.y + icon.h / 2.0;
+    screen_for(below, screens).is_none_or(|s| centre_y < s.y + s.h / 2.0)
+}
+
 /// Placement of a panel window `height` points tall (the arrow included):
 /// centred under `icon`, its arrow's tip [`TIP_GAP`] below it (the window
 /// [`GAP`] below it), and clamped to
@@ -662,8 +689,11 @@ struct Placement {
 /// bar), [`INSET`] in from its left, right and bottom edges. The top edge
 /// needs no inset: the panel hangs from the menu bar, already [`GAP`] below
 /// the icon. The arrow points at the icon's centre wherever the body ends
-/// up, but stays [`ARROW_MARGIN`] in from either side.
+/// up, but stays [`ARROW_MARGIN`] in from either side. An icon in a taskbar
+/// at the bottom (see [`hangs_under`]) gets the panel [`INSET`] above the
+/// work area's bottom edge, centred on the icon in the same way.
 fn panel_position(icon: Rect, height: f64, screens: &[Rect]) -> Placement {
+    let hangs = hangs_under(icon, screens);
     let anchor = Point {
         x: icon.x + icon.w / 2.0,
         y: icon.y + icon.h + GAP,
@@ -671,7 +701,12 @@ fn panel_position(icon: Rect, height: f64, screens: &[Rect]) -> Placement {
     let (mut x, mut y) = (anchor.x - WIDTH / 2.0, anchor.y);
     if let Some(screen) = screen_for(anchor, screens) {
         x = clamp(x, screen.x + INSET, screen.x + screen.w - WIDTH - INSET);
-        y = clamp(y, screen.y, screen.y + screen.h - height - INSET);
+        let lowest = screen.y + screen.h - height - INSET;
+        y = if hangs {
+            clamp(y, screen.y, lowest)
+        } else {
+            lowest.max(screen.y)
+        };
     }
     let arrow_x = clamp(anchor.x - x, ARROW_MARGIN, WIDTH - ARROW_MARGIN);
     Placement { x, y, arrow_x }
@@ -774,6 +809,20 @@ mod tests {
         );
         // Never closer to a corner than its radius plus half the arrow.
         const { assert!(ARROW_MARGIN >= CORNER_RADIUS + ARROW_W / 2.0) };
+    }
+
+    #[test]
+    fn over_a_taskbar_at_the_bottom_the_panel_stands_above_it() {
+        // A 1360 × 768 screen whose work area ends at the 48 pt taskbar,
+        // the tray icon in it.
+        let work = rect(0.0, 0.0, 1360.0, 720.0);
+        let icon = rect(1180.0, 724.0, 40.0, 40.0);
+        assert!(!hangs_under(icon, &[work]));
+        let p = panel_position(icon, 440.0, &[work]);
+        // Centred on the icon, 8 pt above the work area's bottom.
+        assert_eq!((p.x, p.y), (1012.0, 720.0 - 440.0 - INSET));
+        // A menu bar's icon still gets the arrow.
+        assert!(hangs_under(rect(1000.0, 0.0, 24.0, 25.0), &[PRIMARY]));
     }
 
     #[test]

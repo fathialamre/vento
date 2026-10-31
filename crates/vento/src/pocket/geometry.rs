@@ -5,7 +5,7 @@ use slint::LogicalPosition;
 use slint::platform::WindowEvent;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket_zone::{IslandInputs, Presence, ZONE_MARGIN};
-use vento_platform::IslandHome;
+use vento_platform::{IslandHome, TrayCorner};
 
 /// Width of each wing beside the notch.
 const WING_W: f64 = 44.0;
@@ -35,6 +35,19 @@ const GROUPS_TOP: f64 = 8.0;
 pub(super) const GROUPS_SHOWN: usize = 3;
 /// Top height when neither the menu bar nor a notch gives one.
 const FALLBACK_TOP_H: f64 = 32.0;
+/// Room the island in the corner by the taskbar's clock leaves between it
+/// and the taskbar, and between it and the screen's edge.
+const CORNER_GAP: f64 = 12.0;
+/// Height of the drop box the island in that corner shows during a drag.
+const DROP_H: f64 = 150.0;
+
+/// A shape no pointer is ever in: it has a negative size.
+pub(super) const NOWHERE: Rect = Rect {
+    x: 0.0,
+    y: 0.0,
+    w: -1.0,
+    h: -1.0,
+};
 
 /// What the expanded island shows below the menu bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,11 +59,17 @@ pub(super) enum Panel {
     List,
     /// The clipboard history's list.
     Clipboard,
+    /// Only where to drop, with no bar: the island in the corner by the
+    /// taskbar's clock while something is dragged.
+    Drop,
 }
 
 /// The island's rects for one home, in logical top-left global coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Frames {
+    /// The island lives in the corner by the taskbar's clock and grows up
+    /// from there.
+    pub(super) corner: bool,
     pub(super) notch_style: bool,
     pub(super) notch_w: f64,
     pub(super) top_h: f64,
@@ -78,6 +97,9 @@ pub(super) fn top_height(home: &IslandHome) -> f64 {
 /// view's above the bottom bar: the Pocket's groups (up to
 /// [`GROUPS_SHOWN`]; more scroll), or the taller lists.
 pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
+    if let Some(corner) = home.tray_corner {
+        return corner_frames(home.screen, corner, panel);
+    }
     let screen = home.screen;
     let top_h = top_height(home);
     let (mid, notch_w, notch_style) = match home.slot {
@@ -124,6 +146,7 @@ pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
         h: top_h + panel_h(panel),
     };
     Frames {
+        corner: false,
         notch_style,
         notch_w,
         top_h,
@@ -133,14 +156,69 @@ pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
     }
 }
 
+/// The island in the corner by the taskbar's clock: as wide as on top, with
+/// [`CORNER_GAP`] between it and the taskbar and the screen's edge, growing
+/// up from there. It draws nothing collapsed: its collapsed shape is the
+/// band under it down to the screen's bottom edge, the taskbar's whole
+/// height included, where resting the pointer opens it but which takes no
+/// clicks. A pointer headed for the taskbar overshoots any thinner strip
+/// before a sample sees it rest. A drag anywhere on its screen brings it
+/// out, so the drop zone is the whole screen.
+fn corner_frames(screen: Rect, corner: TrayCorner, panel: Panel) -> Frames {
+    let work = corner.work;
+    let w = ISLAND_W.min(work.w - 2.0 * CORNER_GAP);
+    let x = if corner.left {
+        work.x + CORNER_GAP
+    } else {
+        work.x + work.w - CORNER_GAP - w
+    };
+    let bottom = work.y + work.h - CORNER_GAP;
+    let h = panel_h(panel);
+    Frames {
+        corner: true,
+        notch_style: false,
+        notch_w: 0.0,
+        top_h: 0.0,
+        collapsed: Rect {
+            x,
+            y: bottom,
+            w,
+            h: (screen.y + screen.h - bottom).max(CORNER_GAP),
+        },
+        zone: screen,
+        expanded: Rect {
+            x,
+            y: bottom - h,
+            w,
+            h,
+        },
+    }
+}
+
 /// Height of what the expanded island draws below the menu bar for
 /// `panel`, the bottom bar included.
 fn panel_h(panel: Panel) -> f64 {
     let view = match panel {
         Panel::Kinds { groups } => GROUPS_TOP + groups.clamp(1, GROUPS_SHOWN) as f64 * GROUP_H,
         Panel::List | Panel::Clipboard => LIST_H,
+        Panel::Drop => return DROP_H,
     };
     view + BAR_H
+}
+
+/// The window's frame while it is `window_h` tall below the menu bar (as
+/// tall as the island, or taller a moment as it shrinks): it keeps the
+/// expanded island's top, or its bottom by the clock.
+pub(super) fn window_frame(f: &Frames, window_h: f64) -> Rect {
+    let e = f.expanded;
+    let h = f.top_h + window_h;
+    let y = if f.corner { e.y + e.h - h } else { e.y };
+    Rect {
+        x: e.x,
+        y,
+        w: e.w,
+        h,
+    }
 }
 
 /// The smallest rect holding both.
@@ -186,7 +264,7 @@ pub(super) fn island_inputs(
 pub(super) fn interactive_rect(f: &Frames, presence: Presence) -> Option<Rect> {
     match presence {
         Presence::Hidden => None,
-        Presence::Collapsed => Some(f.collapsed),
+        Presence::Collapsed => (!f.corner).then_some(f.collapsed),
         Presence::Expanded => Some(hold(f)),
     }
 }
@@ -248,6 +326,7 @@ mod tests {
             notch: Some(rect((1512.0 - notch_w) / 2.0, 0.0, notch_w, 32.0)),
             menu_bar_h,
             slot: None,
+            tray_corner: None,
         }
     }
 
@@ -257,7 +336,79 @@ mod tests {
             notch: None,
             menu_bar_h,
             slot: None,
+            tray_corner: None,
         }
+    }
+
+    /// Windows: a 1280 × 800 screen with a 48-high taskbar along the
+    /// bottom, its clock at the right end unless `left`.
+    fn by_the_clock(left: bool) -> IslandHome {
+        IslandHome {
+            tray_corner: Some(TrayCorner {
+                work: rect(0.0, 0.0, 1280.0, 752.0),
+                left,
+            }),
+            screen: rect(0.0, 0.0, 1280.0, 800.0),
+            ..plain(0.0)
+        }
+    }
+
+    #[test]
+    fn by_the_clock_the_island_grows_up_from_the_corner() {
+        let f = frames(&by_the_clock(false), TWO);
+        assert!(f.corner && !f.notch_style);
+        // 12 from the taskbar and the edge; 8 + 2 * 92 + 44 high.
+        assert_eq!(f.expanded, rect(708.0, 504.0, 560.0, 236.0));
+        // Every view keeps its bottom and its sides: only its top moves.
+        for panel in [Panel::List, Panel::Clipboard, Panel::Drop] {
+            let e = frames(&by_the_clock(false), panel).expanded;
+            assert_eq!((e.x, e.w, e.y + e.h), (708.0, 560.0, 740.0));
+        }
+        assert_eq!(frames(&by_the_clock(false), Panel::Drop).expanded.h, 150.0);
+        // The clock at the left end: the bottom-left corner.
+        assert_eq!(frames(&by_the_clock(true), TWO).expanded.x, 12.0);
+    }
+
+    #[test]
+    fn no_pointer_is_ever_nowhere() {
+        for p in [(0.0, 0.0), (-1.0, -1.0), (-0.5, -0.5), (900.0, 799.0)] {
+            assert!(!contains(&NOWHERE, Point { x: p.0, y: p.1 }));
+        }
+    }
+
+    #[test]
+    fn by_the_clock_a_rest_on_the_taskbar_or_a_drag_opens_it() {
+        use std::time::{Duration, Instant};
+        use vento_core::pocket_zone::IslandState;
+
+        let f = frames(&by_the_clock(false), TWO);
+        // The band under the island, down to the screen's bottom edge.
+        assert_eq!(f.collapsed, rect(708.0, 740.0, 560.0, 60.0));
+        // Collapsed, the window takes no clicks, even on the band.
+        let low = Point { x: 900.0, y: 799.0 };
+        assert_eq!(interactive_rect(&f, Presence::Collapsed), None);
+        assert!(!hits(&f, Presence::Collapsed, low));
+        let t0 = Instant::now();
+        let at = |s: &mut IslandState, p: Point, dragging: bool, ms: u64| {
+            let inputs = island_inputs(&f, true, dragging, p, false);
+            s.update(&inputs, t0 + Duration::from_millis(ms))
+        };
+        // On the taskbar away from the island: nothing.
+        let mut s = IslandState::new();
+        let apps = Point { x: 400.0, y: 776.0 };
+        assert_eq!(at(&mut s, apps, false, 0), Presence::Collapsed);
+        assert_eq!(at(&mut s, apps, false, 500), Presence::Collapsed);
+        // Resting anywhere on the taskbar under the island, even at its
+        // bottom edge where a pointer thrown down ends up, opens it, and
+        // moving up into it keeps it open.
+        assert_eq!(at(&mut s, low, false, 1000), Presence::Collapsed);
+        assert_eq!(at(&mut s, low, false, 1150), Presence::Expanded);
+        let inside = Point { x: 900.0, y: 600.0 };
+        assert_eq!(at(&mut s, inside, false, 2000), Presence::Expanded);
+        // A drag anywhere on the screen brings it out.
+        let mut s = IslandState::new();
+        let far = Point { x: 40.0, y: 30.0 };
+        assert_eq!(at(&mut s, far, true, 0), Presence::Expanded);
     }
 
     #[test]

@@ -1,12 +1,15 @@
 //! Global shortcuts, such as the ones that open the Pocket and the Clipboard
-//! history: Carbon hot keys through `global-hotkey`, which need no
-//! Accessibility or Input Monitoring permission. Any number can be registered
-//! at once; each keeps its own action.
+//! history: Carbon hot keys (Win32 `RegisterHotKey` on Windows) through
+//! `global-hotkey`, which need no Accessibility or Input Monitoring
+//! permission. Any number can be registered at once; each keeps its own
+//! action.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Once, OnceLock};
+use std::sync::Once;
+#[cfg(not(windows))]
+use std::sync::OnceLock;
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
@@ -23,14 +26,37 @@ thread_local! {
 /// same Carbon event handler on the application, and macOS refuses it a
 /// second time in the process, so a second manager could never register a
 /// key.
+#[cfg(not(windows))]
 static MANAGER: OnceLock<Result<GlobalHotKeyManager, String>> = OnceLock::new();
 
 /// The shared hot key manager, created on first use; see [`MANAGER`].
+#[cfg(not(windows))]
 fn manager() -> Result<&'static GlobalHotKeyManager, String> {
     MANAGER
         .get_or_init(|| GlobalHotKeyManager::new().map_err(|e| e.to_string()))
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// The hot key manager of this thread, created on first use. On Windows a
+/// manager is a hidden window that hears the keys through its thread's
+/// message loop, so it cannot be shared between threads; vento makes one on
+/// the main thread and keeps it for good.
+#[cfg(windows)]
+fn manager() -> Result<&'static GlobalHotKeyManager, String> {
+    thread_local! {
+        static MANAGER: std::cell::OnceCell<Result<&'static GlobalHotKeyManager, String>> =
+            const { std::cell::OnceCell::new() };
+    }
+    MANAGER.with(|manager| {
+        manager
+            .get_or_init(|| {
+                GlobalHotKeyManager::new()
+                    .map(|m| &*Box::leak(Box::new(m)))
+                    .map_err(|e| e.to_string())
+            })
+            .clone()
+    })
 }
 
 /// Records what the hot key `id` does.

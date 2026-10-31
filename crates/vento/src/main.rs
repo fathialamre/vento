@@ -1,43 +1,47 @@
 //! vento: a radial file-actions wheel that opens under the cursor while files
 //! are dragged from Finder and Ctrl is pressed.
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+// No console window behind vento on Windows; debug builds keep it for the
+// log.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod appearance;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod archive_ui;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod awake;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod exec;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[cfg_attr(target_os = "linux", path = "hotkey_linux.rs")]
 mod hotkey;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod info;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod lazy_window;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod panel;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod pause;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod pdf;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod pocket;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod quit;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod screen_text;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod settings_hub;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod settings_window;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod toast;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
 mod tray;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod wheel;
 
 /// The `drag` crate needs GTK on Linux; the Pocket uses this stand-in.
@@ -46,12 +50,12 @@ mod wheel;
 mod drag;
 
 /// Slint components generated from `ui/app.slint`.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod ui {
     slint::include_modules!();
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn main() -> Result<(), slint::PlatformError> {
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -69,7 +73,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // after the fact (a hold Keep Awake could not release, say).
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     // A second launch (the app grid) opens the running Vento's settings.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     if !vento_platform::claim_instance() {
         return Ok(());
     }
@@ -290,6 +294,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 || settings.upgrade().is_some_and(|s| s.is_open())
         }));
     }
+    // The panel opens above the tray icon, where the island lives on
+    // Windows: the island gives way to it.
+    {
+        let panel = Rc::downgrade(&panel);
+        pocket.set_corner_taken(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+        }));
+    }
     {
         let panel = Rc::downgrade(&panel);
         pause.on_change(Box::new(move |paused| {
@@ -468,14 +480,14 @@ fn main() -> Result<(), slint::PlatformError> {
 
 /// The code of the language the `language` setting asks for now: the
 /// system's preferred languages decide for "auto".
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn language_code(setting: &str) -> &'static str {
     vento_core::i18n::resolve(setting, &vento_core::i18n::system_languages()).code
 }
 
 /// The toast for a shortcut of the feature `name` that cannot be registered,
 /// for `reason`.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn shortcut_unavailable_text(name: &str, reason: &str) -> String {
     vento_core::i18n::fill(
         &vento_core::i18n::tr("{name} shortcut unavailable: {reason}"),
@@ -484,14 +496,14 @@ fn shortcut_unavailable_text(name: &str, reason: &str) -> String {
 }
 
 /// Why a shortcut failed, in English: for log lines.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn in_english_text(error: vento_core::settings::ShortcutError) -> String {
     vento_core::i18n::with_language("en", || error.to_string())
 }
 
 /// One global shortcut and what it does: holds the key registered for it,
 /// if any.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 struct ShortcutSlot {
     /// What the shortcut does, where the system names it (GNOME asks the
     /// user to allow it under this name), in the interface language as of
@@ -502,7 +514,7 @@ struct ShortcutSlot {
     held: std::cell::RefCell<Option<(String, hotkey::HotkeyHandle)>>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 impl ShortcutSlot {
     /// A slot with no key registered yet, calling `action` on each press.
     fn new(description: fn() -> String, action: std::rc::Rc<dyn Fn()>) -> Self {
@@ -581,12 +593,23 @@ fn select_backend() -> Result<(), slint::PlatformError> {
         .select()
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+/// Uses winit with the software renderer, as on the other two. Windows
+/// keeps vento's windows off the taskbar and above the others once they
+/// exist, through `Platform::make_overlay` and `make_non_key`.
+#[cfg(windows)]
+fn select_backend() -> Result<(), slint::PlatformError> {
+    slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .renderer_name("software".into())
+        .select()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn main() {
     println!("Vento: this platform is not supported yet");
 }
 
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux", windows)))]
 mod tests {
     use super::*;
     use vento_core::i18n::{tr, with_language};
