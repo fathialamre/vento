@@ -20,7 +20,6 @@ global WelcomeIcons {
     out property <image> file: @image-url("icons/file-text.svg");
     out property <image> check: @image-url("icons/check.svg");
     out property <image> plus: @image-url("icons/plus.svg");
-    out property <image> open-out: @image-url("icons/arrow-up-right.svg");
     out property <image> honeycomb: @image-url("icons/layout-honeycomb.svg");
     out property <image> petals: @image-url("icons/layout-petals.svg");
 }
@@ -1127,8 +1126,6 @@ export component WelcomeWindow inherits Window {
 
                         WelcomeButton {
                             label: @tr("Open Settings");
-                            icon: WelcomeIcons.open-out;
-                            has-icon: true;
                             clicked => { root.open-settings(); }
                         }
                     }
@@ -1164,6 +1161,8 @@ export component WelcomeWindow inherits Window {
                 }
 
                 // The middle of the five: it stays in place when mirrored.
+                // Written out all the same, as the rows_mirror test wants
+                // every child of the row to order by direction.
                 if !root.last: VerticalLayout {
                     layout-order: Theme.rtl ? 2 : 2;
                     alignment: center;

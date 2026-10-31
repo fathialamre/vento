@@ -27,7 +27,7 @@ msgstr "، "
 msgid "1 h"
 msgstr "1 س"
 
-#: crates/vento/ui/welcome.slint:782
+#: crates/vento/ui/welcome.slint:781
 msgid "1. Drag this file a little."
 msgstr "1. اسحب هذا الملف قليلاً."
 
@@ -39,11 +39,11 @@ msgstr "15 د"
 msgid "2 h"
 msgstr "2 س"
 
-#: crates/vento/ui/welcome.slint:795
+#: crates/vento/ui/welcome.slint:794
 msgid "2. While dragging, press"
 msgstr "2. أثناء السحب، اضغط"
 
-#: crates/vento/ui/welcome.slint:816
+#: crates/vento/ui/welcome.slint:815
 msgid "3. Let go over any action on the wheel."
 msgstr "3. أفلته فوق أي إجراء في العجلة."
 
@@ -63,7 +63,7 @@ msgstr "8 س"
 msgid "; "
 msgstr "؛ "
 
-#: crates/vento/ui/welcome.slint:700
+#: crates/vento/ui/welcome.slint:699
 msgid "A wheel of quick actions that opens under the file you are dragging."
 msgstr "عجلة من الإجراءات السريعة تُفتح تحت الملف الذي تسحبه."
 
@@ -83,7 +83,7 @@ msgstr "إضافة PDF"
 msgid "Add folder"
 msgstr "إضافة مجلد"
 
-#: crates/vento/ui/welcome.slint:1052
+#: crates/vento/ui/welcome.slint:1051
 msgid "Add folder…"
 msgstr "إضافة مجلد…"
 
@@ -171,7 +171,7 @@ msgstr "مستيقظ حتى {time} يوم {date}"
 msgid "Awake until {time} tomorrow"
 msgstr "مستيقظ حتى {time} غداً"
 
-#: crates/vento/ui/welcome.slint:1182
+#: crates/vento/ui/welcome.slint:1181
 msgid "Back"
 msgstr "السابق"
 
@@ -211,7 +211,7 @@ msgstr "لا يمكن إبقاء الجهاز مستيقظاً"
 msgid "Changed your mind? Click Undo on the notice."
 msgstr "غيّرت رأيك؟ انقر «تراجع» في الإشعار."
 
-#: crates/vento/ui/welcome.slint:740
+#: crates/vento/ui/welcome.slint:739
 msgid "Choose a look"
 msgstr "اختر المظهر"
 
@@ -243,7 +243,7 @@ msgstr "انقر أيقونة Vento، ثم مربع «إبقاء الجهاز م
 msgid "Clipboard"
 msgstr "الحافظة"
 
-#: crates/vento/src/welcome_window/mod.rs:791
+#: crates/vento/src/welcome_window/mod.rs:792
 msgid "Clipboard history"
 msgstr "سجل الحافظة"
 
@@ -519,7 +519,7 @@ msgstr "مستندات"
 msgid "Done"
 msgstr "تم"
 
-#: crates/vento/src/welcome_window/mod.rs:783
+#: crates/vento/src/welcome_window/mod.rs:784
 msgid "Drag a file, press {key}"
 msgstr "اسحب ملفاً واضغط ‎{key}"
 
@@ -647,7 +647,7 @@ msgstr "مجلد"
 msgid "Folders"
 msgstr "مجلدات"
 
-#: crates/vento/ui/welcome.slint:1025
+#: crates/vento/ui/welcome.slint:1024
 msgid "Folders you use often"
 msgstr "مجلدات تستخدمها كثيراً"
 
@@ -751,7 +751,7 @@ msgstr "إبقاء الجهاز مستيقظا"
 msgid "Keep a copy"
 msgstr "الاحتفاظ بنسخة"
 
-#: crates/vento/ui/welcome.slint:1081
+#: crates/vento/ui/welcome.slint:1080
 msgid "Keeps the last 50 things you copy. Open it with {}."
 msgstr "يحفظ آخر 50 عنصراً تنسخها. افتحه بـ ‎{}."
 
@@ -939,7 +939,7 @@ msgstr[3] "جارٍ نقل {n} عناصر…"
 msgstr[4] "جارٍ نقل {n} عنصراً…"
 msgstr[5] "جارٍ نقل {n} عنصر…"
 
-#: crates/vento/ui/welcome.slint:1192
+#: crates/vento/ui/welcome.slint:1191
 msgid "Next"
 msgstr "التالي"
 
@@ -1123,7 +1123,7 @@ msgstr "المثبّتة"
 msgid "Pinned copies stay"
 msgstr "تبقى النسخ المثبّتة"
 
-#: crates/vento/ui/welcome.slint:1028
+#: crates/vento/ui/welcome.slint:1027
 msgid "Pinned folders sit on the ring of Move and Copy to."
 msgstr "تظهر المجلدات المثبّتة على حلقة «نقل» و«نسخ إلى»."
 
@@ -1389,7 +1389,7 @@ msgstr "الموقع"
 msgid "Size"
 msgstr "الحجم"
 
-#: crates/vento/ui/welcome.slint:1172
+#: crates/vento/ui/welcome.slint:1171
 msgid "Skip setup"
 msgstr "تخطي الإعداد"
 
@@ -1447,11 +1447,11 @@ msgstr "إيقاف"
 msgid "Stop Keep Awake"
 msgstr "إيقاف إبقاء الجهاز مستيقظاً"
 
-#: crates/vento/src/welcome_window/mod.rs:710
+#: crates/vento/src/welcome_window/mod.rs:711
 msgid "Stored on this Mac without encryption. Copies that password managers mark as private are skipped."
 msgstr "يُخزَّن على هذا الجهاز دون تشفير. تُتجاهل النسخ التي تعلّمها برامج إدارة كلمات السر على أنها خاصة."
 
-#: crates/vento/src/welcome_window/mod.rs:714
+#: crates/vento/src/welcome_window/mod.rs:715
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "يُخزَّن على هذا الحاسوب دون تشفير. تُتجاهل النسخ التي تعلّمها برامج إدارة كلمات السر على أنها خاصة."
 
@@ -1515,7 +1515,7 @@ msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسج
 msgid "Trigger"
 msgstr "المفتاح المشغّل"
 
-#: crates/vento/ui/welcome.slint:775
+#: crates/vento/ui/welcome.slint:774
 msgid "Try it"
 msgstr "جرّبها"
 
@@ -1603,7 +1603,7 @@ msgstr "‏Vento يعمل"
 msgid "Vento is paused"
 msgstr "‏Vento متوقف مؤقتاً"
 
-#: crates/vento/ui/welcome.slint:848
+#: crates/vento/ui/welcome.slint:847
 msgid "Vento is paused, so the wheel won't open."
 msgstr "‏Vento متوقف مؤقتاً، لذا لن تُفتح العجلة."
 
@@ -1611,7 +1611,7 @@ msgstr "‏Vento متوقف مؤقتاً، لذا لن تُفتح العجلة."
 msgid "Vento keeps its own copy of each file, not only a link to it"
 msgstr "يحتفظ Vento بنسخته الخاصة من كل ملف، لا برابط إليه فقط"
 
-#: crates/vento/ui/welcome.slint:1109
+#: crates/vento/ui/welcome.slint:1108
 msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu."
 msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته للوحة السريعة، وانقر بزر الفأرة الأيمن للقائمة."
 
@@ -1635,11 +1635,11 @@ msgstr "عرض"
 msgid "View licenses"
 msgstr "عرض التراخيص"
 
-#: crates/vento/ui/welcome.slint:546
+#: crates/vento/ui/welcome.slint:545
 msgid "Welcome to Vento"
 msgstr "مرحباً بك في Vento"
 
-#: crates/vento/ui/welcome.slint:971
+#: crates/vento/ui/welcome.slint:970
 msgid "What do you do most?"
 msgstr "ماذا تفعل أكثر؟"
 
@@ -1675,7 +1675,7 @@ msgstr "جارٍ الكتابة…"
 msgid "Wrong password"
 msgstr "كلمة السر خاطئة"
 
-#: crates/vento/ui/welcome.slint:1014
+#: crates/vento/ui/welcome.slint:1013
 msgid "You can pick each action in Settings → Wheel."
 msgstr "يمكنك اختيار كل إجراء من الإعدادات ← العجلة."
 
@@ -1683,11 +1683,11 @@ msgstr "يمكنك اختيار كل إجراء من الإعدادات ← ال
 msgid "You pick where to cut"
 msgstr "تختار أنت أماكن القطع"
 
-#: crates/vento/ui/welcome.slint:1106
+#: crates/vento/ui/welcome.slint:1105
 msgid "You're all set"
 msgstr "كل شيء جاهز"
 
-#: crates/vento/ui/welcome.slint:944
+#: crates/vento/ui/welcome.slint:943
 msgid "You've got it. This works on any file, in Finder or anywhere you drag files from."
 msgstr "أتقنتها. تعمل على أي ملف تسحبه، في Finder أو في أي مكان."
 

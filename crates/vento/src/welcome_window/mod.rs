@@ -674,6 +674,7 @@ impl WelcomeController {
         debug!("welcome window closed");
     }
 
+    /// Whether the window is open (shown, not yet closed).
     pub fn is_open(&self) -> bool {
         self.open.get()
     }
@@ -700,7 +701,7 @@ pub fn first_launch(
 /// The screen after `step`; `None` after the last, Done, which ends the
 /// setup.
 fn next_step(step: i32) -> Option<i32> {
-    (step < LAST_STEP).then(|| (step + 1).max(0))
+    (step < LAST_STEP).then(|| step + 1)
 }
 
 /// The Folders screen's note on the clipboard history: the computer is a
