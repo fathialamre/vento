@@ -529,6 +529,14 @@ msgstr[1] ""
 msgid "Drop to add"
 msgstr ""
 
+#: crates/vento-core/src/screenshots.rs:200
+msgid "Earlier"
+msgstr ""
+
+#: crates/vento-core/src/screenshots.rs:191
+msgid "Earlier this week"
+msgstr ""
+
 #: crates/vento/src/panel/mod.rs:615
 msgid "Empty"
 msgstr ""
@@ -1409,6 +1417,10 @@ msgstr ""
 msgid "To read text on your screen, Vento needs Screen Recording. It only looks at the area you select."
 msgstr ""
 
+#: crates/vento-core/src/screenshots.rs:189
+msgid "Today"
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:976
 msgid "Trigger"
 msgstr ""
@@ -1573,6 +1585,10 @@ msgstr ""
 msgid "Wrong password"
 msgstr ""
 
+#: crates/vento-core/src/screenshots.rs:190
+msgid "Yesterday"
+msgstr ""
+
 #: crates/vento/ui/welcome.slint:1013
 msgid "You can pick each action in Settings → Wheel."
 msgstr ""
@@ -1685,7 +1701,7 @@ msgstr ""
 msgid "interrupted"
 msgstr ""
 
-#: crates/vento-core/src/settings.rs:590
+#: crates/vento-core/src/settings.rs:615
 msgid "invalid shortcut \"{spec}\""
 msgstr ""
 
@@ -2102,6 +2118,11 @@ msgstr ""
 #: crates/vento/src/settings_window/mod.rs:128
 msgctxt "page"
 msgid "Move"
+msgstr ""
+
+#: crates/vento-core/src/screenshots.rs:213
+msgctxt "shot"
+msgid "{day} {time}"
 msgstr ""
 
 #: crates/vento-core/src/i18n/dates.rs:73

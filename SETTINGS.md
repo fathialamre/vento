@@ -120,6 +120,16 @@ clipboard_history = true
 # as pocket_shortcut
 clipboard_shortcut = "ctrl+alt+v"
 
+# Screenshots: list the screenshots of the last 7 days in the island's
+# Screenshots view (off until you turn it on)
+screenshots = false
+
+# Screenshots: show a card with the picture when a screenshot is saved
+screenshot_card = true
+
+# Screenshots: seconds the card stays after the pointer leaves it, from 2 to 8
+screenshot_card_secs = 4
+
 # Global shortcut for Copy from screen; same form as pocket_shortcut
 # ("ctrl+alt+o" on Linux, where GNOME opens a terminal on Ctrl+Alt+T)
 screen_text_shortcut = "ctrl+alt+t"

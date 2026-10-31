@@ -563,6 +563,14 @@ msgstr[5] "اسحب {n}"
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
+#: crates/vento-core/src/screenshots.rs:200
+msgid "Earlier"
+msgstr "قبل ذلك"
+
+#: crates/vento-core/src/screenshots.rs:191
+msgid "Earlier this week"
+msgstr "في وقت سابق هذا الأسبوع"
+
 #: crates/vento/src/panel/mod.rs:615
 msgid "Empty"
 msgstr "فارغ"
@@ -1515,6 +1523,10 @@ msgstr "تحويل لصور"
 msgid "To read text on your screen, Vento needs Screen Recording. It only looks at the area you select."
 msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسجيل الشاشة. لا ينظر إلا إلى المنطقة التي تحددها."
 
+#: crates/vento-core/src/screenshots.rs:189
+msgid "Today"
+msgstr "اليوم"
+
 #: crates/vento/ui/settings_pages.slint:976
 msgid "Trigger"
 msgstr "المفتاح المشغّل"
@@ -1679,6 +1691,10 @@ msgstr "جارٍ الكتابة…"
 msgid "Wrong password"
 msgstr "كلمة السر خاطئة"
 
+#: crates/vento-core/src/screenshots.rs:190
+msgid "Yesterday"
+msgstr "أمس"
+
 #: crates/vento/ui/welcome.slint:1013
 msgid "You can pick each action in Settings → Wheel."
 msgstr "يمكنك اختيار كل إجراء من الإعدادات ← العجلة."
@@ -1791,7 +1807,7 @@ msgstr "خطأ داخلي"
 msgid "interrupted"
 msgstr "توقّف قبل أن يكتمل"
 
-#: crates/vento-core/src/settings.rs:590
+#: crates/vento-core/src/settings.rs:615
 msgid "invalid shortcut \"{spec}\""
 msgstr "اختصار غير صالح \"{spec}\""
 
@@ -2289,6 +2305,11 @@ msgstr "سبتمبر"
 msgctxt "page"
 msgid "Move"
 msgstr "النقل"
+
+#: crates/vento-core/src/screenshots.rs:213
+msgctxt "shot"
+msgid "{day} {time}"
+msgstr "{day} {time}"
 
 #: crates/vento-core/src/i18n/dates.rs:73
 msgctxt "time"

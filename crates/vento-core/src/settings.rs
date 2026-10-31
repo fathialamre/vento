@@ -120,6 +120,13 @@ pub struct Settings {
     pub pocket_shortcut: String,
     /// Whether copies are recorded into the Clipboard history.
     pub clipboard_history: bool,
+    /// Whether the island lists the screenshots taken in the last week.
+    pub screenshots: bool,
+    /// Whether a card with the picture shows when a screenshot is saved.
+    pub screenshot_card: bool,
+    /// Seconds the screenshot card stays after the pointer leaves it, within
+    /// [`CARD_SECS_MIN`]..=[`CARD_SECS_MAX`].
+    pub screenshot_card_secs: u32,
     /// Global shortcut that shows the island on the Clipboard history, in the
     /// same form as [`Settings::pocket_shortcut`].
     pub clipboard_shortcut: String,
@@ -169,6 +176,11 @@ pub const MIN_MOVE_HOLD_MS: u32 = 200;
 pub const MAX_MOVE_HOLD_MS: u32 = 1000;
 pub const MOVE_HOLD_STEP_MS: u32 = 100;
 
+/// Default and bounds of [`Settings::screenshot_card_secs`].
+const DEFAULT_CARD_SECS: u32 = 4;
+pub const CARD_SECS_MIN: u32 = 2;
+pub const CARD_SECS_MAX: u32 = 8;
+
 fn default_pocket_shortcut() -> String {
     "ctrl+alt+p".to_owned()
 }
@@ -214,6 +226,9 @@ impl Default for Settings {
             language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
+            screenshots: false,
+            screenshot_card: true,
+            screenshot_card_secs: DEFAULT_CARD_SECS,
             clipboard_shortcut: default_clipboard_shortcut(),
             screen_text_shortcut: default_screen_text_shortcut(),
             keep_awake_screen_off: false,
@@ -248,6 +263,9 @@ struct RawSettings {
     language: String,
     pocket_shortcut: String,
     clipboard_history: bool,
+    screenshots: bool,
+    screenshot_card: bool,
+    screenshot_card_secs: u32,
     clipboard_shortcut: String,
     screen_text_shortcut: String,
     keep_awake_screen_off: bool,
@@ -284,6 +302,9 @@ impl From<&Settings> for RawSettings {
             language: s.language.clone(),
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
+            screenshots: s.screenshots,
+            screenshot_card: s.screenshot_card,
+            screenshot_card_secs: s.screenshot_card_secs,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
             screen_text_shortcut: s.screen_text_shortcut.clone(),
             keep_awake_screen_off: s.keep_awake_screen_off,
@@ -361,6 +382,7 @@ impl From<RawSettings> for Settings {
         // Round to the nearest 100 (halves up), then keep within bounds.
         let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
             .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
+        let screenshot_card_secs = raw.screenshot_card_secs.clamp(CARD_SECS_MIN, CARD_SECS_MAX);
         Settings {
             layout: raw.layout,
             trigger: raw.trigger,
@@ -376,6 +398,9 @@ impl From<RawSettings> for Settings {
             language: raw.language,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
+            screenshots: raw.screenshots,
+            screenshot_card: raw.screenshot_card,
+            screenshot_card_secs,
             clipboard_shortcut: raw.clipboard_shortcut,
             screen_text_shortcut: raw.screen_text_shortcut,
             keep_awake_screen_off: raw.keep_awake_screen_off,
@@ -817,6 +842,35 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn screenshot_keys_default() {
+        let s = Settings::default();
+        assert!(!s.screenshots);
+        assert!(s.screenshot_card);
+        assert_eq!(s.screenshot_card_secs, 4);
+    }
+
+    #[test]
+    fn screenshot_keys_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            screenshots: true,
+            screenshot_card: false,
+            screenshot_card_secs: 6,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn card_secs_are_clamped() {
+        assert_eq!(parse("screenshot_card_secs = 1").screenshot_card_secs, 2);
+        assert_eq!(parse("screenshot_card_secs = 30").screenshot_card_secs, 8);
+        assert_eq!(parse("screenshot_card_secs = 5").screenshot_card_secs, 5);
     }
 
     #[test]
