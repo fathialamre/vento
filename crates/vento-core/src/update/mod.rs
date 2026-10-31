@@ -4,4 +4,5 @@
 pub mod changelog;
 pub mod features;
 pub mod release;
+pub mod state;
 pub mod version;
