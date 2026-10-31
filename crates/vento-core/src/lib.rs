@@ -26,3 +26,4 @@ pub mod shake;
 pub mod share;
 pub mod sizes;
 pub mod trigger;
+pub mod welcome;

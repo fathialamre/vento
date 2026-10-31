@@ -467,6 +467,14 @@ msgstr "داكن"
 msgid "Delete"
 msgstr "حذف"
 
+#: crates/vento-core/src/welcome.rs:86
+msgid "Designer"
+msgstr "المصمّم"
+
+#: crates/vento-core/src/welcome.rs:85
+msgid "Developer"
+msgstr "المطوّر"
+
 #: crates/vento/ui/settings_pages.slint:1044
 msgid "Dims the screen so you can pick the text to copy"
 msgstr "يُعتّم الشاشة لتختار النص الذي تنسخه"
@@ -531,6 +539,14 @@ msgstr "فارغ"
 msgid "Empty folder"
 msgstr "مجلد فارغ"
 
+#: crates/vento-core/src/welcome.rs:84
+msgid "Essentials"
+msgstr "الأساسيات"
+
+#: crates/vento-core/src/welcome.rs:95
+msgid "Every action"
+msgstr "كل الإجراءات"
+
 #: crates/vento/ui/pdf.slint:1554
 msgid "Every page"
 msgstr "كل صفحة"
@@ -544,6 +560,10 @@ msgstr[2] "كل صفحتين"
 msgstr[3] "كل {n} صفحات"
 msgstr[4] "كل {n} صفحة"
 msgstr[5] "كل {n} صفحة"
+
+#: crates/vento-core/src/welcome.rs:87
+msgid "Everything"
+msgstr "كل شيء"
 
 #: crates/vento/src/wheel.rs:208
 msgid "Extract"
@@ -1659,7 +1679,7 @@ msgstr "خطأ داخلي"
 msgid "interrupted"
 msgstr "توقّف قبل أن يكتمل"
 
-#: crates/vento-core/src/settings.rs:582
+#: crates/vento-core/src/settings.rs:590
 msgid "invalid shortcut \"{spec}\""
 msgstr "اختصار غير صالح \"{spec}\""
 

@@ -441,6 +441,14 @@ msgstr ""
 msgid "Delete"
 msgstr ""
 
+#: crates/vento-core/src/welcome.rs:86
+msgid "Designer"
+msgstr ""
+
+#: crates/vento-core/src/welcome.rs:85
+msgid "Developer"
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:1044
 msgid "Dims the screen so you can pick the text to copy"
 msgstr ""
@@ -497,6 +505,14 @@ msgstr ""
 msgid "Empty folder"
 msgstr ""
 
+#: crates/vento-core/src/welcome.rs:84
+msgid "Essentials"
+msgstr ""
+
+#: crates/vento-core/src/welcome.rs:95
+msgid "Every action"
+msgstr ""
+
 #: crates/vento/ui/pdf.slint:1554
 msgid "Every page"
 msgstr ""
@@ -506,6 +522,10 @@ msgid "Every {n} page"
 msgid_plural "Every {n} pages"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/vento-core/src/welcome.rs:87
+msgid "Everything"
+msgstr ""
 
 #: crates/vento/src/wheel.rs:208
 msgid "Extract"
@@ -1553,7 +1573,7 @@ msgstr ""
 msgid "interrupted"
 msgstr ""
 
-#: crates/vento-core/src/settings.rs:582
+#: crates/vento-core/src/settings.rs:590
 msgid "invalid shortcut \"{spec}\""
 msgstr ""
 

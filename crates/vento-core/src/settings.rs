@@ -153,6 +153,10 @@ pub struct Settings {
     /// The PDF window's To images resolution in DPI: 300 (Print) or 150
     /// (Screen). Any other value reads as 300.
     pub pdf_image_dpi: u32,
+    /// Whether the Welcome setup was finished, skipped or closed. Vento
+    /// writes `false` only on a fresh install and opens the setup while it
+    /// is `false`; a file without the key means `true`.
+    pub welcome_done: bool,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -220,6 +224,7 @@ impl Default for Settings {
             closed_how_to: Vec::new(),
             pdf_image_format: "png".to_owned(),
             pdf_image_dpi: 300,
+            welcome_done: true,
         }
     }
 }
@@ -253,6 +258,7 @@ struct RawSettings {
     closed_how_to: Vec<String>,
     pdf_image_format: String,
     pdf_image_dpi: u32,
+    welcome_done: bool,
 }
 
 impl Default for RawSettings {
@@ -292,6 +298,7 @@ impl From<&Settings> for RawSettings {
             closed_how_to: s.closed_how_to.clone(),
             pdf_image_format: s.pdf_image_format.clone(),
             pdf_image_dpi: s.pdf_image_dpi,
+            welcome_done: s.welcome_done,
         }
     }
 }
@@ -383,6 +390,7 @@ impl From<RawSettings> for Settings {
                 "png".to_owned()
             },
             pdf_image_dpi: if raw.pdf_image_dpi == 150 { 150 } else { 300 },
+            welcome_done: raw.welcome_done,
         }
     }
 }
@@ -1090,6 +1098,32 @@ mod tests {
         let p = dir.path().join("settings.toml");
         std::fs::write(&p, "layout = [").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
+    }
+
+    #[test]
+    fn default_is_done() {
+        assert!(Settings::default().welcome_done);
+    }
+
+    #[test]
+    fn missing_key_means_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(&p, "layout = \"petals\"\n").unwrap();
+        assert!(Settings::try_load(&p).unwrap().welcome_done);
+    }
+
+    #[test]
+    fn welcome_done_false_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        Settings {
+            welcome_done: false,
+            ..Settings::default()
+        }
+        .save(&p)
+        .unwrap();
+        assert!(!Settings::try_load(&p).unwrap().welcome_done);
     }
 
     #[test]
