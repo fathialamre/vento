@@ -184,6 +184,9 @@ pub struct PanelController {
     /// AppKit has been told to leave the window where vento puts it (needs
     /// the native window, which exists once the panel has been shown).
     frame_kept: Cell<bool>,
+    /// The icon the open panel hangs from, to place it again when its
+    /// height changes while it is open.
+    icon: Cell<Option<Rect>>,
     open: Cell<bool>,
     this: Weak<Self>,
 }
@@ -219,6 +222,7 @@ impl PanelController {
             on_update: RefCell::new(None),
             open: Cell::new(false),
             frame_kept: Cell::new(false),
+            icon: Cell::new(None),
             this: this.clone(),
         });
         // A saved change clears the load error: drop the notice with it,
@@ -510,10 +514,51 @@ impl PanelController {
     /// on every window made after.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn set_update(&self, view: UpdateView) {
+        let resized = self.update.borrow().kind != view.kind;
         *self.update.borrow_mut() = view;
         if let Some(window) = self.existing() {
             self.show_update_on(&window);
+            // The card coming, going or changing its rows changes the
+            // panel's height; AppKit would grow the window up from its
+            // bottom edge, under the menu bar.
+            if resized
+                && self.is_open()
+                && let Some(icon) = self.icon.get()
+            {
+                self.resize_and_place(&window, icon);
+            }
         }
+    }
+
+    /// Gives the panel the height its content now asks for, hanging from
+    /// `icon`; returns where it put it.
+    fn resize_and_place(&self, window: &QuickPanel, icon: Rect) -> (f64, f64) {
+        let (x, y) = self.place(window, icon);
+        let height = window.get_window_height();
+        // Resize first, then move: AppKit keeps a window's bottom edge when
+        // it resizes, so the move must come after.
+        window
+            .window()
+            .set_size(slint::LogicalSize::new(WIDTH as f32, height));
+        window
+            .window()
+            .set_position(LogicalPosition::new(x as f32, y as f32));
+        (x, y)
+    }
+
+    /// Where the panel goes under `icon` at its current height; sets the
+    /// arrow on the way.
+    fn place(&self, window: &QuickPanel, icon: Rect) -> (f64, f64) {
+        let screens = self.platform.screens();
+        window.set_arrow_h(if hangs_under(icon, &screens) {
+            ARROW_H
+        } else {
+            0.0
+        });
+        let height = f64::from(window.get_window_height());
+        let Placement { x, y, arrow_x } = panel_position(icon, height, &screens);
+        window.set_arrow_x(arrow_x as f32);
+        (x, y)
     }
 
     fn show_update_on(&self, window: &QuickPanel) {
@@ -624,18 +669,11 @@ impl PanelController {
         let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
         window.set_awake_until_hour(hour.into());
         window.set_awake_until_minute(minute.into());
-        let screens = self.platform.screens();
-        window.set_arrow_h(if hangs_under(icon, &screens) {
-            ARROW_H
-        } else {
-            0.0
-        });
-        let height = f64::from(window.get_window_height());
-        let Placement { x, y, arrow_x } = panel_position(icon, height, &screens);
-        window.set_arrow_x(arrow_x as f32);
-        window
-            .window()
-            .set_position(LogicalPosition::new(x as f32, y as f32));
+        // Sized before it is placed: a window kept hidden since its content
+        // changed (the update card) would otherwise take its new height
+        // after the move, growing up from its bottom edge.
+        let (x, y) = self.resize_and_place(&window, icon);
+        self.icon.set(Some(icon));
         self.open.set(true);
         // Shown faded out, then revealed on the next turn (see `revealed`).
         window.set_revealed(false);
