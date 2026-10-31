@@ -304,6 +304,8 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
+    // What's new opens in a window of its own (a later step).
+    settings.set_on_open_whats_new(Box::new(|| log::info!("What's new: View in About")));
     let panel = {
         let pause = pause.clone();
         panel::PanelController::new(
@@ -341,65 +343,104 @@ fn main() -> Result<(), slint::PlatformError> {
             None
         }
     };
-    // The panel's update card follows the controller, and its buttons drive
-    // it. The card is written again when the language changes.
+    // The panel's update card and About's update row follow the controller,
+    // and their buttons drive it. Both are written again when the language
+    // changes.
     #[cfg(target_os = "macos")]
     if let (Some(updates), Some(running)) = (
         &updates,
         vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION")),
     ) {
         let show = {
-            let (panel, updates) = (Rc::downgrade(&panel), Rc::downgrade(updates));
+            let (panel, settings, updates) = (
+                Rc::downgrade(&panel),
+                Rc::downgrade(&settings),
+                Rc::downgrade(updates),
+            );
             move || {
-                if let (Some(panel), Some(updates)) = (panel.upgrade(), updates.upgrade()) {
-                    panel.set_update(panel::update_view(&updates.state(), running));
+                if let (Some(panel), Some(settings), Some(updates)) =
+                    (panel.upgrade(), settings.upgrade(), updates.upgrade())
+                {
+                    let state = updates.state();
+                    panel.set_update(panel::update_view(&state, running));
+                    settings.set_update(settings_window::about_update_view(
+                        &state,
+                        running,
+                        unix_now(),
+                    ));
                 }
             }
         };
         let on_state = show.clone();
+        let show_now = show.clone();
         updates.on_change(Box::new(move |_| on_state()));
         hub.on_change(Box::new(move |old, new| {
             if old.language != new.language {
                 show();
             }
         }));
-        let (update, cancel, notes, retry) = (
-            Rc::downgrade(updates),
-            Rc::downgrade(updates),
-            Rc::downgrade(updates),
-            Rc::downgrade(updates),
-        );
-        panel.set_on_update(panel::UpdateActions {
-            // Restart once the update is downloaded, Update before.
-            update: Box::new(move || {
-                if let Some(updates) = update.upgrade() {
-                    if matches!(
-                        updates.state(),
-                        vento_core::update::state::UpdateState::Ready(_)
-                    ) {
-                        updates.restart();
-                    } else {
+        // The panel's card and About's row do the same things.
+        let actions = |updates: &Rc<updater::UpdateController>| {
+            let (update, cancel, notes, retry) = (
+                Rc::downgrade(updates),
+                Rc::downgrade(updates),
+                Rc::downgrade(updates),
+                Rc::downgrade(updates),
+            );
+            (
+                // Restart once the update is downloaded, Update before.
+                Box::new(move || {
+                    if let Some(updates) = update.upgrade() {
+                        if matches!(
+                            updates.state(),
+                            vento_core::update::state::UpdateState::Ready(_)
+                        ) {
+                            updates.restart();
+                        } else {
+                            updates.update();
+                        }
+                    }
+                }) as Box<dyn Fn()>,
+                Box::new(move || {
+                    if let Some(updates) = cancel.upgrade() {
+                        updates.cancel();
+                    }
+                }) as Box<dyn Fn()>,
+                // What's new opens in a window of its own (a later step).
+                Box::new(move || {
+                    if let Some(updates) = notes.upgrade() {
+                        log::info!("What's new: {:?}", updates.pending_notes().map(|n| n.0));
+                    }
+                }) as Box<dyn Fn()>,
+                Box::new(move || {
+                    if let Some(updates) = retry.upgrade() {
                         updates.update();
                     }
-                }
-            }),
-            cancel: Box::new(move || {
-                if let Some(updates) = cancel.upgrade() {
-                    updates.cancel();
-                }
-            }),
-            // What's new opens in a window of its own (a later step).
-            notes: Box::new(move || {
-                if let Some(updates) = notes.upgrade() {
-                    log::info!("What's new: {:?}", updates.pending_notes().map(|n| n.0));
-                }
-            }),
-            retry: Box::new(move || {
-                if let Some(updates) = retry.upgrade() {
-                    updates.update();
+                }) as Box<dyn Fn()>,
+            )
+        };
+        let (update, cancel, notes, retry) = actions(updates);
+        panel.set_on_update(panel::UpdateActions {
+            update,
+            cancel,
+            notes,
+            retry,
+        });
+        let (update, cancel, notes, retry) = actions(updates);
+        let check_now = Rc::downgrade(updates);
+        settings.set_on_update(settings_window::AboutUpdateActions {
+            update,
+            cancel,
+            notes,
+            retry,
+            check_now: Box::new(move || {
+                if let Some(updates) = check_now.upgrade() {
+                    updates.check_now();
                 }
             }),
         });
+        // The row shows the state at once, not only after the first change.
+        show_now();
     }
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));
@@ -844,6 +885,14 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn main() {
     println!("Vento: this platform is not supported yet");
+}
+
+/// The time now in Unix seconds.
+#[cfg(target_os = "macos")]
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "linux", windows)))]

@@ -157,27 +157,40 @@ export component RowButton inherits Rectangle {
     in property <string> label;
     in property <string> name: self.label;
     in property <bool> danger;
+    // The step to take: the accent colour.
+    in property <bool> primary;
+    // Off: greyed out, and a click does nothing.
+    in property <bool> enabled: true;
     callback clicked();
 
     height: 26px;
     min-width: label.preferred-width + 20px;
     border-radius: 6px;
-    background: touch.has-hover ? Theme.field-hover : Theme.field;
-    border-width: Theme.dark ? 0px : 1px;
+    background: root.primary
+        ? (touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent))
+        : (touch.has-hover && root.enabled ? Theme.field-hover : Theme.field);
+    border-width: Theme.dark || root.primary ? 0px : 1px;
     border-color: Theme.separator;
     accessible-role: button;
     accessible-label: self.name;
-    accessible-action-default => { self.clicked(); }
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            self.clicked();
+        }
+    }
 
     label := Text {
         text: root.label;
         font-size: 12px;
-        color: root.danger ? Theme.danger : Theme.text;
+        font-weight: root.primary ? 600 : 400;
+        color: root.primary ? white : (root.enabled ? (root.danger ? Theme.danger : Theme.text) : Theme.muted);
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 
     touch := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
 }
