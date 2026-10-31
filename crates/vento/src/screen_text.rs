@@ -636,6 +636,7 @@ mod tests {
     #[test]
     fn read_on_worker_with_delivers_on_the_main_thread() {
         let (tx, rx) = std::sync::mpsc::channel();
+        // Only one test in this crate may install a Slint platform.
         slint::platform::set_platform(Box::new(Loop { tx })).expect("no other test sets one");
         let here = thread::current().id();
         let (out_tx, out_rx) = std::sync::mpsc::channel();
