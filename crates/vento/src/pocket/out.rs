@@ -1,5 +1,6 @@
 //! Dragging items out of the Pocket: what a drag takes, one session per
-//! press, its preview, and what a drop removes.
+//! press, its preview, and what a drop removes. The Welcome window's sample
+//! file is dragged with the same pieces.
 
 use std::cell::Cell;
 
@@ -39,7 +40,7 @@ pub(super) fn drag_ids(
 /// screen's height in points (982 on this Mac, whose panel is 1964 pixels
 /// high) and so the same flip the platform layer uses; only the widening
 /// is left to do.
-pub(super) fn drop_point(pos: &drag::CursorPosition) -> Point {
+pub(crate) fn drop_point(pos: &drag::CursorPosition) -> Point {
     Point {
         x: f64::from(pos.x),
         y: f64::from(pos.y),
@@ -61,7 +62,7 @@ pub(super) fn removes_after_drop(
 
 /// What a press is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Press {
+pub(crate) enum Press {
     /// The tile (or Pocket list row) of the item at this place in the
     /// Pocket.
     Cell(u32),
@@ -78,7 +79,7 @@ const DRAG_DISTANCE: f32 = 4.0;
 /// press: Slint keeps reporting moves after a session took over the mouse
 /// (it never sees that release), so a move alone must not start another.
 #[derive(Default)]
-pub(super) struct PressLatch {
+pub(crate) struct PressLatch {
     /// What is pressed: set on press, cleared on release or when the press
     /// starts a drag.
     token: Cell<Option<Press>>,
@@ -92,7 +93,7 @@ impl PressLatch {
     /// A new press. A session still marked running is stale (its drag
     /// callback never came, or the mouse could not be pressed again during
     /// it): it is forgotten, so this press can drag.
-    pub(super) fn press(&self, target: Press) {
+    pub(crate) fn press(&self, target: Press) {
         if self.running.replace(false) {
             debug!("stale drag session; resetting");
         }
@@ -102,7 +103,7 @@ impl PressLatch {
 
     /// The target to drag, once per press, when the press has moved far
     /// enough and no session is running.
-    pub(super) fn moved(&self, dx: f32, dy: f32) -> Option<Press> {
+    pub(crate) fn moved(&self, dx: f32, dy: f32) -> Option<Press> {
         if dx.hypot(dy) < DRAG_DISTANCE {
             return None;
         }
@@ -116,7 +117,7 @@ impl PressLatch {
     }
 
     /// The target clicked, if the press ends without having moved far.
-    pub(super) fn release(&self) -> Option<Press> {
+    pub(crate) fn release(&self) -> Option<Press> {
         let target = self.token.take();
         if self.far.replace(false) {
             None
@@ -126,12 +127,12 @@ impl PressLatch {
     }
 
     /// The drag session is over (or never started).
-    pub(super) fn ended(&self) {
+    pub(crate) fn ended(&self) {
         self.running.set(false);
     }
 
     /// Whether a drag session is running.
-    pub(super) fn running(&self) -> bool {
+    pub(crate) fn running(&self) -> bool {
         self.running.get()
     }
 }
@@ -140,7 +141,7 @@ impl PressLatch {
 /// ends at `at`: the release Slint never saw, since the drag session took
 /// the mouse (without it, the pressed cell keeps the pointer grabbed), and
 /// that the pointer left, unless it is back over the island (`over_island`).
-pub(super) fn drag_end_events(window: &Rect, at: Point, over_island: bool) -> Vec<WindowEvent> {
+pub(crate) fn drag_end_events(window: &Rect, at: Point, over_island: bool) -> Vec<WindowEvent> {
     let mut events = vec![WindowEvent::PointerReleased {
         position: window_pos(window, at),
         button: PointerEventButton::Left,
@@ -154,7 +155,7 @@ pub(super) fn drag_end_events(window: &Rect, at: Point, over_island: bool) -> Ve
 /// `icon` as PNG bytes for a drag preview, tagged with the resolution that
 /// makes AppKit size it at `points` (an icon rendered at 2× is 144 dpi).
 /// `None` if its buffer doesn't match its size.
-pub(super) fn preview_png(icon: &RgbaImage, points: u32) -> Option<Vec<u8>> {
+pub(crate) fn preview_png(icon: &RgbaImage, points: u32) -> Option<Vec<u8>> {
     let len = icon.width as usize * icon.height as usize * 4;
     if len == 0 || icon.pixels.len() != len || points == 0 {
         return None;
@@ -178,7 +179,7 @@ pub(super) fn preview_png(icon: &RgbaImage, points: u32) -> Option<Vec<u8>> {
 
 /// A plain grey square, for a preview when the icon can't be rendered (the
 /// drag needs some image).
-pub(super) fn placeholder_icon(px: u32) -> RgbaImage {
+pub(crate) fn placeholder_icon(px: u32) -> RgbaImage {
     RgbaImage {
         width: px,
         height: px,

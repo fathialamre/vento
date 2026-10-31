@@ -56,7 +56,7 @@ mod ui {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn main() -> Result<(), slint::PlatformError> {
     use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::rc::{Rc, Weak};
     use std::time::Duration;
 
     use vento_core::actions::ActionId;
@@ -134,15 +134,29 @@ fn main() -> Result<(), slint::PlatformError> {
     let drop_pocket = pocket.clone();
     let drop_info = info.clone();
     let drop_pdf = pdf.clone();
+    // The Welcome window, once it exists: a drop of its sample file while it
+    // is open is practice, and goes no further.
+    let welcome_slot: Rc<RefCell<Weak<welcome_window::WelcomeController>>> =
+        Rc::new(RefCell::new(Weak::new()));
+    let drop_welcome = welcome_slot.clone();
     let controller = wheel::WheelController::new(
         platform.clone(),
         hub.current(),
         recent.clone(),
-        Box::new(move |drop: wheel::WheelDrop| match drop.action {
-            ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
-            ActionId::Info => drop_info.open(drop.paths, drop.at),
-            ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
-            _ => drop_executor.run(drop),
+        Box::new(move |drop: wheel::WheelDrop| {
+            if drop_welcome
+                .borrow()
+                .upgrade()
+                .is_some_and(|w| w.catch_practice_drop(&drop))
+            {
+                return;
+            }
+            match drop.action {
+                ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
+                ActionId::Info => drop_info.open(drop.paths, drop.at),
+                ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
+                _ => drop_executor.run(drop),
+            }
         }),
     );
     controller.start();
@@ -245,6 +259,7 @@ fn main() -> Result<(), slint::PlatformError> {
         pause.clone(),
         supported,
     );
+    *welcome_slot.borrow_mut() = Rc::downgrade(&welcome);
     {
         let settings = Rc::downgrade(&settings);
         welcome.set_on_open_settings(Box::new(move || {

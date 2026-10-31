@@ -4,7 +4,10 @@
 //! changes made elsewhere (the Settings window open beside it, a hand edit).
 //!
 //! Like the Settings window, it is created on the first open and dropped
-//! once it has been closed for [`crate::lazy_window::IDLE`].
+//! once it has been closed for [`crate::lazy_window::IDLE`]. The Try it
+//! screen's sample file and practice drag are in [`practice`].
+
+mod practice;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -31,6 +34,7 @@ use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
 use crate::panel::set_rows;
 use crate::pause::PauseSwitch;
+use crate::pocket::out::PressLatch;
 use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::settings_window::{
@@ -39,6 +43,7 @@ use crate::settings_window::{
     terminal_index, unpin_folder,
 };
 use crate::ui::{FolderChip, FolderRow, PresetCard, ShortcutLine, Theme, WelcomeWindow};
+use practice::{TRY_IT_STEP, remove_samples, sample_dir};
 
 /// The window's size, in logical points (matches `welcome.slint`).
 const WIDTH: f64 = 680.0;
@@ -75,6 +80,8 @@ pub struct WelcomeController {
     /// centred; one shown again stays where the user left it).
     placed: Cell<bool>,
     open: Cell<bool>,
+    /// The sample tile's press, and the one drag it may start.
+    latch: PressLatch,
     /// Runs after Open Settings has closed the window; main opens the
     /// Settings window on General.
     on_open_settings: RefCell<Option<Box<dyn Fn()>>>,
@@ -111,10 +118,12 @@ impl WelcomeController {
             terminals: RefCell::new(Vec::new()),
             placed: Cell::new(false),
             open: Cell::new(false),
+            latch: PressLatch::default(),
             on_open_settings: RefCell::new(None),
             other_window_open: RefCell::new(None),
             this: this.clone(),
         });
+        practice::register(&controller);
         // A change made in the Settings window or by hand shows here too.
         let this = Rc::downgrade(&controller);
         controller.hub.on_change(Box::new(move |_, _| {
@@ -165,6 +174,10 @@ impl WelcomeController {
             let theme_names: Vec<SharedString> =
                 ThemeName::ALL.iter().map(|t| t.label().into()).collect();
             window.set_theme_names(ModelRc::from(theme_names.as_slice()));
+            // The sample is dragged as a real file drag, which the Linux
+            // stand-in and wheel are not ready for: there the tile is left
+            // out.
+            window.set_can_drag(cfg!(target_os = "macos"));
             // A new window opens centred.
             self.placed.set(false);
             self.connect(&window);
@@ -206,8 +219,10 @@ impl WelcomeController {
         });
         let this = self.this.clone();
         window.on_back(move || {
-            if let Some(window) = this.upgrade().and_then(|c| c.existing()) {
-                window.set_step((window.get_step() - 1).max(0));
+            if let Some(controller) = this.upgrade()
+                && let Some(window) = controller.existing()
+            {
+                controller.show_step(&window, (window.get_step() - 1).max(0));
             }
         });
         let this = self.this.clone();
@@ -224,6 +239,24 @@ impl WelcomeController {
         window.on_resume(move || {
             if let Some(controller) = this.upgrade() {
                 controller.pause.set(false);
+            }
+        });
+        let this = self.this.clone();
+        window.on_sample_pressed(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.sample_pressed();
+            }
+        });
+        let this = self.this.clone();
+        window.on_sample_moved(move |dx, dy| {
+            if let Some(controller) = this.upgrade() {
+                controller.sample_moved(dx, dy);
+            }
+        });
+        let this = self.this.clone();
+        window.on_sample_released(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.sample_released();
             }
         });
         self.connect_controls(window);
@@ -324,9 +357,17 @@ impl WelcomeController {
             return;
         };
         match next_step(window.get_step()) {
-            Some(step) => window.set_step(step),
+            Some(step) => self.show_step(&window, step),
             None => self.close(),
         }
+    }
+
+    /// Shows screen `step`; the Try it screen writes its sample file first.
+    fn show_step(&self, window: &WelcomeWindow, step: i32) {
+        if step == TRY_IT_STEP {
+            self.show_sample();
+        }
+        window.set_step(step);
     }
 
     /// Shows the folder picker and pins the folder chosen, as the Settings
@@ -493,6 +534,8 @@ impl WelcomeController {
         // Pick up hand edits of the settings file.
         self.hub.refresh_from_disk();
         window.set_step(0);
+        // The practice is new each time the setup runs.
+        window.set_practiced(false);
         *self.suggestions.borrow_mut() = self
             .home
             .as_deref()
@@ -537,16 +580,19 @@ impl WelcomeController {
     }
 
     /// Ends the setup: saves `welcome_done = true` (closing is a decision;
-    /// only quitting midway brings the setup back), hides the window and
-    /// hands focus back to the app that had it on the next turn of the
-    /// event loop, unless the window is open again by then or another vento
-    /// window is open. Closing a closed window does nothing (Esc repeats
-    /// while held).
+    /// only quitting midway brings the setup back), removes the sample
+    /// folder, hides the window and hands focus back to the app that had it
+    /// on the next turn of the event loop, unless the window is open again
+    /// by then or another vento window is open. Closing a closed window does
+    /// nothing (Esc repeats while held).
     pub fn close(&self) {
         if !self.open.replace(false) {
             return;
         }
         self.apply(|s| s.welcome_done = true);
+        if let Some(dir) = sample_dir() {
+            remove_samples(&dir);
+        }
         if let Some(window) = self.existing()
             && let Err(e) = window.hide()
         {

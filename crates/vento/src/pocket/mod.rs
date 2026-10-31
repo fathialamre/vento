@@ -25,7 +25,7 @@ mod geometry;
 mod kinds;
 mod list_view;
 mod menu;
-mod out;
+pub(crate) mod out;
 mod owned;
 
 use std::cell::{Cell, RefCell};
