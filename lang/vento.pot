@@ -441,7 +441,7 @@ msgstr ""
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
-#: crates/vento/src/updater/net.rs:67
+#: crates/vento/src/updater/net.rs:77
 msgid "Couldn't save the download"
 msgstr ""
 
@@ -629,7 +629,7 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: crates/vento/src/updater/net.rs:63
+#: crates/vento/src/updater/net.rs:73
 msgid "GitHub answered {code}"
 msgstr ""
 
@@ -1405,6 +1405,10 @@ msgstr ""
 msgid "The text is on your clipboard, ready to paste. Esc cancels."
 msgstr ""
 
+#: crates/vento/src/updater/net.rs:78
+msgid "The update address isn't secure"
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:314
 msgid "Theme"
 msgstr ""
@@ -1609,7 +1613,7 @@ msgstr ""
 msgid "You're all set"
 msgstr ""
 
-#: crates/vento/src/updater/net.rs:61
+#: crates/vento/src/updater/net.rs:71
 msgid "You're offline"
 msgstr ""
 

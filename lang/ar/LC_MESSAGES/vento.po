@@ -467,7 +467,7 @@ msgstr "تعذّر حفظ الإعدادات: {error}"
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
-#: crates/vento/src/updater/net.rs:67
+#: crates/vento/src/updater/net.rs:77
 msgid "Couldn't save the download"
 msgstr "تعذّر حفظ التنزيل"
 
@@ -671,7 +671,7 @@ msgstr "‏GPL-3.0-only. أيقونات العجلة من Tabler Icons 3.49.0 ب
 msgid "General"
 msgstr "عام"
 
-#: crates/vento/src/updater/net.rs:63
+#: crates/vento/src/updater/net.rs:73
 msgid "GitHub answered {code}"
 msgstr "ردّ GitHub بالرمز {code}"
 
@@ -1511,6 +1511,10 @@ msgstr "يبقى الملف الأصلي كما هو."
 msgid "The text is on your clipboard, ready to paste. Esc cancels."
 msgstr "النص الآن في الحافظة، جاهز للصق. Esc يلغي."
 
+#: crates/vento/src/updater/net.rs:78
+msgid "The update address isn't secure"
+msgstr "عنوان التحديث غير آمن"
+
 #: crates/vento/ui/settings_pages.slint:314
 msgid "Theme"
 msgstr "السمة"
@@ -1715,7 +1719,7 @@ msgstr "تختار أنت أماكن القطع"
 msgid "You're all set"
 msgstr "كل شيء جاهز"
 
-#: crates/vento/src/updater/net.rs:61
+#: crates/vento/src/updater/net.rs:71
 msgid "You're offline"
 msgstr "أنت غير متصل بالإنترنت"
 
