@@ -1061,10 +1061,133 @@ export component CopyFromScreenPage inherits VerticalLayout {
     }
 }
 
-// Keep Awake's one option; starting and stopping it is the panel's.
+// Keep Awake's options: the panel's times, what the tile starts and the
+// screen. Starting and stopping it is the panel's.
 export component KeepAwakePage inherits VerticalLayout {
     in property <bool> screen-off;
+    // The timed chips, as the panel shows them, and whether there are as
+    // many as it holds or the usual ones.
+    in property <[string]> times;
+    in property <bool> times-full;
+    in property <bool> times-usual;
+    // The time Add adds and its stepper's limits; whether Add can add it.
+    in property <string> new-time;
+    in property <bool> new-can-decrease;
+    in property <bool> new-can-increase;
+    in property <bool> can-add;
+    // What the tile can start, until stopped first, and which it starts.
+    in property <[string]> start-names;
+    in property <int> start-choice;
     callback screen-off-toggled(bool);
+    callback time-removed(int);
+    callback times-restored();
+    callback new-stepped(int);
+    callback time-added();
+    callback start-chosen(int);
+
+    SettingRow {
+        label: @tr("Times in the panel");
+        description: @tr("Shown under the Keep Awake tile, with Until stopped and Until…");
+        padding-bottom: 6px;
+
+        TextButton {
+            label: @tr("Use the usual times");
+            enabled: !root.times-usual;
+            clicked => { root.times-restored(); }
+        }
+    }
+
+    RowBody {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-bottom: 8px;
+
+        if root.times.length == 0: EmptyLine {
+            text: @tr("No times");
+        }
+
+        for time[i] in root.times: Rectangle {
+            height: 30px;
+            accessible-role: list-item;
+            accessible-label: time;
+
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 8px;
+
+                Text {
+                    layout-order: Theme.rtl ? 2 : 0;
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: time;
+                    font-size: 13px;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    alignment: center;
+
+                    IconButton {
+                        icon: Icons.remove;
+                        label: @tr("Remove {}", time);
+                        clicked => { root.time-removed(i); }
+                    }
+                }
+            }
+        }
+
+        // A new time: its stepper, then Add.
+        HorizontalLayout {
+            padding-top: 6px;
+            padding-left: 6px;
+            padding-right: 6px;
+            spacing: 8px;
+            alignment: Theme.rtl ? end : start;
+
+            Stepper {
+                layout-order: Theme.rtl ? 2 : 0;
+                text: root.new-time;
+                label: @tr("New time");
+                can-decrease: root.new-can-decrease;
+                can-increase: root.new-can-increase;
+                decrease => { root.new-stepped(-1); }
+                increase => { root.new-stepped(1); }
+            }
+
+            VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
+                alignment: center;
+
+                TextButton {
+                    label: root.times-full ? @tr("Up to 6 times") : @tr("Add");
+                    icon: PanelIcons.add;
+                    has-icon: !root.times-full;
+                    enabled: root.can-add;
+                    clicked => { root.time-added(); }
+                }
+            }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("The tile starts");
+        description: @tr("What a click on the Keep Awake tile, or Start Keep Awake in the menu, starts");
+
+        MenuField {
+            width: 130px;
+            label: @tr("The tile starts");
+            items: root.start-names;
+            current: root.start-choice;
+            chosen(i) => { root.start-chosen(i); }
+        }
+    }
+
+    RowSeparator { }
 
     SettingRow {
         label: @tr("Let the screen turn off");

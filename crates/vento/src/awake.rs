@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use log::{debug, warn};
 use slint::{Timer, TimerMode};
-use vento_core::awake::{Chip, Session};
+use vento_core::awake::{Chip, Session, start_chip};
 use vento_core::i18n::tr;
 use vento_platform::{AwakeHold, Platform};
 
@@ -102,6 +102,15 @@ impl KeepAwake {
             self.stop();
         } else {
             self.start(chip);
+        }
+    }
+
+    /// Stops what runs, or starts what the tile starts, as saved now.
+    pub fn toggle_start(&self) {
+        if self.session.get().is_some() {
+            self.stop();
+        } else {
+            self.start(start_chip(self.hub.current().keep_awake_start));
         }
     }
 

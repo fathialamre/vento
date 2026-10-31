@@ -9,7 +9,6 @@ use ksni::blocking::TrayMethods;
 use ksni::menu::{CheckmarkItem, StandardItem};
 use ksni::{Icon, MenuItem, ToolTip, Tray};
 use log::warn;
-use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
 use vento_core::i18n::tr;
 use vento_core::settings::{Settings, settings_path};
@@ -359,11 +358,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             Action::OpenClipboard => on_open_clipboard(),
             Action::OpenPocket => on_open_pocket(),
             Action::ToggleKeepAwake => {
-                if keep_awake.session().is_some() {
-                    keep_awake.stop();
-                } else {
-                    keep_awake.start(Chip::Forever);
-                }
+                keep_awake.toggle_start();
             }
             Action::CopyFromScreen => {
                 if let Some(start) = &on_copy_from_screen {

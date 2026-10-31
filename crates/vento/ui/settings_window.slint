@@ -140,6 +140,21 @@ export component SettingsWindow inherits Window {
     in-out property <bool> screen-shortcut-recording;
     // Keep Awake lets the screen turn off.
     in property <bool> awake-screen-off;
+    // Keep Awake's timed chips as the page lists them, whether there are
+    // as many as the panel holds, and whether they are the usual ones.
+    in property <[string]> awake-times;
+    in property <bool> awake-times-full;
+    in property <bool> awake-times-usual;
+    // The time "Add" adds, whether its stepper can go down or up, and
+    // whether it can be added (it is not listed and there is room).
+    in property <string> awake-new;
+    in property <bool> awake-new-can-decrease;
+    in property <bool> awake-new-can-increase;
+    in property <bool> awake-can-add;
+    // What the Keep Awake tile can start (until stopped, then each time)
+    // and which it starts.
+    in property <[string]> awake-start-names;
+    in property <int> awake-start;
     // The running version, for About.
     in property <string> version;
     // By page id: the user closed that page's How to card.
@@ -174,6 +189,12 @@ export component SettingsWindow inherits Window {
     // "Clear history": the history empties at once, with no Undo.
     callback clip-history-cleared();
     callback awake-screen-off-toggled(bool);
+    callback awake-time-removed(int);
+    callback awake-times-restored();
+    // The new time's − (-1) or + (1).
+    callback awake-new-stepped(int);
+    callback awake-time-added();
+    callback awake-start-chosen(int);
     // A page's How to card opened (true) or closed, by page id.
     callback how-to-toggled(int, bool);
     // About's Settings file, Set up Vento again and Licenses buttons.
@@ -410,7 +431,21 @@ export component SettingsWindow inherits Window {
                         }
                         if root.page-id == 6: KeepAwakePage {
                             screen-off: root.awake-screen-off;
+                            times: root.awake-times;
+                            times-full: root.awake-times-full;
+                            times-usual: root.awake-times-usual;
+                            new-time: root.awake-new;
+                            new-can-decrease: root.awake-new-can-decrease;
+                            new-can-increase: root.awake-new-can-increase;
+                            can-add: root.awake-can-add;
+                            start-names: root.awake-start-names;
+                            start-choice: root.awake-start;
                             screen-off-toggled(on) => { root.awake-screen-off-toggled(on); }
+                            time-removed(i) => { root.awake-time-removed(i); }
+                            times-restored => { root.awake-times-restored(); }
+                            new-stepped(steps) => { root.awake-new-stepped(steps); }
+                            time-added => { root.awake-time-added(); }
+                            start-chosen(i) => { root.awake-start-chosen(i); }
                         }
                         if root.page-id == 7: AboutPage {
                             version: root.version;

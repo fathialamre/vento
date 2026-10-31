@@ -20,8 +20,11 @@ use log::{debug, warn};
 use raw_window_handle::HasWindowHandle;
 use slint::winit_030::winit::event::{ElementState, WindowEvent};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
-use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Model, Timer, VecModel};
-use vento_core::awake::{Chip, TIMED_CHIPS, default_until};
+use slint::{
+    CloseRequestResponse, ComponentHandle, LogicalPosition, Model, ModelRc, SharedString, Timer,
+    VecModel,
+};
+use vento_core::awake::{Chip, chip_text, default_until};
 use vento_core::geometry::{Point, Rect, screen_for};
 use vento_core::i18n::{tr, trn};
 use vento_platform::Platform;
@@ -72,6 +75,8 @@ pub struct PanelController {
     /// What the panel's Keep Awake shows and changes; it lives as long as
     /// the panel, which is as long as vento.
     keep_awake: Rc<KeepAwake>,
+    /// The Keep Awake card's timed chips, as the window shows them.
+    awake_times: Rc<VecModel<SharedString>>,
     /// The island the Clipboard and Pocket tiles open, and whose items the
     /// Pocket tile counts.
     pocket: Weak<PocketController>,
@@ -119,6 +124,7 @@ impl PanelController {
             platform,
             hub,
             keep_awake,
+            awake_times: Rc::new(VecModel::default()),
             pocket,
             exec,
             pdf,
@@ -174,6 +180,7 @@ impl PanelController {
             appearance::follow(&window, appearance::Look::Full);
             window.set_screen_text_supported(self.screen_text_supported);
             window.set_paused(self.paused.get());
+            window.set_awake_times(ModelRc::from(self.awake_times.clone()));
             // A new native window: AppKit has yet to be told to keep it.
             self.frame_kept.set(false);
             self.connect(&window);
@@ -269,14 +276,11 @@ impl PanelController {
     }
 
     fn connect_awake(&self, window: &QuickPanel) {
-        // The tile stops what runs, or starts "until stopped".
+        // The tile stops what runs, or starts what Settings says it starts.
         let this = self.this.clone();
         window.on_awake_tile_clicked(move || {
-            let Some(panel) = this.upgrade() else { return };
-            if panel.keep_awake.session().is_some() {
-                panel.keep_awake.stop();
-            } else {
-                panel.keep_awake.start(Chip::Forever);
+            if let Some(panel) = this.upgrade() {
+                panel.keep_awake.toggle_start();
             }
         });
         let this = self.this.clone();
@@ -288,7 +292,7 @@ impl PanelController {
         let this = self.this.clone();
         window.on_awake_chip_clicked(move |i| {
             let Some(panel) = this.upgrade() else { return };
-            match chip_at(i) {
+            match chip_at(i, &panel.hub.current().keep_awake_times) {
                 Some(chip) => panel.keep_awake.toggle(chip),
                 // Until… while it runs: the panel opens its popup otherwise.
                 None => panel.keep_awake.stop(),
@@ -343,10 +347,13 @@ impl PanelController {
         let Some(window) = self.existing() else {
             return;
         };
+        let times = self.hub.current().keep_awake_times;
+        let labels = times.iter().map(|&m| chip_text(m).into()).collect();
+        set_rows(&self.awake_times, labels);
         let session = self.keep_awake.session();
         window.set_awake_status(self.keep_awake.status().into());
         window.set_awake_on(session.is_some());
-        window.set_awake_chip(session.map_or(-1, |s| chip_index(s.chip)));
+        window.set_awake_chip(session.map_or(-1, |s| chip_index(s.chip, &times)));
     }
 
     /// Makes the open panel the key window again.
@@ -606,6 +613,8 @@ impl PanelController {
         window.set_screen_text_shortcut(shortcut(&settings.screen_text_shortcut));
         window.set_clip_shortcut(shortcut(&settings.clipboard_shortcut));
         window.set_clip_history(settings.clipboard_history);
+        // The Keep Awake chips follow the saved times.
+        self.show_awake();
     }
 }
 
@@ -621,23 +630,27 @@ pub fn pocket_count_text(n: usize) -> String {
     }
 }
 
-/// The Keep Awake chip at `i` of the panel (see `AwakeChips`): the timed
-/// ones, then ∞. `None` for Until…, which asks for its time first.
-fn chip_at(i: i32) -> Option<Chip> {
+/// The Keep Awake chip at `i` of the panel (see `AwakeChips`) when it
+/// shows `times` (in minutes): the timed ones, then ∞. `None` for Until…,
+/// which asks for its time first.
+fn chip_at(i: i32, times: &[u32]) -> Option<Chip> {
     let i = usize::try_from(i).ok()?;
-    match TIMED_CHIPS.get(i) {
-        Some(&length) => Some(Chip::For(length)),
-        None if i == TIMED_CHIPS.len() => Some(Chip::Forever),
+    match times.get(i) {
+        Some(&minutes) => Some(Chip::For(Duration::from_secs(u64::from(minutes) * 60))),
+        None if i == times.len() => Some(Chip::Forever),
         None => None,
     }
 }
 
-/// Where `chip` is in the panel; -1 for a timed one it does not show.
-fn chip_index(chip: Chip) -> i32 {
+/// Where `chip` is in the panel showing `times`; -1 for a timed one it
+/// does not show.
+fn chip_index(chip: Chip, times: &[u32]) -> i32 {
     let index = match chip {
-        Chip::For(length) => TIMED_CHIPS.iter().position(|&l| l == length),
-        Chip::Forever => Some(TIMED_CHIPS.len()),
-        Chip::Until { .. } => Some(TIMED_CHIPS.len() + 1),
+        Chip::For(length) => times
+            .iter()
+            .position(|&m| Duration::from_secs(u64::from(m) * 60) == length),
+        Chip::Forever => Some(times.len()),
+        Chip::Until { .. } => Some(times.len() + 1),
     };
     index.and_then(|i| i32::try_from(i).ok()).unwrap_or(-1)
 }
@@ -888,17 +901,41 @@ mod tests {
 
     #[test]
     fn keep_awake_chips_and_their_places_match() {
+        let times = vento_core::awake::DEFAULT_TIMES;
         for i in 0..7 {
-            let chip = chip_at(i).unwrap();
-            assert_eq!(chip_index(chip), i);
+            let chip = chip_at(i, &times).unwrap();
+            assert_eq!(chip_index(chip, &times), i);
         }
-        assert_eq!(chip_at(2), Some(Chip::For(Duration::from_secs(60 * 60))));
-        assert_eq!(chip_at(6), Some(Chip::Forever));
+        assert_eq!(
+            chip_at(2, &times),
+            Some(Chip::For(Duration::from_secs(60 * 60)))
+        );
+        assert_eq!(chip_at(6, &times), Some(Chip::Forever));
         // Until… asks for its time first; nothing past it.
-        assert_eq!(chip_at(7), None);
-        assert_eq!(chip_at(8), None);
-        assert_eq!(chip_at(-1), None);
-        assert_eq!(chip_index(Chip::Until { hour: 7, minute: 0 }), 7);
-        assert_eq!(chip_index(Chip::For(Duration::from_secs(1))), -1);
+        assert_eq!(chip_at(7, &times), None);
+        assert_eq!(chip_at(8, &times), None);
+        assert_eq!(chip_at(-1, &times), None);
+        let until = Chip::Until { hour: 7, minute: 0 };
+        assert_eq!(chip_index(until, &times), 7);
+        assert_eq!(chip_index(Chip::For(Duration::from_secs(1)), &times), -1);
+    }
+
+    #[test]
+    fn keep_awake_chips_follow_the_saved_times() {
+        let times = [45, 180];
+        assert_eq!(
+            chip_at(1, &times),
+            Some(Chip::For(Duration::from_secs(180 * 60)))
+        );
+        assert_eq!(chip_at(2, &times), Some(Chip::Forever));
+        assert_eq!(chip_at(3, &times), None);
+        let until = Chip::Until { hour: 7, minute: 0 };
+        assert_eq!(chip_index(until, &times), 3);
+        // A time taken off while it runs is no chip.
+        let hour = Chip::For(Duration::from_secs(60 * 60));
+        assert_eq!(chip_index(hour, &times), -1);
+        // With no times the row has only ∞ and Until….
+        assert_eq!(chip_at(0, &[]), Some(Chip::Forever));
+        assert_eq!(chip_index(until, &[]), 1);
     }
 }

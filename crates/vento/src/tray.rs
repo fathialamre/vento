@@ -13,7 +13,6 @@ use log::warn;
 use tray_icon::menu::ContextMenu;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
 #[cfg(target_os = "macos")]
 use vento_core::i18n::current;
@@ -430,11 +429,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             } else if id == pocket.id() {
                 on_open_pocket();
             } else if id == keep_awake_item.id() {
-                if menu_keep.session().is_some() {
-                    menu_keep.stop();
-                } else {
-                    menu_keep.start(Chip::Forever);
-                }
+                menu_keep.toggle_start();
             } else if id == undo.id() {
                 exec.undo_last();
             } else if id == pause_item.id() {

@@ -208,10 +208,12 @@ export component QuickPanel inherits Window {
     in property <string> pocket-count;
 
     // Keep Awake: the status line, whether anything is held, the running
-    // chip (see AwakeChips), and the time the Until… popup opens at.
+    // chip (see AwakeChips), its timed chips' labels, and the time the
+    // Until… popup opens at.
     in property <string> awake-status;
     in property <bool> awake-on;
     in property <int> awake-chip: -1;
+    in property <[string]> awake-times;
     in-out property <int> awake-until-hour;
     in-out property <int> awake-until-minute;
     // The Keep Awake tile: starts or stops it.
@@ -423,6 +425,7 @@ export component QuickPanel inherits Window {
                         AwakeChips {
                             on: root.awake-on;
                             chip: root.awake-chip;
+                            times: root.awake-times;
                             until-hour <=> root.awake-until-hour;
                             until-minute <=> root.awake-until-minute;
                             chip-clicked(i) => { root.awake-chip-clicked(i); }

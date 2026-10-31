@@ -8,6 +8,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::actions::ActionId;
+use crate::awake;
 use crate::durable;
 use crate::geometry::{Layout, MAX_ACTIONS};
 use crate::paths::PathFormat;
@@ -129,6 +130,14 @@ pub struct Settings {
     /// Whether Keep Awake lets the screen dim, blank and lock as usual,
     /// keeping only the system awake.
     pub keep_awake_screen_off: bool,
+    /// The timed chips of the Quick panel's Keep Awake card, in minutes:
+    /// shortest first, unique, at most [`awake::MAX_TIMES`], each within
+    /// [`awake::MIN_TIME`] and [`awake::MAX_TIME`].
+    pub keep_awake_times: Vec<u32>,
+    /// What a click on the Keep Awake tile (or the menu's Start Keep Awake)
+    /// starts: one of `keep_awake_times`, in minutes, or 0 for until
+    /// stopped. A time not among them reads as 0.
+    pub keep_awake_start: u32,
     /// Folders pinned to the move ring, in order (unique, at most
     /// [`MAX_PINNED`]).
     pub pinned_folders: Vec<PathBuf>,
@@ -217,6 +226,8 @@ impl Default for Settings {
             clipboard_shortcut: default_clipboard_shortcut(),
             screen_text_shortcut: default_screen_text_shortcut(),
             keep_awake_screen_off: false,
+            keep_awake_times: awake::DEFAULT_TIMES.to_vec(),
+            keep_awake_start: 0,
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
@@ -251,6 +262,8 @@ struct RawSettings {
     clipboard_shortcut: String,
     screen_text_shortcut: String,
     keep_awake_screen_off: bool,
+    keep_awake_times: Vec<u32>,
+    keep_awake_start: u32,
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
@@ -287,6 +300,8 @@ impl From<&Settings> for RawSettings {
             clipboard_shortcut: s.clipboard_shortcut.clone(),
             screen_text_shortcut: s.screen_text_shortcut.clone(),
             keep_awake_screen_off: s.keep_awake_screen_off,
+            keep_awake_times: s.keep_awake_times.clone(),
+            keep_awake_start: s.keep_awake_start,
             pinned_folders: s.pinned_folders.clone(),
             move_hold_ms: s.move_hold_ms,
             hidden_actions: s
@@ -359,6 +374,12 @@ impl From<RawSettings> for Settings {
             }
         }
         // Round to the nearest 100 (halves up), then keep within bounds.
+        let keep_awake_times = awake::tidy_times(&raw.keep_awake_times);
+        let keep_awake_start = if keep_awake_times.contains(&raw.keep_awake_start) {
+            raw.keep_awake_start
+        } else {
+            0
+        };
         let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
             .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
         Settings {
@@ -379,6 +400,8 @@ impl From<RawSettings> for Settings {
             clipboard_shortcut: raw.clipboard_shortcut,
             screen_text_shortcut: raw.screen_text_shortcut,
             keep_awake_screen_off: raw.keep_awake_screen_off,
+            keep_awake_times,
+            keep_awake_start,
             pinned_folders,
             move_hold_ms,
             hidden_actions,
@@ -830,6 +853,44 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn keep_awake_times_and_start_round_trip() {
+        let s = Settings::default();
+        assert_eq!(s.keep_awake_times, [15, 30, 60, 120, 240, 480]);
+        assert_eq!(s.keep_awake_start, 0);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            keep_awake_times: vec![45, 180],
+            keep_awake_start: 180,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+        // No times at all is kept, not refilled.
+        let s = Settings {
+            keep_awake_times: Vec::new(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn hand_edited_keep_awake_times_are_tidied() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(
+            &p,
+            "keep_awake_times = [90, 15, 90, 1, 3000]\nkeep_awake_start = 45\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&p).unwrap();
+        assert_eq!(s.keep_awake_times, [15, 90]);
+        // 45 is not among the times: until stopped.
+        assert_eq!(s.keep_awake_start, 0);
     }
 
     #[test]

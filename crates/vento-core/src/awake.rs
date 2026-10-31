@@ -16,15 +16,60 @@ use crate::i18n::{fill, tr};
 /// session that ended during a sleep ends at most this long after waking.
 pub const MAX_CHECK: Duration = Duration::from_secs(60);
 
-/// The timed chips, in the order shown.
-pub const TIMED_CHIPS: [Duration; 6] = [
-    Duration::from_secs(15 * 60),
-    Duration::from_secs(30 * 60),
-    Duration::from_secs(60 * 60),
-    Duration::from_secs(2 * 60 * 60),
-    Duration::from_secs(4 * 60 * 60),
-    Duration::from_secs(8 * 60 * 60),
-];
+/// The timed chips the panel shows until the user picks others, in
+/// minutes.
+pub const DEFAULT_TIMES: [u32; 6] = [15, 30, 60, 2 * 60, 4 * 60, 8 * 60];
+
+/// The most timed chips the panel shows: one row of them.
+pub const MAX_TIMES: usize = 6;
+
+/// The shortest and longest time a chip can hold, in minutes.
+pub const MIN_TIME: u32 = 5;
+pub const MAX_TIME: u32 = 24 * 60;
+
+/// `times` as the panel shows them: each within [`MIN_TIME`] and
+/// [`MAX_TIME`], once, shortest first, at most [`MAX_TIMES`] (the
+/// shortest kept).
+pub fn tidy_times(times: &[u32]) -> Vec<u32> {
+    let mut tidy: Vec<u32> = times
+        .iter()
+        .copied()
+        .filter(|m| (MIN_TIME..=MAX_TIME).contains(m))
+        .collect();
+    tidy.sort_unstable();
+    tidy.dedup();
+    tidy.truncate(MAX_TIMES);
+    tidy
+}
+
+/// The time next to `minutes` on the Settings window's stepper, up or
+/// down: every 5 minutes under an hour, every 15 under two hours, every 30
+/// under six and every hour above, within [`MIN_TIME`] and [`MAX_TIME`].
+pub fn step_time(minutes: u32, up: bool) -> u32 {
+    let ladder = || {
+        (MIN_TIME..60)
+            .step_by(5)
+            .chain((60..120).step_by(15))
+            .chain((120..360).step_by(30))
+            .chain((360..=MAX_TIME).step_by(60))
+    };
+    let next = if up {
+        ladder().find(|&m| m > minutes)
+    } else {
+        ladder().filter(|&m| m < minutes).last()
+    };
+    next.unwrap_or(minutes.clamp(MIN_TIME, MAX_TIME))
+}
+
+/// What the Keep Awake tile and the menu's Start Keep Awake start: a timed
+/// chip for `minutes`, or [`Chip::Forever`] for 0.
+pub fn start_chip(minutes: u32) -> Chip {
+    if minutes == 0 {
+        Chip::Forever
+    } else {
+        Chip::For(Duration::from_secs(u64::from(minutes) * 60))
+    }
+}
 
 /// What a chip asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +211,17 @@ pub fn duration_text(minutes: u64) -> String {
         (0, _) => fill(&tr("{m} min"), &[("m", &m)]),
         (_, 0) => fill(&tr("{h} h"), &[("h", &h)]),
         _ => fill(&tr("{h} h {m} min"), &[("h", &h), ("m", &m)]),
+    }
+}
+
+/// `minutes` on a chip of the panel, where six share a row: as
+/// [`duration_text`], but `"1 h 30"` for hours and minutes.
+pub fn chip_text(minutes: u32) -> String {
+    if minutes >= 60 && !minutes.is_multiple_of(60) {
+        let (h, m) = ((minutes / 60).to_string(), (minutes % 60).to_string());
+        fill(&tr("{h} h {m}"), &[("h", &h), ("m", &m)])
+    } else {
+        duration_text(u64::from(minutes))
     }
 }
 
@@ -384,5 +440,53 @@ mod tests {
             assert_eq!(duration_text(120), "2 س");
             assert_eq!(duration_text(90), "1 س 30 د");
         });
+    }
+
+    #[test]
+    fn chips_shorten_hours_and_minutes() {
+        assert_eq!(chip_text(45), "45 min");
+        assert_eq!(chip_text(180), "3 h");
+        assert_eq!(chip_text(90), "1 h 30");
+        crate::i18n::with_language("ar", || {
+            assert_eq!(chip_text(45), "45 د");
+            assert_eq!(chip_text(90), "1 س 30");
+        });
+    }
+
+    #[test]
+    fn times_are_tidied_into_one_short_sorted_row() {
+        assert_eq!(tidy_times(&DEFAULT_TIMES), DEFAULT_TIMES);
+        assert_eq!(tidy_times(&[60, 15, 60, 0, 2, 2000, 45]), [15, 45, 60]);
+        assert_eq!(
+            tidy_times(&[1, 5, 10, 15, 20, 25, 30, 35]),
+            [5, 10, 15, 20, 25, 30]
+        );
+        assert!(tidy_times(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_stepper_moves_in_steps_that_grow_with_the_time() {
+        let up = |m| step_time(m, true);
+        let down = |m| step_time(m, false);
+        assert_eq!(up(45), 50);
+        assert_eq!(up(55), 60);
+        assert_eq!(up(60), 75);
+        assert_eq!(up(105), 120);
+        assert_eq!(up(120), 150);
+        assert_eq!(up(330), 360);
+        assert_eq!(up(360), 420);
+        assert_eq!(up(MAX_TIME), MAX_TIME);
+        assert_eq!(down(60), 55);
+        assert_eq!(down(150), 120);
+        assert_eq!(down(MIN_TIME), MIN_TIME);
+        // A time off the ladder (a hand-edited file) steps onto it.
+        assert_eq!(up(47), 50);
+        assert_eq!(down(47), 45);
+    }
+
+    #[test]
+    fn the_tile_starts_until_stopped_or_a_timed_chip() {
+        assert_eq!(start_chip(0), Chip::Forever);
+        assert_eq!(start_chip(90), Chip::For(minutes(90)));
     }
 }
