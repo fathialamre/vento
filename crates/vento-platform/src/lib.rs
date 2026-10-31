@@ -15,8 +15,11 @@ use vento_core::screen_text::{Selection, TextBox};
 use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
+mod screenshot_dir;
 mod stub;
+mod watch;
 pub use stub::{StubPlatform, StubScreenText};
+pub use watch::{FolderWatch, watch_folder};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -771,6 +774,76 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     {
         let _ = (path, short_px, max_ratio);
         None
+    }
+}
+
+/// The folder the system saves screenshots in. On the Mac it is the one set
+/// in the Screenshot app (`~/Desktop` when none is set or it is gone); on
+/// Linux and Windows, `Screenshots` in the Pictures folder. The folder may
+/// not exist (yet). A free function so a worker thread can call it.
+pub fn screenshot_folder() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        macos::screenshot_folder()
+    }
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        screenshot_dir::screenshot_folder()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+    {
+        stub::screenshot_folder()
+    }
+}
+
+/// Whether `path` is a screenshot that the system itself saved. On the Mac
+/// the system marks every screenshot (the file name and place can change);
+/// elsewhere nothing marks them, so this is always true. A free function so
+/// a worker thread can call it.
+pub fn is_screen_capture(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_screen_capture(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::is_screen_capture(path)
+    }
+}
+
+/// Whether [`is_screen_capture`] is what tells screenshots from other
+/// pictures in the folder: true on the Mac, where the folder can be the
+/// Desktop, false elsewhere.
+pub fn needs_screen_capture_mark() -> bool {
+    cfg!(target_os = "macos")
+}
+
+/// Whether the system asks the user's leave before an app reads the folder
+/// `path`: on the Mac, the Desktop, Documents and Downloads and what is
+/// inside them. Always false elsewhere. A free function so a worker thread
+/// can call it.
+pub fn is_protected_folder(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_protected_folder(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::is_protected_folder(path)
+    }
+}
+
+/// Opens the page of the system settings where the user lets apps read
+/// folders (the Mac's Privacy & Security → Files & Folders).
+/// `Err(Unsupported)` where there is no such page.
+pub fn open_files_privacy() -> Result<(), PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::open_files_privacy()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::open_files_privacy()
     }
 }
 

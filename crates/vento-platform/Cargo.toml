@@ -10,6 +10,9 @@ vento-core = { path = "../vento-core" }
 thiserror = "2"
 log = "0.4"
 raw-window-handle = "0.6"
+# Watches the screenshots folder: FSEvents on the Mac, inotify on Linux,
+# ReadDirectoryChangesW on Windows. Default features (it has no heavy ones).
+notify = "8.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -28,6 +31,8 @@ objc2-foundation = { version = "0.3", features = [
     "NSNotification",
     "NSBundle",
     "NSProcessInfo",
+    # The screenshots folder is read from the screen capture settings.
+    "NSUserDefaults",
     # Quit from the app menu tells a logout's quit from the user's.
     "NSAppleEventManager",
     "NSAppleEventDescriptor",
@@ -129,6 +134,8 @@ rfd = "0.17"
 xattr = "1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Where the user keeps pictures, for the screenshots folder.
+directories = "6"
 gio = "0.22"
 gio-unix = "0.22"
 # Both already in the app through Slint (image with PNG and JPEG); TIFF is
@@ -149,6 +156,8 @@ x11rb = { version = "0.13", features = ["shape"] }
 signal-hook = "0.3"
 
 [target.'cfg(windows)'.dependencies]
+# Where the user keeps pictures, for the screenshots folder.
+directories = "6"
 # Picture thumbnails and the Convert action, as on Linux (`linux/thumbs.rs`,
 # `linux/image_io.rs`).
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "gif", "bmp", "webp"] }
