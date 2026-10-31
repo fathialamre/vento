@@ -301,11 +301,12 @@ It closes after 2 to 8 seconds, not while the pointer is on it. <!-- screenshot:
 The **Screenshots** tab, beside Clipboard and Pocket, lists the last 7 days (up
 to 60) by day, with a closer look and **Show in Finder**. <!-- screenshot: tab -->
 
-When you turn it on, macOS may ask once to let Vento see the Desktop. It ties that
+When you turn it on, macOS may ask once to let Vento see the folder your
+screenshots are saved in (the Desktop, Documents or Downloads). It ties that
 permission to the exact build, and Vento is not signed by Apple yet, so after an
 update it may ask again, only when you open the tab or its Settings page, never
 at launch. **Tip:** the Screenshot app's floating thumbnail makes macOS save the
-file 5 seconds late; turn off **Show Floating Thumbnail** for an instant card.
+file about 5 seconds late; turn off **Show Floating Thumbnail** for an instant card.
 
 ## Copy from screen
 
