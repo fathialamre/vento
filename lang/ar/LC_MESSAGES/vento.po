@@ -369,7 +369,7 @@ msgstr "نسخ المسار"
 msgid "Copy something and it shows up here"
 msgstr "انسخ أي شيء وسيظهر هنا"
 
-#: crates/vento/ui/quick.slint:347
+#: crates/vento/ui/quick.slint:530
 msgid "Copy text"
 msgstr "نسخ النص"
 
@@ -495,6 +495,10 @@ msgstr "تعذّرت المشاركة: {reason}"
 msgid "Couldn't show info: {reason}"
 msgstr "تعذّر عرض المعلومات: {reason}"
 
+#: crates/vento/src/panel/mod.rs:126
+msgid "Couldn't update"
+msgstr "تعذّر التحديث"
+
 #: crates/vento-core/src/info.rs:206
 msgid "Created"
 msgstr "الإنشاء"
@@ -530,6 +534,10 @@ msgstr "مستندات"
 #: crates/vento/ui/info.slint:26
 msgid "Done"
 msgstr "تم"
+
+#: crates/vento/src/panel/mod.rs:108
+msgid "Downloading {v}…"
+msgstr "جارٍ تنزيل ‎{v}…"
 
 #: crates/vento/src/welcome_window/mod.rs:784
 msgid "Drag a file, press {key}"
@@ -575,7 +583,7 @@ msgstr[5] "اسحب {n}"
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
-#: crates/vento/src/panel/mod.rs:615
+#: crates/vento/src/panel/mod.rs:760
 msgid "Empty"
 msgstr "فارغ"
 
@@ -683,7 +691,7 @@ msgstr "عام"
 msgid "GitHub answered {code}"
 msgstr "ردّ GitHub بالرمز {code}"
 
-#: crates/vento/src/updater/mod.rs:139
+#: crates/vento/src/updater/mod.rs:142
 msgid "GitHub's answer couldn't be read"
 msgstr "تعذّرت قراءة ردّ GitHub"
 
@@ -1019,7 +1027,7 @@ msgstr "لا يوجد شيء لنسخه"
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
 
-#: crates/vento/ui/quick.slint:358
+#: crates/vento/ui/quick.slint:541
 msgid "Off"
 msgstr "متوقف"
 
@@ -1115,7 +1123,7 @@ msgstr[5] "الصفحات {pages}"
 msgid "Password"
 msgstr "كلمة السر"
 
-#: crates/vento/ui/quick.slint:330
+#: crates/vento/ui/quick.slint:513
 msgid "Pause"
 msgstr "إيقاف مؤقت"
 
@@ -1207,13 +1215,17 @@ msgstr "طباعة"
 msgid "Quality"
 msgstr "الجودة"
 
-#: crates/vento/ui/quick.slint:484
+#: crates/vento/ui/quick.slint:667
 msgid "Quit"
 msgstr "إنهاء"
 
 #: crates/vento/src/tray.rs:311
 msgid "Quit Vento"
 msgstr "إنهاء Vento"
+
+#: crates/vento/src/panel/mod.rs:114
+msgid "Ready to restart"
+msgstr "جاهز لإعادة التشغيل"
 
 #: crates/vento/ui/settings_pages.slint:668
 msgid "Recent"
@@ -1255,6 +1267,14 @@ msgstr[3] "جارٍ إزالة {n} نسخ…"
 msgstr[4] "جارٍ إزالة {n} نسخة…"
 msgstr[5] "جارٍ إزالة {n} نسخة…"
 
+#: crates/vento/ui/quick.slint:329
+msgid "Restart"
+msgstr "إعادة التشغيل"
+
+#: crates/vento/src/panel/mod.rs:119
+msgid "Restarting to finish…"
+msgstr "جارٍ إعادة التشغيل لإتمام التحديث…"
+
 #: crates/vento/src/exec.rs:190
 msgid "Restored {n} item"
 msgid_plural "Restored {n} items"
@@ -1275,7 +1295,7 @@ msgstr[3] "جارٍ استعادة {n} عناصر…"
 msgstr[4] "جارٍ استعادة {n} عنصراً…"
 msgstr[5] "جارٍ استعادة {n} عنصر…"
 
-#: crates/vento/ui/quick.slint:330
+#: crates/vento/ui/quick.slint:513
 msgid "Resume"
 msgstr "استئناف"
 
@@ -1336,6 +1356,10 @@ msgstr[5] "تم حفظ {n} صورة في {folder}"
 #: crates/vento/ui/pdf.slint:1667
 msgid "Screen"
 msgstr "شاشة"
+
+#: crates/vento/ui/quick.slint:277
+msgid "See what's new"
+msgstr "اطّلع على الجديد"
 
 #: crates/vento/ui/pdf.slint:1066
 msgid "Select all"
@@ -1475,6 +1499,10 @@ msgstr "ابدأ بسحب ملف، ثم اضغط ‎{} وأنت ما زلت تس
 msgid "Stay awake until"
 msgstr "ابقَ مستيقظاً حتى"
 
+#: crates/vento/src/panel/mod.rs:128
+msgid "Still on {running}. {reason}"
+msgstr "ما زالت النسخة ‎{running} قيد التشغيل. {reason}"
+
 #: crates/vento/ui/controls.slint:843
 msgid "Stop"
 msgstr "إيقاف"
@@ -1523,11 +1551,11 @@ msgstr "الجيب يستخدم هذا الاختصار"
 msgid "The download couldn't be opened"
 msgstr "تعذّر فتح التنزيل"
 
-#: crates/vento/src/updater/mod.rs:138
+#: crates/vento/src/updater/mod.rs:141
 msgid "The download didn't match its checksum"
 msgstr "التنزيل لا يطابق مجموعه الاختباري"
 
-#: crates/vento/src/updater/mod.rs:66
+#: crates/vento/src/updater/mod.rs:69
 msgid "The new version didn't start."
 msgstr "لم يبدأ تشغيل الإصدار الجديد."
 
@@ -1566,6 +1594,10 @@ msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسج
 #: crates/vento/ui/settings_pages.slint:976
 msgid "Trigger"
 msgstr "المفتاح المشغّل"
+
+#: crates/vento/ui/quick.slint:335
+msgid "Try again"
+msgstr "حاول مرة أخرى"
 
 #: crates/vento/ui/welcome.slint:774
 msgid "Try it"
@@ -1623,6 +1655,10 @@ msgstr "حتى…"
 msgid "Up to 7 folders"
 msgstr "7 مجلدات كحد أقصى"
 
+#: crates/vento/ui/quick.slint:318
+msgid "Update"
+msgstr "تحديث"
+
 #: crates/vento-core/src/update/features.rs:121
 msgid "Updates"
 msgstr "التحديثات"
@@ -1647,7 +1683,7 @@ msgstr "كلمة سر الأرشيف في Vento"
 msgid "Vento archive progress"
 msgstr "تقدّم الأرشيف في Vento"
 
-#: crates/vento/src/updater/mod.rs:67
+#: crates/vento/src/updater/mod.rs:70
 msgid "Vento didn't quit"
 msgstr "لم يُغلَق Vento"
 
@@ -1655,11 +1691,11 @@ msgstr "لم يُغلَق Vento"
 msgid "Vento info"
 msgstr "معلومات Vento"
 
-#: crates/vento/ui/quick.slint:317
+#: crates/vento/ui/quick.slint:500
 msgid "Vento is on"
 msgstr "‏Vento يعمل"
 
-#: crates/vento/ui/quick.slint:317
+#: crates/vento/ui/quick.slint:500
 msgid "Vento is paused"
 msgstr "‏Vento متوقف مؤقتاً"
 
@@ -1678,6 +1714,18 @@ msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته 
 #: crates/vento/src/welcome_window/practice.rs:61
 msgid "Vento was here."
 msgstr "مرّ Vento من هنا."
+
+#: crates/vento/src/panel/mod.rs:120
+msgid "Vento will be back in a second"
+msgstr "‏Vento سيعود خلال لحظة"
+
+#: crates/vento/src/panel/mod.rs:101
+msgid "Vento {v} is available"
+msgstr "‏Vento ‎{v} متوفر"
+
+#: crates/vento/src/panel/mod.rs:115
+msgid "Vento {v} is downloaded"
+msgstr "تم تنزيل Vento ‎{v}"
 
 #: crates/vento/ui/settings_pages.slint:1115
 msgid "Version {}"
@@ -2053,7 +2101,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:670
+#: crates/vento/src/main.rs:727
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 

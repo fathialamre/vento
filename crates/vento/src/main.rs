@@ -341,6 +341,66 @@ fn main() -> Result<(), slint::PlatformError> {
             None
         }
     };
+    // The panel's update card follows the controller, and its buttons drive
+    // it. The card is written again when the language changes.
+    #[cfg(target_os = "macos")]
+    if let (Some(updates), Some(running)) = (
+        &updates,
+        vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION")),
+    ) {
+        let show = {
+            let (panel, updates) = (Rc::downgrade(&panel), Rc::downgrade(updates));
+            move || {
+                if let (Some(panel), Some(updates)) = (panel.upgrade(), updates.upgrade()) {
+                    panel.set_update(panel::update_view(&updates.state(), running));
+                }
+            }
+        };
+        let on_state = show.clone();
+        updates.on_change(Box::new(move |_| on_state()));
+        hub.on_change(Box::new(move |old, new| {
+            if old.language != new.language {
+                show();
+            }
+        }));
+        let (update, cancel, notes, retry) = (
+            Rc::downgrade(updates),
+            Rc::downgrade(updates),
+            Rc::downgrade(updates),
+            Rc::downgrade(updates),
+        );
+        panel.set_on_update(panel::UpdateActions {
+            // Restart once the update is downloaded, Update before.
+            update: Box::new(move || {
+                if let Some(updates) = update.upgrade() {
+                    if matches!(
+                        updates.state(),
+                        vento_core::update::state::UpdateState::Ready(_)
+                    ) {
+                        updates.restart();
+                    } else {
+                        updates.update();
+                    }
+                }
+            }),
+            cancel: Box::new(move || {
+                if let Some(updates) = cancel.upgrade() {
+                    updates.cancel();
+                }
+            }),
+            // What's new opens in a window of its own (a later step).
+            notes: Box::new(move || {
+                if let Some(updates) = notes.upgrade() {
+                    log::info!("What's new: {:?}", updates.pending_notes().map(|n| n.0));
+                }
+            }),
+            retry: Box::new(move || {
+                if let Some(updates) = retry.upgrade() {
+                    updates.update();
+                }
+            }),
+        });
+    }
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));
     }

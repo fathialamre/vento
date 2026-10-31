@@ -355,7 +355,7 @@ msgstr ""
 msgid "Copy something and it shows up here"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:347
+#: crates/vento/ui/quick.slint:530
 msgid "Copy text"
 msgstr ""
 
@@ -469,6 +469,10 @@ msgstr ""
 msgid "Couldn't show info: {reason}"
 msgstr ""
 
+#: crates/vento/src/panel/mod.rs:126
+msgid "Couldn't update"
+msgstr ""
+
 #: crates/vento-core/src/info.rs:206
 msgid "Created"
 msgstr ""
@@ -503,6 +507,10 @@ msgstr ""
 
 #: crates/vento/ui/info.slint:26
 msgid "Done"
+msgstr ""
+
+#: crates/vento/src/panel/mod.rs:108
+msgid "Downloading {v}…"
 msgstr ""
 
 #: crates/vento/src/welcome_window/mod.rs:784
@@ -541,7 +549,7 @@ msgstr[1] ""
 msgid "Drop to add"
 msgstr ""
 
-#: crates/vento/src/panel/mod.rs:615
+#: crates/vento/src/panel/mod.rs:760
 msgid "Empty"
 msgstr ""
 
@@ -641,7 +649,7 @@ msgstr ""
 msgid "GitHub answered {code}"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:139
+#: crates/vento/src/updater/mod.rs:142
 msgid "GitHub's answer couldn't be read"
 msgstr ""
 
@@ -953,7 +961,7 @@ msgstr ""
 msgid "Nothing to move"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:358
+#: crates/vento/ui/quick.slint:541
 msgid "Off"
 msgstr ""
 
@@ -1041,7 +1049,7 @@ msgstr[1] ""
 msgid "Password"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:330
+#: crates/vento/ui/quick.slint:513
 msgid "Pause"
 msgstr ""
 
@@ -1133,12 +1141,16 @@ msgstr ""
 msgid "Quality"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:484
+#: crates/vento/ui/quick.slint:667
 msgid "Quit"
 msgstr ""
 
 #: crates/vento/src/tray.rs:311
 msgid "Quit Vento"
+msgstr ""
+
+#: crates/vento/src/panel/mod.rs:114
+msgid "Ready to restart"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:668
@@ -1173,6 +1185,14 @@ msgid_plural "Removing {n} copies…"
 msgstr[0] ""
 msgstr[1] ""
 
+#: crates/vento/ui/quick.slint:329
+msgid "Restart"
+msgstr ""
+
+#: crates/vento/src/panel/mod.rs:119
+msgid "Restarting to finish…"
+msgstr ""
+
 #: crates/vento/src/exec.rs:190
 msgid "Restored {n} item"
 msgid_plural "Restored {n} items"
@@ -1185,7 +1205,7 @@ msgid_plural "Restoring {n} items…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/quick.slint:330
+#: crates/vento/ui/quick.slint:513
 msgid "Resume"
 msgstr ""
 
@@ -1233,6 +1253,10 @@ msgstr[1] ""
 
 #: crates/vento/ui/pdf.slint:1667
 msgid "Screen"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:277
+msgid "See what's new"
 msgstr ""
 
 #: crates/vento/ui/pdf.slint:1066
@@ -1369,6 +1393,10 @@ msgstr ""
 msgid "Stay awake until"
 msgstr ""
 
+#: crates/vento/src/panel/mod.rs:128
+msgid "Still on {running}. {reason}"
+msgstr ""
+
 #: crates/vento/ui/controls.slint:843
 msgid "Stop"
 msgstr ""
@@ -1417,11 +1445,11 @@ msgstr ""
 msgid "The download couldn't be opened"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:138
+#: crates/vento/src/updater/mod.rs:141
 msgid "The download didn't match its checksum"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:66
+#: crates/vento/src/updater/mod.rs:69
 msgid "The new version didn't start."
 msgstr ""
 
@@ -1459,6 +1487,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:976
 msgid "Trigger"
+msgstr ""
+
+#: crates/vento/ui/quick.slint:335
+msgid "Try again"
 msgstr ""
 
 #: crates/vento/ui/welcome.slint:774
@@ -1517,6 +1549,10 @@ msgstr ""
 msgid "Up to 7 folders"
 msgstr ""
 
+#: crates/vento/ui/quick.slint:318
+msgid "Update"
+msgstr ""
+
 #: crates/vento-core/src/update/features.rs:121
 msgid "Updates"
 msgstr ""
@@ -1541,7 +1577,7 @@ msgstr ""
 msgid "Vento archive progress"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:67
+#: crates/vento/src/updater/mod.rs:70
 msgid "Vento didn't quit"
 msgstr ""
 
@@ -1549,11 +1585,11 @@ msgstr ""
 msgid "Vento info"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:317
+#: crates/vento/ui/quick.slint:500
 msgid "Vento is on"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:317
+#: crates/vento/ui/quick.slint:500
 msgid "Vento is paused"
 msgstr ""
 
@@ -1571,6 +1607,18 @@ msgstr ""
 
 #: crates/vento/src/welcome_window/practice.rs:61
 msgid "Vento was here."
+msgstr ""
+
+#: crates/vento/src/panel/mod.rs:120
+msgid "Vento will be back in a second"
+msgstr ""
+
+#: crates/vento/src/panel/mod.rs:101
+msgid "Vento {v} is available"
+msgstr ""
+
+#: crates/vento/src/panel/mod.rs:115
+msgid "Vento {v} is downloaded"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1115
@@ -1935,7 +1983,7 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:670
+#: crates/vento/src/main.rs:727
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 
