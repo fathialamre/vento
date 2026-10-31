@@ -82,6 +82,12 @@ pub(crate) fn read_screen_text(_sel: &Selection) -> Result<Vec<TextBox>, Platfor
     Err(PlatformError::Unsupported)
 }
 
+/// Nothing to read a picture with here.
+#[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
+pub(crate) fn read_image_text(_path: &Path) -> Result<Vec<TextBox>, PlatformError> {
+    Err(PlatformError::Unsupported)
+}
+
 /// No text reader here.
 #[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
 pub(crate) fn screen_text_languages() -> Vec<String> {

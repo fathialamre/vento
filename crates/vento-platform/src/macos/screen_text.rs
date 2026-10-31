@@ -7,6 +7,7 @@
 //! and [`read_screen_text`] checks [`supported`] before it touches either.
 //! Both frameworks exist on macOS 13, so linking them is safe.
 
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
@@ -14,12 +15,13 @@ use block2::RcBlock;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::{AnyThread, MainThreadMarker};
 use objc2_app_kit::NSWorkspace;
-use objc2_core_foundation::{CFRetained, Type};
+use objc2_core_foundation::{CFRetained, CFURL, Type};
 use objc2_core_graphics::{CGImage, CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
 use objc2_foundation::{
     NSArray, NSDictionary, NSError, NSOperatingSystemVersion, NSPoint, NSProcessInfo, NSRect,
     NSSize, NSString, NSURL,
 };
+use objc2_image_io::CGImageSource;
 use objc2_screen_capture_kit::{
     SCContentFilter, SCScreenshotManager, SCShareableContent, SCStreamConfiguration,
 };
@@ -96,6 +98,28 @@ pub(crate) fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, Platform
     // A worker thread has no autorelease pool of its own.
     autoreleasepool(|_| {
         let image = capture(sel)?;
+        let boxes = recognise(&image);
+        drop(image);
+        boxes
+    })
+}
+
+/// Reads the text in the picture file at `path`, from its first frame as
+/// stored (no orientation applied). Needs no Screen Recording permission.
+/// Blocks; call it off the main thread.
+pub(crate) fn read_image_text(path: &Path) -> Result<Vec<TextBox>, PlatformError> {
+    if MainThreadMarker::new().is_some() {
+        log::warn!("read_image_text called on the main thread; the UI waits for it");
+    }
+    // A worker thread has no autorelease pool of its own.
+    autoreleasepool(|_| {
+        let not_a_picture = || PlatformError::Failed("the file is not a picture".into());
+        let source = CFURL::from_file_path(path)
+            // SAFETY: a valid URL; no options.
+            .and_then(|url| unsafe { CGImageSource::with_url(&url, None) })
+            .ok_or_else(not_a_picture)?;
+        // SAFETY: `source` is a valid image source; no options.
+        let image = unsafe { source.image_at_index(0, None) }.ok_or_else(not_a_picture)?;
         let boxes = recognise(&image);
         drop(image);
         boxes

@@ -638,6 +638,26 @@ pub fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, PlatformError> 
     }
 }
 
+/// Reads the text in the picture file at `path`, a box each, in the picture's
+/// pixels with a top-left origin. Blocks; call off the main thread. No
+/// Screen Recording permission is involved. `Unsupported` where there is no
+/// text reader (Windows, and Linux without Tesseract), `Failed` when the file
+/// is missing or is no picture.
+pub fn read_image_text(path: &Path) -> Result<Vec<TextBox>, PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::read_image_text(path)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::screen_text::read_image_text(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        stub::read_image_text(path)
+    }
+}
+
 /// The languages the text reader recognises, as language codes (`en-US`,
 /// `ar-SA`, ...), for the log. Empty where [`ScreenText::supported`] is
 /// false or the list cannot be had. Loads Vision; call off the main thread.
@@ -909,6 +929,12 @@ pub fn current() -> Rc<dyn Platform> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_image_text_of_a_missing_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_image_text(&dir.path().join("missing.png")).is_err());
+    }
 
     #[test]
     fn menus_are_dark_when_their_background_is() {

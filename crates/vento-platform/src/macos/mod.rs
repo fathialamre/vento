@@ -53,7 +53,7 @@ pub(crate) use pdf::pick_pdfs;
 pub use pdf::{PdfRenderer, SystemPdf};
 pub(crate) use quarantine::{quarantine_of, set_quarantine};
 pub use screen_text::MacScreenText;
-pub(crate) use screen_text::{read_screen_text, screen_text_languages};
+pub(crate) use screen_text::{read_image_text, read_screen_text, screen_text_languages};
 pub(crate) use thumbnail::{picture_data_thumbnail, picture_thumbnail};
 
 /// AppKit-backed [`Platform`].
