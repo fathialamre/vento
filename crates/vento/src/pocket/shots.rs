@@ -28,6 +28,9 @@ use vento_platform::{
 
 /// How long folder events are gathered into one listing.
 const COALESCE: Duration = Duration::from_millis(250);
+/// How long a listing may run before a [`touch`](ShotsController::touch)
+/// gives up on its answer and lists again.
+const STUCK: Duration = Duration::from_secs(10);
 
 thread_local! {
     /// The controller on the main thread, for listings and folder events
@@ -114,6 +117,13 @@ impl Job {
     }
 }
 
+/// Runs `job`, turning a panic in it (a library choking on a broken file)
+/// into an error, so the listing always has an answer.
+fn run_guarded(job: Job) -> Found {
+    std::panic::catch_unwind(move || job.run())
+        .unwrap_or_else(|_| Err(io::Error::other("the listing stopped on a panic")))
+}
+
 /// Seconds since the Unix epoch at `t`; 0 before it.
 fn unix_secs(t: SystemTime) -> u64 {
     t.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
@@ -161,8 +171,8 @@ pub(super) struct ShotsController {
     /// Goes up when the folder moves or the feature goes off: a listing or
     /// a folder event of an older generation is dropped.
     generation: Cell<u64>,
-    /// A listing runs on the worker.
-    listing: Cell<bool>,
+    /// A listing runs on the worker, since then.
+    listing: Cell<Option<Instant>>,
     /// Another listing was asked for while one ran.
     again: Cell<bool>,
     settler: RefCell<Settler>,
@@ -219,7 +229,7 @@ impl ShotsController {
             folder: RefCell::new(PathBuf::new()),
             watch: RefCell::new(None),
             generation: Cell::new(0),
-            listing: Cell::new(false),
+            listing: Cell::new(None),
             again: Cell::new(false),
             settler: RefCell::new(Settler::new()),
             seen: RefCell::new(None),
@@ -279,7 +289,7 @@ impl ShotsController {
 
     /// Reads the system's folder again (the tab or the Settings page
     /// opens): a new folder moves the watch, and a folder waiting to be
-    /// opened or denied is listed again.
+    /// opened or denied, or whose listing never answered, is listed again.
     pub(super) fn touch(self: &Rc<Self>) {
         let folder = self.system_folder();
         let moved = *self.folder.borrow() != folder;
@@ -291,7 +301,14 @@ impl ShotsController {
             Access::Off => {}
             Access::WaitForOpen | Access::Denied => self.start(),
             Access::Asking | Access::Granted => {
-                if moved {
+                let stuck = self
+                    .listing
+                    .get()
+                    .is_some_and(|since| since.elapsed() >= STUCK);
+                if stuck {
+                    warn!("screenshots: a listing never answered, listing again");
+                }
+                if moved || stuck {
                     self.start();
                 }
             }
@@ -347,6 +364,17 @@ impl ShotsController {
     fn start(&self) {
         self.reset();
         let folder = self.folder.borrow().clone();
+        // GNOME and Windows make the folder only with the first screenshot:
+        // made now, it can be watched from the start. Should that fail, the
+        // listing fails too and the folder counts as denied.
+        if let Err(e) = std::fs::metadata(&folder)
+            && e.kind() == io::ErrorKind::NotFound
+        {
+            match std::fs::create_dir_all(&folder) {
+                Ok(()) => debug!("screenshot folder {} made", folder.display()),
+                Err(e) => warn!("cannot make {}: {e}", folder.display()),
+            }
+        }
         let generation = self.generation.get();
         match watch_folder(&folder, Box::new(move || folder_event(generation))) {
             Ok(watch) => *self.watch.borrow_mut() = Some((folder, watch)),
@@ -362,7 +390,7 @@ impl ShotsController {
         self.generation.set(self.generation.get() + 1);
         self.watch.borrow_mut().take();
         self.timer.stop();
-        self.listing.set(false);
+        self.listing.set(None);
         self.again.set(false);
         *self.settler.borrow_mut() = Settler::new();
         self.seen.borrow_mut().take();
@@ -401,7 +429,7 @@ impl ShotsController {
         if !matches!(self.access.get(), Access::Asking | Access::Granted) {
             return;
         }
-        if self.listing.get() {
+        if self.listing.get().is_some() {
             self.again.set(true);
             return;
         }
@@ -412,26 +440,28 @@ impl ShotsController {
         }
         let job = self.job();
         let generation = self.generation.get();
-        self.listing.set(true);
+        self.listing.set(Some(Instant::now()));
         let spawned = std::thread::Builder::new()
             .name("vento-shots".into())
             .spawn(move || {
                 // Before the listing, so a file is never thought settled
                 // sooner than it is.
                 let at = Instant::now();
-                let found = job.run();
+                let found = run_guarded(job);
                 let posted = slint::invoke_from_event_loop(move || {
                     if let Some(c) = MAIN_SHOTS.with(|slot| slot.borrow().upgrade()) {
                         c.take(generation, found, at);
                     }
                 });
                 if let Err(e) = posted {
+                    // The controller still thinks it runs, until a touch
+                    // finds it stuck.
                     warn!("cannot hand the screenshot listing over: {e}");
                 }
             });
         if let Err(e) = spawned {
             warn!("cannot start listing the screenshot folder: {e}");
-            self.listing.set(false);
+            self.listing.set(None);
         }
     }
 
@@ -457,7 +487,7 @@ impl ShotsController {
             debug!("screenshots: a stale listing dropped");
             return;
         }
-        self.listing.set(false);
+        self.listing.set(None);
         let before = (self.access.get(), self.shots());
         let newest = match found {
             Ok(found) => self.listed(found, at),
@@ -473,8 +503,14 @@ impl ShotsController {
                 None
             }
         };
+        let current = self.generation.get();
         if before != (self.access.get(), self.shots()) {
             (self.on_change)();
+        }
+        // The refresh may have moved the folder or switched off: what this
+        // listing found is no longer the list's.
+        if self.generation.get() != current {
+            return;
         }
         if let Some(path) = newest {
             (self.on_new)(path);
@@ -600,7 +636,7 @@ impl ShotsController {
     fn scan_sync(&self, now: Instant) {
         self.followup.set(None);
         let generation = self.generation.get();
-        let found = self.job().run();
+        let found = run_guarded(self.job());
         self.take(generation, found, now);
     }
 }
@@ -880,7 +916,10 @@ mod tests {
     fn unreadable_folder_is_denied_until_touched() {
         let dir = tempfile::tempdir().unwrap();
         let grant = dir.path().join("grant.json");
-        let folder = dir.path().join("missing");
+        // A file where a folder should be: it can be neither made nor read.
+        let blocker = dir.path().join("blocker");
+        fs::write(&blocker, b"file").unwrap();
+        let folder = blocker.join("shots");
         let r = rig(true, &folder, true, &grant);
         r.c.touch();
         r.c.scan_sync(Instant::now());
@@ -889,11 +928,118 @@ mod tests {
         assert_eq!(load_grant(&grant), None);
         assert_eq!(r.changes.get(), 1);
 
-        fs::create_dir(&folder).unwrap();
+        fs::remove_file(&blocker).unwrap();
         r.c.touch();
         assert_eq!(r.c.access(), Access::Asking);
         r.c.scan_sync(Instant::now());
         assert_eq!(r.c.access(), Access::Granted);
+    }
+
+    #[test]
+    fn missing_folder_is_created_and_watched() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        // As on a fresh system, where the folder comes with the first shot.
+        let folder = dir.path().join("Pictures").join("Screenshots");
+        let r = rig(true, &folder, false, &grant);
+        assert!(folder.is_dir());
+        assert_eq!(r.c.watched(), Some(folder.clone()));
+        r.c.scan_sync(Instant::now());
+        assert_eq!(r.c.access(), Access::Granted);
+        assert!(r.c.shots().is_empty());
+        // Off, nothing is made.
+        let other = dir.path().join("Other");
+        rig(false, &other, false, &grant);
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn listing_that_panics_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        let folder = dir.path().join("shots");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("Screenshot 1.png"), b"picture").unwrap();
+        let r = rig(true, &folder, false, &grant);
+        if let Some(fake) = r.c.fake.borrow_mut().as_mut() {
+            fake.mark = |_| panic!("a broken file");
+        }
+        r.c.scan_sync(Instant::now());
+        assert_eq!(r.c.access(), Access::Denied);
+        assert_eq!(r.c.listing.get(), None);
+    }
+
+    #[test]
+    fn stuck_listing_restarts_on_touch() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        let folder = dir.path().join("shots");
+        fs::create_dir(&folder).unwrap();
+        let r = rig(true, &folder, false, &grant);
+        r.c.scan_sync(Instant::now());
+        assert_eq!(r.c.scans_asked.get(), 1);
+
+        // A listing that is still young is left to finish.
+        r.c.listing.set(Some(Instant::now()));
+        let generation = r.c.generation.get();
+        r.c.touch();
+        assert_eq!(r.c.generation.get(), generation);
+        assert_eq!(r.c.scans_asked.get(), 1);
+
+        // One whose answer never came is given up.
+        let long_ago = Instant::now().checked_sub(STUCK * 2).unwrap();
+        r.c.listing.set(Some(long_ago));
+        r.c.touch();
+        assert_ne!(r.c.generation.get(), generation);
+        assert_eq!(r.c.listing.get(), None);
+        assert_eq!(r.c.scans_asked.get(), 2);
+        assert_eq!(r.c.access(), Access::Asking);
+        assert_eq!(r.c.watched(), Some(folder));
+    }
+
+    #[test]
+    fn move_during_refresh_drops_the_new_shot() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        fs::create_dir(&a).unwrap();
+        fs::create_dir(&b).unwrap();
+        let settings = RefCell::new(Settings {
+            screenshots: true,
+            ..Settings::default()
+        });
+        // The refresh opens the tab, which finds the folder moved to `to`.
+        let slot: Rc<RefCell<Weak<ShotsController>>> = Rc::new(RefCell::new(Weak::new()));
+        let to: Rc<RefCell<Option<PathBuf>>> = Rc::new(RefCell::new(None));
+        let news = Rc::new(RefCell::new(Vec::new()));
+        let (s, t, nw) = (slot.clone(), to.clone(), news.clone());
+        let c = ShotsController::with_fake(
+            &settings,
+            Fake {
+                folder: a.clone(),
+                protected: false,
+                grant,
+                mark: fake_mark,
+            },
+            Box::new(move || {
+                let moved = t.borrow_mut().take();
+                if let (Some(c), Some(dir)) = (s.borrow().upgrade(), moved) {
+                    c.set_fake_folder(&dir);
+                    c.touch();
+                }
+            }),
+            Box::new(move |p| nw.borrow_mut().push(p)),
+        );
+        *slot.borrow_mut() = Rc::downgrade(&c);
+        let t0 = Instant::now();
+        c.scan_sync(t0);
+        fs::write(a.join("Screenshot new.png"), b"picture").unwrap();
+        c.scan_sync(t0 + SETTLE);
+        *to.borrow_mut() = Some(b.clone());
+        c.scan_sync(t0 + SETTLE * 2);
+        assert_eq!(c.folder(), b);
+        assert_eq!(c.access(), Access::Asking);
+        assert!(news.borrow().is_empty(), "the old folder's shot is not new");
     }
 
     #[test]
