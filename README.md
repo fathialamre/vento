@@ -289,44 +289,23 @@ The history stays after you quit or restart. It is stored **unencrypted** in
 `~/Library/Application Support/vento`; see [SETTINGS.md](SETTINGS.md). Switch it
 off, or change its shortcut, on the **Clipboard** page of the Settings window.
 
-## Screenshots *(off at first)*
+## Screenshots
 
-Vento can show your screenshots in the island. Turn it on in **Settings →
-Screenshots**. On a Mac it reads the folder the Screenshot app saves to (press
-**⇧⌘5** and look under **Options**; it is usually the Desktop). On Linux it uses
-`~/Pictures/Screenshots`, which Vento creates if it is missing.
+Off by default; turn it on in **Settings → Screenshots**. Vento reads the folder
+the Screenshot app saves to (**⇧⌘5 → Options**), or on Linux the Screenshots folder
+in your Pictures folder (created if missing). A **card** then drops down from the
+island for each new screenshot: drag the picture anywhere, or **Copy**, **Copy text** (the text found in it; macOS 14+, or
+Tesseract on Linux), **Pocket**, **Move to Trash** (**Undo** for about 5 seconds).
+It closes after 2 to 8 seconds, not while the pointer is on it. <!-- screenshot: card -->
 
-When a screenshot is saved, a **card** drops down from the island with the
-picture:
+The **Screenshots** tab, beside Clipboard and Pocket, lists the last 7 days (up
+to 60) by day, with a closer look and **Show in Finder**. <!-- screenshot: tab -->
 
-- **Drag the picture** anywhere: into a chat, a mail, a folder.
-- **Copy** puts the picture on the clipboard, **Copy text** puts the text in the
-  picture there, and **Pocket** keeps the picture for later.
-- **Move to Trash** removes it, and shows **Undo** for a few seconds.
-- The card closes by itself after a few seconds (2 to 8, 4 at first) and stays
-  open while the pointer is over it. A second screenshot replaces it.
-
-<!-- screenshot: card -->
-
-The **Screenshots** tab in the island, beside Clipboard and the Pocket, lists
-the last 7 days (up to 60 pictures), grouped as Today, Yesterday and Earlier this
-week. Click a picture for a closer look, with the same actions plus **Show in
-Finder**.
-
-<!-- screenshot: tab -->
-
-- **Copy text** needs macOS 14 or later, or Tesseract installed on Linux, like
-  [Copy from screen](#copy-from-screen).
-- **Allowing the folder.** If your screenshots are on the Desktop (or in
-  Documents or Downloads), macOS asks once to let Vento see that folder. After
-  an update it may ask again, but only when you open the Screenshots tab or its
-  Settings page, never when Vento starts.
-- **Tip.** While the Screenshot app's floating thumbnail is on, macOS saves the
-  file about 5 seconds late, and so the card comes late too. Turn off **Show
-  Floating Thumbnail** in **⇧⌘5 → Options** and the card appears at once.
-
-Turn the card off, or change how long it stays, on the **Screenshots** page of the
-Settings window.
+When you turn it on, macOS may ask once to let Vento see the Desktop. It ties that
+permission to the exact build, and Vento is not signed by Apple yet, so after an
+update it may ask again, only when you open the tab or its Settings page, never
+at launch. **Tip:** the Screenshot app's floating thumbnail makes macOS save the
+file 5 seconds late; turn off **Show Floating Thumbnail** for an instant card.
 
 ## Copy from screen
 
@@ -379,8 +358,8 @@ it stays closed until you open it again.
 | Move | Pinned and recent folders for the Move ring, and how long to hold. |
 | Pocket | The Pocket shortcut, what happens after you drag items out, and which look it opens on: By kind or List. |
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
-| Screenshots | Screenshots in the island on or off, the card on or off, and how long the card stays. |
 | Copy from screen | Its shortcut. |
+| Screenshots | Screenshots in the island on or off, the card on or off, and how long the card stays. |
 | Keep Awake | Whether the screen may turn off while Keep Awake runs. |
 | About | The version, a button that opens the settings file, and one that shows the licenses. |
 
@@ -388,7 +367,7 @@ The wheel, the Pocket and the notices that offer Undo keep their dark look
 whichever Appearance or Theme you choose.
 
 **Right-click** the icon for the same things as a menu: Copy from screen, the
-clipboard history, the Pocket, the screenshots, Keep Awake, undo the last move, copy or archive,
+clipboard history, the Pocket, the screenshots (when they are on), Keep Awake, undo the last move, copy or archive,
 pause Vento, Settings…, open the settings file, or quit.
 
 <img src=".github/assets/menu.png" alt="Vento menu with Copy from screen, Open clipboard history, Open the Pocket, Start Keep Awake, Undo last move, Pause Vento, Settings…, Open settings file and Quit Vento" width="170">
