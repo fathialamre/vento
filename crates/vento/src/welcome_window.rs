@@ -21,7 +21,7 @@ use slint::{
 };
 use vento_core::destinations::folder_exists;
 use vento_core::geometry::screen_for;
-use vento_core::i18n::{fill, tr};
+use vento_core::i18n::{self, LANGUAGES, fill, system_languages, tr};
 use vento_core::settings::{MAX_PINNED, Settings, ThemeName};
 use vento_core::trigger::Modifier;
 use vento_core::welcome::{self, Preset, apply_preset, preset_of, suggested_folders};
@@ -35,8 +35,8 @@ use crate::pocket::{display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::settings_window::{
     APPEARANCES, FOLDER_ICON_PX, LAYOUTS, TRIGGER_NAMES, TRIGGERS, centred_on, choice,
-    choice_index, folder_row, hands_focus_back, language_index, language_names, language_setting,
-    pin_folder, shortcut_text, show_title_bar, terminal_index, unpin_folder,
+    choice_index, folder_row, hands_focus_back, pin_folder, shortcut_text, show_title_bar,
+    terminal_index, unpin_folder,
 };
 use crate::ui::{FolderChip, FolderRow, PresetCard, ShortcutLine, Theme, WelcomeWindow};
 
@@ -233,9 +233,8 @@ impl WelcomeController {
     fn connect_controls(&self, window: &WelcomeWindow) {
         let this = self.this.clone();
         window.on_language_chosen(move |i| {
-            if let Some(controller) = this.upgrade() {
-                let setting = language_setting(i);
-                controller.apply(|s| s.language = setting.clone());
+            if let (Some(controller), Some(code)) = (this.upgrade(), language_code_at(i)) {
+                controller.apply(|s| s.language = code.to_owned());
             }
         });
         let this = self.this.clone();
@@ -394,9 +393,9 @@ impl WelcomeController {
         let s = self.hub.current();
         appearance::apply(&window.global::<Theme>());
         show_title_bar(&window);
-        let names: Vec<SharedString> = language_names().into_iter().map(Into::into).collect();
+        let names: Vec<SharedString> = language_choices().into_iter().map(Into::into).collect();
         window.set_language_names(ModelRc::from(names.as_slice()));
-        window.set_language(language_index(&s.language));
+        window.set_language(language_choice(&s.language, &system_languages()));
         window.set_appearance(choice_index(&APPEARANCES, s.appearance));
         window.set_theme(choice_index(&ThemeName::ALL, s.theme));
         window.set_trigger(choice_index(&TRIGGERS, s.trigger));
@@ -594,6 +593,33 @@ fn next_step(step: i32) -> Option<i32> {
     (step < LAST_STEP).then(|| (step + 1).max(0))
 }
 
+/// The Language control's choices: each language by its own name. Unlike
+/// the Settings menu it has no Automatic: the setup names the language.
+fn language_choices() -> Vec<&'static str> {
+    LANGUAGES.iter().map(|l| l.name).collect()
+}
+
+/// The `language` setting for choice `i`: that language's code; `None` for
+/// a choice out of range.
+fn language_code_at(i: i32) -> Option<&'static str> {
+    usize::try_from(i)
+        .ok()
+        .and_then(|i| LANGUAGES.get(i))
+        .map(|l| l.code)
+}
+
+/// The choice that shows the `language` setting `setting`: the language it
+/// resolves to, so `"auto"` shows the one picked from the system's
+/// `preferred` languages.
+fn language_choice(setting: &str, preferred: &[String]) -> i32 {
+    let language = i18n::resolve(setting, preferred);
+    LANGUAGES
+        .iter()
+        .position(|l| l == language)
+        .and_then(|i| i32::try_from(i).ok())
+        .unwrap_or(0)
+}
+
 /// Pins `folder`, or unpins it when it is pinned.
 fn toggle_pin(s: &mut Settings, folder: &Path) {
     if s.pinned_folders.iter().any(|p| p == folder) {
@@ -736,6 +762,21 @@ mod tests {
             .remove(0)
             .0;
         assert!(first.starts_with("اسحب"), "{first}");
+    }
+
+    #[test]
+    fn language_choices_are_the_languages() {
+        assert_eq!(language_choices(), ["English", "العربية"]);
+        for (i, code) in [(0, "en"), (1, "ar")] {
+            assert_eq!(language_code_at(i), Some(code));
+            assert_eq!(language_choice(code, &[]), i);
+        }
+        assert_eq!(language_code_at(2), None);
+        assert_eq!(language_code_at(-1), None);
+        // "auto" shows the language it resolves to.
+        assert_eq!(language_choice("auto", &["ar-LY".into()]), 1);
+        assert_eq!(language_choice("auto", &["fr".into()]), 0);
+        assert_eq!(language_choice("auto", &[]), 0);
     }
 
     #[test]
