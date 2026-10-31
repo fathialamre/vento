@@ -71,9 +71,34 @@ pub fn to_args(args: &WatchArgs) -> Vec<String> {
     ]
 }
 
+/// What a command line asks `vento` to be.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dispatch {
+    /// The watcher, with these arguments.
+    Watch(WatchArgs),
+    /// The watcher, but its arguments do not read: nothing runs, since
+    /// starting the app here would make a second copy.
+    Malformed,
+    /// The app, as usual.
+    Normal,
+}
+
+/// Decides from the whole command line (program name first) whether to run
+/// as the watcher: any `--update-watch` makes it a watcher command line.
+pub fn dispatch(args: &[String]) -> Dispatch {
+    if !args.iter().any(|a| a == FLAG) {
+        return Dispatch::Normal;
+    }
+    match parse_args(args) {
+        Some(watch) => Dispatch::Watch(watch),
+        None => Dispatch::Malformed,
+    }
+}
+
 /// Reads the watcher's arguments from a command line, with or without the
-/// program name first. `None` for any other command line, so a normal start
-/// goes on as usual.
+/// program name first. `None` for any other command line, and for a pid of
+/// 0 or 1 (a signal to 0 would reach the watcher's own process group, and 1
+/// is launchd).
 pub fn parse_args(args: &[String]) -> Option<WatchArgs> {
     let rest = match args {
         [first, rest @ ..] if first == FLAG => rest,
@@ -83,8 +108,12 @@ pub fn parse_args(args: &[String]) -> Option<WatchArgs> {
     let [pid, bundle, old, data_dir, version] = rest else {
         return None;
     };
+    let old_pid: u32 = pid.parse().ok()?;
+    if old_pid <= 1 {
+        return None;
+    }
     Some(WatchArgs {
-        old_pid: pid.parse().ok()?,
+        old_pid,
         bundle: PathBuf::from(bundle),
         old: PathBuf::from(old),
         data_dir: PathBuf::from(data_dir),
@@ -152,14 +181,18 @@ pub enum WatchOutcome {
 ///    [`POLL`] for [`START_WAIT`].
 /// 3. No marker: kill the new copy, put the old one back, record why and
 ///    start the old one.
+///
+/// When a killed copy is still running after [`KILL_WAIT`], the old copy is
+/// put back and the failure recorded, but nothing is started: that would
+/// be a second copy.
 pub fn watch_with(args: &WatchArgs, mut deps: WatchDeps) -> WatchOutcome {
     if !(deps.wait_gone)(args.old_pid, QUIT_WAIT) {
         (deps.kill)(args.old_pid);
-        (deps.wait_gone)(args.old_pid, KILL_WAIT);
-        return roll_back(args, &mut deps, NOT_QUIT_REASON);
+        let gone = (deps.wait_gone)(args.old_pid, KILL_WAIT);
+        return roll_back(args, &mut deps, NOT_QUIT_REASON, gone);
     }
     let Some(pid) = (deps.spawn)(&binary(&args.bundle), &[AFTER_UPDATE]) else {
-        return roll_back(args, &mut deps, NOT_STARTED_REASON);
+        return roll_back(args, &mut deps, NOT_STARTED_REASON, true);
     };
     let polls = START_WAIT.as_millis() / POLL.as_millis();
     for _ in 0..polls {
@@ -172,15 +205,16 @@ pub fn watch_with(args: &WatchArgs, mut deps: WatchDeps) -> WatchOutcome {
         return WatchOutcome::Started;
     }
     (deps.kill)(pid);
-    (deps.wait_gone)(pid, KILL_WAIT);
-    roll_back(args, &mut deps, NOT_STARTED_REASON)
+    let gone = (deps.wait_gone)(pid, KILL_WAIT);
+    roll_back(args, &mut deps, NOT_STARTED_REASON, gone)
 }
 
 /// Puts the old copy back, records `reason` and starts the old copy: from
 /// the bundle path once it is back there. When it could not be put back it
 /// is started from where it still is, and if that fails too, whatever copy
-/// is at the bundle path is started, so some Vento runs.
-fn roll_back(args: &WatchArgs, deps: &mut WatchDeps, reason: &str) -> WatchOutcome {
+/// is at the bundle path is started, so some Vento runs. With `start` false
+/// (a killed copy is still running) nothing is started.
+fn roll_back(args: &WatchArgs, deps: &mut WatchDeps, reason: &str, start: bool) -> WatchOutcome {
     let restored = (deps.restore)();
     if let Err(e) = &restored {
         log::warn!("cannot put the old copy back: {e}");
@@ -189,6 +223,10 @@ fn roll_back(args: &WatchArgs, deps: &mut WatchDeps, reason: &str) -> WatchOutco
         version: args.version,
         reason: reason.to_string(),
     });
+    if !start {
+        log::warn!("a killed copy is still running; not starting another");
+        return WatchOutcome::RolledBack;
+    }
     let at_bundle = binary(&args.bundle);
     let started = match restored {
         Ok(()) => (deps.spawn)(&at_bundle, &[]),
@@ -222,9 +260,12 @@ pub fn run(args: WatchArgs) -> ExitCode {
             let children = children.clone();
             move |program, program_args| spawn(&children, program, program_args)
         }),
-        marker_says: Box::new(move || {
-            let text = fs::read_to_string(&marker).ok()?;
-            Version::parse(text.trim())
+        marker_says: Box::new({
+            let marker = marker.clone();
+            move || {
+                let text = fs::read_to_string(&marker).ok()?;
+                Version::parse(text.trim())
+            }
         }),
         kill: Box::new(|pid| {
             if let Ok(pid) = i32::try_from(pid) {
@@ -248,6 +289,13 @@ pub fn run(args: WatchArgs) -> ExitCode {
     match watch_with(&args, deps) {
         WatchOutcome::Started => ExitCode::SUCCESS,
         WatchOutcome::RolledBack => {
+            // A marker the new copy wrote after the last look would make
+            // the next update attempt of this version look started.
+            if let Err(e) = fs::remove_file(&marker)
+                && e.kind() != io::ErrorKind::NotFound
+            {
+                log::warn!("cannot remove the marker: {e}");
+            }
             log::warn!("update to {} rolled back", args.version);
             ExitCode::FAILURE
         }
@@ -337,6 +385,8 @@ mod tests {
         marker_after: Option<u32>,
         /// Whether starting the new copy works.
         spawn_works: bool,
+        /// Whether a killed copy is gone in time.
+        kill_works: bool,
     }
 
     /// Fake effects that record each call into the returned log, and the
@@ -351,7 +401,11 @@ mod tests {
                 move |pid, timeout| {
                     log.borrow_mut()
                         .push(format!("wait_gone {pid} {}s", timeout.as_secs()));
-                    pid != 41 || script.old_quits
+                    if timeout == KILL_WAIT {
+                        script.kill_works
+                    } else {
+                        pid != 41 || script.old_quits
+                    }
                 }
             }),
             spawn: Box::new({
@@ -420,6 +474,38 @@ mod tests {
     }
 
     #[test]
+    fn pid_0_and_1_are_refused() {
+        for pid in [0, 1] {
+            let argv = to_args(&WatchArgs {
+                old_pid: pid,
+                ..args()
+            });
+            assert_eq!(parse_args(&argv), None, "pid {pid}");
+        }
+    }
+
+    #[test]
+    fn a_malformed_watch_line_never_starts_the_app() {
+        let a = args();
+        let mut argv = vec!["vento".to_string()];
+        argv.extend(to_args(&a));
+        assert_eq!(dispatch(&argv), Dispatch::Watch(a));
+        let normal = ["vento".to_string(), AFTER_UPDATE.to_string()];
+        assert_eq!(dispatch(&normal), Dispatch::Normal);
+        assert_eq!(dispatch(&["vento".to_string()]), Dispatch::Normal);
+        let mut bad_version = argv.clone();
+        *bad_version.last_mut().unwrap() = "0.3".into();
+        assert_eq!(dispatch(&bad_version), Dispatch::Malformed);
+        let short = ["vento".to_string(), FLAG.to_string(), "41".to_string()];
+        assert_eq!(dispatch(&short), Dispatch::Malformed);
+        let late = ["vento".to_string(), "-x".into(), "-y".into(), FLAG.into()];
+        assert_eq!(dispatch(&late), Dispatch::Malformed);
+        let mut pid_0 = argv;
+        pid_0[2] = "0".into();
+        assert_eq!(dispatch(&pid_0), Dispatch::Malformed);
+    }
+
+    #[test]
     fn marker_path_is_in_the_data_folder() {
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("Vento");
@@ -434,6 +520,7 @@ mod tests {
             old_quits: true,
             marker_after: Some(119),
             spawn_works: true,
+            kill_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::Started);
         assert_eq!(*log.borrow(), ["wait_gone 41 10s", NEW]);
@@ -446,6 +533,7 @@ mod tests {
             old_quits: true,
             marker_after: Some(120),
             spawn_works: true,
+            kill_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::Started);
     }
@@ -456,6 +544,7 @@ mod tests {
             old_quits: true,
             marker_after: None,
             spawn_works: true,
+            kill_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -485,6 +574,7 @@ mod tests {
             old_quits: true,
             marker_after: None,
             spawn_works: true,
+            kill_works: true,
         });
         deps.marker_says = Box::new(|| Version::parse("0.2.0"));
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
@@ -497,6 +587,7 @@ mod tests {
             old_quits: true,
             marker_after: Some(0),
             spawn_works: false,
+            kill_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -518,6 +609,7 @@ mod tests {
             old_quits: false,
             marker_after: Some(0),
             spawn_works: true,
+            kill_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -535,11 +627,57 @@ mod tests {
     }
 
     #[test]
+    fn an_old_copy_that_survives_the_kill_is_not_started_twice() {
+        let (deps, log, failures) = fake(Script {
+            old_quits: false,
+            marker_after: Some(0),
+            spawn_works: true,
+            kill_works: false,
+        });
+        assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
+        assert_eq!(
+            *log.borrow(),
+            [
+                "wait_gone 41 10s",
+                "kill 41",
+                "wait_gone 41 5s",
+                "restore",
+                "record_failure",
+            ]
+        );
+        assert_eq!(failures.borrow()[0].reason, NOT_QUIT_REASON);
+    }
+
+    #[test]
+    fn a_new_copy_that_survives_the_kill_is_not_joined_by_the_old() {
+        let (deps, log, failures) = fake(Script {
+            old_quits: true,
+            marker_after: None,
+            spawn_works: true,
+            kill_works: false,
+        });
+        assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
+        assert_eq!(
+            *log.borrow(),
+            [
+                "wait_gone 41 10s",
+                NEW,
+                "kill 77",
+                "wait_gone 77 5s",
+                "restore",
+                "record_failure",
+            ]
+        );
+        assert_eq!(failures.borrow()[0].reason, NOT_STARTED_REASON);
+    }
+
+    #[test]
     fn a_failed_restore_starts_the_old_copy_where_it_is() {
         let (mut deps, log, _) = fake(Script {
             old_quits: true,
             marker_after: None,
             spawn_works: true,
+            kill_works: true,
         });
         deps.restore = Box::new(|| Err(io::Error::other("busy")));
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);

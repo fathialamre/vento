@@ -82,10 +82,22 @@ fn main() -> Result<(), slint::PlatformError> {
     // Run as the update watcher (the old binary, started by the copy that
     // quits for an update): no windows and no event loop. After the logger,
     // so its warnings show when it is run by hand.
+    // A watcher line that does not read starts nothing: the app here would
+    // be a second copy.
     #[cfg(target_os = "macos")]
-    if let Some(args) = updater::watch::parse_args(&std::env::args().collect::<Vec<_>>()) {
-        let _ = updater::watch::run(args);
-        return Ok(());
+    match updater::watch::dispatch(&std::env::args().collect::<Vec<_>>()) {
+        updater::watch::Dispatch::Watch(args) => {
+            let _ = updater::watch::run(args);
+            return Ok(());
+        }
+        updater::watch::Dispatch::Malformed => {
+            log::warn!(
+                "unreadable {} command line; not starting",
+                updater::watch::FLAG
+            );
+            return Ok(());
+        }
+        updater::watch::Dispatch::Normal => {}
     }
     // A second launch (the app grid) opens the running Vento's settings.
     #[cfg(any(target_os = "linux", windows))]
