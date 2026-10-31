@@ -193,6 +193,10 @@ msgstr ""
 msgid "Calculating…"
 msgstr ""
 
+#: crates/vento/src/updater/swap.rs:36
+msgid "Can't replace Vento in {folder}"
+msgstr ""
+
 #: crates/vento/ui/archive.slint:81
 msgid "Cancel"
 msgstr ""
@@ -431,6 +435,10 @@ msgstr ""
 
 #: crates/vento/src/screen_text.rs:47
 msgid "Couldn't read the screen"
+msgstr ""
+
+#: crates/vento/src/updater/swap.rs:40
+msgid "Couldn't replace Vento"
 msgstr ""
 
 #: crates/vento/src/settings_window/mod.rs:1277
@@ -845,6 +853,10 @@ msgstr ""
 msgid "Move"
 msgstr ""
 
+#: crates/vento/src/updater/swap.rs:33
+msgid "Move Vento to Applications to update it"
+msgstr ""
+
 #: crates/vento/src/wheel.rs:309
 msgid "Move to"
 msgstr ""
@@ -969,7 +981,7 @@ msgstr ""
 msgid "Open settings file"
 msgstr ""
 
-#: crates/vento/src/main.rs:203
+#: crates/vento/src/main.rs:211
 msgid "Open the Pocket"
 msgstr ""
 
@@ -977,7 +989,7 @@ msgstr ""
 msgid "Open the Welcome setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:207
+#: crates/vento/src/main.rs:215
 msgid "Open the clipboard history"
 msgstr ""
 
@@ -1395,6 +1407,10 @@ msgstr ""
 
 #: crates/vento/src/settings_window/mod.rs:1294
 msgid "The Pocket uses this shortcut"
+msgstr ""
+
+#: crates/vento/src/updater/swap.rs:39
+msgid "The download couldn't be opened"
 msgstr ""
 
 #: crates/vento/ui/pdf.slint:1761
@@ -1903,7 +1919,7 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:583
+#: crates/vento/src/main.rs:604
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 

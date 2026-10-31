@@ -79,6 +79,14 @@ fn main() -> Result<(), slint::PlatformError> {
     // Warnings show without RUST_LOG: they are what explains a failure
     // after the fact (a hold Keep Awake could not release, say).
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    // Run as the update watcher (the old binary, started by the copy that
+    // quits for an update): no windows and no event loop. After the logger,
+    // so its warnings show when it is run by hand.
+    #[cfg(target_os = "macos")]
+    if let Some(args) = updater::watch::parse_args(&std::env::args().collect::<Vec<_>>()) {
+        let _ = updater::watch::run(args);
+        return Ok(());
+    }
     // A second launch (the app grid) opens the running Vento's settings.
     #[cfg(any(target_os = "linux", windows))]
     if !vento_platform::claim_instance() {
@@ -560,6 +568,19 @@ fn main() -> Result<(), slint::PlatformError> {
             on_copy_from_screen: screen_text
                 .map(|controller| Box::new(move || controller.start()) as Box<dyn Fn()>),
         }));
+        // Started by the update watcher: the tray and shortcuts are up, so
+        // tell it this copy works.
+        #[cfg(target_os = "macos")]
+        if std::env::args().any(|a| a == updater::watch::AFTER_UPDATE) {
+            let running = vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION"));
+            if let (Some(data_dir), Some(running)) = (welcome::data_dir(), running) {
+                if let Err(e) = updater::watch::write_marker(&data_dir, running) {
+                    log::warn!("cannot write the update marker: {e}");
+                }
+            } else {
+                log::warn!("cannot write the update marker: no data folder");
+            }
+        }
     });
     let result = slint::run_event_loop_until_quit();
     // Quitting stops a running count explicitly.

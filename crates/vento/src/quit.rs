@@ -46,6 +46,64 @@ fn quit_with(
     }));
 }
 
+/// Quits vento to finish an update, after the same questions as [`quit`].
+/// A Cancel calls `on_cancel` and leaves everything as it was. Once every
+/// window agreed, `swap` moves the new copy in and starts the watcher: an
+/// `Err` is handed to `on_fail` and vento keeps running; `Ok` shuts the
+/// executor down and quits, so the watcher can start the new copy.
+// Only the macOS update controller (a later task) calls it.
+#[allow(dead_code)]
+pub fn quit_for_update(
+    exec: &Rc<Executor>,
+    pdf: &Rc<PdfController>,
+    swap: Box<dyn FnOnce() -> Result<(), String>>,
+    on_cancel: Box<dyn FnOnce()>,
+    on_fail: Box<dyn FnOnce(String)>,
+) {
+    let (exec, asked) = (exec.clone(), pdf.clone());
+    quit_for_update_with(
+        pdf.edited_windows(),
+        move |on_done| asked.close_all(on_done),
+        swap,
+        move || {
+            exec.shutdown();
+            if let Err(e) = slint::quit_event_loop() {
+                warn!("cannot quit: {e}");
+            }
+        },
+        on_cancel,
+        on_fail,
+    );
+}
+
+/// The decision behind [`quit_for_update`]: the question as in
+/// [`quit_with`], then `swap`, then `finish` only when the swap worked.
+#[allow(dead_code)]
+fn quit_for_update_with(
+    edited: usize,
+    ask_all: impl FnOnce(Box<dyn FnOnce(bool)>),
+    swap: Box<dyn FnOnce() -> Result<(), String>>,
+    finish: impl FnOnce() + 'static,
+    on_cancel: Box<dyn FnOnce()>,
+    on_fail: Box<dyn FnOnce(String)>,
+) {
+    let go = move || match swap() {
+        Ok(()) => finish(),
+        Err(reason) => on_fail(reason),
+    };
+    if edited == 0 {
+        go();
+        return;
+    }
+    ask_all(Box::new(move |ok| {
+        if ok {
+            go();
+        } else {
+            on_cancel();
+        }
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::{Cell, RefCell};
@@ -92,5 +150,66 @@ mod tests {
         assert!(asked);
         on_done.expect("asked")(false);
         assert!(!finished.get());
+    }
+
+    /// What a `quit_for_update_with` run did, in order.
+    fn run_update(
+        edited: usize,
+        answer: Option<bool>,
+        swap_result: Result<(), String>,
+    ) -> Vec<String> {
+        let log: Rc<RefCell<Vec<String>>> = Rc::default();
+        let l = |s: &str| {
+            let (log, s) = (log.clone(), s.to_string());
+            move || log.borrow_mut().push(s)
+        };
+        let (swap_log, fail_log, ask_log) = (log.clone(), log.clone(), log.clone());
+        let finish = l("finish");
+        let cancel = l("cancel");
+        quit_for_update_with(
+            edited,
+            move |on_done| {
+                ask_log.borrow_mut().push("ask".into());
+                if let Some(ok) = answer {
+                    on_done(ok);
+                }
+            },
+            Box::new(move || {
+                swap_log.borrow_mut().push("swap".into());
+                swap_result
+            }),
+            finish,
+            Box::new(cancel),
+            Box::new(move |r| fail_log.borrow_mut().push(format!("fail {r}"))),
+        );
+        log.take()
+    }
+
+    #[test]
+    fn update_quit_cancelled_runs_neither_swap_nor_finish() {
+        assert_eq!(run_update(1, Some(false), Ok(())), ["ask", "cancel"]);
+    }
+
+    #[test]
+    fn update_quit_waits_for_the_answers() {
+        assert_eq!(run_update(2, None, Ok(())), ["ask"]);
+    }
+
+    #[test]
+    fn swap_failure_keeps_running_and_reports() {
+        assert_eq!(
+            run_update(0, None, Err("busy".into())),
+            ["swap", "fail busy"]
+        );
+        assert_eq!(
+            run_update(1, Some(true), Err("busy".into())),
+            ["ask", "swap", "fail busy"]
+        );
+    }
+
+    #[test]
+    fn swap_ok_finishes() {
+        assert_eq!(run_update(0, None, Ok(())), ["swap", "finish"]);
+        assert_eq!(run_update(1, Some(true), Ok(())), ["ask", "swap", "finish"]);
     }
 }

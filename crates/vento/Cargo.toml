@@ -60,3 +60,6 @@ global-hotkey = "0.9"
 drag = "2.1.1"
 # The self-update check and download (the only networking in the app).
 ureq = "3"
+# The update watcher asks whether a pid is still running and kills a copy
+# that does not start.
+libc = "0.2"

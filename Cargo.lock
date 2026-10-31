@@ -6335,6 +6335,7 @@ dependencies = [
  "global-hotkey",
  "jiff",
  "ksni",
+ "libc",
  "log",
  "png",
  "raw-window-handle",

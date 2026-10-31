@@ -195,6 +195,10 @@ msgstr "حسب النوع"
 msgid "Calculating…"
 msgstr "جارٍ الحساب…"
 
+#: crates/vento/src/updater/swap.rs:36
+msgid "Can't replace Vento in {folder}"
+msgstr "تعذّر استبدال Vento في {folder}"
+
 #: crates/vento/ui/archive.slint:81
 msgid "Cancel"
 msgstr "إلغاء"
@@ -458,6 +462,10 @@ msgstr "تعذّر الفتح: {reason}"
 #: crates/vento/src/screen_text.rs:47
 msgid "Couldn't read the screen"
 msgstr "تعذّرت قراءة الشاشة"
+
+#: crates/vento/src/updater/swap.rs:40
+msgid "Couldn't replace Vento"
+msgstr "تعذّر استبدال Vento"
 
 #: crates/vento/src/settings_window/mod.rs:1277
 msgid "Couldn't save settings: {error}"
@@ -895,6 +903,10 @@ msgstr "المزيد…"
 msgid "Move"
 msgstr "نقل"
 
+#: crates/vento/src/updater/swap.rs:33
+msgid "Move Vento to Applications to update it"
+msgstr "انقل Vento إلى مجلد التطبيقات لتحديثه"
+
 #: crates/vento/src/wheel.rs:309
 msgid "Move to"
 msgstr "نقل إلى"
@@ -1035,7 +1047,7 @@ msgstr "فتح في المتصفح"
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
-#: crates/vento/src/main.rs:203
+#: crates/vento/src/main.rs:211
 msgid "Open the Pocket"
 msgstr "فتح الجيب"
 
@@ -1043,7 +1055,7 @@ msgstr "فتح الجيب"
 msgid "Open the Welcome setup"
 msgstr "فتح إعداد الترحيب"
 
-#: crates/vento/src/main.rs:207
+#: crates/vento/src/main.rs:215
 msgid "Open the clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1502,6 +1514,10 @@ msgstr "الحافظة تستخدم هذا الاختصار"
 #: crates/vento/src/settings_window/mod.rs:1294
 msgid "The Pocket uses this shortcut"
 msgstr "الجيب يستخدم هذا الاختصار"
+
+#: crates/vento/src/updater/swap.rs:39
+msgid "The download couldn't be opened"
+msgstr "تعذّر فتح التنزيل"
 
 #: crates/vento/ui/pdf.slint:1761
 msgid "The original stays as it is."
@@ -2021,7 +2037,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:583
+#: crates/vento/src/main.rs:604
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 
