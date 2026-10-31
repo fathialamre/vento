@@ -290,8 +290,13 @@ impl WelcomeController {
     fn connect_controls(&self, window: &WelcomeWindow) {
         let this = self.this.clone();
         window.on_language_chosen(move |i| {
-            if let (Some(controller), Some(code)) = (this.upgrade(), language_code_at(i)) {
-                controller.apply(|s| s.language = code.to_owned());
+            let Some(controller) = this.upgrade() else {
+                return;
+            };
+            let setting = controller.hub.current().language;
+            match language_change(i, &setting, &system_languages()) {
+                Some(code) => controller.apply(|s| s.language = code.to_owned()),
+                None => controller.show_settings(),
             }
         });
         let this = self.this.clone();
@@ -712,6 +717,17 @@ fn language_code_at(i: i32) -> Option<&'static str> {
         .map(|l| l.code)
 }
 
+/// The `language` setting to write for a click on choice `i`: that
+/// language's code, unless the choice is the one shown already for
+/// `setting`. Then nothing is written, so `"auto"` stays `"auto"` until
+/// another language is picked. `None` also for a choice out of range.
+fn language_change(i: i32, setting: &str, preferred: &[String]) -> Option<&'static str> {
+    if i == language_choice(setting, preferred) {
+        return None;
+    }
+    language_code_at(i)
+}
+
 /// The choice that shows the `language` setting `setting`: the language it
 /// resolves to, so `"auto"` shows the one picked from the system's
 /// `preferred` languages.
@@ -881,6 +897,21 @@ mod tests {
         assert_eq!(language_choice("auto", &["ar-LY".into()]), 1);
         assert_eq!(language_choice("auto", &["fr".into()]), 0);
         assert_eq!(language_choice("auto", &[]), 0);
+    }
+
+    #[test]
+    fn clicking_the_language_shown_writes_nothing() {
+        // "auto" resolving to Arabic shows Arabic; a click on it keeps "auto".
+        let ar = ["ar-LY".to_owned()];
+        assert_eq!(language_change(1, "auto", &ar), None);
+        assert_eq!(language_change(0, "en", &[]), None);
+        assert_eq!(language_change(1, "ar", &[]), None);
+        // Another language is written as its code, "auto" or not.
+        assert_eq!(language_change(0, "auto", &ar), Some("en"));
+        assert_eq!(language_change(1, "en", &[]), Some("ar"));
+        // Out of range, nothing.
+        assert_eq!(language_change(2, "en", &[]), None);
+        assert_eq!(language_change(-1, "en", &[]), None);
     }
 
     #[test]
