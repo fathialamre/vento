@@ -288,6 +288,9 @@ pub struct SettingsWindowController {
     /// Runs when the user turns to the window; main sets it to close the
     /// Quick panel and the Info window.
     on_activated: RefCell<Option<Box<dyn Fn()>>>,
+    /// Runs when About's Set up Vento again is pressed; main sets it to
+    /// open the Welcome window.
+    on_open_welcome: RefCell<Option<Box<dyn Fn()>>>,
     /// Whether another vento window (the Quick panel, the Info window) is
     /// open; main sets it. That window keeps the focus when this one closes.
     other_window_open: RefCell<Option<Box<dyn Fn() -> bool>>>,
@@ -331,6 +334,7 @@ impl SettingsWindowController {
             open: Cell::new(false),
             modifiers: Cell::new(ModifiersState::empty()),
             on_activated: RefCell::new(None),
+            on_open_welcome: RefCell::new(None),
             other_window_open: RefCell::new(None),
             this: this.clone(),
         });
@@ -354,6 +358,11 @@ impl SettingsWindowController {
     /// only sees clicks in other apps, so main closes them from here.
     pub fn set_on_activated(&self, f: Box<dyn Fn()>) {
         *self.on_activated.borrow_mut() = Some(f);
+    }
+
+    /// Has About's Set up Vento again call `f`.
+    pub fn set_on_open_welcome(&self, f: Box<dyn Fn()>) {
+        *self.on_open_welcome.borrow_mut() = Some(f);
     }
 
     /// Has the window ask `f` whether another vento window is open as it
@@ -443,6 +452,14 @@ impl SettingsWindowController {
         window.on_open_settings_file(move || {
             if let Some(controller) = this.upgrade() {
                 crate::tray::open_settings_file(&*controller.platform);
+            }
+        });
+        let this = self.this.clone();
+        window.on_open_welcome(move || {
+            if let Some(controller) = this.upgrade()
+                && let Some(f) = controller.on_open_welcome.borrow().as_ref()
+            {
+                f();
             }
         });
         window.on_open_licenses(|| open_link(LICENSES_URL));

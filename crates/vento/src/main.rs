@@ -268,6 +268,14 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
+    {
+        let welcome = Rc::downgrade(&welcome);
+        settings.set_on_open_welcome(Box::new(move || {
+            if let Some(welcome) = welcome.upgrade() {
+                welcome.open();
+            }
+        }));
+    }
     let panel = {
         let pause = pause.clone();
         panel::PanelController::new(
