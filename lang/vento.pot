@@ -317,11 +317,11 @@ msgstr ""
 msgid "Converting {name}…"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:784
+#: crates/vento/src/pocket/shots_view.rs:868
 msgid "Copied"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:839
+#: crates/vento/src/pocket/shots_view.rs:923
 msgid "Copied text"
 msgstr ""
 
@@ -441,7 +441,7 @@ msgstr ""
 msgid "Couldn't open: {reason}"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:830
+#: crates/vento/src/pocket/shots_view.rs:914
 msgid "Couldn't read the picture"
 msgstr ""
 
@@ -453,7 +453,7 @@ msgstr ""
 msgid "Couldn't save settings: {error}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1882
+#: crates/vento/src/pocket/mod.rs:1902
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
@@ -549,11 +549,11 @@ msgstr[1] ""
 msgid "Drop to add"
 msgstr ""
 
-#: crates/vento-core/src/screenshots.rs:209
+#: crates/vento-core/src/screenshots.rs:236
 msgid "Earlier"
 msgstr ""
 
-#: crates/vento-core/src/screenshots.rs:200
+#: crates/vento-core/src/screenshots.rs:227
 msgid "Earlier this week"
 msgstr ""
 
@@ -873,7 +873,7 @@ msgstr ""
 msgid "Move to Trash"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:1082
+#: crates/vento/src/pocket/shots_view.rs:1166
 msgid "Moved to Trash"
 msgstr ""
 
@@ -925,7 +925,7 @@ msgstr ""
 msgid "No recent folders"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:835
+#: crates/vento/src/pocket/shots_view.rs:919
 msgid "No text found"
 msgstr ""
 
@@ -1473,7 +1473,7 @@ msgstr ""
 msgid "This shortcut can't be used"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:758
+#: crates/vento/src/pocket/mod.rs:778
 msgid "Those items are no longer there"
 msgstr ""
 
@@ -1485,7 +1485,7 @@ msgstr ""
 msgid "To read text on your screen, Vento needs Screen Recording. It only looks at the area you select."
 msgstr ""
 
-#: crates/vento-core/src/screenshots.rs:198
+#: crates/vento-core/src/screenshots.rs:225
 msgid "Today"
 msgstr ""
 
@@ -1606,7 +1606,7 @@ msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-cl
 msgstr ""
 
 #: crates/vento/ui/pocket.slint:2055
-msgid "Vento needs to see your Desktop again after the update."
+msgid "Vento needs to see {} again after the update."
 msgstr ""
 
 #: crates/vento/src/welcome_window/practice.rs:61
@@ -1669,7 +1669,7 @@ msgstr ""
 msgid "Wrong password"
 msgstr ""
 
-#: crates/vento-core/src/screenshots.rs:199
+#: crates/vento-core/src/screenshots.rs:226
 msgid "Yesterday"
 msgstr ""
 
@@ -1745,7 +1745,7 @@ msgstr ""
 msgid "cannot start"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1609
+#: crates/vento/src/pocket/mod.rs:1629
 msgid "cannot start copying: {reason}"
 msgstr ""
 
@@ -2212,7 +2212,7 @@ msgctxt "page"
 msgid "Move"
 msgstr ""
 
-#: crates/vento-core/src/screenshots.rs:222
+#: crates/vento-core/src/screenshots.rs:249
 msgctxt "shot"
 msgid "{day} {time}"
 msgstr ""

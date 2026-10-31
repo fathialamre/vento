@@ -2052,7 +2052,7 @@ component ShotGrid inherits Rectangle {
                 y: parent.height / 2 - self.height - 8px;
                 width: parent.width - 48px;
                 height: self.preferred-height;
-                text: @tr("Vento needs to see your Desktop again after the update.");
+                text: @tr("Vento needs to see {} again after the update.", root.folder-name);
                 color: #ffffffb0;
                 font-size: 13px;
                 font-weight: 600;
@@ -2723,9 +2723,9 @@ export component PocketIsland inherits Window {
     in property <int> list-peek-index: -1;
     in property <image> list-peek-picture;
     in property <[PeekLine]> list-peek-lines;
-    // Collapsed with an empty Pocket but some history: the wings show the
-    // clipboard icon and no count; with no history but some screenshots,
-    // the photo icon.
+    // Collapsed with an empty Pocket: the wings show, with no count, the
+    // icon of the view resting on the island opens: the clipboard icon, or
+    // the photo icon for the screenshots.
     in property <bool> clip-wing;
     in property <bool> shot-wing;
     // The Screenshots view: how many are listed, their days, the chosen chip
@@ -2878,8 +2878,8 @@ export component PocketIsland inherits Window {
 
         // Collapsed: the stack icon on the left, the item count on the right
         // (the other way round in a right-to-left language);
-        // with an empty Pocket but some history, the clipboard icon alone,
-        // or with only screenshots, the photo icon alone;
+        // with an empty Pocket, the clipboard or the photo icon alone (that
+        // of the view resting on the island opens);
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
         if !root.expanded && !root.corner-style: Rectangle {
             if root.undo-active: TouchArea {

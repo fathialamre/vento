@@ -286,7 +286,8 @@ impl ShotsController {
 
     /// Reads the system's folder again (the tab or the Settings page
     /// opens): a new folder moves the watch, and a folder waiting to be
-    /// opened or denied, or whose listing never answered, is listed again.
+    /// opened or denied, whose listing never answered, or read without a
+    /// watch (it could not be made), is watched and listed again.
     pub(super) fn touch(self: &Rc<Self>) {
         let folder = self.system_folder();
         let moved = *self.folder.borrow() != folder;
@@ -305,7 +306,12 @@ impl ShotsController {
                 if stuck {
                     warn!("screenshots: a listing never answered, listing again");
                 }
-                if moved || stuck {
+                let unwatched =
+                    self.access.get() == Access::Granted && self.watch.borrow().is_none();
+                if unwatched {
+                    debug!("screenshots: the folder has no watch, trying again");
+                }
+                if moved || stuck || unwatched {
                     self.start();
                 }
             }
@@ -523,7 +529,13 @@ impl ShotsController {
     fn listed(&self, found: Vec<(FileFacts, Option<(u32, u32)>)>, at: Instant) -> Option<PathBuf> {
         self.access.set(Access::Granted);
         let facts: Vec<FileFacts> = found.iter().map(|(f, _)| f.clone()).collect();
-        let (done, waiting) = self.settler.borrow_mut().settled(&facts, at);
+        // The first listing is the baseline: what is there is listed at
+        // once, so the tab does not show its empty line before the grid.
+        let (done, waiting) = if self.seen.borrow().is_none() {
+            (self.settler.borrow_mut().baseline(&facts), false)
+        } else {
+            self.settler.borrow_mut().settled(&facts, at)
+        };
         let settled: HashSet<&PathBuf> = done.iter().collect();
         let shots: Vec<Shot> = found
             .into_iter()
@@ -752,7 +764,7 @@ mod tests {
         let t0 = Instant::now();
         r.c.scan_sync(t0);
         let changes = r.changes.get();
-        assert!(changes >= 1, "Granted is a change");
+        assert_eq!(changes, 1, "Granted and the list: one change");
         r.c.scan_sync(t0 + SETTLE);
         r.c.scan_sync(t0 + SETTLE * 3);
         let mut listed = paths(&r.c);
@@ -765,7 +777,7 @@ mod tests {
             ]
         );
         assert!(r.news.borrow().is_empty());
-        assert_eq!(r.changes.get(), changes + 1, "only the settling changed");
+        assert_eq!(r.changes.get(), changes, "listed by the first listing");
 
         // Two at once (two screens): one call, for the newest.
         let (a, b) = (
@@ -830,6 +842,37 @@ mod tests {
         r.c.scan_sync(t2);
         r.c.scan_sync(t2 + SETTLE);
         assert_eq!(*r.news.borrow(), [fresh]);
+    }
+
+    #[test]
+    fn first_listing_lists_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        let folder = dir.path().join("shots");
+        fs::create_dir(&folder).unwrap();
+        for name in ["Screenshot 1.png", "Screenshot 2.png"] {
+            fs::write(folder.join(name), b"picture").unwrap();
+        }
+        let r = rig(true, &folder, false, &grant);
+        let t0 = Instant::now();
+        r.c.scan_sync(t0);
+        // What is there at the first listing is the baseline: listed now,
+        // so the tab never shows its empty line before the grid.
+        assert_eq!(r.c.count(), 2);
+        assert_eq!(r.c.followup.get(), None, "nothing waits to settle");
+        assert_eq!(r.changes.get(), 1);
+        // Still listed by the next listing, at once.
+        r.c.scan_sync(t0 + MS);
+        assert_eq!(r.c.count(), 2);
+        assert_eq!(r.changes.get(), 1, "nothing changed");
+        // A baseline file that grows settles afresh.
+        fs::write(folder.join("Screenshot 2.png"), b"a larger picture").unwrap();
+        r.c.scan_sync(t0 + 2 * MS);
+        assert_eq!(r.c.count(), 1);
+        assert_eq!(r.c.followup.take(), Some(SETTLE));
+        r.c.scan_sync(t0 + 2 * MS + SETTLE);
+        assert_eq!(r.c.count(), 2);
+        assert!(r.news.borrow().is_empty());
     }
 
     #[test]
@@ -1044,6 +1087,35 @@ mod tests {
         assert_eq!(r.c.scans_asked.get(), 2);
         assert_eq!(r.c.access(), Access::Asking);
         assert_eq!(r.c.watched(), Some(folder));
+    }
+
+    #[test]
+    fn failed_watch_is_retried_on_touch() {
+        let dir = tempfile::tempdir().unwrap();
+        let grant = dir.path().join("grant.json");
+        let folder = dir.path().join("shots");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("Screenshot 1.png"), b"picture").unwrap();
+        let r = rig(true, &folder, false, &grant);
+        r.c.scan_sync(Instant::now());
+        assert_eq!(r.c.access(), Access::Granted);
+        assert_eq!(r.c.scans_asked.get(), 1);
+
+        // The watch could not be made (an inotify limit, say): the folder
+        // read fine, but nothing would tell the list it changed.
+        r.c.watch.borrow_mut().take();
+        r.c.touch();
+        assert_eq!(r.c.watched(), Some(folder.clone()));
+        assert_eq!(r.c.access(), Access::Asking);
+        assert_eq!(r.c.scans_asked.get(), 2);
+        r.c.scan_sync(Instant::now());
+        assert_eq!(r.c.count(), 1);
+        assert!(r.news.borrow().is_empty());
+
+        // With the watch running, a touch leaves it be.
+        r.c.touch();
+        assert_eq!(r.c.access(), Access::Granted);
+        assert_eq!(r.c.scans_asked.get(), 2);
     }
 
     #[test]

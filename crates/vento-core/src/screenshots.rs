@@ -100,11 +100,13 @@ pub fn dims_of(path: &Path) -> Option<(u32, u32)> {
 }
 
 /// Tells a finished file from one still being written: a file counts once
-/// its size has stayed the same for [`SETTLE`].
+/// its size has stayed the same for [`SETTLE`], or from the start for the
+/// files of a folder's first listing.
 #[derive(Debug, Default)]
 pub struct Settler {
-    /// Each file's size and when that size was first seen.
-    seen: HashMap<PathBuf, (u64, Instant)>,
+    /// Each file's size and when that size was first seen; `None` for a
+    /// file of the first listing, settled from the start.
+    seen: HashMap<PathBuf, (u64, Option<Instant>)>,
 }
 
 impl Settler {
@@ -127,9 +129,9 @@ impl Settler {
         for f in facts.iter().filter(|f| f.is_file && !is_hidden(&f.path)) {
             let since = match self.seen.get(&f.path) {
                 Some(&(len, since)) if len == f.len => since,
-                _ => now,
+                _ => Some(now),
             };
-            if now.saturating_duration_since(since) >= SETTLE {
+            if since.is_none_or(|since| now.saturating_duration_since(since) >= SETTLE) {
                 done.push(f.path.clone());
             } else {
                 waiting = true;
@@ -140,6 +142,19 @@ impl Settler {
         // settles afresh.
         self.seen = seen;
         (done, waiting)
+    }
+
+    /// Looks at a folder's first listing, which is the baseline: every file
+    /// in it counts as settled at once, and stays so until its size
+    /// changes. Returns those files. Filters as [`settled`](Self::settled)
+    /// does.
+    pub fn baseline(&mut self, facts: &[FileFacts]) -> Vec<PathBuf> {
+        self.seen = facts
+            .iter()
+            .filter(|f| f.is_file && !is_hidden(&f.path))
+            .map(|f| (f.path.clone(), (f.len, None)))
+            .collect();
+        self.seen.keys().cloned().collect()
     }
 }
 
@@ -428,6 +443,37 @@ mod tests {
         settler.settled(&[], t0 + SETTLE * 3);
         let (done, waiting) = settler.settled(&file(20), t0 + SETTLE * 4);
         assert!(done.is_empty() && waiting);
+    }
+
+    #[test]
+    fn the_first_listing_is_settled_at_once() {
+        let mut settler = Settler::new();
+        let t0 = Instant::now();
+        let mut done = settler.baseline(&[
+            facts("a.png", 10),
+            facts("b.png", 20),
+            facts(".hidden.png", 5),
+        ]);
+        done.sort();
+        assert_eq!(
+            done,
+            [PathBuf::from("/shots/a.png"), PathBuf::from("/shots/b.png")]
+        );
+        // The next scan, however soon: still settled.
+        let (mut done, waiting) = settler.settled(&[facts("a.png", 10), facts("b.png", 20)], t0);
+        done.sort();
+        assert_eq!(
+            done,
+            [PathBuf::from("/shots/a.png"), PathBuf::from("/shots/b.png")]
+        );
+        assert!(!waiting);
+        // One that grows settles afresh; a new one too.
+        let (done, waiting) = settler.settled(
+            &[facts("a.png", 10), facts("b.png", 30), facts("c.png", 1)],
+            t0 + SETTLE / 3,
+        );
+        assert_eq!(done, [PathBuf::from("/shots/a.png")]);
+        assert!(waiting);
     }
 
     #[test]

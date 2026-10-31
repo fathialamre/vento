@@ -327,11 +327,11 @@ msgstr "جارٍ التحويل"
 msgid "Converting {name}…"
 msgstr "جارٍ تحويل {name}…"
 
-#: crates/vento/src/pocket/shots_view.rs:784
+#: crates/vento/src/pocket/shots_view.rs:868
 msgid "Copied"
 msgstr "تم النسخ"
 
-#: crates/vento/src/pocket/shots_view.rs:839
+#: crates/vento/src/pocket/shots_view.rs:923
 msgid "Copied text"
 msgstr "تم نسخ النص"
 
@@ -467,7 +467,7 @@ msgstr "تعذّر فتح الطرفية: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "تعذّر الفتح: {reason}"
 
-#: crates/vento/src/pocket/shots_view.rs:830
+#: crates/vento/src/pocket/shots_view.rs:914
 msgid "Couldn't read the picture"
 msgstr "تعذّرت قراءة الصورة"
 
@@ -479,7 +479,7 @@ msgstr "تعذّرت قراءة الشاشة"
 msgid "Couldn't save settings: {error}"
 msgstr "تعذّر حفظ الإعدادات: {error}"
 
-#: crates/vento/src/pocket/mod.rs:1882
+#: crates/vento/src/pocket/mod.rs:1902
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
@@ -583,11 +583,11 @@ msgstr[5] "اسحب {n}"
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
-#: crates/vento-core/src/screenshots.rs:209
+#: crates/vento-core/src/screenshots.rs:236
 msgid "Earlier"
 msgstr "قبل ذلك"
 
-#: crates/vento-core/src/screenshots.rs:200
+#: crates/vento-core/src/screenshots.rs:227
 msgid "Earlier this week"
 msgstr "في وقت سابق هذا الأسبوع"
 
@@ -923,7 +923,7 @@ msgstr "نقل إلى"
 msgid "Move to Trash"
 msgstr "نقل إلى سلة المهملات"
 
-#: crates/vento/src/pocket/shots_view.rs:1082
+#: crates/vento/src/pocket/shots_view.rs:1166
 msgid "Moved to Trash"
 msgstr "نُقلت إلى سلة المهملات"
 
@@ -991,7 +991,7 @@ msgstr "لا توجد مجلدات مثبّتة"
 msgid "No recent folders"
 msgstr "لا توجد مجلدات حديثة"
 
-#: crates/vento/src/pocket/shots_view.rs:835
+#: crates/vento/src/pocket/shots_view.rs:919
 msgid "No text found"
 msgstr "لم يُعثر على نص"
 
@@ -1579,7 +1579,7 @@ msgstr "السمة"
 msgid "This shortcut can't be used"
 msgstr "لا يمكن استخدام هذا الاختصار"
 
-#: crates/vento/src/pocket/mod.rs:758
+#: crates/vento/src/pocket/mod.rs:778
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
@@ -1591,7 +1591,7 @@ msgstr "تحويل لصور"
 msgid "To read text on your screen, Vento needs Screen Recording. It only looks at the area you select."
 msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسجيل الشاشة. لا ينظر إلا إلى المنطقة التي تحددها."
 
-#: crates/vento-core/src/screenshots.rs:198
+#: crates/vento-core/src/screenshots.rs:225
 msgid "Today"
 msgstr "اليوم"
 
@@ -1712,8 +1712,8 @@ msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-cl
 msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته للوحة السريعة، وانقر بزر الفأرة الأيمن للقائمة."
 
 #: crates/vento/ui/pocket.slint:2055
-msgid "Vento needs to see your Desktop again after the update."
-msgstr "يحتاج Vento إلى رؤية سطح المكتب مجددًا بعد التحديث."
+msgid "Vento needs to see {} again after the update."
+msgstr "يحتاج Vento إلى رؤية {} مجددًا بعد التحديث."
 
 #: crates/vento/src/welcome_window/practice.rs:61
 msgid "Vento was here."
@@ -1775,7 +1775,7 @@ msgstr "جارٍ الكتابة…"
 msgid "Wrong password"
 msgstr "كلمة السر خاطئة"
 
-#: crates/vento-core/src/screenshots.rs:199
+#: crates/vento-core/src/screenshots.rs:226
 msgid "Yesterday"
 msgstr "أمس"
 
@@ -1851,7 +1851,7 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start"
 msgstr "تعذّر البدء"
 
-#: crates/vento/src/pocket/mod.rs:1609
+#: crates/vento/src/pocket/mod.rs:1629
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
@@ -2398,7 +2398,7 @@ msgctxt "page"
 msgid "Move"
 msgstr "النقل"
 
-#: crates/vento-core/src/screenshots.rs:222
+#: crates/vento-core/src/screenshots.rs:249
 msgctxt "shot"
 msgid "{day} {time}"
 msgstr "{day} {time}"

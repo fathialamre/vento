@@ -17,7 +17,7 @@ use crate::ui::{ClipRow, PeekLine, PocketIsland};
 use super::clip::{ClipKind, ClipRowData, PEEK_PICTURE_PX, is_web, now_unix};
 use super::geometry::Panel;
 use super::shots::Access;
-use super::{PocketController, Undo, View, to_image};
+use super::{PocketController, Undo, View, to_image, wing_view};
 
 /// How long the island stays open after a switch button, wherever the
 /// pointer is.
@@ -399,6 +399,8 @@ impl PocketController {
             self.refresh_shots();
         }
         self.window.set_view(self.window_view());
+        // The wings show the view hover opens, which follows the last one.
+        self.set_wings();
         self.fit_panel();
         self.run_undo_timer();
     }
@@ -461,15 +463,18 @@ impl PocketController {
         self.set_wings();
     }
 
-    /// What the collapsed wings show with an empty Pocket: the clipboard
-    /// icon while there is some history, otherwise the photo icon while
-    /// there are screenshots.
+    /// What the collapsed wings show with an empty Pocket: the icon of the
+    /// view resting on the island opens (see [`wing_view`]).
     pub(super) fn set_wings(&self) {
-        let empty = self.pocket.borrow().is_empty();
-        let clip = self.clip_has();
+        let wing = wing_view(
+            self.pocket.borrow().is_empty(),
+            self.clip_has(),
+            self.shots_have(),
+            self.shown_view(),
+        );
         let w = &self.window;
-        w.set_clip_wing(empty && clip);
-        w.set_shot_wing(empty && !clip && self.shots_have());
+        w.set_clip_wing(wing == View::Clipboard);
+        w.set_shot_wing(wing == View::Screenshots);
     }
 
     /// The history is on and holds something.

@@ -182,6 +182,26 @@ fn hover_view(
     }
 }
 
+/// Which view's icon the collapsed wings show (while no Undo is on offer,
+/// which they show instead), when the island showed `last`: with items in
+/// the Pocket, its icon and count. With an empty one, the icon of the view
+/// resting on the island opens (see [`hover_view`]) when that view has
+/// something; when it opens one with nothing (an empty Pocket or
+/// Screenshots), the clipboard icon while there is some history, else the
+/// photo icon while there are screenshots.
+fn wing_view(pocket_empty: bool, clip_has: bool, shots_has: bool, last: View) -> View {
+    if !pocket_empty {
+        return View::Pocket;
+    }
+    match hover_view(true, clip_has, shots_has, None, last) {
+        View::Clipboard if clip_has => View::Clipboard,
+        View::Screenshots if shots_has => View::Screenshots,
+        _ if clip_has => View::Clipboard,
+        _ if shots_has => View::Screenshots,
+        _ => View::Pocket,
+    }
+}
+
 /// What the island's Undo puts back.
 enum Undo {
     /// The items of this trash job, taken out of the Pocket.
@@ -1959,6 +1979,33 @@ mod tests {
         // Nothing anywhere: the last view.
         assert_eq!(hover_view(true, false, false, None, Clipboard), Clipboard);
         assert_eq!(hover_view(true, false, false, None, Pocket), Pocket);
+    }
+
+    #[test]
+    fn wings_show_what_hover_opens() {
+        use View::{Clipboard, Pocket, Screenshots};
+        // Items in the Pocket: its icon and count, whatever else there is.
+        for last in [Pocket, Clipboard, Screenshots] {
+            assert_eq!(wing_view(false, true, true, last), Pocket);
+        }
+        // An empty Pocket, some history and some screenshots: the view
+        // hover opens.
+        for last in [Pocket, Clipboard, Screenshots] {
+            let opens = hover_view(true, true, true, None, last);
+            assert_eq!(wing_view(true, true, true, last), opens, "{last:?}");
+        }
+        assert_eq!(wing_view(true, true, true, Pocket), Screenshots);
+        assert_eq!(wing_view(true, true, true, Clipboard), Clipboard);
+        assert_eq!(wing_view(true, true, true, Screenshots), Screenshots);
+        // Only screenshots, or only history.
+        assert_eq!(wing_view(true, false, true, Clipboard), Screenshots);
+        assert_eq!(wing_view(true, true, false, Clipboard), Clipboard);
+        assert_eq!(wing_view(true, true, false, Screenshots), Clipboard);
+        // Hover opens a view with nothing (the empty Pocket, or Screenshots
+        // with none): the wings show what has something, as before.
+        assert_eq!(wing_view(true, true, false, Pocket), Clipboard);
+        // Nothing anywhere.
+        assert_eq!(wing_view(true, false, false, Clipboard), Pocket);
     }
 
     #[test]
