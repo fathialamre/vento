@@ -170,8 +170,14 @@ impl Page {
         self as i32
     }
 
+    /// The page whose [`Page::key`] is `key`: the What's new window opens a
+    /// feature's page by it.
+    pub fn from_key(key: &str) -> Option<Page> {
+        pages(true).into_iter().find(|page| page.key() == key)
+    }
+
     /// The page's name in `closed_how_to` in the settings file.
-    fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::General => "general",
             Self::Wheel => "wheel",
@@ -1760,6 +1766,15 @@ fn apply_shortcut(
 mod tests {
     use super::*;
     use vento_core::i18n::with_language;
+
+    #[test]
+    fn page_keys_round_trip() {
+        for page in pages(true) {
+            assert_eq!(Page::from_key(page.key()), Some(page), "{page:?}");
+        }
+        assert_eq!(Page::from_key("nothing"), None);
+        assert_eq!(Page::from_key(""), None);
+    }
 
     #[test]
     fn the_language_picker_maps_to_the_setting_and_back() {

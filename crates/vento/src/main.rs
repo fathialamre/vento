@@ -46,6 +46,8 @@ mod updater;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod welcome_window;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+mod whats_new_window;
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod wheel;
 
 /// The `drag` crate needs GTK on Linux; the Pocket uses this stand-in.
@@ -69,6 +71,7 @@ fn main() -> Result<(), slint::PlatformError> {
     use vento_core::destinations::{RecentDestinations, recent_path};
     use vento_core::i18n::{system_languages, tr};
     use vento_core::settings::{Settings, settings_path};
+    use vento_core::update::changelog::{bundled_notes, digest};
     use vento_core::welcome;
 
     /// How long the island stays open to confirm an add from the wheel.
@@ -105,14 +108,18 @@ fn main() -> Result<(), slint::PlatformError> {
     select_backend()?;
     // Before the hub reads the settings and anything writes to Vento's
     // folders: a fresh install saves the settings it starts with, the
-    // Welcome setup still to do.
-    if let Err(e) = welcome_window::first_launch(
+    // Welcome setup still to do. A fresh install shows no What's new.
+    let fresh = match welcome_window::first_launch(
         &settings_path(),
         welcome::data_dir().as_deref(),
         &system_languages(),
     ) {
-        log::warn!("cannot save the first settings: {e}");
-    }
+        Ok(fresh) => fresh,
+        Err(e) => {
+            log::warn!("cannot save the first settings: {e}");
+            false
+        }
+    };
     let hub = settings_hub::SettingsHub::new(settings_path());
     if let Some(reason) = hub.load_error() {
         log::warn!("settings file not loaded, using the defaults: {reason}");
@@ -229,8 +236,11 @@ fn main() -> Result<(), slint::PlatformError> {
     // menu item and no settings field.
     let os = vento_platform::screen_text();
     let supported = os.supported();
-    let screen_text = supported.then(|| {
-        let access = screen_text::ScreenAccessView::new(platform.clone(), os.clone());
+    // The Screen Recording window; What's new shows it too, when an update
+    // cost the grant.
+    let screen_access =
+        supported.then(|| screen_text::ScreenAccessView::new(platform.clone(), os.clone()));
+    let screen_text = screen_access.clone().map(|access| {
         let hider = access.clone();
         let (pause, copier, toaster) = (pause.clone(), platform.clone(), toaster.clone());
         screen_text::ScreenTextController::new(screen_text::ScreenTextDeps {
@@ -304,8 +314,36 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
-    // What's new opens in a window of its own (a later step).
-    settings.set_on_open_whats_new(Box::new(|| log::info!("What's new: View in About")));
+    // What changed, after an update, from About's View and before an
+    // update from See what's new. Open Settings opens a feature's page; the
+    // notice's button shows the Screen Recording window.
+    let whats_new = whats_new_window::WhatsNewController::new(platform.clone());
+    {
+        let settings = Rc::downgrade(&settings);
+        whats_new.set_on_open_settings(Box::new(move |key| {
+            if let (Some(settings), Some(page)) =
+                (settings.upgrade(), settings_window::Page::from_key(key))
+            {
+                settings.open_on(page);
+            }
+        }));
+    }
+    if let Some(access) = screen_access {
+        whats_new.set_on_notice(Box::new(move || access.show()));
+    }
+    {
+        let whats_new = Rc::downgrade(&whats_new);
+        settings.set_on_open_whats_new(Box::new(move || {
+            let (Some(whats_new), Some(running)) = (whats_new.upgrade(), running_version()) else {
+                return;
+            };
+            let notes = bundled_notes(vento_core::i18n::current().code);
+            match digest(&notes, None, running) {
+                Some(d) => whats_new.open(d, None),
+                None => log::warn!("no notes for {running} in the changelog"),
+            }
+        }));
+    }
     let panel = {
         let pause = pause.clone();
         panel::PanelController::new(
@@ -398,6 +436,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Rc::downgrade(updates),
                 Rc::downgrade(updates),
             );
+            let preview = Rc::downgrade(&whats_new);
             (
                 // Restart once the update is downloaded, Update before.
                 Box::new(move || {
@@ -417,10 +456,20 @@ fn main() -> Result<(), slint::PlatformError> {
                         updates.cancel();
                     }
                 }) as Box<dyn Fn()>,
-                // What's new opens in a window of its own (a later step).
+                // See what's new: the coming version's notes, from its
+                // release on GitHub (English only).
                 Box::new(move || {
-                    if let Some(updates) = notes.upgrade() {
-                        log::info!("What's new: {:?}", updates.pending_notes().map(|n| n.0));
+                    let (Some(updates), Some(whats_new)) = (notes.upgrade(), preview.upgrade())
+                    else {
+                        return;
+                    };
+                    if let Some((version, body)) = updates.pending_notes() {
+                        let notes = [vento_core::update::changelog::parse_release_body(
+                            version, &body,
+                        )];
+                        if let Some(d) = digest(&notes, None, version) {
+                            whats_new.open(d, None);
+                        }
                     }
                 }) as Box<dyn Fn()>,
                 Box::new(move || {
@@ -487,7 +536,8 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
-    // So does turning to the Welcome window, an ordinary window as well.
+    // So does turning to the Welcome window or the What's new window,
+    // ordinary windows as well.
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         welcome.set_on_activated(Box::new(move || {
@@ -501,12 +551,25 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        whats_new.set_on_activated(Box::new(move || {
+            if let Some(panel) = panel.upgrade() {
+                panel.close_for_other_window();
+            }
+            if let Some(info) = info.upgrade() {
+                info.dismiss();
+            }
+        }));
+    }
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (pdf, welcome) = (Rc::downgrade(&pdf), Rc::downgrade(&welcome));
+        let whats_new = Rc::downgrade(&whats_new);
         settings.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || pdf.upgrade().is_some_and(|p| p.has_windows())
                 || welcome.upgrade().is_some_and(|w| w.is_open())
+                || whats_new.upgrade().is_some_and(|w| w.is_open())
         }));
     }
     // The Welcome window, closing, leaves the focus with any other vento
@@ -514,11 +577,26 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (pdf, settings) = (Rc::downgrade(&pdf), Rc::downgrade(&settings));
+        let whats_new = Rc::downgrade(&whats_new);
         welcome.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || pdf.upgrade().is_some_and(|p| p.has_windows())
                 || settings.upgrade().is_some_and(|s| s.is_open())
+                || whats_new.upgrade().is_some_and(|w| w.is_open())
+        }));
+    }
+    // So does the What's new window.
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let (pdf, settings) = (Rc::downgrade(&pdf), Rc::downgrade(&settings));
+        let welcome = Rc::downgrade(&welcome);
+        whats_new.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
+                || pdf.upgrade().is_some_and(|p| p.has_windows())
+                || settings.upgrade().is_some_and(|s| s.is_open())
+                || welcome.upgrade().is_some_and(|w| w.is_open())
         }));
     }
     // The last PDF window to close leaves the focus with another vento
@@ -526,11 +604,13 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (settings, welcome) = (Rc::downgrade(&settings), Rc::downgrade(&welcome));
+        let whats_new = Rc::downgrade(&whats_new);
         pdf.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || settings.upgrade().is_some_and(|s| s.is_open())
                 || welcome.upgrade().is_some_and(|w| w.is_open())
+                || whats_new.upgrade().is_some_and(|w| w.is_open())
         }));
     }
     // The panel opens above the tray icon, where the island lives on
@@ -693,6 +773,7 @@ fn main() -> Result<(), slint::PlatformError> {
     );
     #[cfg(target_os = "macos")]
     let start_updates = updates.clone();
+    let start_whats_new = whats_new.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
@@ -730,6 +811,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 log::warn!("cannot write the update marker: no data folder");
             }
         }
+        show_whats_new_on_start(&start_whats_new, fresh);
         #[cfg(target_os = "macos")]
         if let Some(updates) = start_updates {
             if let Some(tray) = keep.borrow().as_ref() {
@@ -743,6 +825,49 @@ fn main() -> Result<(), slint::PlatformError> {
     info.dismiss();
     pocket.flush_pending();
     result
+}
+
+/// The version running now.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn running_version() -> Option<vento_core::update::version::Version> {
+    vento_core::update::version::Version::parse(env!("CARGO_PKG_VERSION"))
+}
+
+/// At start, after an update: opens What's new on what changed since the
+/// version that ran last (nothing on a `fresh` install), with a notice when
+/// the update cost the Screen Recording grant (macOS). Then records this
+/// version as the last that ran, so it opens once.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn show_whats_new_on_start(whats_new: &whats_new_window::WhatsNewController, fresh: bool) {
+    use vento_core::update::state::UpdateFile;
+
+    let Some(running) = running_version() else {
+        log::warn!("unreadable version {}", env!("CARGO_PKG_VERSION"));
+        return;
+    };
+    let Some(data_dir) = vento_core::welcome::data_dir() else {
+        log::warn!("no data folder: What's new is off");
+        return;
+    };
+    let path = UpdateFile::path(&data_dir);
+    let mut file = UpdateFile::load(&path);
+    let lang = vento_core::i18n::current().code;
+    if let Some(d) = whats_new_window::digest_on_start(&file, running, fresh, lang) {
+        let lost_access = cfg!(target_os = "macos")
+            && file.had_screen_access
+            && !vento_platform::screen_text().has_access();
+        let notice = lost_access
+            .then(|| vento_core::i18n::tr("Switch Screen Recording on again for Copy from screen"));
+        whats_new.open(d, notice);
+    }
+    let before = file.clone();
+    file.last_run_version = Some(running);
+    file.had_screen_access = false;
+    if file != before
+        && let Err(e) = file.save(&path)
+    {
+        log::warn!("cannot save {}: {e}", path.display());
+    }
 }
 
 /// Deletes the old copy an update left beside the bundle
