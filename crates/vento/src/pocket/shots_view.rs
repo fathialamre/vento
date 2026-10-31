@@ -35,7 +35,7 @@ use crate::ui::{PocketIsland, ShotDay, ShotTile};
 #[cfg(target_os = "linux")]
 use crate::drag;
 
-use super::clip_view::{no_picture, peek_picture, set_rows_in_place, tabs};
+use super::clip_view::{no_picture, set_rows_in_place, tabs};
 use super::out::{Press, drop_point, placeholder_icon, preview_png};
 use super::shots::Access;
 use super::{
@@ -52,6 +52,9 @@ const DRAG_PT: u32 = 120;
 /// The card's picture: its shorter side in pixels (the picture is
 /// 212 × 133 points, drawn at twice that on most screens).
 const CARD_PX: u32 = 280;
+/// The peek's picture: its shorter side in pixels (the picture is about
+/// 526 × 266 points, drawn at twice that on most screens).
+const PEEK_PX: u32 = 600;
 
 /// The day chips in the order the window shows them.
 const FILTERS: [ShotFilter; 4] = [
@@ -137,6 +140,29 @@ fn peek_title(modified_unix: u64, now_unix: u64, tz: &TimeZone) -> String {
             &[("day", &day_chip(day)), ("time", &time)],
         ),
     }
+}
+
+/// What the peek shows of the screenshot at `path` saved at `mtime`: its
+/// large picture once made for that file and time (`made`); until then the
+/// tile's thumbnail when one was made for that time (`thumb`, with the time
+/// it was made for), or nothing. The flag says whether the large picture is
+/// still to be made. The picture's box keeps its size either way.
+fn peek_shown(
+    made: Option<&(PathBuf, u64, Image)>,
+    thumb: Option<(u64, &Image)>,
+    path: &Path,
+    mtime: u64,
+) -> (Image, bool) {
+    if let Some((p, m, image)) = made
+        && p == path
+        && *m == mtime
+    {
+        return (image.clone(), false);
+    }
+    let stand_in = thumb
+        .filter(|(made_for, _)| *made_for == mtime)
+        .map_or_else(no_picture, |(_, image)| image.clone());
+    (stand_in, true)
 }
 
 /// The line beside the peek's title: `width × height · size`.
@@ -329,6 +355,8 @@ pub(super) struct ShotsView {
     peek: RefCell<Option<PathBuf>>,
     /// The peek's large picture, made once for its file and time.
     peek_picture: RefCell<Option<(PathBuf, u64, Image)>>,
+    /// The file and time whose large picture is being made on the worker.
+    peek_making: RefCell<Option<(PathBuf, u64)>>,
     /// Trashed screenshots waiting for their Undo window to end.
     pending: PendingShots,
     /// Copy text can run here.
@@ -355,6 +383,7 @@ impl ShotsView {
             refresh_due: Cell::new(false),
             peek: RefCell::new(None),
             peek_picture: RefCell::new(None),
+            peek_making: RefCell::new(None),
             pending: PendingShots::default(),
             can_read,
         }
@@ -430,22 +459,21 @@ impl ShotsView {
     }
 
     /// Gives `window` the open peek, closing one whose file is no longer
-    /// in `shots`. Its large picture is read once per file and time.
+    /// in `shots`. Its large picture is made on a worker thread, once per
+    /// file and time; the tile's thumbnail stands in meanwhile.
     fn show_peek(&self, window: &PocketIsland, shots: &[Shot], now_unix: u64, tz: &TimeZone) {
         let place = peek_place(shots, self.peek.borrow().as_deref());
         let mut picture = self.peek_picture.borrow_mut();
         match place.map(|i| &shots[i]) {
             Some(s) => {
-                let stale = picture
-                    .as_ref()
-                    .is_none_or(|(p, m, _)| p != &s.path || *m != s.modified_unix);
-                if stale {
-                    let image = peek_picture(&s.path).unwrap_or_else(no_picture);
-                    *picture = Some((s.path.clone(), s.modified_unix, image));
+                let (image, wanted) = {
+                    let thumbs = self.thumbs.borrow();
+                    let thumb = thumbs.get(&s.path).map(|(m, image, _)| (*m, image));
+                    peek_shown(picture.as_ref(), thumb, &s.path, s.modified_unix)
+                };
+                if wanted {
+                    self.make_peek_picture(s.path.clone(), s.modified_unix);
                 }
-                let image = picture
-                    .as_ref()
-                    .map_or_else(no_picture, |(_, _, i)| i.clone());
                 window.set_shot_peek_picture(image);
                 window.set_shot_peek_title(peek_title(s.modified_unix, now_unix, tz).into());
                 window.set_shot_peek_meta(peek_meta(s).into());
@@ -506,6 +534,38 @@ impl ShotsView {
             for p in &paths {
                 making.remove(p);
             }
+        }
+    }
+
+    /// Makes the peek's large picture of `path` saved at `mtime` on a
+    /// worker thread, handed to the controller on the main thread; unless
+    /// it is being made already.
+    fn make_peek_picture(&self, path: PathBuf, mtime: u64) {
+        let job = Some((path.clone(), mtime));
+        if *self.peek_making.borrow() == job {
+            return;
+        }
+        *self.peek_making.borrow_mut() = job;
+        let spawned = std::thread::Builder::new()
+            .name("vento-shot-peek".into())
+            .spawn(move || {
+                let made = std::panic::catch_unwind(|| {
+                    vento_platform::picture_thumbnail(&path, PEEK_PX, THUMB_RATIO)
+                })
+                .ok()
+                .flatten();
+                let delivered = slint::invoke_from_event_loop(move || {
+                    if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
+                        c.shot_peek_made(path, mtime, made.as_ref());
+                    }
+                });
+                if let Err(e) = delivered {
+                    warn!("cannot hand the peek's picture over: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            warn!("cannot start making the peek's picture: {e}");
+            self.peek_making.take();
         }
     }
 
@@ -744,6 +804,30 @@ impl PocketController {
                 c.refresh_shots();
             }
         });
+    }
+
+    /// The peek's large picture of `path` saved at `mtime` came in from the
+    /// worker (`None` when it could not be made): kept and shown, if the
+    /// peek is still on that file.
+    fn shot_peek_made(&self, path: PathBuf, mtime: u64, made: Option<&RgbaImage>) {
+        let view = &self.shots_view;
+        if view
+            .peek_making
+            .borrow()
+            .as_ref()
+            .is_some_and(|(p, m)| *p == path && *m == mtime)
+        {
+            view.peek_making.take();
+        }
+        if view.peek.borrow().as_deref() != Some(path.as_path()) {
+            return;
+        }
+        let picture = made.and_then(to_image).unwrap_or_else(|| {
+            debug!("screenshots: no peek picture of {}", path.display());
+            no_picture()
+        });
+        *view.peek_picture.borrow_mut() = Some((path, mtime, picture));
+        self.refresh_shots();
     }
 
     /// A click on tile `index` (a press that never moved far): opens its
@@ -1134,6 +1218,7 @@ impl PocketController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slint::{Rgba8Pixel, SharedPixelBuffer};
     use vento_core::clip::{TYPE_FILE_URL, TYPE_PNG, path_to_file_url};
 
     fn shot(path: &str) -> Shot {
@@ -1214,6 +1299,34 @@ mod tests {
         pending.add(a.clone());
         assert_eq!(pending.take_all(), [a]);
         assert!(pending.take_all().is_empty());
+    }
+
+    #[test]
+    fn peek_shows_the_thumbnail_until_its_picture_is_made() {
+        let picture = |w| Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::new(w, 1));
+        let width = |i: &Image| i.size().width;
+        let a = PathBuf::from("/tmp/a.png");
+        let thumb = picture(208);
+        // Nothing made yet: the tile's thumbnail, and the picture is asked for.
+        let (shown, wanted) = peek_shown(None, Some((5, &thumb)), &a, 5);
+        assert_eq!((width(&shown), wanted), (208, true));
+        // No thumbnail either (or one of an older time): nothing.
+        let (shown, wanted) = peek_shown(None, None, &a, 5);
+        assert_eq!((width(&shown), wanted), (0, true));
+        let (shown, wanted) = peek_shown(None, Some((4, &thumb)), &a, 5);
+        assert_eq!((width(&shown), wanted), (0, true));
+        // Made for this file and time: the large picture.
+        let made = (a.clone(), 5, picture(600));
+        let (shown, wanted) = peek_shown(Some(&made), Some((5, &thumb)), &a, 5);
+        assert_eq!((width(&shown), wanted), (600, false));
+        // Made for another file, or the file changed since: made again.
+        let b = PathBuf::from("/tmp/b.png");
+        let (shown, wanted) = peek_shown(Some(&made), Some((5, &thumb)), &b, 5);
+        assert_eq!((width(&shown), wanted), (208, true));
+        let (_, wanted) = peek_shown(Some(&made), None, &a, 6);
+        assert!(wanted);
+        // Sharp on a 2x screen: the 266-point box needs 532 pixels.
+        const { assert!(PEEK_PX >= 532) };
     }
 
     #[test]
