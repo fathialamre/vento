@@ -1,6 +1,6 @@
 //! The island's Clipboard view: the history's rows as the window draws them,
 //! what a row, its buttons and its peek do, and the bottom bar's tabs
-//! between the views.
+//! between the views (the Clipboard, the Pocket and the Screenshots).
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -16,7 +16,8 @@ use crate::ui::{ClipRow, PeekLine, PocketIsland};
 
 use super::clip::{ClipKind, ClipRowData, PEEK_PICTURE_PX, is_web, now_unix};
 use super::geometry::Panel;
-use super::{PocketController, Undo, View, to_image};
+use super::shots::Access;
+use super::{PocketController, Undo, View, to_image, wing_view};
 
 /// How long the island stays open after a switch button, wherever the
 /// pointer is.
@@ -343,12 +344,13 @@ impl PocketController {
     }
 
     /// A tab or the Pocket's look toggle was clicked, for the window's view
-    /// `v` (0 the kinds, 1 the Clipboard, 2 the list). Going to a shorter
-    /// view leaves the pointer below the island, so it stays open a moment
-    /// to be reached again.
+    /// `v` (0 the kinds, 1 the Clipboard, 2 the list, 3 the Screenshots).
+    /// Going to a shorter view leaves the pointer below the island, so it
+    /// stays open a moment to be reached again.
     fn choose_view(&self, v: i32) {
         match v {
             1 => self.set_view(View::Clipboard),
+            3 => self.set_view(View::Screenshots),
             2 => {
                 self.set_view(View::Pocket);
                 self.open_pocket_list(None);
@@ -378,27 +380,38 @@ impl PocketController {
     }
 
     /// Shows view `v` (kept for the next opening) and refits the island.
+    /// The Screenshots read their folder again each time they are shown:
+    /// after an update, that is what asks for access.
     pub(super) fn set_view(&self, v: View) {
+        if v == View::Screenshots {
+            self.shots.touch();
+        }
         if self.view.replace(v) != v {
             debug!("pocket view {v:?}");
             // Its rows are made only while it is in sight.
-            if v == View::Clipboard {
-                self.refresh_clip();
-            } else {
-                self.refresh_list();
+            match v {
+                View::Clipboard => self.refresh_clip(),
+                View::Screenshots => {}
+                View::Pocket => self.refresh_list(),
             }
         }
+        if v == View::Screenshots {
+            self.refresh_shots();
+        }
         self.window.set_view(self.window_view());
+        // The wings show the view hover opens, which follows the last one.
+        self.set_wings();
         self.fit_panel();
         self.run_undo_timer();
     }
 
-    /// The view the island shows: the Pocket while the history is off.
+    /// The view the island shows: the Pocket while the view asked for is
+    /// off (the history, or the screenshots).
     pub(super) fn shown_view(&self) -> View {
-        if self.clip.enabled() {
-            self.view.get()
-        } else {
-            View::Pocket
+        match self.view.get() {
+            View::Clipboard if self.clip.enabled() => View::Clipboard,
+            View::Screenshots if self.shots_on() => View::Screenshots,
+            _ => View::Pocket,
         }
     }
 
@@ -407,8 +420,12 @@ impl PocketController {
         if self.drop_box.get() {
             return Panel::Drop;
         }
+        if self.card.is_up() {
+            return Panel::Card;
+        }
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
+            View::Screenshots => Panel::Screenshots,
             View::Pocket if self.list_shown() => Panel::List,
             View::Pocket => Panel::Kinds {
                 groups: self.kinds.len(),
@@ -421,7 +438,7 @@ impl PocketController {
         self.clip_view.peek.take().is_some()
     }
 
-    /// Pushes the history's size, the switch and the view into the window,
+    /// Pushes the history's size, the tabs and the view into the window,
     /// and the rows and counts while the Clipboard view is in sight. Rows
     /// cost a look at each listed file, so none are made for a hidden list:
     /// the island refreshes as it expands or switches to the view.
@@ -438,9 +455,36 @@ impl PocketController {
         }
         let w = &self.window;
         w.set_clip_count(i32::try_from(self.clip.len()).unwrap_or(i32::MAX));
-        w.set_show_switch(on);
+        let (switch, clip_tab, shots_tab) = tabs(on, self.shots.access());
+        w.set_show_switch(switch);
+        w.set_show_clip_tab(clip_tab);
+        w.set_show_shots_tab(shots_tab);
         w.set_view(self.window_view());
-        w.set_clip_wing(on && !self.clip.is_empty() && self.pocket.borrow().is_empty());
+        self.set_wings();
+    }
+
+    /// What the collapsed wings show with an empty Pocket: the icon of the
+    /// view resting on the island opens (see [`wing_view`]).
+    pub(super) fn set_wings(&self) {
+        let wing = wing_view(
+            self.pocket.borrow().is_empty(),
+            self.clip_has(),
+            self.shots_have(),
+            self.shown_view(),
+        );
+        let w = &self.window;
+        w.set_clip_wing(wing == View::Clipboard);
+        w.set_shot_wing(wing == View::Screenshots);
+    }
+
+    /// The history is on and holds something.
+    pub(super) fn clip_has(&self) -> bool {
+        self.clip.enabled() && !self.clip.is_empty()
+    }
+
+    /// The Screenshots view is on and lists something.
+    pub(super) fn shots_have(&self) -> bool {
+        self.shots_on() && self.shots.count() > 0
     }
 
     /// Gives the window the open peek: the place of its row among those
@@ -511,7 +555,21 @@ pub(super) fn view_index(v: View) -> i32 {
     match v {
         View::Pocket => 0,
         View::Clipboard => 1,
+        View::Screenshots => 3,
     }
+}
+
+/// The bottom bar's tabs with the history on (`clip`) and the screenshots
+/// at `shots`: whether it shows tabs at all (two views or more are on),
+/// and whether it has the Clipboard's and the Screenshots' (the Pocket
+/// always has one). The Screenshots are on once the feature is, unless the
+/// folder was refused, which the Settings page says.
+pub(super) fn tabs(clip: bool, shots: Access) -> (bool, bool, bool) {
+    let shots = matches!(
+        shots,
+        Access::Granted | Access::Asking | Access::WaitForOpen
+    );
+    (clip || shots, clip, shots)
 }
 
 #[cfg(test)]
@@ -607,6 +665,21 @@ mod tests {
         assert_eq!(model.iter().collect::<Vec<_>>(), [0, 2, 3]);
         set_rows_in_place(&model, vec![]);
         assert_eq!(model.row_count(), 0);
+    }
+
+    #[test]
+    fn tabs_show_with_two_views_or_more() {
+        // The Pocket alone: no tabs.
+        assert_eq!(tabs(false, Access::Off), (false, false, false));
+        assert_eq!(tabs(false, Access::Denied), (false, false, false));
+        // With the history.
+        assert_eq!(tabs(true, Access::Off), (true, true, false));
+        assert_eq!(tabs(true, Access::Denied), (true, true, false));
+        // With the screenshots, as soon as they are on and not refused.
+        assert_eq!(tabs(false, Access::Granted), (true, false, true));
+        assert_eq!(tabs(false, Access::Asking), (true, false, true));
+        assert_eq!(tabs(false, Access::WaitForOpen), (true, false, true));
+        assert_eq!(tabs(true, Access::Granted), (true, true, true));
     }
 
     #[test]

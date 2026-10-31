@@ -231,6 +231,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let (pocket_slot, clip_slot) = (pocket_slot.clone(), clip_slot.clone());
         let screen_slot = screen_slot.clone();
         let clearer = Rc::downgrade(&pocket);
+        let (pocket_access, pocket_touch) = (Rc::downgrade(&pocket), Rc::downgrade(&pocket));
         settings_window::SettingsWindowController::new(
             platform.clone(),
             hub.clone(),
@@ -255,8 +256,31 @@ fn main() -> Result<(), slint::PlatformError> {
                     pocket.clear_clip_history();
                 }
             }),
+            settings_window::ShotsLink {
+                access: Box::new(move || {
+                    pocket_access.upgrade().map_or_else(
+                        || (pocket::Access::Off, std::path::PathBuf::new()),
+                        |pocket| pocket.shots_access(),
+                    )
+                }),
+                touch: Box::new(move || {
+                    if let Some(pocket) = pocket_touch.upgrade() {
+                        pocket.shots_touch();
+                    }
+                }),
+            },
         )
     };
+    // A listing that changes the access to the screenshot folder shows on
+    // the Settings page.
+    {
+        let settings = Rc::downgrade(&settings);
+        pocket.set_on_shots_changed(Box::new(move || {
+            if let Some(settings) = settings.upgrade() {
+                settings.show_shots();
+            }
+        }));
+    }
     // The first-launch setup; Open Settings on its last screen ends it and
     // opens the Settings window on General.
     let welcome = welcome_window::WelcomeController::new(
@@ -502,6 +526,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             if let Some(pocket) = pocket.upgrade() {
                 pocket.apply_clip_settings(new);
+                pocket.apply_shot_settings(new);
                 pocket.apply_pocket_settings(new);
                 // The first listener has switched the language by now.
                 if old.language != new.language {
@@ -530,9 +555,10 @@ fn main() -> Result<(), slint::PlatformError> {
     let tray_info = info.clone();
     let tray_settings = settings.clone();
     let tray_pdf = pdf.clone();
-    let (open_clipboard, open_pocket) = (
+    let (open_clipboard, open_pocket, open_screenshots) = (
         open_on(pocket::View::Clipboard),
         open_on(pocket::View::Pocket),
+        open_on(pocket::View::Screenshots),
     );
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
@@ -550,6 +576,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }),
             on_open_clipboard: Box::new(move || open_clipboard()),
             on_open_pocket: Box::new(move || open_pocket()),
+            on_open_screenshots: Box::new(move || open_screenshots()),
             on_open_settings: Box::new(move || tray_settings.open()),
             pause,
             hub,

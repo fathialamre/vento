@@ -21,6 +21,7 @@ pub mod pocket_kind;
 pub mod pocket_zone;
 pub mod ring;
 pub mod screen_text;
+pub mod screenshots;
 pub mod settings;
 pub mod shake;
 pub mod share;

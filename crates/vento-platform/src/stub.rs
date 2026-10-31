@@ -29,6 +29,33 @@ pub(crate) fn set_quarantine(_path: &Path, _value: &[u8]) -> std::io::Result<()>
     Ok(())
 }
 
+/// Screenshots are kept in the Pictures folder, as on Linux and Windows.
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux", windows),
+    allow(dead_code)
+)]
+pub(crate) fn screenshot_folder() -> PathBuf {
+    crate::screenshot_dir::in_pictures(None, std::env::home_dir())
+}
+
+/// Nothing marks screenshots here, so every picture may be one.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn is_screen_capture(_path: &Path) -> bool {
+    true
+}
+
+/// No folder needs the user's leave here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn is_protected_folder(_path: &Path) -> bool {
+    false
+}
+
+/// There is no page of settings for folder access here.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn open_files_privacy() -> Result<(), PlatformError> {
+    Err(PlatformError::Unsupported)
+}
+
 /// No packages exist here.
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) fn is_package(_path: &Path) -> bool {
@@ -79,6 +106,12 @@ pub(crate) fn write_image(
 /// Nothing to capture here.
 #[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
 pub(crate) fn read_screen_text(_sel: &Selection) -> Result<Vec<TextBox>, PlatformError> {
+    Err(PlatformError::Unsupported)
+}
+
+/// Nothing to read a picture with here.
+#[cfg_attr(any(target_os = "macos", target_os = "linux"), allow(dead_code))]
+pub(crate) fn read_image_text(_path: &Path) -> Result<Vec<TextBox>, PlatformError> {
     Err(PlatformError::Unsupported)
 }
 
@@ -472,6 +505,17 @@ mod tests {
     fn stub_has_no_quarantine() {
         assert_eq!(quarantine_of(Path::new("/")), None);
         assert!(set_quarantine(Path::new("/"), b"x").is_ok());
+    }
+
+    #[test]
+    fn stub_has_no_screenshot_rules() {
+        assert!(is_screen_capture(Path::new("/")));
+        assert!(!is_protected_folder(Path::new("/")));
+        assert!(matches!(
+            open_files_privacy(),
+            Err(PlatformError::Unsupported)
+        ));
+        assert!(screenshot_folder().ends_with("Pictures/Screenshots"));
     }
 
     #[test]

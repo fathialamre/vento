@@ -159,9 +159,18 @@ thread_local! {
 static LANGUAGES: Once = Once::new();
 
 /// Reads the text in `sel` on a worker thread and calls `done` with it on
-/// the main thread. Only the (`Send`) answer crosses back; `done` waits on
-/// the main thread under the read's id. Call on the main thread.
+/// the main thread. See [`read_on_worker_with`].
 pub fn read_on_worker(sel: Selection, done: ReadDone) {
+    read_on_worker_with(
+        Box::new(move || vento_platform::read_screen_text(&sel)),
+        done,
+    );
+}
+
+/// Runs the blocking `read` on a worker thread and calls `done` with its
+/// answer on the main thread. Only the (`Send`) answer crosses back; `done`
+/// waits on the main thread under the read's id. Call on the main thread.
+pub fn read_on_worker_with(read: Box<dyn FnOnce() -> ReadResult + Send>, done: ReadDone) {
     let id = NEXT_READ.with(|next| next.replace(next.get() + 1));
     PENDING.with(|pending| pending.borrow_mut().insert(id, done));
     let spawned = thread::Builder::new()
@@ -170,9 +179,8 @@ pub fn read_on_worker(sel: Selection, done: ReadDone) {
             let started = Instant::now();
             // A panic must still answer, or `done` would never run and Copy
             // from screen would stay busy until vento restarts.
-            let result =
-                panic::catch_unwind(AssertUnwindSafe(|| vento_platform::read_screen_text(&sel)))
-                    .unwrap_or_else(|_| Err(PlatformError::Failed("internal error".into())));
+            let result = panic::catch_unwind(AssertUnwindSafe(read))
+                .unwrap_or_else(|_| Err(PlatformError::Failed("internal error".into())));
             info!("screen read in {} ms", started.elapsed().as_millis());
             let delivered = slint::invoke_from_event_loop(move || {
                 if let Some(done) = PENDING.with(|pending| pending.borrow_mut().remove(&id)) {
@@ -587,5 +595,71 @@ mod tests {
             rig.note_texts(),
             vec!["Couldn't read the screen".to_owned()]
         );
+    }
+
+    /// A Slint platform with no windows whose event loop is the test's own:
+    /// what `invoke_from_event_loop` is handed goes to a channel the test
+    /// drains on its thread.
+    struct Loop {
+        tx: std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>,
+    }
+
+    struct Proxy(std::sync::Mutex<std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>>);
+
+    impl slint::platform::EventLoopProxy for Proxy {
+        fn quit_event_loop(&self) -> Result<(), slint::EventLoopError> {
+            Ok(())
+        }
+        fn invoke_from_event_loop(
+            &self,
+            event: Box<dyn FnOnce() + Send>,
+        ) -> Result<(), slint::EventLoopError> {
+            self.0
+                .lock()
+                .unwrap()
+                .send(event)
+                .map_err(|_| slint::EventLoopError::EventLoopTerminated)
+        }
+    }
+
+    impl slint::platform::Platform for Loop {
+        fn create_window_adapter(
+            &self,
+        ) -> Result<Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> {
+            Err(slint::PlatformError::NoPlatform)
+        }
+        fn new_event_loop_proxy(&self) -> Option<Box<dyn slint::platform::EventLoopProxy>> {
+            Some(Box::new(Proxy(std::sync::Mutex::new(self.tx.clone()))))
+        }
+    }
+
+    #[test]
+    fn read_on_worker_with_delivers_on_the_main_thread() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        // Only one test in this crate may install a Slint platform.
+        slint::platform::set_platform(Box::new(Loop { tx })).expect("no other test sets one");
+        let here = thread::current().id();
+        let (out_tx, out_rx) = std::sync::mpsc::channel();
+        read_on_worker_with(
+            Box::new(|| {
+                assert_eq!(thread::current().name(), Some("vento-screen-text"));
+                Ok(vec![b(0.0, "hello")])
+            }),
+            Box::new(move |result| {
+                out_tx.send((thread::current().id(), result)).unwrap();
+            }),
+        );
+        // The worker hands the answer to the loop; run it on this thread.
+        // Events other tests queued before the platform was set come first.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let (on, result) = loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            rx.recv_timeout(left).expect("the worker answers")();
+            if let Ok(delivered) = out_rx.try_recv() {
+                break delivered;
+            }
+        };
+        assert_eq!(on, here);
+        assert_eq!(result.unwrap(), vec![b(0.0, "hello")]);
     }
 }

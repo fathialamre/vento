@@ -184,22 +184,26 @@ export component RowButton inherits Rectangle {
 
 // An on/off switch. It shows `on` as given and asks for the other state
 // when clicked; whoever uses it decides. On is the knob at the end of the
-// line: the right, or the left in a right-to-left language.
+// line: the right, or the left in a right-to-left language. One that is not
+// `enabled` is dimmed and cannot be toggled.
 export component Switch inherits Rectangle {
     in property <bool> on;
     in property <string> label;
+    in property <bool> enabled: true;
     callback toggled(bool);
 
     width: 26px;
     height: 15px;
     border-radius: self.height / 2;
     background: self.on ? Theme.accent : Theme.switch-off;
+    opacity: self.enabled ? 1 : 0.4;
     animate background { duration: 120ms; }
     accessible-role: switch;
     accessible-label: self.label;
     accessible-checkable: true;
     accessible-checked: self.on;
-    accessible-action-default => { self.toggled(!self.on); }
+    accessible-enabled: self.enabled;
+    accessible-action-default => { if (root.enabled) { root.toggled(!root.on); } }
 
     Rectangle {
         x: root.on != Theme.rtl ? root.width - self.width - 2px : 2px;
@@ -215,6 +219,7 @@ export component Switch inherits Rectangle {
 
     // A little larger than the track, so it is easy to hit.
     TouchArea {
+        enabled: root.enabled;
         x: -4px;
         y: -6px;
         width: root.width + 8px;

@@ -11,7 +11,9 @@
 //! and the island opens as a drag nears it or on the global shortcut.
 //!
 //! With the clipboard history on, the expanded island has a second view, the
-//! Clipboard ([`View`]), and the bar under either view has a tab for each.
+//! Clipboard ([`View`]); with the screenshots on, a third, the Screenshots
+//! (`shots_view`). With two views or more the bar under them has a tab for
+//! each.
 //!
 //! The Pocket view shows its items grouped by kind (`kinds`) or as a list
 //! (`list_view`): it opens on the look the settings say ([`PocketView`]),
@@ -27,6 +29,8 @@ mod list_view;
 mod menu;
 pub(crate) mod out;
 mod owned;
+mod shots;
+mod shots_view;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -71,6 +75,9 @@ use out::{
     removes_after_drop,
 };
 use owned::{PendingTrash, trash_kept, trash_owned};
+pub use shots::Access;
+use shots::ShotsController;
+use shots_view::{ShotCard, ShotsView};
 
 /// Icon size of a tile or a row, in points.
 const ICON_PX: u32 = 40;
@@ -134,6 +141,8 @@ pub enum View {
     Pocket,
     /// The clipboard history.
     Clipboard,
+    /// The recent screenshots.
+    Screenshots,
 }
 
 /// The view the island shows after a request for `asked`, when it shows
@@ -146,21 +155,80 @@ fn next_open(current: Option<View>, asked: View) -> Option<View> {
     }
 }
 
+/// The view an island opened by resting on it shows, when it showed `last`
+/// before: the view of the Undo on offer (`undo_view`), where its ring is;
+/// otherwise `last`, unless it has nothing to show (an empty Pocket, a
+/// history off or empty: `clip_has` false) while there are screenshots
+/// (`shots_has`), which the wings then show.
+fn hover_view(
+    pocket_empty: bool,
+    clip_has: bool,
+    shots_has: bool,
+    undo_view: Option<View>,
+    last: View,
+) -> View {
+    if let Some(v) = undo_view {
+        return v;
+    }
+    let empty = match last {
+        View::Pocket => pocket_empty,
+        View::Clipboard => !clip_has,
+        View::Screenshots => false,
+    };
+    if empty && shots_has {
+        View::Screenshots
+    } else {
+        last
+    }
+}
+
+/// Which view's icon the collapsed wings show (while no Undo is on offer,
+/// which they show instead), when the island showed `last`: with items in
+/// the Pocket, its icon and count. With an empty one, the icon of the view
+/// resting on the island opens (see [`hover_view`]) when that view has
+/// something; when it opens one with nothing (an empty Pocket or
+/// Screenshots), the clipboard icon while there is some history, else the
+/// photo icon while there are screenshots.
+fn wing_view(pocket_empty: bool, clip_has: bool, shots_has: bool, last: View) -> View {
+    if !pocket_empty {
+        return View::Pocket;
+    }
+    match hover_view(true, clip_has, shots_has, None, last) {
+        View::Clipboard if clip_has => View::Clipboard,
+        View::Screenshots if shots_has => View::Screenshots,
+        _ if clip_has => View::Clipboard,
+        _ if shots_has => View::Screenshots,
+        _ => View::Pocket,
+    }
+}
+
 /// What the island's Undo puts back.
 enum Undo {
     /// The items of this trash job, taken out of the Pocket.
     Pocket(u64),
     /// Entries taken out of the clipboard history.
     Clip(Vec<ClipEntry>),
+    /// A screenshot taken out of the grid, its file not in the Trash yet.
+    Shot(PathBuf),
 }
 
 impl Undo {
+    /// The view whose ring offers this Undo.
+    fn view(&self) -> View {
+        match self {
+            Undo::Pocket(_) => View::Pocket,
+            Undo::Clip(_) => View::Clipboard,
+            Undo::Shot(_) => View::Screenshots,
+        }
+    }
+
     /// The window's number for this kind of Undo: only the view it belongs
-    /// to (0 the Pocket, 1 the Clipboard) shows its ring.
+    /// to (0 the Pocket, 1 the Clipboard, 3 the Screenshots) shows its ring.
     fn kind(&self) -> i32 {
         match self {
             Undo::Pocket(_) => 0,
             Undo::Clip(_) => 1,
+            Undo::Shot(_) => 3,
         }
     }
 }
@@ -258,10 +326,22 @@ pub struct PocketController {
     pointer_in: Cell<bool>,
     /// The clipboard history.
     clip: Rc<ClipController>,
+    /// The screenshots in the screenshot folder.
+    shots: Rc<ShotsController>,
+    /// Tells the Settings window the access to the screenshot folder may
+    /// have changed.
+    on_shots_changed: RefCell<Option<Box<dyn Fn()>>>,
     /// The view shown expanded (or last shown).
     view: Cell<View>,
     /// The Clipboard view's rows.
     clip_view: ClipView,
+    /// The Screenshots view's days and tiles.
+    shots_view: ShotsView,
+    /// The card of a screenshot just saved, while it is up.
+    card: ShotCard,
+    /// The drag out running (while the latch says so) is the card's: it
+    /// leaves the view the island will open on as it is.
+    card_drag: Cell<bool>,
     /// The Pocket view's look in the settings, which it opens on.
     pocket_view: Cell<PocketView>,
     /// The Pocket list, shown by the bar's look toggle or a group.
@@ -290,6 +370,7 @@ impl PocketController {
         appearance::follow(&window, appearance::Look::Direction);
         let kinds = Kinds::new(&window);
         let clip_view = ClipView::new(&window);
+        let shots_view = ShotsView::new(&window);
         let pocket_view = settings.borrow().pocket_view;
         let list = ListView::new(&window, pocket_view);
         let home = platform.pocket_home();
@@ -331,8 +412,13 @@ impl PocketController {
             last_cursor: Cell::new(None),
             pointer_in: Cell::new(false),
             clip: Self::clip_history(clip_platform, &clip_settings, this.clone()),
+            shots: Self::screenshots(&clip_settings, this.clone()),
+            on_shots_changed: RefCell::new(None),
             view: Cell::new(View::Pocket),
             clip_view,
+            shots_view,
+            card: ShotCard::default(),
+            card_drag: Cell::new(false),
             pocket_view: Cell::new(pocket_view),
             list,
             shrink_timer: Timer::default(),
@@ -345,6 +431,7 @@ impl PocketController {
         controller.connect_clip();
         controller.connect_list();
         controller.connect_kinds();
+        controller.connect_shots();
         MAIN_POCKET.with(|slot| *slot.borrow_mut() = Rc::downgrade(&controller));
         controller
     }
@@ -362,6 +449,26 @@ impl PocketController {
             Box::new(move || {
                 if let Some(c) = this.upgrade() {
                     c.refresh();
+                }
+            }),
+        )
+    }
+
+    /// The screenshots, refreshing the island through `this` when a listing
+    /// changes them, and showing the card for a new one.
+    fn screenshots(settings: &RefCell<Settings>, this: Weak<Self>) -> Rc<ShotsController> {
+        let on_new = this.clone();
+        ShotsController::new(
+            settings,
+            Box::new(move || {
+                if let Some(c) = this.upgrade() {
+                    c.refresh();
+                    c.shots_changed();
+                }
+            }),
+            Box::new(move |path| {
+                if let Some(c) = on_new.upgrade() {
+                    c.show_card(path);
                 }
             }),
         )
@@ -483,6 +590,24 @@ impl PocketController {
                 self.drag_kind(kind);
                 return;
             }
+            Press::Shot(i) => {
+                self.card_drag.set(false);
+                match self.shots_view.path_at(i32::try_from(i).unwrap_or(-1)) {
+                    Some(path) => self.start_shot_drag(path),
+                    None => self.latch.ended(),
+                }
+                return;
+            }
+            Press::Card => {
+                match self.card.path() {
+                    Some(path) => {
+                        self.card_drag.set(true);
+                        self.start_shot_drag(path);
+                    }
+                    None => self.latch.ended(),
+                }
+                return;
+            }
             Press::Cell(i) => match self.id_at(i as usize) {
                 Some(id) => Some(id),
                 None => {
@@ -503,10 +628,15 @@ impl PocketController {
         self.start_drag_out(ids);
     }
 
-    /// A press ended: a click on a tile or a row toggles its selection.
+    /// A press ended: a click on a tile or a row toggles its selection; on
+    /// a screenshot's tile, it opens its peek; on the card's picture, the
+    /// Screenshots view with it peeked.
     fn released(&self) {
-        if let Some(Press::Cell(i)) = self.latch.release() {
-            self.toggle_selected(i as usize);
+        match self.latch.release() {
+            Some(Press::Cell(i)) => self.toggle_selected(i as usize),
+            Some(Press::Shot(i)) => self.shot_clicked(i),
+            Some(Press::Card) => self.card_clicked(),
+            _ => {}
         }
     }
 
@@ -794,9 +924,9 @@ impl PocketController {
     }
 
     /// Offers `undo` in the island for [`UNDO_LIFETIME`]. It replaces any
-    /// Undo already offered: a Pocket job's files still go on their own
-    /// timer, history entries are let go now. The island stays up
-    /// meanwhile, even with nothing in it.
+    /// Undo already offered: a Pocket job's files and a screenshot still go
+    /// on their own timer, history entries are let go now. The island stays
+    /// up meanwhile, even with nothing in it.
     fn offer_undo(&self, undo: Undo) {
         self.window.set_undo_kind(undo.kind());
         let replaced = self
@@ -825,7 +955,7 @@ impl PocketController {
         };
         let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            // A Pocket job's files go on their own timer.
+            // A Pocket job's files and a screenshot go on their own timer.
             if let Some(Undo::Clip(entries)) = self.end_undo() {
                 self.clip.discard(entries);
             }
@@ -837,7 +967,7 @@ impl PocketController {
                 c.run_undo_timer();
             }
         };
-        if self.expanded() && view_index(self.shown_view()) == kind {
+        if self.expanded() && !self.card.is_up() && view_index(self.shown_view()) == kind {
             self.window
                 .set_undo_left(left.as_secs_f32() / UNDO_LIFETIME.as_secs_f32());
             self.window
@@ -860,6 +990,7 @@ impl PocketController {
                 }
             }
             Some(Undo::Clip(entries)) => self.clip.restore(entries),
+            Some(Undo::Shot(path)) => self.undo_shot_trash(&path),
             None => {}
         }
     }
@@ -888,6 +1019,13 @@ impl PocketController {
             );
         }
         self.trash_unheld(items);
+        let shots = self.shots_view.take_pending();
+        if !shots.is_empty() {
+            info!("{} screenshot(s) to the Trash at quit", shots.len());
+        }
+        for path in shots {
+            self.trash_shot(&path);
+        }
     }
 
     /// Moves vento's own files of `items` to the Trash, except any the
@@ -911,6 +1049,7 @@ impl PocketController {
         if !paused || !self.warm.get() {
             return;
         }
+        self.close_card();
         let after = self.settle_now();
         debug!("pocket paused: {after:?}");
     }
@@ -1081,6 +1220,11 @@ impl PocketController {
             return;
         }
         let now = Instant::now();
+        // A card that never got to show (the island could not open) goes
+        // once its time is up.
+        if self.card.is_up() && !self.expanded() && !self.card.holds_open(now) {
+            self.close_card();
+        }
         let screens_changed = self.platform.screens_changed();
         if screens_changed || dragging && !self.was_dragging.get() {
             // The screens changed, or a drag may be headed for the island:
@@ -1089,6 +1233,10 @@ impl PocketController {
             self.rehome();
         }
         self.was_dragging.set(dragging);
+        // A drag from elsewhere takes the island for a drop: the card goes.
+        if dragging && !self.latch.running() {
+            self.close_card();
+        }
         let Some(home) = self.home.get() else {
             return;
         };
@@ -1123,15 +1271,52 @@ impl PocketController {
         if self.hover_blocked.get() {
             inputs.hover = geometry::NOWHERE;
         }
-        let after = self.island.borrow_mut().update(&inputs, now);
+        let mut after = self.island.borrow_mut().update(&inputs, now);
+        // The card goes as the island leaves it, and the island rests as
+        // it would without it.
+        if after != Presence::Expanded && self.card.is_up() {
+            self.close_card();
+            if !self.has_content() {
+                after = self.island.borrow_mut().settle(false);
+            }
+        }
+        self.card_hover(after, hits(&f, after, sample.cursor), now);
+        // Opened by resting on it: with an empty Pocket, on the view the
+        // wings show.
+        if before != Presence::Expanded
+            && after == Presence::Expanded
+            && !dragging
+            && !pinned
+            && !self.card.is_up()
+        {
+            let last = self.shown_view();
+            let undo_view = self.undo.borrow().as_ref().map(|(u, _)| u.view());
+            let v = hover_view(
+                self.pocket.borrow().is_empty(),
+                self.clip_has(),
+                self.shots_have(),
+                undo_view,
+                last,
+            );
+            if v != last {
+                self.set_view(v);
+            }
+        }
         let changed = after != before;
         if changed {
             self.rehome();
             self.present(before, after);
         }
         // A drag over the island is headed for the Pocket; one elsewhere
-        // leaves a pinned Clipboard alone.
-        if dragging && hits(&f, after, sample.cursor) && self.view.get() == View::Clipboard {
+        // leaves a pinned Clipboard alone, and a screenshot's own drag out
+        // (from a tile or the card) leaves the view as it is.
+        let card_drag = self.card_drag.get() && self.latch.running();
+        let headed_in = match self.view.get() {
+            View::Clipboard => !card_drag,
+            View::Screenshots => !self.latch.running(),
+            View::Pocket => false,
+        };
+        if dragging && hits(&f, after, sample.cursor) && headed_in {
             self.set_view(View::Pocket);
         }
         // One over the Pocket list (not the list's own drag out) goes back
@@ -1273,7 +1458,7 @@ impl PocketController {
         if self.pin_until.get().is_some_and(|until| now >= until) {
             self.pin_until.set(None);
         }
-        self.pinned.get() || self.pin_until.get().is_some()
+        self.pinned.get() || self.pin_until.get().is_some() || self.card.holds_open(now)
     }
 
     /// Shows, hides, expands or collapses the window for a presence change.
@@ -1504,9 +1689,10 @@ impl PocketController {
     }
 
     /// The Pocket and Clipboard shortcuts: keeps the island open on view
-    /// `v`; switches to it if the island is held open on the other view;
+    /// `v`; switches to it if the island is held open on another view;
     /// lets it close if it already shows `v`.
     pub fn open_view(&self, v: View) {
+        self.close_card();
         let current = self.pinned.get().then(|| self.shown_view());
         let next = next_open(current, v);
         self.pinned.set(next.is_some());
@@ -1542,6 +1728,52 @@ impl PocketController {
         self.run_undo_timer();
     }
 
+    /// Follows the screenshots setting of `s`: switched on, the folder is
+    /// listed at once, so the system asks for access right then; switched
+    /// off, the watch and the list go and the island falls back to the
+    /// Pocket view.
+    pub fn apply_shot_settings(&self, s: &Settings) {
+        if s.screenshots == (self.shots.access() != Access::Off) {
+            return;
+        }
+        self.shots.apply(s);
+        if !s.screenshots && self.view.get() == View::Screenshots {
+            self.set_view(View::Pocket);
+        }
+        self.refresh();
+        self.shots_changed();
+        // The view shown, and so the ring in sight, may have changed.
+        self.run_undo_timer();
+    }
+
+    /// Whether the screenshot folder is being read, and the folder (read
+    /// from the system when the feature was last switched on or
+    /// [`shots_touch`](Self::shots_touch)ed): for the Settings page.
+    pub fn shots_access(&self) -> (Access, PathBuf) {
+        (self.shots.access(), self.shots.folder())
+    }
+
+    /// The Settings page of the screenshots opened: reads the folder again,
+    /// as opening the tab does, and refreshes the island with the result.
+    pub fn shots_touch(&self) {
+        self.shots.touch();
+        self.refresh();
+        self.shots_changed();
+    }
+
+    /// Has the Settings window call `f` whenever the access to the
+    /// screenshot folder may have changed (a listing came back, the feature
+    /// went on or off, the page was opened).
+    pub fn set_on_shots_changed(&self, f: Box<dyn Fn()>) {
+        *self.on_shots_changed.borrow_mut() = Some(f);
+    }
+
+    fn shots_changed(&self) {
+        if let Some(f) = self.on_shots_changed.borrow().as_ref() {
+            f();
+        }
+    }
+
     /// Follows the Pocket look of `s`: a change shows it at once.
     pub fn apply_pocket_settings(&self, s: &Settings) {
         let look = s.pocket_view;
@@ -1553,13 +1785,14 @@ impl PocketController {
     }
 
     /// Writes the texts Rust pushes into the island again after a language
-    /// change: the kind names of the groups, the filter chips of the list
-    /// and the clipboard history's labels and ages. Only what is in sight
-    /// is made, as for any refresh.
+    /// change: the kind names of the groups, the filter chips of the list,
+    /// the clipboard history's labels and ages and the screenshots' days and
+    /// times. Only what is in sight is made, as for any refresh.
     pub fn apply_language(&self) {
         self.refresh_kinds();
         self.refresh_list();
         self.refresh_clip();
+        self.refresh_shots();
     }
 
     /// Empties the clipboard history at once, with no Undo (the settings'
@@ -1588,7 +1821,8 @@ impl PocketController {
         self.pocket.borrow().items().len()
     }
 
-    /// Pushes the count into the window, and the clipboard history with it.
+    /// Pushes the count into the window, and the clipboard history and the
+    /// screenshots with it.
     /// The tiles are rebuilt only while the island is expanded (a hidden or
     /// collapsed island shows none), so a copy made meanwhile costs no look
     /// at every file; [`present`](Self::present) refreshes as it expands.
@@ -1599,6 +1833,7 @@ impl PocketController {
         self.window
             .set_count(i32::try_from(count).unwrap_or(i32::MAX));
         self.refresh_clip();
+        self.refresh_shots();
         self.fit_panel();
     }
 
@@ -1650,12 +1885,14 @@ impl PocketController {
         }
     }
 
-    /// The island has something to show: items, an Undo on offer, or a
-    /// clipboard history.
+    /// The island has something to show: items, an Undo on offer, a
+    /// clipboard history, screenshots in their view, or the card.
     fn has_content(&self) -> bool {
         !self.pocket.borrow().is_empty()
             || self.undo.borrow().is_some()
-            || (self.clip.enabled() && !self.clip.is_empty())
+            || self.clip_has()
+            || self.shots_have()
+            || self.card.is_up()
     }
 
     fn save(&self) {
@@ -1708,7 +1945,7 @@ mod tests {
 
     #[test]
     fn open_view_toggles_and_switches() {
-        use View::{Clipboard, Pocket};
+        use View::{Clipboard, Pocket, Screenshots};
         assert_eq!(next_open(None, Clipboard), Some(Clipboard));
         assert_eq!(next_open(None, Pocket), Some(Pocket));
         // Asked for the view it shows: it closes.
@@ -1717,6 +1954,82 @@ mod tests {
         // Asked for the other view: it switches and stays open.
         assert_eq!(next_open(Some(Pocket), Clipboard), Some(Clipboard));
         assert_eq!(next_open(Some(Clipboard), Pocket), Some(Pocket));
+        assert_eq!(next_open(Some(Clipboard), Screenshots), Some(Screenshots));
+        assert_eq!(next_open(Some(Screenshots), Screenshots), None);
+    }
+
+    #[test]
+    fn hover_opens_the_view_that_has_something() {
+        use View::{Clipboard, Pocket, Screenshots};
+        // Items in the Pocket: the last view, as before.
+        assert_eq!(
+            hover_view(false, true, true, None, Screenshots),
+            Screenshots
+        );
+        assert_eq!(hover_view(false, false, true, None, Pocket), Pocket);
+        assert_eq!(hover_view(false, true, true, None, Clipboard), Clipboard);
+        // An empty Pocket with some history: the last view, unchanged.
+        assert_eq!(hover_view(true, true, false, None, Pocket), Pocket);
+        assert_eq!(hover_view(true, true, true, None, Pocket), Screenshots);
+        assert_eq!(hover_view(true, true, true, None, Clipboard), Clipboard);
+        // The last view has nothing and there are screenshots: those.
+        assert_eq!(hover_view(true, false, true, None, Pocket), Screenshots);
+        assert_eq!(hover_view(true, false, true, None, Clipboard), Screenshots);
+        assert_eq!(hover_view(false, false, true, None, Clipboard), Screenshots);
+        // Nothing anywhere: the last view.
+        assert_eq!(hover_view(true, false, false, None, Clipboard), Clipboard);
+        assert_eq!(hover_view(true, false, false, None, Pocket), Pocket);
+    }
+
+    #[test]
+    fn wings_show_what_hover_opens() {
+        use View::{Clipboard, Pocket, Screenshots};
+        // Items in the Pocket: its icon and count, whatever else there is.
+        for last in [Pocket, Clipboard, Screenshots] {
+            assert_eq!(wing_view(false, true, true, last), Pocket);
+        }
+        // An empty Pocket, some history and some screenshots: the view
+        // hover opens.
+        for last in [Pocket, Clipboard, Screenshots] {
+            let opens = hover_view(true, true, true, None, last);
+            assert_eq!(wing_view(true, true, true, last), opens, "{last:?}");
+        }
+        assert_eq!(wing_view(true, true, true, Pocket), Screenshots);
+        assert_eq!(wing_view(true, true, true, Clipboard), Clipboard);
+        assert_eq!(wing_view(true, true, true, Screenshots), Screenshots);
+        // Only screenshots, or only history.
+        assert_eq!(wing_view(true, false, true, Clipboard), Screenshots);
+        assert_eq!(wing_view(true, true, false, Clipboard), Clipboard);
+        assert_eq!(wing_view(true, true, false, Screenshots), Clipboard);
+        // Hover opens a view with nothing (the empty Pocket, or Screenshots
+        // with none): the wings show what has something, as before.
+        assert_eq!(wing_view(true, true, false, Pocket), Clipboard);
+        // Nothing anywhere.
+        assert_eq!(wing_view(true, false, false, Clipboard), Pocket);
+    }
+
+    #[test]
+    fn hover_opens_where_the_undo_is() {
+        use View::{Clipboard, Pocket, Screenshots};
+        // The history was cleared (empty, its Undo on offer): the
+        // Clipboard, though there are screenshots.
+        let clip = Undo::Clip(Vec::new()).view();
+        assert_eq!(clip, Clipboard);
+        assert_eq!(hover_view(true, false, true, Some(clip), Pocket), Clipboard);
+        // The last items were taken out: the Pocket, though there is history.
+        let pocket = Undo::Pocket(1).view();
+        assert_eq!(pocket, Pocket);
+        assert_eq!(
+            hover_view(true, true, true, Some(pocket), Clipboard),
+            Pocket
+        );
+        // A screenshot was trashed: the Screenshots.
+        let shot = Undo::Shot(PathBuf::from("/tmp/a.png")).view();
+        assert_eq!(shot, Screenshots);
+        assert_eq!(
+            hover_view(false, true, false, Some(shot), Pocket),
+            Screenshots
+        );
     }
 
     #[test]
@@ -1724,6 +2037,11 @@ mod tests {
         // The window shows a ring in the view whose number is the kind.
         assert_eq!(Undo::Pocket(3).kind(), 0);
         assert_eq!(Undo::Clip(Vec::new()).kind(), 1);
+        assert_eq!(
+            Undo::Shot(PathBuf::from("/tmp/a.png")).kind(),
+            view_index(View::Screenshots)
+        );
+        assert_eq!(view_index(View::Screenshots), 3);
     }
 
     #[test]

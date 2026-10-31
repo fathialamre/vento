@@ -34,8 +34,9 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView,
-    Settings, SettingsError, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
+    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS,
+    MOVE_HOLD_STEP_MS, PocketView, Settings, SettingsError, ThemeName, is_reserved_shortcut,
+    move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_platform::{Platform, TerminalApp};
@@ -43,7 +44,7 @@ use vento_platform::{Platform, TerminalApp};
 use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
 use crate::panel::set_rows;
-use crate::pocket::{display_name, to_image};
+use crate::pocket::{Access, display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
 use crate::wheel::action_icon;
@@ -95,6 +96,7 @@ pub enum Page {
     Pocket,
     Clipboard,
     CopyFromScreen,
+    Screenshots,
     KeepAwake,
     About,
 }
@@ -116,6 +118,7 @@ impl Page {
             Self::Pocket => "pocket",
             Self::Clipboard => "clipboard",
             Self::CopyFromScreen => "copy_from_screen",
+            Self::Screenshots => "screenshots",
             Self::KeepAwake => "keep_awake",
             Self::About => "about",
         }
@@ -132,6 +135,7 @@ impl Page {
             Self::Pocket => tr("Pocket"),
             Self::Clipboard => tr("Clipboard"),
             Self::CopyFromScreen => tr("Copy from screen"),
+            Self::Screenshots => tr("Screenshots"),
             Self::KeepAwake => tr("Keep Awake"),
             Self::About => tr("About"),
         }
@@ -148,6 +152,7 @@ impl Page {
             Self::Pocket => icons.get_pocket(),
             Self::Clipboard => icons.get_clipboard(),
             Self::CopyFromScreen => panel.get_scan_text(),
+            Self::Screenshots => icons.get_photo(),
             Self::KeepAwake => panel.get_awake(),
             Self::About => icons.get_info(),
         }
@@ -165,6 +170,7 @@ pub fn pages(screen_text_supported: bool) -> Vec<Page> {
         Pocket,
         Clipboard,
         CopyFromScreen,
+        Screenshots,
         KeepAwake,
         About,
     ]
@@ -245,6 +251,14 @@ impl ShortcutFor {
 /// be registered.
 pub type TryShortcut = Box<dyn Fn(ShortcutFor, &str) -> Result<(), String>>;
 
+/// What the Screenshots page asks of the island's screenshots.
+pub struct ShotsLink {
+    /// Whether the folder is being read, and the folder.
+    pub access: Box<dyn Fn() -> (Access, PathBuf)>,
+    /// Reads the folder again: the page was opened.
+    pub touch: Box<dyn Fn()>,
+}
+
 /// Opens, fills and closes the Settings window.
 pub struct SettingsWindowController {
     platform: Rc<dyn Platform>,
@@ -265,6 +279,11 @@ pub struct SettingsWindowController {
     try_shortcut: TryShortcut,
     /// Empties the clipboard history at once, with no Undo.
     on_clear_history: Box<dyn Fn()>,
+    /// How the Screenshots page reaches the island's screenshots.
+    shots: ShotsLink,
+    /// The Screenshots page has read the folder again since it was shown
+    /// last (once per visit, however it was shown).
+    shots_touched: Cell<bool>,
     /// The shortcut the recording field is for.
     recording: Cell<ShortcutFor>,
     /// Why each shortcut was last refused (indexed by [`ShortcutFor::index`]),
@@ -310,7 +329,7 @@ impl SettingsWindowController {
     /// executor share; `screen_text_supported` says whether the window has
     /// a Copy from screen page; `try_shortcut` registers a recorded Pocket,
     /// Clipboard or Copy from screen shortcut; `on_clear_history` empties
-    /// the clipboard history.
+    /// the clipboard history; `shots` is the page of the screenshots.
     pub fn new(
         platform: Rc<dyn Platform>,
         hub: Rc<SettingsHub>,
@@ -318,6 +337,7 @@ impl SettingsWindowController {
         screen_text_supported: bool,
         try_shortcut: TryShortcut,
         on_clear_history: Box<dyn Fn()>,
+        shots: ShotsLink,
     ) -> Rc<Self> {
         let controller = Rc::new_cyclic(|this| Self {
             platform,
@@ -328,6 +348,8 @@ impl SettingsWindowController {
             recent,
             try_shortcut,
             on_clear_history,
+            shots,
+            shots_touched: Cell::new(false),
             recording: Cell::new(ShortcutFor::Pocket),
             refusals: [Cell::new(None), Cell::new(None), Cell::new(None)],
             home: std::env::var_os("HOME").map(PathBuf::from),
@@ -394,6 +416,7 @@ impl SettingsWindowController {
             window.set_pinned(ModelRc::from(self.pinned.clone()));
             window.set_recent(ModelRc::from(self.recent_rows.clone()));
             window.set_screen_text_supported(self.screen_text_supported);
+            window.set_shots_macos(cfg!(target_os = "macos"));
             let trigger_names: Vec<SharedString> = TRIGGER_NAMES.map(Into::into).into();
             window.set_trigger_names(ModelRc::from(trigger_names.as_slice()));
             window.set_version(env!("CARGO_PKG_VERSION").into());
@@ -566,6 +589,7 @@ impl SettingsWindowController {
             }
         });
         self.connect_clipboard_page(window);
+        self.connect_screenshots_page(window);
         let this = self.this.clone();
         window.on_awake_screen_off_toggled(move |on| {
             if let Some(controller) = this.upgrade() {
@@ -673,6 +697,81 @@ impl SettingsWindowController {
                 (controller.on_clear_history)();
             }
         });
+    }
+
+    fn connect_screenshots_page(&self, window: &SettingsWindow) {
+        let this = self.this.clone();
+        window.on_shots_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.screenshots = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_shot_card_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.screenshot_card = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_shot_card_stepped(move |steps| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| step_card_secs(s, steps));
+            }
+        });
+        let this = self.this.clone();
+        window.on_shots_show_folder(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.show_shots_folder();
+            }
+        });
+        window.on_shots_open_privacy(|| {
+            if let Err(e) = vento_platform::open_files_privacy() {
+                warn!("cannot open the Files & Folders settings: {e}");
+            }
+        });
+        let this = self.this.clone();
+        window.on_page_shown(move |id| {
+            if let Some(controller) = this.upgrade() {
+                controller.page_shown(id);
+            }
+        });
+    }
+
+    /// The window turned to the page with id `id` (or opened on it): the
+    /// Screenshots page reads the folder again, so a folder the system
+    /// asks about after an update is asked about now, and a denied one is
+    /// tried again.
+    fn page_shown(&self, id: i32) {
+        if id != Page::Screenshots.id() {
+            self.shots_touched.set(false);
+        } else if self.is_open() && !self.shots_touched.replace(true) {
+            (self.shots.touch)();
+            self.show_shots();
+        }
+    }
+
+    /// Opens the screenshot folder in the file manager.
+    fn show_shots_folder(&self) {
+        let (_, folder) = (self.shots.access)();
+        if folder.as_os_str().is_empty() {
+            return;
+        }
+        if let Err(e) = self.platform.open_paths(&[folder]) {
+            warn!("cannot open the screenshot folder: {e}");
+        }
+    }
+
+    /// Shows the screenshot folder and whether it cannot be read, as the
+    /// island's screenshots have them now. Main calls it again whenever a
+    /// listing changes the access.
+    pub fn show_shots(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
+        let (access, folder) = (self.shots.access)();
+        window.set_shots_folder(display_path(&folder, self.home.as_deref()).into());
+        window.set_shots_denied(access == Access::Denied);
+        window.set_shots_reveal_label(crate::info::reveal_label().into());
     }
 
     fn connect_move_page(&self, window: &SettingsWindow) {
@@ -945,6 +1044,12 @@ impl SettingsWindowController {
         window.set_keep_copies(settings.pocket_keep_copies);
         window.set_pocket_view(choice_index(&PocketView::ALL, settings.pocket_view));
         window.set_clip_history(settings.clipboard_history);
+        window.set_shots_on(settings.screenshots);
+        window.set_shot_card_on(settings.screenshot_card);
+        window.set_shot_card_secs(card_secs_text(settings.screenshot_card_secs).into());
+        window.set_shot_card_can_decrease(settings.screenshot_card_secs > CARD_SECS_MIN);
+        window.set_shot_card_can_increase(settings.screenshot_card_secs < CARD_SECS_MAX);
+        self.show_shots();
         window.set_awake_screen_off(settings.keep_awake_screen_off);
         self.show_awake(&window, &settings);
         let closed: Vec<bool> = pages(true)
@@ -1136,6 +1241,10 @@ impl SettingsWindowController {
                 show_title_bar(&window);
             }
         });
+        // Opened on the Screenshots page: it reads the folder now.
+        if let Some(page) = choice(&pages(self.screen_text_supported), window.get_page()) {
+            self.page_shown(page.id());
+        }
         debug!("settings window open");
     }
 
@@ -1157,6 +1266,7 @@ impl SettingsWindowController {
         if !self.open.replace(false) {
             return;
         }
+        self.shots_touched.set(false);
         let window = self.existing();
         close_with(
             self.is_recording(),
@@ -1519,6 +1629,19 @@ fn step_hold(settings: &mut Settings, steps: i32) {
     let ms = i64::from(settings.move_hold_ms) + i64::from(steps) * i64::from(MOVE_HOLD_STEP_MS);
     let ms = ms.clamp(i64::from(MIN_MOVE_HOLD_MS), i64::from(MAX_MOVE_HOLD_MS));
     settings.move_hold_ms = u32::try_from(ms).unwrap_or(settings.move_hold_ms);
+}
+
+/// Moves the time the screenshot card stays `steps` seconds up (or down,
+/// when negative), within its bounds.
+fn step_card_secs(settings: &mut Settings, steps: i32) {
+    let secs = i64::from(settings.screenshot_card_secs) + i64::from(steps);
+    let secs = secs.clamp(i64::from(CARD_SECS_MIN), i64::from(CARD_SECS_MAX));
+    settings.screenshot_card_secs = u32::try_from(secs).unwrap_or(settings.screenshot_card_secs);
+}
+
+/// The Screenshots page's card time, in the interface language: `"4 s"`.
+fn card_secs_text(secs: u32) -> String {
+    fill(&tr("{n} s"), &[("n", &secs.to_string())])
 }
 
 /// What a key pressed while recording a shortcut means.
@@ -1922,6 +2045,24 @@ mod tests {
     }
 
     #[test]
+    fn step_card_secs_stays_in_range() {
+        let mut s = Settings::default();
+        assert_eq!(s.screenshot_card_secs, 4);
+        step_card_secs(&mut s, -5);
+        assert_eq!(s.screenshot_card_secs, 2);
+        step_card_secs(&mut s, 1);
+        assert_eq!(s.screenshot_card_secs, 3);
+        step_card_secs(&mut s, 9);
+        assert_eq!(s.screenshot_card_secs, 8);
+    }
+
+    #[test]
+    fn card_time_reads_in_both_languages() {
+        assert_eq!(card_secs_text(4), "4 s");
+        vento_core::i18n::with_language("ar", || assert_eq!(card_secs_text(4), "\u{200f}4 ث"));
+    }
+
+    #[test]
     fn recorder_reads_the_key_by_its_place_with_the_modifiers_held() {
         let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
         let key = |code| PhysicalKey::Code(code);
@@ -2286,6 +2427,7 @@ mod tests {
                     "الجيب",
                     "الحافظة",
                     "النسخ من الشاشة",
+                    "لقطات الشاشة",
                     // No tanween: a bold title's line box cuts the mark off.
                     "إبقاء الجهاز مستيقظا",
                     "حول"
@@ -2312,12 +2454,14 @@ mod tests {
                 Pocket,
                 Clipboard,
                 CopyFromScreen,
+                Screenshots,
                 KeepAwake,
                 About
             ]
         );
         assert!(!pages(false).contains(&CopyFromScreen));
-        assert_eq!(pages(false).len(), 7);
+        assert!(pages(false).contains(&Screenshots));
+        assert_eq!(pages(false).len(), 8);
     }
 
     #[test]
@@ -2336,13 +2480,14 @@ mod tests {
         use Page::*;
         let all = pages(true);
         let ids: Vec<i32> = all.iter().map(|p| p.id()).collect();
-        assert_eq!(ids, (0..8).collect::<Vec<_>>());
+        assert_eq!(ids, (0..9).collect::<Vec<_>>());
         assert_eq!(General.id(), 0);
         assert_eq!(CopyFromScreen.id(), 5);
-        assert_eq!(About.id(), 7);
+        assert_eq!(Screenshots.id(), 6);
+        assert_eq!(About.id(), 8);
         // A page left out does not shift the ids of the others.
         let ids: Vec<i32> = pages(false).iter().map(|p| p.id()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7]);
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7, 8]);
     }
 
     #[test]

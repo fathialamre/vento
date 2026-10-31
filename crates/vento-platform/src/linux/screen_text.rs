@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
@@ -21,6 +21,8 @@ use crate::{PlatformError, ScreenText};
 /// pixels: Tesseract reads screen-sized text far better scaled up (at 1x it
 /// misreads Latin words in an Arabic line), and gains nothing past this.
 const READ_SCALE: f64 = 3.0;
+/// The longest side, in pixels, a picture file is scaled up to for reading.
+const MAX_READ_SIDE: f64 = 6000.0;
 /// Tesseract's page mode: one block of text, read line by line, which is
 /// what a dragged rectangle holds.
 const PAGE_MODE: &str = "6";
@@ -125,7 +127,59 @@ pub(crate) fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, Platform
     let picture = image::load_from_memory(&png)
         .map_err(|e| PlatformError::Failed(format!("the capture does not decode: {e}")))?;
     drop(png);
-    let factor = (READ_SCALE * sel.rect.w / f64::from(picture.width().max(1))).max(1.0);
+    let scale = READ_SCALE * sel.rect.w / f64::from(picture.width().max(1));
+    read_picture(tesseract, picture, scale)
+}
+
+/// Reads the text in the picture file at `path` with Tesseract, a box per
+/// line, in the file's pixels (not those of the scaled copy Tesseract reads). The picture stays in memory.
+pub(crate) fn read_image_text(path: &Path) -> Result<Vec<TextBox>, PlatformError> {
+    let tesseract = tesseract().ok_or(PlatformError::Unsupported)?;
+    let bytes = std::fs::read(path)
+        .map_err(|e| PlatformError::Failed(format!("cannot read the file: {e}")))?;
+    let picture = image::load_from_memory(&bytes)
+        .map_err(|e| PlatformError::Failed(format!("the file is not a picture: {e}")))?;
+    drop(bytes);
+    let factor = file_scale(picture.width(), picture.height());
+    let boxes = read_picture(tesseract, picture, factor)?;
+    Ok(in_file_pixels(boxes, factor))
+}
+
+/// How much a `width` × `height` picture file is scaled up for reading: as a
+/// capture of a screen area is (its pixel taken for a logical one), but not
+/// past [`MAX_READ_SIDE`], or a whole 4K screenshot would become a picture
+/// of tens of millions of pixels. Never below 1: a picture is not shrunk.
+fn file_scale(width: u32, height: u32) -> f64 {
+    let longest = f64::from(width.max(height).max(1));
+    READ_SCALE.min(MAX_READ_SIDE / longest).max(1.0)
+}
+
+/// `boxes`, read in a picture scaled up by `factor`, in the pixels of the
+/// picture before it was.
+fn in_file_pixels(boxes: Vec<TextBox>, factor: f64) -> Vec<TextBox> {
+    boxes
+        .into_iter()
+        .map(|b| TextBox {
+            rect: Rect {
+                x: b.rect.x / factor,
+                y: b.rect.y / factor,
+                w: b.rect.w / factor,
+                h: b.rect.h / factor,
+            },
+            text: b.text,
+        })
+        .collect()
+}
+
+/// The text Tesseract reads in `picture` once scaled up by `scale` (never
+/// scaled down), as boxes in the scaled picture's pixels, in grey so the
+/// colours cannot confuse it.
+fn read_picture(
+    tesseract: &Tesseract,
+    picture: image::DynamicImage,
+    scale: f64,
+) -> Result<Vec<TextBox>, PlatformError> {
+    let factor = scale.max(1.0);
     let picture = if factor > 1.0 {
         let w = (f64::from(picture.width()) * factor).round() as u32;
         let h = (f64::from(picture.height()) * factor).round() as u32;
@@ -315,6 +369,43 @@ mod tests {
     use super::*;
 
     const HEADER: &str = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext";
+
+    #[test]
+    fn a_picture_file_is_scaled_up_but_not_past_the_cap() {
+        // Small pictures get the full scale.
+        assert_eq!(file_scale(1000, 600), READ_SCALE);
+        // Past the cap the longest side ends at MAX_READ_SIDE.
+        let factor = file_scale(3840, 2160);
+        assert!((3840.0 * factor - MAX_READ_SIDE).abs() < 1e-6);
+        assert!(factor < READ_SCALE);
+        // A picture already past it is left as it is, never shrunk.
+        assert_eq!(file_scale(8000, 100), 1.0);
+        assert_eq!(file_scale(0, 0), READ_SCALE);
+    }
+
+    #[test]
+    fn file_boxes_are_divided_back_into_file_pixels() {
+        let boxes = vec![TextBox {
+            rect: Rect {
+                x: 300.0,
+                y: 60.0,
+                w: 1500.0,
+                h: 90.0,
+            },
+            text: "hi".into(),
+        }];
+        let got = in_file_pixels(boxes, 3.0);
+        assert_eq!(
+            got[0].rect,
+            Rect {
+                x: 100.0,
+                y: 20.0,
+                w: 500.0,
+                h: 30.0
+            }
+        );
+        assert_eq!(got[0].text, "hi");
+    }
 
     fn tsv(rows: &[&str]) -> String {
         std::iter::once(HEADER)
