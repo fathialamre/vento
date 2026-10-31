@@ -155,20 +155,29 @@ fn next_open(current: Option<View>, asked: View) -> Option<View> {
 }
 
 /// The view an island opened by resting on it shows, when it showed `last`
-/// before: with items in the Pocket (`pocket_empty` false), `last`;
-/// otherwise the one the wings show, the Clipboard while the history holds
-/// something (`clip_has`), else the Screenshots while there are some
-/// (`shots_has`), unless `last` has something to show.
-fn hover_view(pocket_empty: bool, clip_has: bool, shots_has: bool, last: View) -> View {
-    if !pocket_empty {
-        return last;
+/// before: the view of the Undo on offer (`undo_view`), where its ring is;
+/// otherwise `last`, unless it has nothing to show (an empty Pocket, a
+/// history off or empty: `clip_has` false) while there are screenshots
+/// (`shots_has`), which the wings then show.
+fn hover_view(
+    pocket_empty: bool,
+    clip_has: bool,
+    shots_has: bool,
+    undo_view: Option<View>,
+    last: View,
+) -> View {
+    if let Some(v) = undo_view {
+        return v;
     }
-    match last {
-        View::Clipboard if clip_has => last,
-        View::Screenshots if shots_has => last,
-        _ if clip_has => View::Clipboard,
-        _ if shots_has => View::Screenshots,
-        _ => last,
+    let empty = match last {
+        View::Pocket => pocket_empty,
+        View::Clipboard => !clip_has,
+        View::Screenshots => false,
+    };
+    if empty && shots_has {
+        View::Screenshots
+    } else {
+        last
     }
 }
 
@@ -183,6 +192,15 @@ enum Undo {
 }
 
 impl Undo {
+    /// The view whose ring offers this Undo.
+    fn view(&self) -> View {
+        match self {
+            Undo::Pocket(_) => View::Pocket,
+            Undo::Clip(_) => View::Clipboard,
+            Undo::Shot(_) => View::Screenshots,
+        }
+    }
+
     /// The window's number for this kind of Undo: only the view it belongs
     /// to (0 the Pocket, 1 the Clipboard, 3 the Screenshots) shows its ring.
     fn kind(&self) -> i32 {
@@ -297,6 +315,9 @@ pub struct PocketController {
     shots_view: ShotsView,
     /// The card of a screenshot just saved, while it is up.
     card: ShotCard,
+    /// The drag out running (while the latch says so) is the card's: it
+    /// leaves the view the island will open on as it is.
+    card_drag: Cell<bool>,
     /// The Pocket view's look in the settings, which it opens on.
     pocket_view: Cell<PocketView>,
     /// The Pocket list, shown by the bar's look toggle or a group.
@@ -372,6 +393,7 @@ impl PocketController {
             clip_view,
             shots_view,
             card: ShotCard::default(),
+            card_drag: Cell::new(false),
             pocket_view: Cell::new(pocket_view),
             list,
             shrink_timer: Timer::default(),
@@ -543,6 +565,7 @@ impl PocketController {
                 return;
             }
             Press::Shot(i) => {
+                self.card_drag.set(false);
                 match self.shots_view.path_at(i32::try_from(i).unwrap_or(-1)) {
                     Some(path) => self.start_shot_drag(path),
                     None => self.latch.ended(),
@@ -551,7 +574,10 @@ impl PocketController {
             }
             Press::Card => {
                 match self.card.path() {
-                    Some(path) => self.start_shot_drag(path),
+                    Some(path) => {
+                        self.card_drag.set(true);
+                        self.start_shot_drag(path);
+                    }
                     None => self.latch.ended(),
                 }
                 return;
@@ -1238,10 +1264,12 @@ impl PocketController {
             && !self.card.is_up()
         {
             let last = self.shown_view();
+            let undo_view = self.undo.borrow().as_ref().map(|(u, _)| u.view());
             let v = hover_view(
                 self.pocket.borrow().is_empty(),
                 self.clip_has(),
                 self.shots_have(),
+                undo_view,
                 last,
             );
             if v != last {
@@ -1255,9 +1283,10 @@ impl PocketController {
         }
         // A drag over the island is headed for the Pocket; one elsewhere
         // leaves a pinned Clipboard alone, and a screenshot's own drag out
-        // leaves the Screenshots.
+        // (from a tile or the card) leaves the view as it is.
+        let card_drag = self.card_drag.get() && self.latch.running();
         let headed_in = match self.view.get() {
-            View::Clipboard => true,
+            View::Clipboard => !card_drag,
             View::Screenshots => !self.latch.running(),
             View::Pocket => false,
         };
@@ -1878,17 +1907,47 @@ mod tests {
     fn hover_opens_the_view_that_has_something() {
         use View::{Clipboard, Pocket, Screenshots};
         // Items in the Pocket: the last view, as before.
-        assert_eq!(hover_view(false, true, true, Screenshots), Screenshots);
-        assert_eq!(hover_view(false, false, true, Pocket), Pocket);
-        // An empty Pocket: the view the wings show.
-        assert_eq!(hover_view(true, false, true, Pocket), Screenshots);
-        assert_eq!(hover_view(true, true, false, Pocket), Clipboard);
-        assert_eq!(hover_view(true, true, true, Pocket), Clipboard);
-        // The last view, while it has something.
-        assert_eq!(hover_view(true, true, true, Screenshots), Screenshots);
-        assert_eq!(hover_view(true, false, true, Clipboard), Screenshots);
-        // Nothing anywhere (an Undo on offer): the last view.
-        assert_eq!(hover_view(true, false, false, Clipboard), Clipboard);
+        assert_eq!(
+            hover_view(false, true, true, None, Screenshots),
+            Screenshots
+        );
+        assert_eq!(hover_view(false, false, true, None, Pocket), Pocket);
+        assert_eq!(hover_view(false, true, true, None, Clipboard), Clipboard);
+        // An empty Pocket with some history: the last view, unchanged.
+        assert_eq!(hover_view(true, true, false, None, Pocket), Pocket);
+        assert_eq!(hover_view(true, true, true, None, Pocket), Screenshots);
+        assert_eq!(hover_view(true, true, true, None, Clipboard), Clipboard);
+        // The last view has nothing and there are screenshots: those.
+        assert_eq!(hover_view(true, false, true, None, Pocket), Screenshots);
+        assert_eq!(hover_view(true, false, true, None, Clipboard), Screenshots);
+        assert_eq!(hover_view(false, false, true, None, Clipboard), Screenshots);
+        // Nothing anywhere: the last view.
+        assert_eq!(hover_view(true, false, false, None, Clipboard), Clipboard);
+        assert_eq!(hover_view(true, false, false, None, Pocket), Pocket);
+    }
+
+    #[test]
+    fn hover_opens_where_the_undo_is() {
+        use View::{Clipboard, Pocket, Screenshots};
+        // The history was cleared (empty, its Undo on offer): the
+        // Clipboard, though there are screenshots.
+        let clip = Undo::Clip(Vec::new()).view();
+        assert_eq!(clip, Clipboard);
+        assert_eq!(hover_view(true, false, true, Some(clip), Pocket), Clipboard);
+        // The last items were taken out: the Pocket, though there is history.
+        let pocket = Undo::Pocket(1).view();
+        assert_eq!(pocket, Pocket);
+        assert_eq!(
+            hover_view(true, true, true, Some(pocket), Clipboard),
+            Pocket
+        );
+        // A screenshot was trashed: the Screenshots.
+        let shot = Undo::Shot(PathBuf::from("/tmp/a.png")).view();
+        assert_eq!(shot, Screenshots);
+        assert_eq!(
+            hover_view(false, true, false, Some(shot), Pocket),
+            Screenshots
+        );
     }
 
     #[test]

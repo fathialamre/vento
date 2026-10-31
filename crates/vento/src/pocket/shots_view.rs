@@ -932,6 +932,7 @@ impl PocketController {
             });
         let Some(preview) = preview else {
             self.latch.ended();
+            self.card_drag.set(false);
             warn!("cannot make a drag preview");
             return;
         };
@@ -951,7 +952,7 @@ impl PocketController {
                         );
                         c.release_grab(at);
                         // A drag from the card is its action: it closes.
-                        if c.card.is_up() {
+                        if c.card_drag.replace(false) {
                             c.finish_card(|_| {});
                         }
                     }
@@ -965,6 +966,7 @@ impl PocketController {
         if let Err(e) = result {
             warn!("cannot start the screenshot drag: {e}");
             self.latch.ended();
+            self.card_drag.set(false);
         }
     }
 
