@@ -203,9 +203,6 @@ pub(super) struct ShotsController {
     followup: Cell<Option<Duration>>,
 }
 
-// The tab, the card and the Settings page read the controller; until they
-// exist, only the tests do.
-#[cfg_attr(not(test), allow(dead_code))]
 impl ShotsController {
     /// Starts watching the folder if `settings` have the feature on, unless
     /// it must wait to be opened after an update. `on_change` is called
@@ -320,6 +317,8 @@ impl ShotsController {
     }
 
     /// Whether the folder could be read.
+    // The card (Task 7) reads it; nothing else does yet.
+    #[allow(dead_code)]
     pub(super) fn enabled(&self) -> bool {
         self.access.get() == Access::Granted
     }
