@@ -45,6 +45,8 @@ On an Intel Mac, [build it yourself](BUILDING.md).
 2. Drag `Vento.app` into your **Applications** folder.
 3. Open it.
 
+Vento opens a short setup the first time: pick a language and a look, try the wheel on a sample file, and choose what it shows.
+
 Vento is not notarized by Apple yet, so the first time you open it macOS stops it
 with a warning. You only need to get past this once.
 

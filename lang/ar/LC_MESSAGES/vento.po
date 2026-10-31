@@ -173,7 +173,7 @@ msgstr "مستيقظ حتى {time} غداً"
 
 #: crates/vento/ui/welcome.slint:1180
 msgid "Back"
-msgstr "رجوع"
+msgstr "السابق"
 
 #: crates/vento/ui/pocket.slint:1400
 msgid "Back to kinds"
@@ -497,11 +497,11 @@ msgstr "حذف"
 
 #: crates/vento-core/src/welcome.rs:86
 msgid "Designer"
-msgstr "المصمّم"
+msgstr "مصمم"
 
 #: crates/vento-core/src/welcome.rs:85
 msgid "Developer"
-msgstr "المطوّر"
+msgstr "مطوّر"
 
 #: crates/vento/ui/settings_pages.slint:1044
 msgid "Dims the screen so you can pick the text to copy"
@@ -521,7 +521,7 @@ msgstr "تم"
 
 #: crates/vento/src/welcome_window/mod.rs:694
 msgid "Drag a file, press {key}"
-msgstr "اسحب ملفاً واضغط {key}"
+msgstr "اسحب ملفاً واضغط ‎{key}"
 
 #: crates/vento/ui/settings_window.slint:242
 msgid "Drag a rectangle over the text you want and let go."
@@ -573,7 +573,7 @@ msgstr "مجلد فارغ"
 
 #: crates/vento-core/src/welcome.rs:84
 msgid "Essentials"
-msgstr "الأساسيات"
+msgstr "الأساسي"
 
 #: crates/vento-core/src/welcome.rs:95
 msgid "Every action"
@@ -595,7 +595,7 @@ msgstr[5] "كل {n} صفحة"
 
 #: crates/vento-core/src/welcome.rs:87
 msgid "Everything"
-msgstr "كل شيء"
+msgstr "الكل"
 
 #: crates/vento/src/wheel.rs:208
 msgid "Extract"
@@ -649,7 +649,7 @@ msgstr "مجلدات"
 
 #: crates/vento/ui/welcome.slint:1023
 msgid "Folders you use often"
-msgstr "المجلدات التي تستخدمها كثيراً"
+msgstr "مجلدات تستخدمها كثيراً"
 
 #: crates/vento/ui/pdf.slint:1648
 msgid "Format"
@@ -753,7 +753,7 @@ msgstr "الاحتفاظ بنسخة"
 
 #: crates/vento/ui/welcome.slint:1079
 msgid "Keeps the last 50 things you copy. Open it with {}."
-msgstr "يحفظ آخر 50 عنصراً تنسخها. افتحه بـ {}."
+msgstr "يحفظ آخر 50 عنصراً تنسخها. افتحه بـ ‎{}."
 
 #: crates/vento/src/exec/archive.rs:155
 msgid "Kept {name}: changed since it was made"
@@ -1391,7 +1391,7 @@ msgstr "الحجم"
 
 #: crates/vento/ui/welcome.slint:1170
 msgid "Skip setup"
-msgstr "تخطّي الإعداد"
+msgstr "تخطي الإعداد"
 
 #: crates/vento/ui/pdf.slint:1655
 msgid "Smaller file"
@@ -1517,7 +1517,7 @@ msgstr "جرّبها"
 
 #: crates/vento/src/welcome_window/practice.rs:128
 msgid "Try me.txt"
-msgstr "جربني.txt"
+msgstr "جرّبني.txt"
 
 #: crates/vento/src/pdf/window/edit.rs:134
 msgid "Undo"
@@ -1609,7 +1609,7 @@ msgstr "يحتفظ Vento بنسخته الخاصة من كل ملف، لا بر�
 
 #: crates/vento/ui/welcome.slint:1107
 msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu."
-msgstr "‏يعيش Vento في شريط القوائم. انقر أيقونته للوحة السريعة، وانقر بزر الفأرة الأيمن للقائمة."
+msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته للوحة السريعة، وانقر بزر الفأرة الأيمن للقائمة."
 
 #: crates/vento/src/welcome_window/practice.rs:61
 msgid "Vento was here."
@@ -1681,11 +1681,11 @@ msgstr "تختار أنت أماكن القطع"
 
 #: crates/vento/ui/welcome.slint:1104
 msgid "You're all set"
-msgstr "أنت جاهز"
+msgstr "كل شيء جاهز"
 
 #: crates/vento/ui/welcome.slint:942
 msgid "You've got it. This works on any file, in Finder or anywhere you drag files from."
-msgstr "أحسنت. يعمل هذا مع أي ملف، في Finder أو من أي مكان تسحب منه الملفات."
+msgstr "أتقنتها. تعمل على أي ملف تسحبه، في Finder أو في أي مكان."
 
 #: crates/vento/src/awake.rs:20
 msgid "Your Mac follows its usual energy settings"
