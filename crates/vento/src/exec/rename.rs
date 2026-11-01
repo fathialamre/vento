@@ -14,7 +14,7 @@ use vento_core::rename::{
     failed_text, stuck_text, undo, undo_text,
 };
 
-use super::{Executor, LastOp, in_english};
+use super::{Executor, LastOp};
 
 /// Callback told, on the main thread, how a rename ended, so the Rename
 /// window can close or show the problem.
@@ -55,8 +55,8 @@ fn log_stuck(stuck: &[(PathBuf, PathBuf)]) {
 }
 
 impl Executor {
-    /// Runs `steps` on the file worker, then toasts the result (with Undo
-    /// when names changed) and runs `done` on the main thread. The Rename
+    /// Runs `steps` on the file worker, then, on the main thread, runs
+    /// `done` and toasts the result (with Undo when names changed). The Rename
     /// window shows its own progress from `progress`. While another job is
     /// running, toasts Busy and never calls `done`, so the window stays as
     /// it is.
@@ -86,7 +86,9 @@ impl Executor {
         if !self.busy.get() {
             // The worker could not start (already toasted): the window must
             // still hear that nothing was renamed.
-            if let Some(done) = self.rename_done.borrow_mut().take() {
+            // Taken first, so no borrow is held while `done` runs.
+            let done = self.rename_done.borrow_mut().take();
+            if let Some(done) = done {
                 done(&RenameOutcome::Failed {
                     path: first,
                     reason: tr("cannot start"),
@@ -96,36 +98,41 @@ impl Executor {
         }
     }
 
+    /// Tells the window first (it closes on success), then toasts and,
+    /// when names changed that can be put back, records Undo.
     fn rename_finished(&self, outcome: RenameOutcome, at: Point) {
         let text = rename_toast_text(&outcome);
-        match &outcome {
+        // Taken first, so no borrow is held while `done` runs (it may start
+        // another job).
+        let done = self.rename_done.borrow_mut().take();
+        if let Some(done) = done {
+            done(&outcome);
+        }
+        // The reasons are in the toast's language; the core logged the
+        // underlying error in English where it happened.
+        match outcome {
             RenameOutcome::Done(record) => {
-                info!("rename: renamed {}", record.items.len());
+                info!(
+                    "rename: renamed {}, {} can be undone",
+                    record.renamed.len(),
+                    record.items.len()
+                );
                 if record.items.is_empty() {
-                    // Nothing could be fingerprinted, so nothing can be put back.
+                    // No print could be read, so nothing can be put back.
                     self.toast.show(&text, None, at);
                 } else {
-                    self.record_undo(LastOp::Rename(record.clone()), text, at);
+                    self.record_undo(LastOp::Rename(record), text, at);
                 }
             }
             RenameOutcome::Changed => {
                 info!("rename: the folder changed, nothing renamed");
                 self.toast.show(&text, None, at);
             }
-            RenameOutcome::Failed {
-                path,
-                reason,
-                stuck,
-            } => {
-                warn!("cannot rename {}: {reason}", path.display());
-                log_stuck(stuck);
+            RenameOutcome::Failed { path, stuck, .. } => {
+                warn!("rename failed at {}, reversed", path.display());
+                log_stuck(&stuck);
                 self.toast.show(&text, None, at);
             }
-        }
-        // Taken before the call, so `done` may start another job.
-        let done = self.rename_done.borrow_mut().take();
-        if let Some(done) = done {
-            done(&outcome);
         }
     }
 
@@ -141,11 +148,14 @@ impl Executor {
     }
 
     fn rename_undo_finished(&self, outcome: &UndoOutcome, at: Point) {
-        if let Some((path, reason)) = &outcome.failed {
-            warn!("cannot put back {}: {reason}", path.display());
+        if let Some((path, _)) = &outcome.failed {
+            warn!("undo: put-back failed at {}, reversed", path.display());
         }
         log_stuck(&outcome.stuck);
-        info!("undo: {}", in_english(|| undo_text(outcome)));
+        info!(
+            "undo: put back {}, skipped {} changed since",
+            outcome.put_back, outcome.skipped
+        );
         self.notify_undo_changed();
         self.toast.show(&undo_text(outcome), None, at);
     }

@@ -148,9 +148,13 @@ pub fn order_label(by: OrderBy) -> String {
 
 /// The toast after a finished rename.
 pub fn done_text(record: &RenameRecord) -> String {
-    match record.items.as_slice() {
-        [(_, new, _)] => fill(&tr("Renamed {name}"), &[("name", &file_name(new))]),
-        items => trn("Renamed {n} item", "Renamed {n} items", items.len() as u64),
+    match record.renamed.as_slice() {
+        [new] => fill(&tr("Renamed {name}"), &[("name", &file_name(new))]),
+        renamed => trn(
+            "Renamed {n} item",
+            "Renamed {n} items",
+            renamed.len() as u64,
+        ),
     }
 }
 
@@ -403,10 +407,12 @@ mod tests {
     #[test]
     fn done_texts() {
         let one = RenameRecord {
+            renamed: vec!["/t/Trip-1.jpg".into()],
             items: vec![("/t/a".into(), "/t/Trip-1.jpg".into(), print())],
         };
         assert_eq!(done_text(&one), "Renamed Trip-1.jpg");
         let two = RenameRecord {
+            renamed: vec!["/t/x".into(), "/t/y".into()],
             items: vec![
                 ("/t/a".into(), "/t/x".into(), print()),
                 ("/t/b".into(), "/t/y".into(), print()),

@@ -171,7 +171,11 @@ pub fn steps(batch: &Batch, preview: &Preview) -> Vec<Step> {
 /// What a finished rename did, for Undo.
 #[derive(Debug, Clone)]
 pub struct RenameRecord {
-    /// `(old path, new path, print taken right after)` per renamed item.
+    /// The new path of every renamed item, in step order, whether or not it
+    /// can be undone.
+    pub renamed: Vec<PathBuf>,
+    /// `(old path, new path, print taken right after)` per renamed item that
+    /// Undo can put back: an item whose print could not be read is left out.
     pub items: Vec<(PathBuf, PathBuf, ItemPrint)>,
 }
 
@@ -263,7 +267,8 @@ fn execute_with(
             }
         })
         .collect();
-    RenameOutcome::Done(RenameRecord { items })
+    let renamed = steps.iter().map(|s| s.to.clone()).collect();
+    RenameOutcome::Done(RenameRecord { renamed, items })
 }
 
 /// Whether the disk still looks as the preview saw it: every item is there, and
@@ -1069,6 +1074,55 @@ mod tests {
         p.changing = 1;
         p.problems = 1;
         assert!(steps(&batch, &p).is_empty());
+    }
+
+    /// A [`FakeDisk`] that cannot read the print of `blind`.
+    struct Blind {
+        disk: FakeDisk,
+        blind: PathBuf,
+    }
+
+    impl Disk for Blind {
+        fn exists(&self, p: &Path) -> bool {
+            self.disk.exists(p)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.disk.rename(from, to)
+        }
+        fn names_in(&self, dir: &Path) -> io::Result<Vec<String>> {
+            self.disk.names_in(dir)
+        }
+        fn print(&self, p: &Path) -> io::Result<ItemPrint> {
+            if p == self.blind {
+                return Err(io::ErrorKind::PermissionDenied.into());
+            }
+            self.disk.print(p)
+        }
+    }
+
+    #[test]
+    fn record_counts_items_whose_print_failed() {
+        let disk = Blind {
+            disk: FakeDisk::new(&["/t/a", "/t/b"]),
+            blind: PathBuf::from("/t/y"),
+        };
+        let steps = [
+            Step {
+                from: "/t/a".into(),
+                to: "/t/x".into(),
+            },
+            Step {
+                from: "/t/b".into(),
+                to: "/t/y".into(),
+            },
+        ];
+        let record = renamed(&steps, &disk);
+        assert_eq!(
+            record.renamed,
+            [PathBuf::from("/t/x"), PathBuf::from("/t/y")]
+        );
+        assert_eq!(record.items.len(), 1);
+        assert_eq!(crate::rename::done_text(&record), "Renamed 2 items");
     }
 
     /// Renames by `steps` on `disk` and returns the record.
