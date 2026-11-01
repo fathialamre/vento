@@ -291,6 +291,87 @@ fn roll_back(
     Vec::new()
 }
 
+/// How an Undo ended.
+#[derive(Debug, Clone, Default)]
+pub struct UndoOutcome {
+    /// Items back under their old names.
+    pub put_back: usize,
+    /// Items left as they are because they changed since the rename.
+    pub skipped: usize,
+    /// `(path, reason)` when the put-back failed and was reversed.
+    pub failed: Option<(PathBuf, String)>,
+    /// As in [`RenameOutcome::Failed`]: items the reversal could not put back.
+    pub stuck: Vec<(PathBuf, PathBuf)>,
+}
+
+/// Puts back the names of a finished rename, with the same two phases and rollback.
+///
+/// An item is skipped when its new path is gone, it is no longer the same item
+/// (its print differs), or its old name is held by something that is not
+/// itself being put back.
+pub fn undo(record: &RenameRecord, disk: &dyn Disk, os: Os) -> UndoOutcome {
+    let key = |p: &Path| {
+        p.parent()
+            .zip(p.file_name())
+            .map(|(dir, n)| (dir.to_path_buf(), name_key(&n.to_string_lossy(), os)))
+    };
+    let mut keep: Vec<&(PathBuf, PathBuf, ItemPrint)> = record
+        .items
+        .iter()
+        .filter(|(_, new, print)| disk.exists(new) && disk.print(new).ok().as_ref() == Some(print))
+        .collect();
+    // An old name held by an item being put back is freed by the undo itself;
+    // dropping one item can take another's old name, so repeat until settled.
+    loop {
+        let leaving: HashSet<_> = keep.iter().filter_map(|(_, new, _)| key(new)).collect();
+        let before = keep.len();
+        keep.retain(|(old, _, _)| {
+            !disk.exists(old) || key(old).is_some_and(|k| leaving.contains(&k))
+        });
+        if keep.len() == before {
+            break;
+        }
+    }
+
+    let skipped = record.items.len() - keep.len();
+    if keep.is_empty() {
+        return UndoOutcome {
+            skipped,
+            ..UndoOutcome::default()
+        };
+    }
+    let steps: Vec<Step> = keep
+        .iter()
+        .map(|(old, new, _)| Step {
+            from: new.clone(),
+            to: old.clone(),
+        })
+        .collect();
+    let done = AtomicUsize::new(0);
+    match execute(&steps, disk, os, &done) {
+        RenameOutcome::Done(_) => UndoOutcome {
+            put_back: steps.len(),
+            skipped,
+            ..UndoOutcome::default()
+        },
+        RenameOutcome::Changed => UndoOutcome {
+            skipped,
+            failed: Some((steps[0].from.clone(), "something changed".into())),
+            ..UndoOutcome::default()
+        },
+        RenameOutcome::Failed {
+            path,
+            reason,
+            stuck,
+        } => UndoOutcome {
+            put_back: 0,
+            skipped,
+            failed: Some((path, reason)),
+            stuck,
+        },
+    }
+}
+
 /// A file system in memory that fails on demand, for this module's and Undo's tests.
 #[cfg(test)]
 pub(crate) mod fake {
@@ -887,5 +968,140 @@ mod tests {
         p.changing = 1;
         p.problems = 1;
         assert!(steps(&batch, &p).is_empty());
+    }
+
+    /// Renames by `steps` on `disk` and returns the record.
+    fn renamed(steps: &[Step], disk: &dyn Disk) -> RenameRecord {
+        match run(steps, disk, Os::Linux).0 {
+            RenameOutcome::Done(record) => record,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn undo_puts_every_name_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = |n: &str| dir.path().join(n);
+        fs::write(p("a"), "was a").unwrap();
+        fs::write(p("b"), "was b").unwrap();
+        let steps = [
+            Step {
+                from: p("a"),
+                to: p("b"),
+            },
+            Step {
+                from: p("b"),
+                to: p("a"),
+            },
+        ];
+        let record = renamed(&steps, &RealDisk);
+        assert_eq!(fs::read_to_string(p("a")).unwrap(), "was b");
+        let out = undo(&record, &RealDisk, Os::HOST);
+        assert_eq!(out.put_back, 2);
+        assert_eq!(out.skipped, 0);
+        assert!(out.failed.is_none(), "{out:?}");
+        assert_eq!(fs::read_to_string(p("a")).unwrap(), "was a");
+        assert_eq!(fs::read_to_string(p("b")).unwrap(), "was b");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+
+        // A chain: c's old name is b's new one.
+        let disk = FakeDisk::new(&["/t/b", "/t/c"]);
+        let record = renamed(&[step("/t/b", "/t/a"), step("/t/c", "/t/b")], &disk);
+        let out = undo(&record, &disk, Os::Linux);
+        assert_eq!((out.put_back, out.skipped), (2, 0));
+        assert_eq!(disk.paths(), set(&["/t/b", "/t/c"]));
+    }
+
+    #[test]
+    fn undo_skips_item_changed_since() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = |n: &str| dir.path().join(n);
+        for n in ["a", "b", "c"] {
+            fs::write(p(n), n).unwrap();
+        }
+        let steps: Vec<Step> = ["a", "b", "c"]
+            .iter()
+            .map(|n| Step {
+                from: p(n),
+                to: p(&format!("{n}2")),
+            })
+            .collect();
+        let record = renamed(&steps, &RealDisk);
+        let mut f = fs::OpenOptions::new().append(true).open(p("b2")).unwrap();
+        io::Write::write_all(&mut f, b"xyz").unwrap();
+        drop(f);
+        let out = undo(&record, &RealDisk, Os::HOST);
+        assert_eq!(out.skipped, 1);
+        assert_eq!(out.put_back, steps.len() - 1);
+        assert!(out.failed.is_none(), "{out:?}");
+        assert!(p("a").exists() && p("c").exists());
+        assert!(p("b2").exists() && !p("b").exists());
+    }
+
+    #[test]
+    fn undo_skips_item_renamed_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = |n: &str| dir.path().join(n);
+        fs::write(p("a"), "a").unwrap();
+        fs::write(p("b"), "b").unwrap();
+        let steps = [
+            Step {
+                from: p("a"),
+                to: p("x"),
+            },
+            Step {
+                from: p("b"),
+                to: p("y"),
+            },
+        ];
+        let record = renamed(&steps, &RealDisk);
+        fs::rename(p("x"), p("by hand")).unwrap();
+        let out = undo(&record, &RealDisk, Os::HOST);
+        assert_eq!((out.put_back, out.skipped), (1, 1));
+        assert!(out.failed.is_none(), "{out:?}");
+        assert!(p("by hand").exists() && p("b").exists());
+        assert!(!p("a").exists() && !p("y").exists());
+    }
+
+    #[test]
+    fn undo_skips_when_old_name_was_taken() {
+        let disk = FakeDisk::new(&["/t/a", "/t/b"]);
+        let record = renamed(&[step("/t/a", "/t/x"), step("/t/b", "/t/y")], &disk);
+        disk.add("/t/a");
+        let out = undo(&record, &disk, Os::Linux);
+        assert_eq!((out.put_back, out.skipped), (1, 1));
+        assert!(out.failed.is_none(), "{out:?}");
+        assert_eq!(disk.paths(), set(&["/t/a", "/t/b", "/t/x"]));
+        // A chain whose first link is skipped skips the rest: b's old name is
+        // still held by c, which changed.
+        let disk = FakeDisk::new(&["/t/b", "/t/c"]);
+        let record = renamed(&[step("/t/b", "/t/a"), step("/t/c", "/t/b")], &disk);
+        disk.remove("/t/b");
+        disk.add("/t/b");
+        let out = undo(&record, &disk, Os::Linux);
+        assert_eq!((out.put_back, out.skipped), (0, 2));
+        assert_eq!(disk.calls(), 4);
+    }
+
+    #[test]
+    fn undo_failure_rolls_back() {
+        let disk = FakeDisk::new(&["/t/a", "/t/b", "/t/c"]);
+        let steps = [
+            step("/t/a", "/t/x"),
+            step("/t/b", "/t/y"),
+            step("/t/c", "/t/z"),
+        ];
+        let record = renamed(&steps, &disk);
+        let after = disk.paths();
+        // Calls 1–6 were the rename; undo's 7–9 are phase one, 10 is x's final rename.
+        disk.fail_call(11);
+        let out = undo(&record, &disk, Os::Linux);
+        assert_eq!(out.put_back, 0);
+        let (path, reason) = out.failed.expect("failed");
+        assert_eq!(path, PathBuf::from("/t/y"));
+        assert!(!reason.is_empty());
+        assert!(out.stuck.is_empty());
+        assert_eq!(disk.paths(), after);
+        assert!(no_temp_left(&disk));
     }
 }
