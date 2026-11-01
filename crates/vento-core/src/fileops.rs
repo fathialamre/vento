@@ -224,13 +224,13 @@ pub type FileId = (u64, u64);
 pub type FileId = ();
 
 #[cfg(unix)]
-fn file_id(meta: &fs::Metadata) -> FileId {
+pub(crate) fn file_id(meta: &fs::Metadata) -> FileId {
     use std::os::unix::fs::MetadataExt;
     (meta.dev(), meta.ino())
 }
 
 #[cfg(not(unix))]
-fn file_id(_meta: &fs::Metadata) -> FileId {}
+pub(crate) fn file_id(_meta: &fs::Metadata) -> FileId {}
 
 /// One entry below a fingerprinted folder.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

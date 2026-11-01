@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use super::items::Item;
 use super::name::{Os, join_name, name_key, nfc, split_name};
 use super::rules::{Ctx, Rule, apply_rules};
+use super::run::Disk;
 
 /// Longest name a file system takes, in bytes (UTF-16 units on Windows).
 const MAX_NAME_LEN: usize = 255;
@@ -224,6 +225,23 @@ pub fn preview(batch: &Batch, rules: &[Rule], include_dirs: bool, os: Os) -> Pre
     }
 }
 
+/// The names on disk around `items`: one listing per parent folder; a folder
+/// that cannot be read gives an empty list.
+pub fn read_taken(items: &[Item], disk: &dyn Disk) -> HashMap<PathBuf, Vec<String>> {
+    let mut taken = HashMap::new();
+    for item in items {
+        let dir = parent(&item.path);
+        if !taken.contains_key(dir) {
+            let names = disk.names_in(dir).unwrap_or_else(|e| {
+                log::warn!("rename: can't list {}: {e}", dir.display());
+                Vec::new()
+            });
+            taken.insert(dir.to_path_buf(), names);
+        }
+    }
+    taken
+}
+
 /// The folder holding `path`; empty for a root.
 fn parent(path: &Path) -> &Path {
     path.parent().unwrap_or(Path::new(""))
@@ -280,6 +298,21 @@ mod tests {
 
     fn problems(p: &Preview) -> Vec<Option<Problem>> {
         p.rows.iter().map(|r| r.problem).collect()
+    }
+
+    #[test]
+    fn read_taken_lists_each_folder_once() {
+        use super::super::run::fake::FakeDisk;
+        let disk = FakeDisk::new(&["/t/a", "/t/b", "/t/other", "/u/c"]);
+        let items = files(&["/t/a", "/t/b", "/u/c", "/gone/d"]);
+        let mut taken = read_taken(&items, &disk);
+        for names in taken.values_mut() {
+            names.sort();
+        }
+        assert_eq!(taken.len(), 3);
+        assert_eq!(taken[Path::new("/t")], ["a", "b", "other"]);
+        assert_eq!(taken[Path::new("/u")], ["c"]);
+        assert!(taken[Path::new("/gone")].is_empty());
     }
 
     #[test]
