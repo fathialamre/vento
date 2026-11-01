@@ -112,14 +112,19 @@ fn name_cmp(a: &Item, b: &Item) -> Ordering {
 
 /// Orders `items`: folders first, then by `order`; ties fall back to natural name order.
 ///
-/// Folders always sort by name (whatever the key); Reverse flips each group on its own.
+/// Folders sort among themselves the same way, except under Size, where they sort
+/// by name (a folder's size is not known); Reverse flips each group on its own.
 pub fn sort_items(items: &mut [Item], order: Order) {
     items.sort_by(|a, b| {
         // Folders first, in either direction.
         if a.is_dir != b.is_dir {
             return b.is_dir.cmp(&a.is_dir);
         }
-        let by = if a.is_dir { OrderBy::Name } else { order.by };
+        let by = if a.is_dir && order.by == OrderBy::Size {
+            OrderBy::Name
+        } else {
+            order.by
+        };
         let ord = match by {
             OrderBy::Name => Ordering::Equal,
             OrderBy::Modified => a.modified.cmp(&b.modified),
@@ -277,6 +282,29 @@ mod tests {
                 reverse: false,
             },
         );
+        assert_eq!(names(&items), ["a", "b"]);
+    }
+
+    #[test]
+    fn folders_sort_by_date_under_date() {
+        let at = |secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
+        let dir = |name: &str, secs| Item {
+            path: PathBuf::from("/t").join(name),
+            name: Some(name.into()),
+            is_dir: true,
+            len: 0,
+            modified: at(secs),
+            modified_day: String::new(),
+        };
+        // "a" is the newer folder, so by date it comes after "b".
+        let mut items = vec![dir("a", 2_000), dir("b", 1_000)];
+        let order = |reverse| Order {
+            by: OrderBy::Modified,
+            reverse,
+        };
+        sort_items(&mut items, order(false));
+        assert_eq!(names(&items), ["b", "a"]);
+        sort_items(&mut items, order(true));
         assert_eq!(names(&items), ["a", "b"]);
     }
 }
