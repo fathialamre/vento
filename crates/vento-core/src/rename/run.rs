@@ -33,8 +33,9 @@ pub trait Disk: Sync {
 
 /// The real disk, through `std::fs`.
 ///
-/// On macOS and Linux a rename fails with [`io::ErrorKind::AlreadyExists`] instead
-/// of replacing an item at the target; elsewhere [`rename_new`]'s check is the guard.
+/// On macOS, Linux and Windows a rename fails with [`io::ErrorKind::AlreadyExists`]
+/// instead of replacing an item at the target; elsewhere [`rename_new`]'s check is
+/// the guard.
 pub struct RealDisk;
 
 impl Disk for RealDisk {
@@ -51,7 +52,11 @@ impl Disk for RealDisk {
         {
             rename_noreplace_linux(from, to)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(windows)]
+        {
+            rename_no_replace_windows(from, to)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             fs::rename(from, to)
         }
@@ -74,8 +79,24 @@ impl Disk for RealDisk {
             id: file_id(&meta),
             len: if is_dir { 0 } else { meta.len() },
             is_dir,
+            stamp: stamp(&meta, is_dir),
         })
     }
+}
+
+/// [`ItemPrint::stamp`] on Windows: creation time, and last-write time for files
+/// (a folder's changes with what is put in it), both as `FILETIME` ticks.
+#[cfg(windows)]
+fn stamp(meta: &fs::Metadata, is_dir: bool) -> (u64, u64) {
+    use std::os::windows::fs::MetadataExt;
+    let written = if is_dir { 0 } else { meta.last_write_time() };
+    (meta.creation_time(), written)
+}
+
+/// [`ItemPrint::stamp`] elsewhere: unused, the file id tells items apart.
+#[cfg(not(windows))]
+fn stamp(_meta: &fs::Metadata, _is_dir: bool) -> (u64, u64) {
+    (0, 0)
 }
 
 /// `p` as a C string; a path holding a NUL byte can't be one.
@@ -129,15 +150,43 @@ fn rename_noreplace_linux(from: &Path, to: &Path) -> io::Result<()> {
     Err(err)
 }
 
+/// Renames without replacing: `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`
+/// fails when something is at `to`. No `MOVEFILE_COPY_ALLOWED` either: the item
+/// stays in its folder, so this is always a rename, never a copy.
+#[cfg(windows)]
+fn rename_no_replace_windows(from: &Path, to: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS};
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+    let wide = |p: &Path| -> Vec<u16> { p.as_os_str().encode_wide().chain([0]).collect() };
+    let (f, t) = (wide(from), wide(to));
+    // SAFETY: both pointers are NUL-terminated UTF-16 strings that live until the
+    // call returns; flags 0 asks for a plain same-volume rename.
+    if unsafe { MoveFileExW(f.as_ptr(), t.as_ptr(), 0) } != 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(code) if code as u32 == ERROR_ALREADY_EXISTS || code as u32 == ERROR_FILE_EXISTS => {
+            Err(io::Error::new(io::ErrorKind::AlreadyExists, err))
+        }
+        _ => Err(err),
+    }
+}
+
 /// What an item looked like right after it was renamed, so Undo can tell it is the same one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemPrint {
-    /// Which file this is.
+    /// Which file this is (device and inode on macOS and Linux; nothing on Windows).
     pub id: FileId,
     /// Size in bytes; 0 for folders.
     pub len: u64,
     /// Whether it is a real folder.
     pub is_dir: bool,
+    /// Where [`FileId`] says nothing (Windows): creation time, and last-write time
+    /// for files, so a different item that took the name is told apart. `(0, 0)`
+    /// on macOS and Linux.
+    pub stamp: (u64, u64),
 }
 
 /// One item's rename.
@@ -645,6 +694,8 @@ pub(crate) mod fake {
                 id: fake_id(e.id),
                 len: if e.is_dir { 0 } else { e.len },
                 is_dir: e.is_dir,
+                // The id here too, so items stay apart where `FileId` is `()`.
+                stamp: (e.id, 0),
             })
         }
     }
@@ -1032,9 +1083,18 @@ mod tests {
         assert_eq!((f.len, f.is_dir), (4, false));
         let d = disk.print(&dir.path().join("d")).unwrap();
         assert_eq!((d.len, d.is_dir), (0, true));
+        // Where the file id says nothing, the stamp tells items apart.
+        #[cfg(windows)]
+        {
+            assert_ne!(f.stamp.0, 0);
+            assert_ne!(f.stamp.1, 0);
+            assert_eq!(d.stamp.1, 0);
+        }
+        #[cfg(not(windows))]
+        assert_eq!(f.stamp, (0, 0));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn real_disk_rename_refuses_to_replace() {
         let dir = tempfile::tempdir().unwrap();
@@ -1047,7 +1107,7 @@ mod tests {
         assert_eq!(fs::read_to_string(&b).unwrap(), "B");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn real_disk_rename_moves_to_a_free_name() {
         let dir = tempfile::tempdir().unwrap();
@@ -1058,7 +1118,7 @@ mod tests {
         assert_eq!(fs::read_to_string(&c).unwrap(), "A");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn real_disk_rename_folder() {
         let dir = tempfile::tempdir().unwrap();

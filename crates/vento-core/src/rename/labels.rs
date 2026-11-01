@@ -401,6 +401,7 @@ mod tests {
             id: Default::default(),
             len: 0,
             is_dir: false,
+            stamp: (0, 0),
         }
     }
 
