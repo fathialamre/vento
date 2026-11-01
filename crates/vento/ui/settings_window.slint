@@ -170,6 +170,14 @@ export component SettingsWindow inherits Window {
     in property <int> awake-start;
     // The running version, for About.
     in property <string> version;
+    // About's update row and automatic check (see `AboutPage`).
+    in property <bool> updates-supported;
+    in property <int> update-kind;
+    in property <string> update-title;
+    in property <string> update-detail;
+    in property <float> update-progress;
+    in property <bool> update-can-retry;
+    in property <bool> check-automatically;
     // By page id: the user closed that page's How to card.
     in property <[bool]> how-to-closed;
 
@@ -223,6 +231,15 @@ export component SettingsWindow inherits Window {
     callback open-settings-file();
     callback open-welcome();
     callback open-licenses();
+    // About's Check now, the update row's buttons and link, the automatic
+    // check's switch and What's new.
+    callback check-now();
+    callback update-clicked();
+    callback update-cancel-clicked();
+    callback update-notes-clicked();
+    callback update-retry-clicked();
+    callback check-automatically-toggled(bool);
+    callback open-whats-new();
     // The Pocket's, the Clipboard's or Copy from screen's shortcut field
     // started recording, and either recording ended (each way it can end
     // goes through `stop-recording`).
@@ -497,6 +514,20 @@ export component SettingsWindow inherits Window {
                         }
                         if root.page-id == 8: AboutPage {
                             version: root.version;
+                            updates-supported: root.updates-supported;
+                            update-kind: root.update-kind;
+                            update-title: root.update-title;
+                            update-detail: root.update-detail;
+                            update-progress: root.update-progress;
+                            update-can-retry: root.update-can-retry;
+                            check-automatically: root.check-automatically;
+                            check-now => { root.check-now(); }
+                            update-clicked => { root.update-clicked(); }
+                            update-cancel-clicked => { root.update-cancel-clicked(); }
+                            update-notes-clicked => { root.update-notes-clicked(); }
+                            update-retry-clicked => { root.update-retry-clicked(); }
+                            check-automatically-toggled(on) => { root.check-automatically-toggled(on); }
+                            open-whats-new => { root.open-whats-new(); }
                             open-settings-file => { root.open-settings-file(); }
                             open-welcome => { root.open-welcome(); }
                             open-licenses => { root.open-licenses(); }

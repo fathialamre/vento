@@ -122,7 +122,12 @@ fn icon_frame(
 
 /// Keeps the menu-bar icon alive.
 pub struct TrayHandle {
-    _icon: TrayIcon,
+    /// The flame; the update dot is drawn on it, never on the Keep Awake cup.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    icon: TrayIcon,
+    /// Whether the flame now carries the update dot.
+    #[cfg(target_os = "macos")]
+    dot: Cell<bool>,
     /// Sets the menu's text and direction again from the current language.
     retext: Box<dyn Fn()>,
 }
@@ -132,6 +137,21 @@ impl TrayHandle {
     /// the menu out in its direction: call after the language changes.
     pub fn retext(&self) {
         (self.retext)();
+    }
+
+    /// Shows the flame with an update dot, or the plain flame. Setting the
+    /// state it already has does nothing.
+    #[cfg(target_os = "macos")]
+    pub fn set_dot(&self, on: bool) {
+        if self.dot.replace(on) == on {
+            return;
+        }
+        let rgba = tray_icon_rgba(FLAME_PNG);
+        let rgba = if on { with_dot(rgba) } else { rgba };
+        let icon = Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("tray icon has a valid size");
+        if let Err(e) = self.icon.set_icon_templated(Some(icon)) {
+            warn!("cannot change the menu-bar icon: {e}");
+        }
     }
 }
 
@@ -237,6 +257,34 @@ fn tray_icon_rgba(mark: &[u8]) -> Vec<u8> {
     for (y, row) in flame.chunks_exact(flame_size * 4).enumerate() {
         let start = ((y + margin) * size + margin) * 4;
         rgba[start..start + row.len()].copy_from_slice(row);
+    }
+    rgba
+}
+
+/// Radius of the update dot in pixels.
+#[cfg_attr(windows, allow(dead_code))]
+const DOT_RADIUS: i32 = 4;
+/// Centre of the update dot: the icon's top right corner, in pixels.
+#[cfg_attr(windows, allow(dead_code))]
+const DOT_CENTRE: (i32, i32) = (37, 7);
+
+/// The icon with an update dot drawn in: an opaque black disc, so the image
+/// stays a valid template.
+///
+/// # Panics
+/// If `rgba` is not an `ICON_SIZE` square RGBA image.
+#[cfg_attr(windows, allow(dead_code))]
+fn with_dot(mut rgba: Vec<u8>) -> Vec<u8> {
+    let size = ICON_SIZE as usize;
+    assert_eq!(rgba.len(), size * size * 4, "the icon is 44x44 RGBA");
+    let (cx, cy) = DOT_CENTRE;
+    for y in (cy - DOT_RADIUS)..=(cy + DOT_RADIUS) {
+        for x in (cx - DOT_RADIUS)..=(cx + DOT_RADIUS) {
+            if (x - cx).pow(2) + (y - cy).pow(2) <= DOT_RADIUS.pow(2) {
+                let at = (y as usize * size + x as usize) * 4;
+                rgba[at..at + 4].copy_from_slice(&[0, 0, 0, 255]);
+            }
+        }
     }
     rgba
 }
@@ -570,7 +618,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }
     };
     TrayHandle {
-        _icon: tray,
+        icon: tray,
+        #[cfg(target_os = "macos")]
+        dot: Cell::new(false),
         retext: Box::new(retext),
     }
 }
@@ -650,6 +700,19 @@ mod tests {
 
     fn screen(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }
+    }
+
+    #[test]
+    fn dot_is_opaque_at_its_centre_and_leaves_the_flame() {
+        let plain = tray_icon_rgba(FLAME_PNG);
+        let dotted = with_dot(plain.clone());
+        let a = |img: &[u8], x: usize, y: usize| img[(y * ICON_SIZE as usize + x) * 4 + 3];
+        assert_eq!(a(&dotted, 37, 7), 255);
+        assert_eq!(
+            &dotted[(22 * 44 * 4)..(23 * 44 * 4)],
+            &plain[(22 * 44 * 4)..(23 * 44 * 4)],
+            "middle row untouched"
+        );
     }
 
     #[test]

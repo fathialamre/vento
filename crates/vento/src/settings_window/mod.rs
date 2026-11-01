@@ -15,6 +15,8 @@ use std::process::Command;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 use log::{debug, warn};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
@@ -30,6 +32,7 @@ use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
 use vento_core::geometry::{Layout, Rect, screen_for};
+use vento_core::i18n::dates::{day_month, time_hm};
 use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
@@ -39,11 +42,13 @@ use vento_core::settings::{
     move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
+use vento_core::update::state::UpdateState;
+use vento_core::update::version::Version;
 use vento_platform::{Platform, TerminalApp};
 
 use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
-use crate::panel::set_rows;
+use crate::panel::{UpdateView, set_rows, update_view};
 use crate::pocket::{Access, display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
@@ -73,6 +78,67 @@ pub(crate) const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
 #[cfg(windows)]
 pub(crate) const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
+
+/// What About's update row shows: the panel's card (`kind` 1 to 5, see
+/// [`UpdateView`]), and when there is no card, up to date (`kind` 0), a
+/// check that failed (6) or a check under way (7).
+pub type AboutUpdateView = UpdateView;
+
+/// About's update row for `state`, in the interface language. `running` is
+/// the version of this copy and `now` the time in Unix seconds, which
+/// "Checked today" is measured against.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn about_update_view(state: &UpdateState, running: Version, now: i64) -> AboutUpdateView {
+    about_update_view_in(state, running, now, &TimeZone::system())
+}
+
+/// [`about_update_view`] with days and clock times read in `zone`.
+fn about_update_view_in(
+    state: &UpdateState,
+    running: Version,
+    now: i64,
+    zone: &TimeZone,
+) -> AboutUpdateView {
+    let row = |kind, title: String, detail: String| AboutUpdateView {
+        kind,
+        title,
+        detail,
+        ..AboutUpdateView::default()
+    };
+    match state {
+        UpdateState::UpToDate { checked_at } => row(
+            0,
+            tr("You're up to date"),
+            checked_at.map_or_else(String::new, |at| checked_text(at, now, zone)),
+        ),
+        UpdateState::Checking => row(7, tr("Checking for updates\u{2026}"), String::new()),
+        UpdateState::CheckFailed { reason } => {
+            row(6, tr("Couldn't check for updates"), reason.clone())
+        }
+        _ => update_view(state, running),
+    }
+}
+
+/// When the last check ran: "Checked today at 10:42", or "Checked 5 Nov"
+/// on another day.
+fn checked_text(checked_at: i64, now: i64, zone: &TimeZone) -> String {
+    let local = |seconds: i64| {
+        Timestamp::from_second(seconds)
+            .ok()
+            .map(|t| t.to_zoned(zone.clone()).datetime())
+    };
+    let Some(at) = local(checked_at) else {
+        return String::new();
+    };
+    if local(now).is_some_and(|now| now.date() == at.date()) {
+        fill(
+            &tr("Checked today at {time}"),
+            &[("time", &time_hm(at.time()))],
+        )
+    } else {
+        fill(&tr("Checked {date}"), &[("date", &day_month(at.date()))])
+    }
+}
 
 /// The licences of Vento and of what it bundles: the README's License
 /// section, which links each licence file.
@@ -109,8 +175,14 @@ impl Page {
         self as i32
     }
 
+    /// The page whose [`Page::key`] is `key`: the What's new window opens a
+    /// feature's page by it.
+    pub fn from_key(key: &str) -> Option<Page> {
+        pages(true).into_iter().find(|page| page.key() == key)
+    }
+
     /// The page's name in `closed_how_to` in the settings file.
-    fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::General => "general",
             Self::Wheel => "wheel",
@@ -259,6 +331,21 @@ pub struct ShotsLink {
     pub touch: Box<dyn Fn()>,
 }
 
+/// What About's update row and link do.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct AboutUpdateActions {
+    /// Update, or Restart once the update is ready.
+    pub update: Box<dyn Fn()>,
+    /// Cancel the download.
+    pub cancel: Box<dyn Fn()>,
+    /// See what's new.
+    pub notes: Box<dyn Fn()>,
+    /// Try again.
+    pub retry: Box<dyn Fn()>,
+    /// Check for an update now.
+    pub check_now: Box<dyn Fn()>,
+}
+
 /// Opens, fills and closes the Settings window.
 pub struct SettingsWindowController {
     platform: Rc<dyn Platform>,
@@ -317,6 +404,13 @@ pub struct SettingsWindowController {
     /// Runs when About's Set up Vento again is pressed; main sets it to
     /// open the Welcome window.
     on_open_welcome: RefCell<Option<Box<dyn Fn()>>>,
+    /// Runs when About's What's new View is pressed.
+    on_open_whats_new: RefCell<Option<Box<dyn Fn()>>>,
+    /// What About's update row shows, for the next window and the open one,
+    /// and what its buttons do. Where there are no actions (this platform
+    /// does not update itself) the row and the automatic check are left out.
+    update: RefCell<AboutUpdateView>,
+    on_update: RefCell<Option<AboutUpdateActions>>,
     /// Whether another vento window (the Quick panel, the Info window) is
     /// open; main sets it. That window keeps the focus when this one closes.
     other_window_open: RefCell<Option<Box<dyn Fn() -> bool>>>,
@@ -365,6 +459,9 @@ impl SettingsWindowController {
             modifiers: Cell::new(ModifiersState::empty()),
             on_activated: RefCell::new(None),
             on_open_welcome: RefCell::new(None),
+            on_open_whats_new: RefCell::new(None),
+            update: RefCell::new(AboutUpdateView::default()),
+            on_update: RefCell::new(None),
             other_window_open: RefCell::new(None),
             this: this.clone(),
         });
@@ -395,6 +492,47 @@ impl SettingsWindowController {
         *self.on_open_welcome.borrow_mut() = Some(f);
     }
 
+    /// Has About's What's new View call `f`.
+    pub fn set_on_open_whats_new(&self, f: Box<dyn Fn()>) {
+        *self.on_open_whats_new.borrow_mut() = Some(f);
+    }
+
+    /// Turns About's update row and automatic check on, and has their
+    /// buttons call `actions`.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn set_on_update(&self, actions: AboutUpdateActions) {
+        *self.on_update.borrow_mut() = Some(actions);
+        if let Some(window) = self.existing() {
+            window.set_updates_supported(true);
+        }
+    }
+
+    /// Shows `view` on About's update row: now when the window exists, and
+    /// on every window made after.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn set_update(&self, view: AboutUpdateView) {
+        *self.update.borrow_mut() = view;
+        if let Some(window) = self.existing() {
+            self.show_update_on(&window);
+        }
+    }
+
+    fn show_update_on(&self, window: &SettingsWindow) {
+        let view = self.update.borrow();
+        window.set_update_kind(view.kind);
+        window.set_update_title(view.title.as_str().into());
+        window.set_update_detail(view.detail.as_str().into());
+        window.set_update_progress(view.progress);
+        window.set_update_can_retry(view.can_retry);
+    }
+
+    /// Runs the update action `pick` names, if updates are on.
+    fn run_update(&self, pick: impl Fn(&AboutUpdateActions) -> &dyn Fn()) {
+        if let Some(actions) = self.on_update.borrow().as_ref() {
+            pick(actions)();
+        }
+    }
+
     /// Has the window ask `f` whether another vento window is open as it
     /// closes: focus is then left with that window instead of handed back
     /// to the app that had it.
@@ -420,6 +558,8 @@ impl SettingsWindowController {
             let trigger_names: Vec<SharedString> = TRIGGER_NAMES.map(Into::into).into();
             window.set_trigger_names(ModelRc::from(trigger_names.as_slice()));
             window.set_version(env!("CARGO_PKG_VERSION").into());
+            window.set_updates_supported(self.on_update.borrow().is_some());
+            self.show_update_on(&window);
             let theme_names: Vec<SharedString> =
                 ThemeName::ALL.iter().map(|t| t.label().into()).collect();
             window.set_theme_names(ModelRc::from(theme_names.as_slice()));
@@ -494,6 +634,15 @@ impl SettingsWindowController {
             }
         });
         window.on_open_licenses(|| open_link(LICENSES_URL));
+        let this = self.this.clone();
+        window.on_open_whats_new(move || {
+            if let Some(controller) = this.upgrade()
+                && let Some(f) = controller.on_open_whats_new.borrow().as_ref()
+            {
+                f();
+            }
+        });
+        self.connect_update(window);
         self.connect_controls(window);
     }
 
@@ -672,6 +821,46 @@ impl SettingsWindowController {
         window.on_awake_start_chosen(move |i| {
             if let Some(controller) = this.upgrade() {
                 controller.apply(|s| choose_awake_start(s, i));
+            }
+        });
+    }
+
+    /// About's update row and the automatic check.
+    fn connect_update(&self, window: &SettingsWindow) {
+        let this = self.this.clone();
+        window.on_check_automatically_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.check_for_updates = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_check_now(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.check_now);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.update);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_cancel_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.cancel);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_notes_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.notes);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_retry_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.retry);
             }
         });
     }
@@ -1052,6 +1241,7 @@ impl SettingsWindowController {
         self.show_shots();
         window.set_awake_screen_off(settings.keep_awake_screen_off);
         self.show_awake(&window, &settings);
+        window.set_check_automatically(settings.check_for_updates);
         let closed: Vec<bool> = pages(true)
             .into_iter()
             .map(|page| settings.closed_how_to.iter().any(|k| k == page.key()))
@@ -1828,6 +2018,18 @@ fn apply_shortcut(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use vento_core::i18n::with_language;
+
+    #[test]
+    fn page_keys_round_trip() {
+        for page in pages(true) {
+            assert_eq!(Page::from_key(page.key()), Some(page), "{page:?}");
+        }
+        assert_eq!(Page::from_key("nothing"), None);
+        assert_eq!(Page::from_key(""), None);
+    }
+
     #[test]
     fn the_language_picker_maps_to_the_setting_and_back() {
         // Automatic first, then each language in the order Vento lists them.
@@ -1847,8 +2049,6 @@ mod tests {
             assert_eq!(language_index(&language_setting(i)), i);
         }
     }
-
-    use super::*;
 
     #[test]
     fn segmented_choices_map_both_ways() {
@@ -2554,5 +2754,108 @@ mod tests {
             h: 400.0,
         };
         assert_eq!(centred_on(&small, 680.0, 520.0), (0.0, 25.0));
+    }
+
+    fn running() -> Version {
+        Version::parse("0.3.0").unwrap()
+    }
+
+    /// Unix seconds of 2026-11-05 at the given time, UTC.
+    fn utc(hour: i8, minute: i8) -> i64 {
+        jiff::civil::date(2026, 11, 5)
+            .at(hour, minute, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap()
+            .timestamp()
+            .as_second()
+    }
+
+    fn view_at(state: &UpdateState, now: i64) -> AboutUpdateView {
+        about_update_view_in(state, running(), now, &TimeZone::UTC)
+    }
+
+    #[test]
+    fn up_to_date_says_when_it_last_checked_today() {
+        let state = UpdateState::UpToDate {
+            checked_at: Some(utc(10, 42)),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view.kind, 0);
+        assert_eq!(view.title, "You're up to date");
+        assert_eq!(view.detail, "Checked today at 10:42");
+    }
+
+    #[test]
+    fn an_earlier_day_reads_as_a_date() {
+        let state = UpdateState::UpToDate {
+            checked_at: Some(utc(23, 59) - 2 * 86_400),
+        };
+        let view = view_at(&state, utc(0, 5));
+        assert_eq!(view.detail, "Checked 3 Nov");
+    }
+
+    #[test]
+    fn up_to_date_with_no_check_yet_has_no_detail() {
+        let view = view_at(&UpdateState::UpToDate { checked_at: None }, utc(15, 0));
+        assert_eq!(view.kind, 0);
+        assert_eq!(view.detail, "");
+    }
+
+    #[test]
+    fn checked_today_reads_in_arabic() {
+        let state = UpdateState::UpToDate {
+            checked_at: Some(utc(10, 42)),
+        };
+        with_language("ar", || {
+            let view = view_at(&state, utc(15, 0));
+            assert!(view.detail.contains("10:42"), "{}", view.detail);
+            assert!(!view.detail.contains("Checked"), "{}", view.detail);
+        });
+    }
+
+    #[test]
+    fn the_system_zone_view_agrees_with_the_clock() {
+        let now = utc(15, 0);
+        let state = UpdateState::UpToDate {
+            checked_at: Some(now),
+        };
+        let view = about_update_view(&state, running(), now);
+        assert!(
+            view.detail.starts_with("Checked today at "),
+            "{}",
+            view.detail
+        );
+    }
+
+    #[test]
+    fn a_failed_check_is_kind_6_with_its_reason() {
+        let state = UpdateState::CheckFailed {
+            reason: "No connection".into(),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view.kind, 6);
+        assert_eq!(view.title, "Couldn't check for updates");
+        assert_eq!(view.detail, "No connection");
+    }
+
+    #[test]
+    fn a_check_under_way_is_kind_7() {
+        let view = view_at(&UpdateState::Checking, utc(15, 0));
+        assert_eq!(view.kind, 7);
+        assert_eq!(view.title, "Checking for updates\u{2026}");
+    }
+
+    #[test]
+    fn the_other_states_read_as_the_panel_does() {
+        // A failure the watcher recorded: no update known, yet Try again.
+        let state = UpdateState::Failed {
+            update: None,
+            version: Version::parse("0.4.0").unwrap(),
+            reason: "Vento didn't quit".into(),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view, crate::panel::update_view(&state, running()));
+        assert_eq!(view.kind, 5);
+        assert!(view.can_retry);
     }
 }

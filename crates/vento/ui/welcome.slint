@@ -42,7 +42,7 @@ component ScreenTitle inherits Text {
 
 // Text that wraps and is centred, as tall as its lines (as `WrapText` is,
 // at the start of the line).
-component CenteredText {
+export component CenteredText {
     in property <string> text;
     in property <length> font-size;
     in property <int> font-weight;
@@ -113,7 +113,7 @@ component StepDots inherits Rectangle {
 
 // A button with a filled face: the accent for the one the screen leads to
 // (`primary`), a field's colours for the others.
-component WelcomeButton inherits Rectangle {
+export component WelcomeButton inherits Rectangle {
     in property <string> label;
     in property <image> icon;
     in property <bool> has-icon;

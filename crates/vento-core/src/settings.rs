@@ -173,6 +173,10 @@ pub struct Settings {
     /// writes `false` only on a fresh install and opens the setup while it
     /// is `false`; a file without the key means `true`.
     pub welcome_done: bool,
+    /// Whether Vento looks for a new version on GitHub once a day (macOS).
+    /// `false` stops the daily check; Check now in About still works. A
+    /// file without the key means `true`.
+    pub check_for_updates: bool,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -251,6 +255,7 @@ impl Default for Settings {
             pdf_image_format: "png".to_owned(),
             pdf_image_dpi: 300,
             welcome_done: true,
+            check_for_updates: true,
         }
     }
 }
@@ -290,6 +295,7 @@ struct RawSettings {
     pdf_image_format: String,
     pdf_image_dpi: u32,
     welcome_done: bool,
+    check_for_updates: bool,
 }
 
 impl Default for RawSettings {
@@ -335,6 +341,7 @@ impl From<&Settings> for RawSettings {
             pdf_image_format: s.pdf_image_format.clone(),
             pdf_image_dpi: s.pdf_image_dpi,
             welcome_done: s.welcome_done,
+            check_for_updates: s.check_for_updates,
         }
     }
 }
@@ -439,6 +446,7 @@ impl From<RawSettings> for Settings {
             },
             pdf_image_dpi: if raw.pdf_image_dpi == 150 { 150 } else { 300 },
             welcome_done: raw.welcome_done,
+            check_for_updates: raw.check_for_updates,
         }
     }
 }
@@ -1239,6 +1247,27 @@ mod tests {
         .save(&p)
         .unwrap();
         assert!(!Settings::try_load(&p).unwrap().welcome_done);
+    }
+
+    #[test]
+    fn check_for_updates_defaults_on_and_round_trips_off() {
+        assert!(Settings::default().check_for_updates);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(&p, "layout = \"petals\"\n").unwrap();
+        assert!(Settings::try_load(&p).unwrap().check_for_updates);
+        Settings {
+            check_for_updates: false,
+            ..Settings::default()
+        }
+        .save(&p)
+        .unwrap();
+        assert!(!Settings::try_load(&p).unwrap().check_for_updates);
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("check_for_updates = false")
+        );
     }
 
     #[test]

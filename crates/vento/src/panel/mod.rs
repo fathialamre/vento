@@ -26,7 +26,9 @@ use slint::{
 };
 use vento_core::awake::{Chip, chip_text, default_until};
 use vento_core::geometry::{Point, Rect, screen_for};
-use vento_core::i18n::{tr, trn};
+use vento_core::i18n::{fill, tr, trn};
+use vento_core::update::state::UpdateState;
+use vento_core::update::version::Version;
 use vento_platform::Platform;
 
 use crate::appearance::{self, show_menu_colors};
@@ -68,6 +70,87 @@ const ARROW_BLEND: f64 = 3.0;
 /// the top edge all fit beside it.
 const ARROW_MARGIN: f64 = CORNER_RADIUS + ARROW_W / 2.0 + ARROW_BLEND;
 
+/// What the update card at the top of the panel shows: nothing (`kind` 0),
+/// an update on offer (1), a download under way (2), one ready to restart
+/// into (3), the restart itself (4) or a failure (5).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UpdateView {
+    pub kind: i32,
+    pub title: String,
+    pub detail: String,
+    /// The share of the download done, 0.0 to 1.0 (kind 2).
+    pub progress: f32,
+    /// Whether a failure (kind 5) offers Try again: it always does, so a
+    /// failure is never a dead end. Try again downloads the failed update
+    /// again when it is still known, and checks again when it is not.
+    pub can_retry: bool,
+}
+
+/// The card for `state`, in the interface language. `running` is the
+/// version of this copy, which a failure says it is still on.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn update_view(state: &UpdateState, running: Version) -> UpdateView {
+    let v = |version: Version| version.to_string();
+    let card = |kind, title: String, detail: String| UpdateView {
+        kind,
+        title,
+        detail,
+        ..UpdateView::default()
+    };
+    match state {
+        UpdateState::UpToDate { .. } | UpdateState::Checking | UpdateState::CheckFailed { .. } => {
+            UpdateView::default()
+        }
+        UpdateState::Available(update) => card(
+            1,
+            fill(&tr("Vento {v} is available"), &[("v", &v(update.version))]),
+            String::new(),
+        ),
+        UpdateState::Downloading { update, progress } => UpdateView {
+            progress: progress.clamp(0.0, 1.0),
+            ..card(
+                2,
+                fill(&tr("Downloading {v}\u{2026}"), &[("v", &v(update.version))]),
+                String::new(),
+            )
+        },
+        UpdateState::Ready(update) => card(
+            3,
+            tr("Ready to restart"),
+            fill(&tr("Vento {v} is downloaded"), &[("v", &v(update.version))]),
+        ),
+        UpdateState::Restarting(_) => card(
+            4,
+            tr("Restarting to finish\u{2026}"),
+            tr("Vento will be back in a second"),
+        ),
+        UpdateState::Failed { reason, .. } => UpdateView {
+            can_retry: true,
+            ..card(
+                5,
+                tr("Couldn't update"),
+                fill(
+                    &tr("Still on {running}. {reason}"),
+                    &[("running", &v(running)), ("reason", reason)],
+                ),
+            )
+        },
+    }
+}
+
+/// What the card's buttons and link do.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct UpdateActions {
+    /// Update, or Restart once the update is ready.
+    pub update: Box<dyn Fn()>,
+    /// Cancel the download.
+    pub cancel: Box<dyn Fn()>,
+    /// See what's new.
+    pub notes: Box<dyn Fn()>,
+    /// Try again.
+    pub retry: Box<dyn Fn()>,
+}
+
 /// Opens, places and closes the Quick panel.
 pub struct PanelController {
     platform: Rc<dyn Platform>,
@@ -99,9 +182,16 @@ pub struct PanelController {
     on_copy_from_screen: RefCell<Option<Box<dyn Fn()>>>,
     /// Opens the Settings window, for the footer's Settings….
     on_open_settings: RefCell<Option<Box<dyn Fn()>>>,
+    /// The update card the next window starts with.
+    update: RefCell<UpdateView>,
+    /// What the update card's buttons do.
+    on_update: RefCell<Option<UpdateActions>>,
     /// AppKit has been told to leave the window where vento puts it (needs
     /// the native window, which exists once the panel has been shown).
     frame_kept: Cell<bool>,
+    /// The icon the open panel hangs from, to place it again when its
+    /// height changes while it is open.
+    icon: Cell<Option<Rect>>,
     open: Cell<bool>,
     this: Weak<Self>,
 }
@@ -134,8 +224,11 @@ impl PanelController {
             on_pause,
             on_copy_from_screen: RefCell::new(None),
             on_open_settings: RefCell::new(None),
+            update: RefCell::new(UpdateView::default()),
+            on_update: RefCell::new(None),
             open: Cell::new(false),
             frame_kept: Cell::new(false),
+            icon: Cell::new(None),
             this: this.clone(),
         });
         // A saved change clears the load error: drop the notice with it,
@@ -181,6 +274,7 @@ impl PanelController {
             window.set_screen_text_supported(self.screen_text_supported);
             window.set_paused(self.paused.get());
             window.set_awake_times(ModelRc::from(self.awake_times.clone()));
+            self.show_update_on(&window);
             // A new native window: AppKit has yet to be told to keep it.
             self.frame_kept.set(false);
             self.connect(&window);
@@ -215,6 +309,7 @@ impl PanelController {
                 open();
             }
         });
+        self.connect_update(window);
         let this = self.this.clone();
         window.on_copy_from_screen_clicked(move || {
             let Some(panel) = this.upgrade() else { return };
@@ -273,6 +368,40 @@ impl PanelController {
             EventResult::Propagate
         });
         self.connect_awake(window);
+    }
+
+    /// Has the update card's buttons call what [`set_on_update`] was given.
+    ///
+    /// [`set_on_update`]: PanelController::set_on_update
+    fn connect_update(&self, window: &QuickPanel) {
+        let this = self.this.clone();
+        window.on_update_clicked(move || {
+            let Some(panel) = this.upgrade() else { return };
+            if let Some(actions) = panel.on_update.borrow().as_ref() {
+                (actions.update)();
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_cancel_clicked(move || {
+            let Some(panel) = this.upgrade() else { return };
+            if let Some(actions) = panel.on_update.borrow().as_ref() {
+                (actions.cancel)();
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_notes_clicked(move || {
+            let Some(panel) = this.upgrade() else { return };
+            if let Some(actions) = panel.on_update.borrow().as_ref() {
+                (actions.notes)();
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_retry_clicked(move || {
+            let Some(panel) = this.upgrade() else { return };
+            if let Some(actions) = panel.on_update.borrow().as_ref() {
+                (actions.retry)();
+            }
+        });
     }
 
     fn connect_awake(&self, window: &QuickPanel) {
@@ -382,6 +511,72 @@ impl PanelController {
         *self.on_open_settings.borrow_mut() = Some(open);
     }
 
+    /// Has the update card's buttons call `actions`.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn set_on_update(&self, actions: UpdateActions) {
+        *self.on_update.borrow_mut() = Some(actions);
+    }
+
+    /// Shows `view` on the update card: now when the window exists, and
+    /// on every window made after.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn set_update(&self, view: UpdateView) {
+        let resized = self.update.borrow().kind != view.kind;
+        *self.update.borrow_mut() = view;
+        if let Some(window) = self.existing() {
+            self.show_update_on(&window);
+            // The card coming, going or changing its rows changes the
+            // panel's height; AppKit would grow the window up from its
+            // bottom edge, under the menu bar.
+            if resized
+                && self.is_open()
+                && let Some(icon) = self.icon.get()
+            {
+                self.resize_and_place(&window, icon);
+            }
+        }
+    }
+
+    /// Gives the panel the height its content now asks for, hanging from
+    /// `icon`; returns where it put it.
+    fn resize_and_place(&self, window: &QuickPanel, icon: Rect) -> (f64, f64) {
+        let (x, y) = self.place(window, icon);
+        let height = window.get_window_height();
+        // Resize first, then move: AppKit keeps a window's bottom edge when
+        // it resizes, so the move must come after.
+        window
+            .window()
+            .set_size(slint::LogicalSize::new(WIDTH as f32, height));
+        window
+            .window()
+            .set_position(LogicalPosition::new(x as f32, y as f32));
+        (x, y)
+    }
+
+    /// Where the panel goes under `icon` at its current height; sets the
+    /// arrow on the way.
+    fn place(&self, window: &QuickPanel, icon: Rect) -> (f64, f64) {
+        let screens = self.platform.screens();
+        window.set_arrow_h(if hangs_under(icon, &screens) {
+            ARROW_H
+        } else {
+            0.0
+        });
+        let height = f64::from(window.get_window_height());
+        let Placement { x, y, arrow_x } = panel_position(icon, height, &screens);
+        window.set_arrow_x(arrow_x as f32);
+        (x, y)
+    }
+
+    fn show_update_on(&self, window: &QuickPanel) {
+        let view = self.update.borrow();
+        window.set_update_kind(view.kind);
+        window.set_update_title(view.title.as_str().into());
+        window.set_update_detail(view.detail.as_str().into());
+        window.set_update_progress(view.progress);
+        window.set_update_can_retry(view.can_retry);
+    }
+
     /// What the panel's Keep Awake shows and changes.
     pub fn keep_awake(&self) -> Rc<KeepAwake> {
         self.keep_awake.clone()
@@ -481,18 +676,11 @@ impl PanelController {
         let (hour, minute) = default_until(jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
         window.set_awake_until_hour(hour.into());
         window.set_awake_until_minute(minute.into());
-        let screens = self.platform.screens();
-        window.set_arrow_h(if hangs_under(icon, &screens) {
-            ARROW_H
-        } else {
-            0.0
-        });
-        let height = f64::from(window.get_window_height());
-        let Placement { x, y, arrow_x } = panel_position(icon, height, &screens);
-        window.set_arrow_x(arrow_x as f32);
-        window
-            .window()
-            .set_position(LogicalPosition::new(x as f32, y as f32));
+        // Sized before it is placed: a window kept hidden since its content
+        // changed (the update card) would otherwise take its new height
+        // after the move, growing up from its bottom edge.
+        let (x, y) = self.resize_and_place(&window, icon);
+        self.icon.set(Some(icon));
         self.open.set(true);
         // Shown faded out, then revealed on the next turn (see `revealed`).
         window.set_revealed(false);
@@ -738,7 +926,104 @@ fn contains(r: &Rect, p: Point) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use vento_core::update::release::{Asset, Update};
+
     use super::*;
+
+    fn update_of(v: &str) -> Update {
+        let asset = |name: &str| Asset {
+            name: name.into(),
+            url: format!("https://example.com/{name}"),
+            size: 10,
+        };
+        Update {
+            version: Version::parse(v).unwrap(),
+            notes: String::new(),
+            archive: asset("vento.zip"),
+            sums: asset("SHA256SUMS.txt"),
+        }
+    }
+
+    fn running() -> Version {
+        Version::parse("0.3.0").unwrap()
+    }
+
+    #[test]
+    fn up_to_date_has_no_banner() {
+        let view = update_view(&UpdateState::UpToDate { checked_at: None }, running());
+        assert_eq!(view.kind, 0);
+        assert_eq!(update_view(&UpdateState::Checking, running()).kind, 0);
+        let failed = UpdateState::CheckFailed {
+            reason: "offline".into(),
+        };
+        assert_eq!(update_view(&failed, running()).kind, 0);
+    }
+
+    #[test]
+    fn available_names_the_version() {
+        let view = update_view(&UpdateState::Available(update_of("0.4.0")), running());
+        assert_eq!(view.kind, 1);
+        assert_eq!(view.title, "Vento 0.4.0 is available");
+    }
+
+    #[test]
+    fn downloading_carries_progress() {
+        let state = UpdateState::Downloading {
+            update: update_of("0.4.0"),
+            progress: 0.5,
+        };
+        let view = update_view(&state, running());
+        assert_eq!(view.kind, 2);
+        assert_eq!(view.title, "Downloading 0.4.0\u{2026}");
+        assert!((view.progress - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn ready_says_the_download_is_done() {
+        let view = update_view(&UpdateState::Ready(update_of("0.4.0")), running());
+        assert_eq!(view.kind, 3);
+        assert_eq!(view.title, "Ready to restart");
+        assert_eq!(view.detail, "Vento 0.4.0 is downloaded");
+    }
+
+    #[test]
+    fn restarting_has_no_button_text() {
+        let view = update_view(&UpdateState::Restarting(update_of("0.4.0")), running());
+        assert_eq!(view.kind, 4);
+        assert_eq!(view.title, "Restarting to finish\u{2026}");
+        assert_eq!(view.detail, "Vento will be back in a second");
+    }
+
+    #[test]
+    fn failure_says_still_on_running_version() {
+        let state = UpdateState::Failed {
+            update: Some(update_of("0.4.0")),
+            version: Version::parse("0.4.0").unwrap(),
+            reason: "The download didn't match.".into(),
+        };
+        let view = update_view(&state, running());
+        assert_eq!(view.kind, 5);
+        assert_eq!(view.title, "Couldn't update");
+        assert!(
+            view.detail.starts_with("Still on 0.3.0."),
+            "{}",
+            view.detail
+        );
+        assert!(view.detail.ends_with("The download didn't match."));
+        assert!(view.can_retry);
+    }
+
+    #[test]
+    fn a_failure_without_its_update_still_offers_try_again() {
+        let state = UpdateState::Failed {
+            update: None,
+            version: Version::parse("0.4.0").unwrap(),
+            reason: "Vento didn't quit".into(),
+        };
+        let view = update_view(&state, running());
+        assert_eq!(view.kind, 5);
+        assert!(view.can_retry, "Try again checks again");
+    }
 
     #[test]
     fn a_click_on_the_panel_is_inside_it() {

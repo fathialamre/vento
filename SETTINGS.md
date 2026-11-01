@@ -166,6 +166,10 @@ closed_how_to = []
 # true once the Welcome setup was finished, skipped or closed; Vento writes
 # false only on a fresh install, and opens the setup while it is false
 welcome_done = true
+
+# Look for a new version on GitHub once a day (macOS). false stops the daily
+# check; Settings → About → Check now still works
+check_for_updates = true
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

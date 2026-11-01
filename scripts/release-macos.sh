@@ -50,4 +50,9 @@ ditto target/release/vento.dSYM "$out/$name.dSYM"
 
 (cd "$out" && ditto -c -k --norsrc --noextattr --noacl --keepParent "$name" "$zip")
 
+# Checksums the in-app updater verifies the download against; published next
+# to the zip.
+(cd "$out" && shasum -a 256 "$zip" >SHA256SUMS.txt)
+
 echo "$out/$zip"
+echo "$out/SHA256SUMS.txt"
