@@ -14,7 +14,6 @@
 pub mod form;
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -87,6 +86,9 @@ pub struct RenameController {
     /// `Some` while the window is open.
     shown: RefCell<Option<Shown>>,
     history: RefCell<RuleHistory>,
+    /// The rule whose popover edits are under way: its next edits join
+    /// the history entry its first edit made.
+    editing: Cell<Option<usize>>,
     /// A rename started from this list is running.
     busy: Cell<bool>,
     /// Counts drops; items read for an older one are dropped.
@@ -120,6 +122,7 @@ impl RenameController {
             chips: Rc::new(VecModel::default()),
             shown: RefCell::new(None),
             history: RefCell::new(RuleHistory::default()),
+            editing: Cell::new(None),
             busy: Cell::new(false),
             loads: Cell::new(0),
             list: Cell::new(0),
@@ -192,6 +195,7 @@ impl RenameController {
             .map(|shown| (shown.rules, shown.order));
         let (rules, order) = kept.unwrap_or_else(|| {
             self.history.borrow_mut().clear();
+            self.editing.set(None);
             let memory = self.settings.current().rename;
             (memory.rules, memory.order)
         });
@@ -373,6 +377,7 @@ impl RenameController {
     }
 
     fn close_popover(&self) {
+        self.editing.set(None);
         if let Some(window) = self.window.get() {
             window.set_open_rule(-1);
         }
@@ -387,6 +392,7 @@ impl RenameController {
             let rule = shown.rules.get(usize::try_from(i).ok()?)?;
             Some(rule_to_form(rule))
         });
+        self.editing.set(None);
         if let (Some(form), Some(window)) = (form, self.window.get()) {
             // The form first: the popover drawn for `open-rule` reads it.
             window.set_form(form);
@@ -397,7 +403,7 @@ impl RenameController {
     /// A tool's rule, added at the end with its popover open.
     fn add_rule(&self, kind: i32) {
         let rule = default_rule(kind);
-        let Some(i) = self.change_rules(|rules| {
+        let Some(i) = self.change_rules(None, |rules| {
             rules.push(rule.clone());
             Some(rules.len() - 1)
         }) else {
@@ -412,7 +418,7 @@ impl RenameController {
     /// Rule `i` removed; its popover closes, a later rule's keeps its place.
     fn remove_rule(&self, i: i32) {
         let Ok(at) = usize::try_from(i) else { return };
-        let removed = self.change_rules(|rules| {
+        let removed = self.change_rules(None, |rules| {
             (at < rules.len()).then(|| {
                 rules.remove(at);
             })
@@ -435,16 +441,21 @@ impl RenameController {
         let Ok(at) = usize::try_from(self.open_popover()) else {
             return;
         };
-        self.change_rules(|rules| {
+        self.change_rules(Some(at), |rules| {
             let slot = rules.get_mut(at)?;
             (*slot != rule).then(|| *slot = rule)
         });
     }
 
     /// Runs `change` on the rules; when it says it changed them (`Some`),
-    /// the rules before go in the history and the list is previewed again.
-    /// Nothing changes while a rename runs.
-    fn change_rules<R>(&self, change: impl FnOnce(&mut Vec<Rule>) -> Option<R>) -> Option<R> {
+    /// the rules before go in the history (unless `edit`, the rule a
+    /// popover edits, is already being edited) and the list is previewed
+    /// again. Nothing changes while a rename runs.
+    fn change_rules<R>(
+        &self,
+        edit: Option<usize>,
+        change: impl FnOnce(&mut Vec<Rule>) -> Option<R>,
+    ) -> Option<R> {
         if self.busy.get() {
             return None;
         }
@@ -453,7 +464,9 @@ impl RenameController {
             let shown = shown.as_mut()?;
             let before = shown.rules.clone();
             let result = change(&mut shown.rules)?;
-            self.history.borrow_mut().record(before);
+            let mut editing = self.editing.get();
+            record_change(&mut self.history.borrow_mut(), &mut editing, edit, before);
+            self.editing.set(editing);
             result
         };
         self.refresh();
@@ -465,6 +478,7 @@ impl RenameController {
         if self.busy.get() {
             return;
         }
+        self.editing.set(None);
         let Some(rules) = self.history.borrow_mut().undo() else {
             return;
         };
@@ -521,7 +535,8 @@ impl RenameController {
         let Some(shown) = shown.as_ref() else { return };
         let items = shown.batch.items.len();
         set_rows(&self.rows, rows_of(&shown.batch, &shown.preview, Os::HOST));
-        self.chips.set_vec(
+        set_rows(
+            &self.chips,
             shown
                 .rules
                 .iter()
@@ -639,48 +654,58 @@ impl RenameController {
         self.set_busy(false);
         match outcome {
             RenameOutcome::Done(_) => self.hide(),
-            RenameOutcome::Changed => self.reread_taken(),
+            RenameOutcome::Changed => self.reload(),
             RenameOutcome::Failed { .. } => self.push(),
         }
     }
 
-    /// Reads the folders' names again on a worker thread, then previews
-    /// the list with them.
-    fn reread_taken(&self) {
-        let Some(items) = self
-            .shown
-            .borrow()
-            .as_ref()
-            .map(|shown| shown.batch.items.clone())
-        else {
+    /// Reads the list's items and their folders' names again on a worker
+    /// thread (an item renamed or deleted since drops out), then previews
+    /// the list with them, in the order and with the rules it has then.
+    fn reload(&self) {
+        let Some(paths) = self.shown.borrow().as_ref().map(|shown| {
+            shown
+                .batch
+                .items
+                .iter()
+                .map(|item| item.path.clone())
+                .collect::<Vec<_>>()
+        }) else {
             return;
         };
         let list = self.list.get();
         let spawned = std::thread::Builder::new()
-            .name("vento-rename-taken".into())
+            .name("vento-rename-reload".into())
             .spawn(move || {
+                let items = load_items(&paths);
                 let taken = read_taken(&items, &RealDisk);
                 let result = slint::invoke_from_event_loop(move || {
                     if let Some(controller) = MAIN_RENAME.with(|slot| slot.borrow().upgrade()) {
-                        controller.retaken(list, taken);
+                        controller.reloaded(list, Batch { items, taken });
                     }
                 });
                 if let Err(e) = result {
-                    warn!("cannot hand the folders' names to the rename window: {e}");
+                    warn!("cannot hand the items to the rename window: {e}");
                 }
             });
         if let Err(e) = spawned {
-            warn!("cannot start reading the folders again: {e}");
+            warn!("cannot start reading the items again: {e}");
         }
     }
 
-    /// The folders' names read again for `list`.
-    fn retaken(&self, list: u64, taken: HashMap<PathBuf, Vec<String>>) {
+    /// The items read again for `list`; when none is left, the window
+    /// closes.
+    fn reloaded(&self, list: u64, mut batch: Batch) {
         if list != self.list.get() {
             return;
         }
+        if batch.items.is_empty() {
+            self.hide();
+            return;
+        }
         if let Some(shown) = self.shown.borrow_mut().as_mut() {
-            shown.batch.taken = taken;
+            sort_items(&mut batch.items, shown.order);
+            shown.batch = batch;
         }
         self.refresh();
     }
@@ -697,6 +722,7 @@ impl RenameController {
         self.list.set(self.list.get() + 1);
         self.set_busy(false);
         self.history.borrow_mut().clear();
+        self.editing.set(None);
         self.rows.set_vec(Vec::new());
         self.chips.set_vec(Vec::new());
         if let Some(window) = self.window.get() {
@@ -723,10 +749,25 @@ impl RenameController {
     }
 }
 
-/// Whether a rule's chip warns: it does nothing yet, or its template has a
-/// tag vento does not know.
+/// Puts `before` (the rules before a change) in the history, unless the
+/// change is another edit of the rule already being edited, so a popover's
+/// edits undo as one change. `edit` is the rule a popover edits, `None` for
+/// an add or a removal; `editing` becomes it.
+fn record_change(
+    history: &mut RuleHistory,
+    editing: &mut Option<usize>,
+    edit: Option<usize>,
+    before: Vec<Rule>,
+) {
+    if edit.is_none() || *editing != edit {
+        history.record(before);
+    }
+    *editing = edit;
+}
+
+/// Whether a rule's chip warns: its template has a tag vento does not know.
 fn warns(rule: &Rule) -> bool {
-    rule.is_empty() || matches!(rule, Rule::Template { text } if !unknown_tags(text).is_empty())
+    matches!(rule, Rule::Template { text } if !unknown_tags(text).is_empty())
 }
 
 /// The footer while a rename runs.
@@ -742,8 +783,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_rules_and_unknown_tags_warn() {
-        assert!(warns(&default_rule(0)));
+    fn a_popovers_edits_undo_as_one_change() {
+        let r = |text: &str| Rule::Add {
+            text: text.into(),
+            after: false,
+        };
+        let mut history = RuleHistory::default();
+        let mut editing = None;
+        // Added, then three edits of rule 0.
+        record_change(&mut history, &mut editing, None, vec![]);
+        record_change(&mut history, &mut editing, Some(0), vec![r("")]);
+        record_change(&mut history, &mut editing, Some(0), vec![r("a")]);
+        record_change(&mut history, &mut editing, Some(0), vec![r("ab")]);
+        assert_eq!(history.undo(), Some(vec![r("")]));
+        assert_eq!(history.undo(), Some(vec![]));
+        assert_eq!(history.undo(), None);
+
+        // Rule 0 edited, rule 1's popover opened (the marker reset), edited.
+        let mut editing = None;
+        record_change(&mut history, &mut editing, Some(0), vec![r("x"), r("y")]);
+        editing = None;
+        record_change(&mut history, &mut editing, Some(1), vec![r("x0"), r("y")]);
+        assert_eq!(history.undo(), Some(vec![r("x0"), r("y")]));
+        assert_eq!(history.undo(), Some(vec![r("x"), r("y")]));
+        assert_eq!(history.undo(), None);
+
+        // Editing another rule without a reset starts a new entry too.
+        let mut editing = Some(0);
+        record_change(&mut history, &mut editing, Some(1), vec![r("z")]);
+        assert_eq!(editing, Some(1));
+        assert_eq!(history.undo(), Some(vec![r("z")]));
+    }
+
+    #[test]
+    fn only_unknown_tags_warn() {
+        assert!(!warns(&default_rule(0)));
+        assert!(!warns(&Rule::Template {
+            text: String::new()
+        }));
         assert!(!warns(&Rule::new_number()));
         assert!(warns(&Rule::Template {
             text: "{nope}".into()
