@@ -240,7 +240,7 @@ fn execute_with(
             log::warn!("rename: {} -> {}: {e}", from.display(), to.display());
             return RenameOutcome::Failed {
                 path: failed.clone(),
-                reason: e.to_string(),
+                reason: crate::i18n::errors::io_reason(&e),
                 stuck: roll_back(steps, &tmps, at, disk),
             };
         }

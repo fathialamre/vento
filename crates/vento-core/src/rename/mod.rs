@@ -2,12 +2,17 @@
 //! two-phase rename itself (no OS-specific code).
 
 mod items;
+mod labels;
 mod name;
 mod preview;
 mod rules;
 mod run;
 
 pub use items::{Item, MAX_ITEMS, Order, OrderBy, load_items, sort_items};
+pub use labels::{
+    changed_text, chip_summary, chip_title, done_text, failed_text, footer_text, order_label,
+    problem_text, stuck_text, title_text, too_many_text, undo_text,
+};
 pub use name::{NameParts, Os, join_name, name_key, natural_cmp, nfc, split_name};
 pub use preview::{Batch, Preview, Problem, Row, check_name, preview, read_taken};
 pub use rules::{CaseTo, Ctx, ExtTo, Rule, RuleHistory, apply_rules, unknown_tags};
