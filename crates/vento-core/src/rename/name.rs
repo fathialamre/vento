@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::{IsNormalized, UnicodeNormalization, is_nfc_quick};
 
 /// The operating system whose naming rules apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,14 +68,26 @@ pub fn join_name(parts: &NameParts) -> String {
 
 /// Normalises `s` to Unicode NFC.
 pub fn nfc(s: &str) -> String {
+    if is_nfc_quick(s.chars()) == IsNormalized::Yes {
+        return s.to_string();
+    }
     s.nfc().collect()
 }
 
 /// The key under which names collide on `os`: NFC, lower-cased where the system ignores case.
 pub fn name_key(name: &str, os: Os) -> String {
+    if name.is_ascii() {
+        // ASCII is already NFC, and stays so when lowercased.
+        return if os.case_insensitive() {
+            name.to_ascii_lowercase()
+        } else {
+            name.to_string()
+        };
+    }
     let n = nfc(name);
     if os.case_insensitive() {
-        n.to_lowercase()
+        // Lowercasing can leave marks out of canonical order (`İ`), so normalise again.
+        nfc(&n.to_lowercase())
     } else {
         n
     }
@@ -187,5 +199,18 @@ mod tests {
             name_key("a.jpg", Os::Windows)
         );
         assert_ne!(name_key("A.JPG", Os::Linux), name_key("a.jpg", Os::Linux));
+    }
+
+    #[test]
+    fn keys_stay_nfc_after_lowercasing() {
+        // `İ` lowercases to `i` + combining dot above (ccc 230), which then sits
+        // before U+0316 (ccc 220): out of canonical order until normalised again.
+        let k = name_key("\u{0130}\u{0316}", Os::Mac);
+        assert!(unicode_normalization::is_nfc(&k));
+        assert_eq!(k, "i\u{0316}\u{0307}");
+        assert_eq!(
+            name_key("\u{0130}", Os::Windows),
+            name_key("i\u{0307}", Os::Windows)
+        );
     }
 }
