@@ -65,6 +65,10 @@ pub fn load_items(paths: &[PathBuf]) -> Vec<Item> {
         if !seen.insert(path.clone()) {
             continue;
         }
+        // `/`, `.`, `..` and `foo/..` have no name to change.
+        if path.file_name().is_none() {
+            continue;
+        }
         let Ok(meta) = fs::symlink_metadata(&path) else {
             continue;
         };
@@ -219,6 +223,42 @@ mod tests {
         assert_eq!(names(&items), ["d", "y", "x", "z"]);
         sort_items(&mut items, order(OrderBy::Size, true));
         assert_eq!(names(&items), ["d", "z", "x", "y"]);
+    }
+
+    #[test]
+    fn load_items_leaves_out_paths_without_a_file_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = file(tmp.path(), "a.txt", 1, 0);
+        let paths = vec![
+            PathBuf::from("/"),
+            PathBuf::from(".."),
+            PathBuf::from("."),
+            tmp.path().join(".."),
+            a,
+        ];
+        let items = load_items(&paths);
+        assert_eq!(names(&items), ["a.txt"]);
+    }
+
+    #[test]
+    fn name_order_reversed_keeps_folders_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut paths = vec![
+            file(tmp.path(), "IMG_10", 1, 0),
+            file(tmp.path(), "IMG_2", 1, 0),
+        ];
+        for d in ["b", "A"] {
+            let p = tmp.path().join(d);
+            fs::create_dir(&p).unwrap();
+            paths.push(p);
+        }
+        let mut items = load_items(&paths);
+        let order = Order {
+            by: OrderBy::Name,
+            reverse: true,
+        };
+        sort_items(&mut items, order);
+        assert_eq!(names(&items), ["b", "A", "IMG_10", "IMG_2"]);
     }
 
     #[test]
