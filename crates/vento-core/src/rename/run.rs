@@ -32,6 +32,9 @@ pub trait Disk: Sync {
 }
 
 /// The real disk, through `std::fs`.
+///
+/// On macOS and Linux a rename fails with [`io::ErrorKind::AlreadyExists`] instead
+/// of replacing an item at the target; elsewhere [`rename_new`]'s check is the guard.
 pub struct RealDisk;
 
 impl Disk for RealDisk {
@@ -40,7 +43,18 @@ impl Disk for RealDisk {
     }
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
-        fs::rename(from, to)
+        #[cfg(target_os = "macos")]
+        {
+            rename_excl_mac(from, to)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            rename_noreplace_linux(from, to)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            fs::rename(from, to)
+        }
     }
 
     fn names_in(&self, dir: &Path) -> io::Result<Vec<String>> {
@@ -62,6 +76,57 @@ impl Disk for RealDisk {
             is_dir,
         })
     }
+}
+
+/// `p` as a C string; a path holding a NUL byte can't be one.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn c_path(p: &Path) -> io::Result<std::ffi::CString> {
+    use std::os::unix::ffi::OsStrExt;
+    std::ffi::CString::new(p.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL byte"))
+}
+
+/// Renames without replacing: `EEXIST` when something is at `to`. A file system
+/// that can't refuse (`ENOTSUP`) gets a plain rename, guarded by [`rename_new`].
+#[cfg(target_os = "macos")]
+fn rename_excl_mac(from: &Path, to: &Path) -> io::Result<()> {
+    let (f, t) = (c_path(from)?, c_path(to)?);
+    // SAFETY: both pointers are NUL-terminated strings that live until the call returns.
+    if unsafe { libc::renamex_np(f.as_ptr(), t.as_ptr(), libc::RENAME_EXCL) } == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ENOTSUP) {
+        return fs::rename(from, to);
+    }
+    Err(err)
+}
+
+/// Renames without replacing: `EEXIST` when something is at `to`. A file system
+/// or kernel that can't refuse (`EINVAL`, `ENOSYS`) gets a plain rename, guarded
+/// by [`rename_new`].
+#[cfg(target_os = "linux")]
+fn rename_noreplace_linux(from: &Path, to: &Path) -> io::Result<()> {
+    let (f, t) = (c_path(from)?, c_path(to)?);
+    // SAFETY: both pointers are NUL-terminated strings that live until the call
+    // returns; `AT_FDCWD` makes them relative to the working folder like `fs::rename`.
+    let rc = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            f.as_ptr(),
+            libc::AT_FDCWD,
+            t.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if matches!(err.raw_os_error(), Some(libc::EINVAL | libc::ENOSYS)) {
+        return fs::rename(from, to);
+    }
+    Err(err)
 }
 
 /// What an item looked like right after it was renamed, so Undo can tell it is the same one.
@@ -934,6 +999,42 @@ mod tests {
         assert_eq!((d.len, d.is_dir), (0, true));
     }
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn real_disk_rename_refuses_to_replace() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        fs::write(&a, "A").unwrap();
+        fs::write(&b, "B").unwrap();
+        let err = RealDisk.rename(&a, &b).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists, "{err}");
+        assert_eq!(fs::read_to_string(&a).unwrap(), "A");
+        assert_eq!(fs::read_to_string(&b).unwrap(), "B");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn real_disk_rename_moves_to_a_free_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, c) = (dir.path().join("a"), dir.path().join("c"));
+        fs::write(&a, "A").unwrap();
+        RealDisk.rename(&a, &c).unwrap();
+        assert!(!a.exists());
+        assert_eq!(fs::read_to_string(&c).unwrap(), "A");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn real_disk_rename_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let (d, e) = (dir.path().join("d"), dir.path().join("e"));
+        fs::create_dir(&d).unwrap();
+        fs::write(d.join("inside"), "in").unwrap();
+        RealDisk.rename(&d, &e).unwrap();
+        assert!(!d.exists());
+        assert_eq!(fs::read_to_string(e.join("inside")).unwrap(), "in");
+    }
+
     #[test]
     fn steps_follow_the_preview() {
         use super::super::items::Item;
@@ -1081,6 +1182,36 @@ mod tests {
         let out = undo(&record, &disk, Os::Linux);
         assert_eq!((out.put_back, out.skipped), (0, 2));
         assert_eq!(disk.calls(), 4);
+    }
+
+    #[test]
+    fn undo_skips_both_sides_of_a_swap_when_one_changed() {
+        let disk = FakeDisk::new(&["/t/a", "/t/b"]);
+        let record = renamed(&[step("/t/a", "/t/b"), step("/t/b", "/t/a")], &disk);
+        // Another item now sits at "a": b can't go back, so a's old name stays held.
+        disk.remove("/t/a");
+        disk.add("/t/a");
+        let after = disk.paths();
+        let calls = disk.calls();
+        let out = undo(&record, &disk, Os::Linux);
+        assert_eq!((out.put_back, out.skipped), (0, 2));
+        assert!(out.failed.is_none(), "{out:?}");
+        assert_eq!(disk.paths(), after);
+        assert_eq!(disk.calls(), calls);
+    }
+
+    #[test]
+    fn undo_case_only_rename_on_mac() {
+        let disk = FakeDisk::insensitive(&["/t/a.JPG"]);
+        let (out, _) = run(&[step("/t/a.JPG", "/t/a.jpg")], &disk, Os::Mac);
+        let RenameOutcome::Done(record) = out else {
+            panic!("{out:?}");
+        };
+        assert_eq!(disk.paths(), set(&["/t/a.jpg"]));
+        let out = undo(&record, &disk, Os::Mac);
+        assert_eq!((out.put_back, out.skipped), (1, 0));
+        assert!(out.failed.is_none(), "{out:?}");
+        assert_eq!(disk.paths(), set(&["/t/a.JPG"]));
     }
 
     #[test]
