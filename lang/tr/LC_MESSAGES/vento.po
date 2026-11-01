@@ -1215,7 +1215,7 @@ msgstr "Yeniden adlandırılacak bir şey yok"
 msgid "Nothing: removes it"
 msgstr "Hiçbir şey: metni siler"
 
-#: crates/vento/ui/rename.slint:802
+#: crates/vento/ui/rename.slint:806
 msgid "* for the whole name"
 msgstr "* adın tamamı için"
 

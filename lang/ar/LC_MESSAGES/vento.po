@@ -1279,7 +1279,7 @@ msgstr "لا يوجد شيء لإعادة تسميته"
 msgid "Nothing: removes it"
 msgstr "لا شيء: يحذفه"
 
-#: crates/vento/ui/rename.slint:802
+#: crates/vento/ui/rename.slint:806
 msgid "* for the whole name"
 msgstr "* للاسم كامل"
 

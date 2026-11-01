@@ -770,299 +770,303 @@ export component RenameWindow inherits Window {
                     }
 
                     panel-flick := Flickable {
-                        content-height: max(self.height, pop-col.preferred-height);
+                        content-height: pop-col.height;
 
-                    pop-col := VerticalLayout {
+                        pop-col := VerticalLayout {
                             width: panel-flick.width;
+                            // At least the panel's height, so it never caps how tall the
+                            // window's layout may grow; the rows stay at the top.
+                            height: max(panel-flick.height, self.preferred-height);
+                            alignment: start;
 
-                        padding: 14px;
-                        spacing: 6px;
+                            padding: 14px;
+                            spacing: 6px;
 
-                        if root.rule-open: PopoverHead {
-                            icon: root.kind-icons[root.form.kind];
-                            title: root.kind-titles[root.form.kind];
-                            subtitle: root.kind-hints[root.form.kind];
-                        }
-
-                        if root.open-rule == -2: PopoverHead {
-                            icon: @image-url("icons/arrows-sort.svg");
-                            title: @tr("Order");
-                            subtitle: @tr("The list and the numbers follow it");
-                        }
-
-                        Rectangle { height: 6px; }
-
-                        // Replace: Find, Replace with, Match case.
-                        if root.rule-open && root.form.kind == 0: VerticalLayout {
-                            spacing: 8px;
-
-                            LabeledField {
-                                label: @tr("Find");
-                                value: root.form.find;
-                                placeholder: @tr("* for the whole name");
-                                autofocus: true;
-                                edited(text) => {
-                                    root.form.find = text;
-                                    root.send();
-                                }
+                            if root.rule-open: PopoverHead {
+                                icon: root.kind-icons[root.form.kind];
+                                title: root.kind-titles[root.form.kind];
+                                subtitle: root.kind-hints[root.form.kind];
                             }
 
-                            LabeledField {
-                                label: @tr("Replace with");
-                                value: root.form.with;
-                                placeholder: @tr("Nothing: removes it");
-                                edited(text) => {
-                                    root.form.with = text;
-                                    root.send();
-                                }
+                            if root.open-rule == -2: PopoverHead {
+                                icon: @image-url("icons/arrows-sort.svg");
+                                title: @tr("Order");
+                                subtitle: @tr("The list and the numbers follow it");
                             }
 
-                            SwitchLine {
-                                label: @tr("Match case");
-                                on: root.form.match-case;
-                                toggled(on) => {
-                                    root.form.match-case = on;
-                                    root.send();
-                                }
-                            }
-                        }
+                            Rectangle { height: 6px; }
 
-                        // Add: the text, before or after the name.
-                        if root.rule-open && root.form.kind == 1: VerticalLayout {
-                            spacing: 8px;
-
-                            LabeledField {
-                                label: @tr("Text");
-                                value: root.form.text;
-                                autofocus: true;
-                                edited(text) => {
-                                    root.form.text = text;
-                                    root.send();
-                                }
-                            }
-
-                            ChoicePair {
-                                first: @tr("Before name");
-                                first-detail: root.form.text + @tr("name");
-                                second: @tr("After name");
-                                second-detail: @tr("name") + root.form.text;
-                                second-on: root.form.after;
-                                chosen(after) => {
-                                    root.form.after = after;
-                                    root.send();
-                                }
-                            }
-                        }
-
-                        // Number: before or after the name, Start, Digits, Separator.
-                        if root.rule-open && root.form.kind == 2: VerticalLayout {
-                            spacing: 10px;
-
-                            ChoicePair {
-                                first: @tr("Before name");
-                                first-detail: root.padded(root.form.start, root.form.digits) + root.form.separator + @tr("name");
-                                second: @tr("After name");
-                                second-detail: @tr("name") + root.form.separator + root.padded(root.form.start, root.form.digits);
-                                second-on: root.form.after;
-                                chosen(after) => {
-                                    root.form.after = after;
-                                    root.send();
-                                }
-                            }
-
-                            HorizontalLayout {
+                            // Replace: Find, Replace with, Match case.
+                            if root.rule-open && root.form.kind == 0: VerticalLayout {
                                 spacing: 8px;
 
                                 LabeledField {
-                                    layout-order: Theme.rtl ? 2 : 0;
-                                    horizontal-stretch: 1;
-                                    label: @tr("Start");
-                                    value: root.form.start;
+                                    label: @tr("Find");
+                                    value: root.form.find;
+                                    placeholder: @tr("* for the whole name");
+                                    autofocus: true;
                                     edited(text) => {
-                                        if (text.is-float()) {
-                                            root.form.start = max(0, round(text.to-float()));
-                                            root.send();
-                                        }
+                                        root.form.find = text;
+                                        root.send();
                                     }
                                 }
 
                                 LabeledField {
-                                    layout-order: Theme.rtl ? 1 : 1;
-                                    horizontal-stretch: 1;
-                                    label: @tr("Digits");
-                                    value: root.form.digits;
+                                    label: @tr("Replace with");
+                                    value: root.form.with;
+                                    placeholder: @tr("Nothing: removes it");
                                     edited(text) => {
-                                        if (text.is-float()) {
-                                            root.form.digits = max(1, min(6, round(text.to-float())));
-                                            root.send();
-                                        }
+                                        root.form.with = text;
+                                        root.send();
                                     }
                                 }
 
-                                LabeledField {
-                                    layout-order: Theme.rtl ? 0 : 2;
-                                    horizontal-stretch: 1;
-                                    label: @tr("Separator");
-                                    value: root.form.separator;
-                                    edited(text) => {
-                                        root.form.separator = text;
+                                SwitchLine {
+                                    label: @tr("Match case");
+                                    on: root.form.match-case;
+                                    toggled(on) => {
+                                        root.form.match-case = on;
                                         root.send();
                                     }
                                 }
                             }
-                        }
 
-                        // Case: one of five.
-                        if root.rule-open && root.form.kind == 3: VerticalLayout {
-                            spacing: 4px;
+                            // Add: the text, before or after the name.
+                            if root.rule-open && root.form.kind == 1: VerticalLayout {
+                                spacing: 8px;
 
-                            for title[i] in [@tr("lowercase"), @tr("UPPERCASE"), @tr("Title Case"), @tr("kebab-case"), @tr("snake_case")]: OptionRow {
-                                title: title;
-                                detail: [
-                                    @tr("Case example" => "my trip photo"),
-                                    @tr("Case example" => "MY TRIP PHOTO"),
-                                    @tr("Case example" => "My Trip Photo"),
-                                    @tr("Case example" => "my-trip-photo"),
-                                    @tr("Case example" => "my_trip_photo"),
-                                ][i];
-                                on: root.form.choice == i;
-                                chosen => {
-                                    root.form.choice = i;
-                                    root.send();
-                                }
-                            }
-                        }
-
-                        // Extension: one of four, the new one typed for "Replace
-                        // with", and what the rule does not do.
-                        if root.rule-open && root.form.kind == 4: VerticalLayout {
-                            spacing: 4px;
-
-                            OptionRow {
-                                title: @tr("lowercase");
-                                detail: ".jpg";
-                                on: root.form.choice == 0;
-                                chosen => {
-                                    root.form.choice = 0;
-                                    root.send();
-                                }
-                            }
-
-                            OptionRow {
-                                title: @tr("UPPERCASE");
-                                detail: ".JPG";
-                                on: root.form.choice == 1;
-                                chosen => {
-                                    root.form.choice = 1;
-                                    root.send();
-                                }
-                            }
-
-                            OptionRow {
-                                title: @tr("Replace with…");
-                                detail: @tr("Without the dot");
-                                on: root.form.choice == 2;
-                                chosen => {
-                                    root.form.choice = 2;
-                                    root.send();
-                                }
-
-                                Field {
-                                    width: 96px;
-                                    label: @tr("New extension");
+                                LabeledField {
+                                    label: @tr("Text");
                                     value: root.form.text;
-                                    enabled: root.form.choice == 2;
-                                    autofocus: root.form.choice == 2;
+                                    autofocus: true;
                                     edited(text) => {
                                         root.form.text = text;
                                         root.send();
                                     }
                                 }
-                            }
 
-                            OptionRow {
-                                title: @tr("Remove");
-                                detail: @tr("No extension");
-                                on: root.form.choice == 3;
-                                chosen => {
-                                    root.form.choice = 3;
-                                    root.send();
-                                }
-                            }
-
-                            Rectangle { height: 2px; }
-
-                            Text {
-                                text: @tr("Only the name changes: the file is not converted.");
-                                font-size: 11.5px;
-                                color: Theme.muted;
-                                wrap: word-wrap;
-                                horizontal-alignment: Theme.rtl ? right : left;
-                            }
-                        }
-
-                        // Template: the text, and a button per token that adds it.
-                        if root.rule-open && root.form.kind == 5: VerticalLayout {
-                            spacing: 8px;
-
-                            Field {
-                                label: @tr("Template");
-                                value: root.form.text;
-                                placeholder: "{name}-{n:3}";
-                                autofocus: true;
-                                edited(text) => {
-                                    root.form.text = text;
-                                    root.send();
-                                }
-                            }
-
-                            HorizontalLayout {
-                                spacing: 4px;
-                                alignment: Theme.rtl ? end : start;
-
-                                for token[i] in ["{name}", "{n}", "{n:3}", "{folder}", "{modified}"]: TokenButton {
-                                    layout-order: Theme.rtl ? -i : 0;
-                                    token: token;
-                                    clicked => {
-                                        root.form.text = root.form.text + token;
+                                ChoicePair {
+                                    first: @tr("Before name");
+                                    first-detail: root.form.text + @tr("name");
+                                    second: @tr("After name");
+                                    second-detail: @tr("name") + root.form.text;
+                                    second-on: root.form.after;
+                                    chosen(after) => {
+                                        root.form.after = after;
                                         root.send();
                                     }
                                 }
                             }
+
+                            // Number: before or after the name, Start, Digits, Separator.
+                            if root.rule-open && root.form.kind == 2: VerticalLayout {
+                                spacing: 10px;
+
+                                ChoicePair {
+                                    first: @tr("Before name");
+                                    first-detail: root.padded(root.form.start, root.form.digits) + root.form.separator + @tr("name");
+                                    second: @tr("After name");
+                                    second-detail: @tr("name") + root.form.separator + root.padded(root.form.start, root.form.digits);
+                                    second-on: root.form.after;
+                                    chosen(after) => {
+                                        root.form.after = after;
+                                        root.send();
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    LabeledField {
+                                        layout-order: Theme.rtl ? 2 : 0;
+                                        horizontal-stretch: 1;
+                                        label: @tr("Start");
+                                        value: root.form.start;
+                                        edited(text) => {
+                                            if (text.is-float()) {
+                                                root.form.start = max(0, round(text.to-float()));
+                                                root.send();
+                                            }
+                                        }
+                                    }
+
+                                    LabeledField {
+                                        layout-order: Theme.rtl ? 1 : 1;
+                                        horizontal-stretch: 1;
+                                        label: @tr("Digits");
+                                        value: root.form.digits;
+                                        edited(text) => {
+                                            if (text.is-float()) {
+                                                root.form.digits = max(1, min(6, round(text.to-float())));
+                                                root.send();
+                                            }
+                                        }
+                                    }
+
+                                    LabeledField {
+                                        layout-order: Theme.rtl ? 0 : 2;
+                                        horizontal-stretch: 1;
+                                        label: @tr("Separator");
+                                        value: root.form.separator;
+                                        edited(text) => {
+                                            root.form.separator = text;
+                                            root.send();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Case: one of five.
+                            if root.rule-open && root.form.kind == 3: VerticalLayout {
+                                spacing: 4px;
+
+                                for title[i] in [@tr("lowercase"), @tr("UPPERCASE"), @tr("Title Case"), @tr("kebab-case"), @tr("snake_case")]: OptionRow {
+                                    title: title;
+                                    detail: [
+                                        @tr("Case example" => "my trip photo"),
+                                        @tr("Case example" => "MY TRIP PHOTO"),
+                                        @tr("Case example" => "My Trip Photo"),
+                                        @tr("Case example" => "my-trip-photo"),
+                                        @tr("Case example" => "my_trip_photo"),
+                                    ][i];
+                                    on: root.form.choice == i;
+                                    chosen => {
+                                        root.form.choice = i;
+                                        root.send();
+                                    }
+                                }
+                            }
+
+                            // Extension: one of four, the new one typed for "Replace
+                            // with", and what the rule does not do.
+                            if root.rule-open && root.form.kind == 4: VerticalLayout {
+                                spacing: 4px;
+
+                                OptionRow {
+                                    title: @tr("lowercase");
+                                    detail: ".jpg";
+                                    on: root.form.choice == 0;
+                                    chosen => {
+                                        root.form.choice = 0;
+                                        root.send();
+                                    }
+                                }
+
+                                OptionRow {
+                                    title: @tr("UPPERCASE");
+                                    detail: ".JPG";
+                                    on: root.form.choice == 1;
+                                    chosen => {
+                                        root.form.choice = 1;
+                                        root.send();
+                                    }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Replace with…");
+                                    detail: @tr("Without the dot");
+                                    on: root.form.choice == 2;
+                                    chosen => {
+                                        root.form.choice = 2;
+                                        root.send();
+                                    }
+
+                                    Field {
+                                        width: 96px;
+                                        label: @tr("New extension");
+                                        value: root.form.text;
+                                        enabled: root.form.choice == 2;
+                                        autofocus: root.form.choice == 2;
+                                        edited(text) => {
+                                            root.form.text = text;
+                                            root.send();
+                                        }
+                                    }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Remove");
+                                    detail: @tr("No extension");
+                                    on: root.form.choice == 3;
+                                    chosen => {
+                                        root.form.choice = 3;
+                                        root.send();
+                                    }
+                                }
+
+                                Rectangle { height: 2px; }
+
+                                Text {
+                                    text: @tr("Only the name changes: the file is not converted.");
+                                    font-size: 11.5px;
+                                    color: Theme.muted;
+                                    wrap: word-wrap;
+                                    horizontal-alignment: Theme.rtl ? right : left;
+                                }
+                            }
+
+                            // Template: the text, and a button per token that adds it.
+                            if root.rule-open && root.form.kind == 5: VerticalLayout {
+                                spacing: 8px;
+
+                                Field {
+                                    label: @tr("Template");
+                                    value: root.form.text;
+                                    placeholder: "{name}-{n:3}";
+                                    autofocus: true;
+                                    edited(text) => {
+                                        root.form.text = text;
+                                        root.send();
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    alignment: Theme.rtl ? end : start;
+
+                                    for token[i] in ["{name}", "{n}", "{n:3}", "{folder}", "{modified}"]: TokenButton {
+                                        layout-order: Theme.rtl ? -i : 0;
+                                        token: token;
+                                        clicked => {
+                                            root.form.text = root.form.text + token;
+                                            root.send();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Order: by name, date modified or size, and Reverse.
+                            if root.open-rule == -2: VerticalLayout {
+                                spacing: 4px;
+
+                                OptionRow {
+                                    title: @tr("Name");
+                                    detail: @tr("2 before 10");
+                                    on: root.order-by == 0;
+                                    chosen => { root.order-chosen(0, root.order-reverse); }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Date modified");
+                                    detail: @tr("Oldest first");
+                                    on: root.order-by == 1;
+                                    chosen => { root.order-chosen(1, root.order-reverse); }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Size");
+                                    detail: @tr("Smallest first");
+                                    on: root.order-by == 2;
+                                    chosen => { root.order-chosen(2, root.order-reverse); }
+                                }
+
+                                SwitchLine {
+                                    label: @tr("Reverse");
+                                    on: root.order-reverse;
+                                    toggled(on) => { root.order-chosen(root.order-by, on); }
+                                }
+                            }
                         }
-
-                        // Order: by name, date modified or size, and Reverse.
-                        if root.open-rule == -2: VerticalLayout {
-                            spacing: 4px;
-
-                            OptionRow {
-                                title: @tr("Name");
-                                detail: @tr("2 before 10");
-                                on: root.order-by == 0;
-                                chosen => { root.order-chosen(0, root.order-reverse); }
-                            }
-
-                            OptionRow {
-                                title: @tr("Date modified");
-                                detail: @tr("Oldest first");
-                                on: root.order-by == 1;
-                                chosen => { root.order-chosen(1, root.order-reverse); }
-                            }
-
-                            OptionRow {
-                                title: @tr("Size");
-                                detail: @tr("Smallest first");
-                                on: root.order-by == 2;
-                                chosen => { root.order-chosen(2, root.order-reverse); }
-                            }
-
-                            SwitchLine {
-                                label: @tr("Reverse");
-                                on: root.order-reverse;
-                                toggled(on) => { root.order-chosen(root.order-by, on); }
-                            }
-                        }
-                    }
                     }
                 }
             }
