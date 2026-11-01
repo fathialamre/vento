@@ -1215,9 +1215,13 @@ msgstr "Yeniden adlandırılacak bir şey yok"
 msgid "Nothing: removes it"
 msgstr "Hiçbir şey: metni siler"
 
-#: crates/vento/ui/rename.slint:871
+#: crates/vento/ui/rename.slint:802
 msgid "* for the whole name"
 msgstr "* adın tamamı için"
+
+#: crates/vento/ui/rename.slint:764
+msgid "Pick a tool, or a rule above, to set it here"
+msgstr "Burada ayarlamak için bir araç ya da yukarıdan bir kural seçin"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"

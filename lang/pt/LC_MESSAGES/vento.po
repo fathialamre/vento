@@ -1215,9 +1215,13 @@ msgstr "Nada para mudar o nome"
 msgid "Nothing: removes it"
 msgstr "Nada: remove-o"
 
-#: crates/vento/ui/rename.slint:871
+#: crates/vento/ui/rename.slint:802
 msgid "* for the whole name"
 msgstr "* para o nome inteiro"
+
+#: crates/vento/ui/rename.slint:764
+msgid "Pick a tool, or a rule above, to set it here"
+msgstr "Escolha uma ferramenta, ou uma regra acima, para a definir aqui"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
