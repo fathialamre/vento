@@ -385,14 +385,15 @@ Prefer a text file? Everything is also in `settings.toml`; see
 
 ## Languages
 
-Vento speaks **English** and **العربية** (Arabic). In Arabic the whole interface
-is mirrored to read right to left, and the windows, the menu and the next notice
-change as soon as you pick it, with no restart.
+Vento speaks **English**, **العربية** (Arabic), **Español**, **Français**,
+**Italiano**, **Português (Portugal)**, **Português (Brasil)** and **Türkçe**.
+In Arabic the whole interface is mirrored to read right to left. The windows, the
+menu and the next notice change as soon as you pick a language, with no restart.
 
 The language is English until you pick another in **Settings → General →
 Language**. The first choice there, **Automatic (system language)**, follows your Mac's preferred languages (on Linux,
 the `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG` variables) and falls back to
-English; English and العربية are listed under their own names. Or set
+English; each language is listed under its own name. Or set
 `language` in `settings.toml` (see [SETTINGS.md](SETTINGS.md)). To add another
 language, see [lang/README.md](lang/README.md).
 

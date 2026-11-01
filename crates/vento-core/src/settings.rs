@@ -112,9 +112,10 @@ pub struct Settings {
     pub pocket_keep_copies: bool,
     /// What the Pocket view opens on.
     pub pocket_view: PocketView,
-    /// The language of the interface: the code of one of the languages
-    /// Vento has (`"en"`, the default, or `"ar"`), or `"auto"` to follow the
-    /// system's. Any other value means English; see `i18n::resolve`.
+    /// The language of the interface: the code of one of the languages in
+    /// `i18n::LANGUAGES` (`"en"`, the default, `"ar"`, `"pt_BR"`), or
+    /// `"auto"` to follow the system's. Any other value means English; see
+    /// `i18n::resolve`.
     pub language: String,
     /// Global shortcut that shows the Pocket, e.g. `"ctrl+alt+p"`; see
     /// [`parse_shortcut`].

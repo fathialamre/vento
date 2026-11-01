@@ -76,10 +76,13 @@ move_hold_ms = 400
 copy_path_format = "plain"
 
 # Language of the interface: "en" (English, the default), "ar" (Arabic, laid
-# out right to left) or "auto" (the first language in the system's preferred
-# list that Vento has, else English). A code is matched on its language part,
-# so "AR" and "ar-LY" mean Arabic; any other value means English and is
-# logged, not rejected. A change applies at once, with no restart.
+# out right to left), "es" (Spanish), "fr" (French), "it" (Italian), "pt"
+# (Portuguese, Portugal), "pt_BR" (Portuguese, Brazil), "tr" (Turkish) or
+# "auto" (the first language in the system's preferred list that Vento has,
+# else English). A code is matched on its language and region, then on its
+# language part alone, so "AR" and "ar-LY" mean Arabic, "pt-BR" Brazilian and
+# "pt-AO" European Portuguese; any other value means English and is logged,
+# not rejected. A change applies at once, with no restart.
 language = "en"
 
 # "system" (follow the light or dark look of the system), "light" or "dark";

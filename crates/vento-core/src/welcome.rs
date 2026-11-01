@@ -190,7 +190,7 @@ mod tests {
         let s = first_settings(&["ar-LY".into()]);
         assert_eq!(s.language, "ar");
         assert!(!s.welcome_done);
-        let s = first_settings(&["fr-FR".into()]);
+        let s = first_settings(&["de-DE".into()]);
         assert_eq!(s.language, "en");
         assert_eq!(
             s,

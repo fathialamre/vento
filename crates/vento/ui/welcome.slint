@@ -721,8 +721,9 @@ export component WelcomeWindow inherits Window {
                             layout-order: Theme.rtl ? 0 : 1;
                             alignment: center;
 
-                            Segmented {
-                                width: min(360px, max(200px, 110px * root.language-names.length));
+                            MenuField {
+                                width: 210px;
+                                label: @tr("Language");
                                 items: root.language-names;
                                 current: root.language;
                                 chosen(i) => { root.language-chosen(i); }

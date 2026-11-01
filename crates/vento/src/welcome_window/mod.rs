@@ -902,16 +902,18 @@ mod tests {
 
     #[test]
     fn language_choices_are_the_languages() {
-        assert_eq!(language_choices(), ["English", "العربية"]);
-        for (i, code) in [(0, "en"), (1, "ar")] {
+        assert_eq!(&language_choices()[..2], ["English", "العربية"]);
+        assert_eq!(language_choices().len(), LANGUAGES.len());
+        for (i, code) in [(0, "en"), (1, "ar"), (6, "pt_BR"), (7, "tr")] {
             assert_eq!(language_code_at(i), Some(code));
             assert_eq!(language_choice(code, &[]), i);
         }
-        assert_eq!(language_code_at(2), None);
+        assert_eq!(language_code_at(LANGUAGES.len() as i32), None);
         assert_eq!(language_code_at(-1), None);
         // "auto" shows the language it resolves to.
         assert_eq!(language_choice("auto", &["ar-LY".into()]), 1);
-        assert_eq!(language_choice("auto", &["fr".into()]), 0);
+        assert_eq!(language_choice("auto", &["pt-BR".into()]), 6);
+        assert_eq!(language_choice("auto", &["de".into()]), 0);
         assert_eq!(language_choice("auto", &[]), 0);
     }
 
@@ -926,7 +928,7 @@ mod tests {
         assert_eq!(language_change(0, "auto", &ar), Some("en"));
         assert_eq!(language_change(1, "en", &[]), Some("ar"));
         // Out of range, nothing.
-        assert_eq!(language_change(2, "en", &[]), None);
+        assert_eq!(language_change(LANGUAGES.len() as i32, "en", &[]), None);
         assert_eq!(language_change(-1, "en", &[]), None);
     }
 

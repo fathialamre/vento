@@ -36,6 +36,12 @@ cat > "$app/Contents/Info.plist" <<EOF
 	<array>
 		<string>en</string>
 		<string>ar</string>
+		<string>es</string>
+		<string>fr</string>
+		<string>it</string>
+		<string>pt-PT</string>
+		<string>pt-BR</string>
+		<string>tr</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>Vento</string>
