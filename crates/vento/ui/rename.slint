@@ -72,6 +72,14 @@ component Field inherits Rectangle {
         }
     }
 
+    // Asked to take the keyboard while shown (Extension's "Replace with…"
+    // chosen).
+    changed autofocus => {
+        if (root.autofocus && root.enabled) {
+            input.focus();
+        }
+    }
+
     // A new value from Rust (another rule's popover, a token added): the
     // field follows it, unless it already shows it.
     changed value => {
@@ -223,16 +231,19 @@ component TokenButton inherits Rectangle {
 // the danger colour.
 component Chip inherits Rectangle {
     in property <RenameChip> chip;
+    // Its popover is open (the window's `open-rule`, not `chip.open`, so it
+    // stays right when the Order popover opens without Rust).
+    in property <bool> open;
     callback clicked();
     callback removed();
 
-    property <color> tone: self.chip.open ? Theme.accent : self.chip.warn ? Theme.danger : Theme.muted;
+    property <color> tone: root.open ? Theme.accent : self.chip.warn ? Theme.danger : Theme.muted;
 
     height: 24px;
     border-radius: 6px;
     border-width: 1px;
-    border-color: self.chip.open ? Theme.accent : self.chip.warn ? Theme.danger : Theme.border;
-    background: self.chip.open ? Theme.accent-soft
+    border-color: root.open ? Theme.accent : self.chip.warn ? Theme.danger : Theme.border;
+    background: root.open ? Theme.accent-soft
         : self.chip.warn ? Theme.danger.transparentize(0.9)
         : touch.has-hover ? Theme.hover
         : Theme.dark ? Theme.surface : Theme.selected;
@@ -488,15 +499,46 @@ export component RenameWindow inherits Window {
         root.form-edited(root.form);
     }
 
+    // The open popover: a rule kind, -2 Order, -1 none.
+    property <int> open-kind: root.open-rule == -2 ? -2 : root.open-rule >= 0 ? root.form.kind : -1;
+    // The open popover has a field that takes the keyboard when it shows
+    // (Replace, Add, Template, and Extension's "Replace with…").
+    property <bool> wants-field: root.open-kind == 0 || root.open-kind == 1 || root.open-kind == 5
+        || (root.open-kind == 4 && root.form.choice == 2);
+
     // Esc closes the popover, then the window; ⌘↩ renames; ⌘Z undoes a
-    // rule change. Rust decides.
-    changed open-rule => {
-        if (root.open-rule == -1) {
+    // rule change. Rust decides, so the keyboard goes back to the window
+    // whenever the field that had it may be gone and no new one takes it.
+    changed open-kind => {
+        if (!root.wants-field) {
+            keys.focus();
+        }
+    }
+    changed wants-field => {
+        if (!root.wants-field) {
             keys.focus();
         }
     }
 
+    // In a right-to-left language the chips start at the right: show that
+    // end when they overflow.
+    function chips-to-start() {
+        if (Theme.rtl) {
+            chip-flick.content-x = min(0px, chip-flick.width - chip-flick.content-width);
+        }
+    }
+
     keys := FocusScope {
+        // ⌘↩ renames even from a popover's field, which would take every
+        // Return for itself. ⌘Z there stays the field's own undo.
+        capture-key-pressed(event) => {
+            if (event.modifiers.control && event.text == Key.Return) {
+                if (root.key-pressed(event.text, true)) {
+                    return accept;
+                }
+            }
+            return reject;
+        }
         // `control` is ⌘ on a Mac.
         key-pressed(event) => {
             if (root.key-pressed(event.text, event.modifiers.control)) {
@@ -592,7 +634,14 @@ export component RenameWindow inherits Window {
                         name: @tr("Order");
                         enabled: !root.busy;
                         on: root.open-rule == -2;
-                        clicked => { root.open-rule = -2; }
+                        clicked => {
+                            if (root.open-rule == -2) {
+                                root.open-rule = -1;
+                                root.close-popover();
+                            } else {
+                                root.open-rule = -2;
+                            }
+                        }
                     }
 
                     if root.has-folders: IconTool {
@@ -622,6 +671,9 @@ export component RenameWindow inherits Window {
                     width: parent.width - 24px;
                     content-width: max(self.width, chip-row.preferred-width);
 
+                    changed content-width => { root.chips-to-start(); }
+                    changed width => { root.chips-to-start(); }
+
                     chip-row := HorizontalLayout {
                         width: chip-flick.content-width;
                         height: chip-flick.height;
@@ -650,8 +702,17 @@ export component RenameWindow inherits Window {
 
                             Chip {
                                 chip: chip;
-                                clicked => { root.chip-clicked(i); }
-                                removed => { root.chip-removed(i); }
+                                open: root.open-rule == i;
+                                clicked => {
+                                    if (!root.busy) {
+                                        root.chip-clicked(i);
+                                    }
+                                }
+                                removed => {
+                                    if (!root.busy) {
+                                        root.chip-removed(i);
+                                    }
+                                }
                             }
                         }
                     }

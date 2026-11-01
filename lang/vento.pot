@@ -29,7 +29,7 @@ msgstr ""
 msgid "1. Drag this file a little."
 msgstr ""
 
-#: crates/vento/ui/rename.slint:1047
+#: crates/vento/ui/rename.slint:1108
 msgid "2 before 10"
 msgstr ""
 
@@ -89,15 +89,15 @@ msgstr ""
 msgid "Address"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:461
+#: crates/vento/ui/rename.slint:472
 msgid "Adds 001, 002… in the list's order"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:460
+#: crates/vento/ui/rename.slint:471
 msgid "Adds text to every name"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:854
+#: crates/vento/ui/rename.slint:915
 msgid "After name"
 msgstr ""
 
@@ -181,7 +181,7 @@ msgstr ""
 msgid "Back to kinds"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:852
+#: crates/vento/ui/rename.slint:913
 msgid "Before name"
 msgstr ""
 
@@ -193,7 +193,7 @@ msgstr ""
 msgid "Bring back anything you copied earlier"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:464
+#: crates/vento/ui/rename.slint:475
 msgid "Builds every name from parts"
 msgstr ""
 
@@ -257,11 +257,11 @@ msgstr ""
 msgid "Changes that touch all of Vento"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:462
+#: crates/vento/ui/rename.slint:473
 msgid "Changes the letters of every name"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:463
+#: crates/vento/ui/rename.slint:474
 msgid "Changes the part after the last dot"
 msgstr ""
 
@@ -609,7 +609,7 @@ msgstr ""
 msgid "Date"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:1053
+#: crates/vento/ui/rename.slint:1114
 msgid "Date modified"
 msgstr ""
 
@@ -625,7 +625,7 @@ msgstr ""
 msgid "Developer"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:899
+#: crates/vento/ui/rename.slint:960
 msgid "Digits"
 msgstr ""
 
@@ -773,11 +773,11 @@ msgstr ""
 msgid "Files"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:808
+#: crates/vento/ui/rename.slint:869
 msgid "Find"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:459
+#: crates/vento/ui/rename.slint:470
 msgid "Finds text in every name and replaces it"
 msgstr ""
 
@@ -1013,7 +1013,7 @@ msgstr ""
 msgid "Mail"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:828
+#: crates/vento/ui/rename.slint:889
 msgid "Match case"
 msgstr ""
 
@@ -1121,7 +1121,7 @@ msgstr ""
 msgid "New"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:979
+#: crates/vento/ui/rename.slint:1040
 msgid "New extension"
 msgstr ""
 
@@ -1137,7 +1137,7 @@ msgstr ""
 msgid "No PDFs to open"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:992
+#: crates/vento/ui/rename.slint:1053
 msgid "No extension"
 msgstr ""
 
@@ -1193,7 +1193,7 @@ msgstr ""
 msgid "Nothing to move"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:820
+#: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
 msgstr ""
 
@@ -1205,7 +1205,7 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:1054
+#: crates/vento/ui/rename.slint:1115
 msgid "Oldest first"
 msgstr ""
 
@@ -1217,7 +1217,7 @@ msgstr ""
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:1003
+#: crates/vento/ui/rename.slint:1064
 msgid "Only the name changes: the file is not converted."
 msgstr ""
 
@@ -1295,7 +1295,7 @@ msgstr ""
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr ""
 
-#: crates/vento/ui/rename.slint:592
+#: crates/vento/ui/rename.slint:634
 msgid "Order"
 msgstr ""
 
@@ -1333,7 +1333,7 @@ msgstr ""
 msgid "Petals"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:641
+#: crates/vento/ui/rename.slint:693
 msgid "Pick a tool to start"
 msgstr ""
 
@@ -1459,7 +1459,7 @@ msgstr ""
 msgid "Remove from Pocket"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:278
+#: crates/vento/ui/rename.slint:289
 msgid "Remove {}"
 msgstr ""
 
@@ -1503,11 +1503,11 @@ msgstr ""
 msgid "Replace"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:818
+#: crates/vento/ui/rename.slint:879
 msgid "Replace with"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:969
+#: crates/vento/ui/rename.slint:1030
 msgid "Replace with…"
 msgstr ""
 
@@ -1535,7 +1535,7 @@ msgstr[1] ""
 msgid "Resume"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:1067
+#: crates/vento/ui/rename.slint:1128
 msgid "Reverse"
 msgstr ""
 
@@ -1547,7 +1547,7 @@ msgstr ""
 msgid "Rotate right"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:633
+#: crates/vento/ui/rename.slint:685
 msgid "Rules"
 msgstr ""
 
@@ -1629,7 +1629,7 @@ msgstr ""
 msgid "Send with Messages"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:912
+#: crates/vento/ui/rename.slint:973
 msgid "Separator"
 msgstr ""
 
@@ -1729,7 +1729,7 @@ msgstr ""
 msgid "Smaller file"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:1061
+#: crates/vento/ui/rename.slint:1122
 msgid "Smallest first"
 msgstr ""
 
@@ -1851,7 +1851,7 @@ msgstr ""
 msgid "The download didn't match its checksum"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:798
+#: crates/vento/ui/rename.slint:859
 msgid "The list and the numbers follow it"
 msgstr ""
 
@@ -2167,7 +2167,7 @@ msgstr ""
 msgid "Windows reserves this name"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:970
+#: crates/vento/ui/rename.slint:1031
 msgid "Without the dot"
 msgstr ""
 
@@ -2367,7 +2367,7 @@ msgstr ""
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:853
+#: crates/vento/ui/rename.slint:914
 msgid "name"
 msgstr ""
 
@@ -2723,27 +2723,27 @@ msgid_plural "→ {n} files"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/rename.slint:930
+#: crates/vento/ui/rename.slint:991
 msgctxt "Case example"
 msgid "MY TRIP PHOTO"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:931
+#: crates/vento/ui/rename.slint:992
 msgctxt "Case example"
 msgid "My Trip Photo"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:929
+#: crates/vento/ui/rename.slint:990
 msgctxt "Case example"
 msgid "my trip photo"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:932
+#: crates/vento/ui/rename.slint:993
 msgctxt "Case example"
 msgid "my-trip-photo"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:933
+#: crates/vento/ui/rename.slint:994
 msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr ""
