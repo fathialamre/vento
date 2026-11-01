@@ -21,7 +21,9 @@ use po::Catalog;
 /// A language the interface can be shown in.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Language {
-    /// The code used in `settings.toml` and in `lang/<code>/`.
+    /// The code used in `settings.toml` and in `lang/<code>/`: the language
+    /// part, with the region after `_` where Vento has more than one kind of
+    /// the language (`"pt_BR"`).
     pub code: &'static str,
     /// The language's name in that language.
     pub name: &'static str,
@@ -45,6 +47,42 @@ pub const LANGUAGES: &[Language] = &[
         name: "العربية",
         rtl: true,
         font: "IBM Plex Sans Arabic",
+    },
+    Language {
+        code: "es",
+        name: "Español",
+        rtl: false,
+        font: "",
+    },
+    Language {
+        code: "fr",
+        name: "Français",
+        rtl: false,
+        font: "",
+    },
+    Language {
+        code: "it",
+        name: "Italiano",
+        rtl: false,
+        font: "",
+    },
+    Language {
+        code: "pt",
+        name: "Português (Portugal)",
+        rtl: false,
+        font: "",
+    },
+    Language {
+        code: "pt_BR",
+        name: "Português (Brasil)",
+        rtl: false,
+        font: "",
+    },
+    Language {
+        code: "tr",
+        name: "Türkçe",
+        rtl: false,
+        font: "",
     },
 ];
 
@@ -104,12 +142,24 @@ pub fn resolve(setting: &str, preferred: &[String]) -> &'static Language {
         .unwrap_or(&LANGUAGES[0])
 }
 
-/// The language whose code is the language part of `tag` (`"ar-LY"`,
-/// `"ar_LY.UTF-8"`, `"AR"`); `None` for `"auto"` or a language Vento lacks.
+/// The language `tag` names (`"ar-LY"`, `"ar_LY.UTF-8"`, `"AR"`): the one
+/// whose code is its language and region (`"pt-BR"` is `"pt_BR"`), else the
+/// one whose code is its language part alone (`"pt-AO"` is `"pt"`); `None`
+/// for `"auto"` or a language Vento lacks.
 pub fn lookup(tag: &str) -> Option<&'static Language> {
-    let end = tag.find(['-', '_', '@', '.']).unwrap_or(tag.len());
-    let part = tag[..end].to_ascii_lowercase();
-    LANGUAGES.iter().find(|l| l.code == part)
+    let tag = &tag[..tag.find(['@', '.']).unwrap_or(tag.len())];
+    let same = |code: &str, part: &str| {
+        code.len() == part.len()
+            && code
+                .bytes()
+                .zip(part.bytes())
+                .all(|(a, b)| a.eq_ignore_ascii_case(&b) || (a == b'_' && b == b'-'))
+    };
+    let language = &tag[..tag.find(['-', '_']).unwrap_or(tag.len())];
+    LANGUAGES
+        .iter()
+        .find(|l| same(l.code, tag))
+        .or_else(|| LANGUAGES.iter().find(|l| same(l.code, language)))
 }
 
 /// The system's preferred languages, best first, as the platform words
@@ -120,24 +170,53 @@ pub fn system_languages() -> Vec<String> {
 
 /// The language in use.
 pub fn current() -> &'static Language {
+    &LANGUAGES[current_index()]
+}
+
+/// The index in [`LANGUAGES`] of the language in use.
+fn current_index() -> usize {
     let index = OVERRIDE
         .with(Cell::get)
         .unwrap_or_else(|| CURRENT.load(Ordering::Relaxed));
-    &LANGUAGES[index.min(LANGUAGES.len() - 1)]
+    index.min(LANGUAGES.len() - 1)
 }
 
-/// The catalog of the language in use; `None` for English.
-fn catalog() -> Option<&'static Catalog> {
-    static ARABIC: OnceLock<Catalog> = OnceLock::new();
-    match current().code {
-        "ar" => Some(ARABIC.get_or_init(|| {
-            load(include_str!(concat!(
+/// The `.po` file of `lang/<code>/`, embedded in the binary.
+macro_rules! po_file {
+    ($code:literal) => {
+        (
+            $code,
+            include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../lang/ar/LC_MESSAGES/vento.po"
-            )))
-        })),
-        _ => None,
-    }
+                "/../../lang/",
+                $code,
+                "/LC_MESSAGES/vento.po"
+            )),
+        )
+    };
+}
+
+/// The catalog file of every language but English, by code.
+const CATALOG_FILES: &[(&str, &str)] = &[
+    po_file!("ar"),
+    po_file!("es"),
+    po_file!("fr"),
+    po_file!("it"),
+    po_file!("pt"),
+    po_file!("pt_BR"),
+    po_file!("tr"),
+];
+
+/// The catalog of the language in use, parsed the first time it is read;
+/// `None` for English.
+fn catalog() -> Option<&'static Catalog> {
+    static LOADED: [OnceLock<Catalog>; LANGUAGES.len()] =
+        [const { OnceLock::new() }; LANGUAGES.len()];
+    let index = current_index();
+    let (_, text) = CATALOG_FILES
+        .iter()
+        .find(|(code, _)| *code == LANGUAGES[index].code)?;
+    Some(LOADED[index].get_or_init(|| load(text)))
 }
 
 /// Parses an embedded catalog. A broken one is logged and acts as empty,
@@ -391,10 +470,10 @@ msgstr[1] ""
     #[test]
     fn automatic_takes_the_first_preferred_language_vento_has() {
         assert_eq!(
-            resolve("auto", &["fr-FR".into(), "ar-LY".into()]).code,
+            resolve("auto", &["de-DE".into(), "ar-LY".into()]).code,
             "ar"
         );
-        assert_eq!(resolve("auto", &["fr-FR".into()]).code, "en");
+        assert_eq!(resolve("auto", &["de-DE".into()]).code, "en");
         assert_eq!(resolve("auto", &[]).code, "en");
         assert_eq!(resolve("auto", &["ar_LY.UTF-8".into()]).code, "ar");
         assert_eq!(resolve("auto", &["ar@tashkeel".into()]).code, "ar");
@@ -411,14 +490,40 @@ msgstr[1] ""
     }
 
     #[test]
-    fn languages_are_english_then_arabic() {
+    fn languages_are_english_then_arabic_then_the_others() {
         let codes: Vec<_> = LANGUAGES.iter().map(|l| (l.code, l.rtl)).collect();
-        assert_eq!(codes, vec![("en", false), ("ar", true)]);
+        assert_eq!(
+            codes,
+            vec![
+                ("en", false),
+                ("ar", true),
+                ("es", false),
+                ("fr", false),
+                ("it", false),
+                ("pt", false),
+                ("pt_BR", false),
+                ("tr", false),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_region_picks_its_own_kind_of_the_language() {
+        assert_eq!(resolve("auto", &["pt-BR".into()]).code, "pt_BR");
+        assert_eq!(resolve("auto", &["pt_BR.UTF-8".into()]).code, "pt_BR");
+        assert_eq!(resolve("PT-br", &[]).code, "pt_BR");
+        assert_eq!(resolve("pt_BR", &[]).code, "pt_BR");
+        // Another region, or none, is the plain language.
+        assert_eq!(resolve("auto", &["pt-PT".into()]).code, "pt");
+        assert_eq!(resolve("auto", &["pt-AO".into()]).code, "pt");
+        assert_eq!(resolve("pt", &[]).code, "pt");
+        assert_eq!(resolve("auto", &["es-419".into()]).code, "es");
+        assert_eq!(resolve("auto", &["tr-TR".into()]).code, "tr");
     }
 
     #[test]
     fn every_language_but_english_has_a_catalog() {
-        // A language added to `LANGUAGES` without an arm in `catalog()`
+        // A language added to `LANGUAGES` without a file in `CATALOG_FILES`
         // would read English whatever its `.po` says.
         for language in LANGUAGES.iter().filter(|l| l.code != "en") {
             let word = with_language(language.code, || tr("Language"));

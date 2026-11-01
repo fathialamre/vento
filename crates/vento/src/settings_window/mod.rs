@@ -2034,13 +2034,22 @@ mod tests {
     fn the_language_picker_maps_to_the_setting_and_back() {
         // Automatic first, then each language in the order Vento lists them.
         assert_eq!(language_names().len(), LANGUAGES.len() + 1);
-        assert_eq!(&language_names()[1..], ["English", "العربية"]);
+        assert_eq!(&language_names()[1..3], ["English", "العربية"]);
         assert_eq!(language_setting(0), "auto");
         assert_eq!(language_setting(1), "en");
         assert_eq!(language_setting(2), "ar");
-        assert_eq!(language_setting(3), "auto");
+        assert_eq!(language_setting(7), "pt_BR");
+        assert_eq!(language_setting(LANGUAGES.len() as i32 + 1), "auto");
         assert_eq!(language_setting(-1), "auto");
-        for (setting, index) in [("auto", 0), ("en", 1), ("ar", 2), ("AR", 2), ("ar-LY", 2)] {
+        for (setting, index) in [
+            ("auto", 0),
+            ("en", 1),
+            ("ar", 2),
+            ("AR", 2),
+            ("ar-LY", 2),
+            ("pt", 6),
+            ("pt-BR", 7),
+        ] {
             assert_eq!(language_index(setting), index, "{setting}");
         }
         // A value Vento has no language for acts as Automatic.
