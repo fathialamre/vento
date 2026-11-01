@@ -31,6 +31,10 @@ msgstr ", "
 msgid "1. Drag this file a little."
 msgstr "1. Arraste um pouco este ficheiro."
 
+#: crates/vento/ui/rename.slint:1047
+msgid "2 before 10"
+msgstr "2 antes de 10"
+
 #: crates/vento/ui/welcome.slint:795
 msgid "2. While dragging, press"
 msgstr "2. Enquanto arrasta, prima"
@@ -59,7 +63,7 @@ msgstr "Ações"
 msgid "Add"
 msgstr "Adicionar"
 
-#: crates/vento/ui/pdf.slint:1058
+#: crates/vento/ui/pdf.slint:643
 msgid "Add PDF"
 msgstr "Adicionar PDF"
 
@@ -86,6 +90,18 @@ msgstr "Adicionado"
 #: crates/vento/src/pocket/clip.rs:594
 msgid "Address"
 msgstr "Endereço"
+
+#: crates/vento/ui/rename.slint:461
+msgid "Adds 001, 002… in the list's order"
+msgstr "Acrescenta 001, 002… pela ordem da lista"
+
+#: crates/vento/ui/rename.slint:460
+msgid "Adds text to every name"
+msgstr "Acrescenta texto a cada nome"
+
+#: crates/vento/ui/rename.slint:854
+msgid "After name"
+msgstr "Depois do nome"
 
 #: crates/vento/ui/screen_access.slint:125
 msgid "After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again."
@@ -123,7 +139,7 @@ msgstr "Arquivos"
 msgid "As a list"
 msgstr "Em lista"
 
-#: crates/vento/ui/pdf.slint:1588
+#: crates/vento/ui/pdf.slint:1173
 msgid "At my cuts"
 msgstr "Nos meus cortes"
 
@@ -167,6 +183,10 @@ msgstr "Voltar"
 msgid "Back to kinds"
 msgstr "Voltar aos tipos"
 
+#: crates/vento/ui/rename.slint:852
+msgid "Before name"
+msgstr "Antes do nome"
+
 #: crates/vento/ui/info.slint:277
 msgid "Biggest inside"
 msgstr "Maior no interior"
@@ -174,6 +194,10 @@ msgstr "Maior no interior"
 #: crates/vento/src/whats_new_window/mod.rs:486
 msgid "Bring back anything you copied earlier"
 msgstr "Recuperar qualquer coisa que tenha copiado antes"
+
+#: crates/vento/ui/rename.slint:464
+msgid "Builds every name from parts"
+msgstr "Compõe cada nome a partir de partes"
 
 #: crates/vento/src/exec.rs:301
 msgid "Busy — still working"
@@ -234,6 +258,14 @@ msgstr "Mudou de ideias? Clique em Anular no aviso."
 #: crates/vento/src/whats_new_window/mod.rs:461
 msgid "Changes that touch all of Vento"
 msgstr "Alterações que afetam todo o Vento"
+
+#: crates/vento/ui/rename.slint:462
+msgid "Changes the letters of every name"
+msgstr "Muda as letras de cada nome"
+
+#: crates/vento/ui/rename.slint:463
+msgid "Changes the part after the last dot"
+msgstr "Muda a parte depois do último ponto"
 
 #: crates/vento/ui/settings_pages.slint:1519
 msgid "Check for updates automatically"
@@ -579,7 +611,11 @@ msgstr "Escuro"
 msgid "Date"
 msgstr "Data"
 
-#: crates/vento/ui/pdf.slint:1101
+#: crates/vento/ui/rename.slint:1053
+msgid "Date modified"
+msgstr "Data de modificação"
+
+#: crates/vento/ui/pdf.slint:686
 msgid "Delete"
 msgstr "Apagar"
 
@@ -591,11 +627,15 @@ msgstr "Designer"
 msgid "Developer"
 msgstr "Programador"
 
+#: crates/vento/ui/rename.slint:899
+msgid "Digits"
+msgstr "Dígitos"
+
 #: crates/vento/ui/settings_pages.slint:1044
 msgid "Dims the screen so you can pick the text to copy"
 msgstr "Escurece o ecrã para escolher o texto a copiar"
 
-#: crates/vento/ui/pdf.slint:1779
+#: crates/vento/ui/pdf.slint:1364
 msgid "Discard"
 msgstr "Descartar"
 
@@ -675,7 +715,7 @@ msgstr "Essencial"
 msgid "Every action"
 msgstr "Todas as ações"
 
-#: crates/vento/ui/pdf.slint:1554
+#: crates/vento/ui/pdf.slint:1139
 msgid "Every page"
 msgstr "Todas as páginas"
 
@@ -723,7 +763,7 @@ msgstr "A extrair"
 msgid "Extracting {name}…"
 msgstr "A extrair {name}…"
 
-#: crates/vento/ui/pdf.slint:1572
+#: crates/vento/ui/pdf.slint:1157
 msgid "Fewer pages"
 msgstr "Menos páginas"
 
@@ -731,9 +771,17 @@ msgstr "Menos páginas"
 msgid "File"
 msgstr "Ficheiro"
 
-#: crates/vento/ui/pdf.slint:1039
+#: crates/vento/ui/pdf.slint:624
 msgid "Files"
 msgstr "Ficheiros"
+
+#: crates/vento/ui/rename.slint:808
+msgid "Find"
+msgstr "Procurar"
+
+#: crates/vento/ui/rename.slint:459
+msgid "Finds text in every name and replaces it"
+msgstr "Procura texto em cada nome e substitui-o"
 
 #: crates/vento/ui/whats_new.slint:323
 msgid "Fixed"
@@ -751,7 +799,7 @@ msgstr "Pastas"
 msgid "Folders you use often"
 msgstr "Pastas que usa com frequência"
 
-#: crates/vento/ui/pdf.slint:1648
+#: crates/vento/ui/pdf.slint:1233
 msgid "Format"
 msgstr "Formato"
 
@@ -775,7 +823,7 @@ msgstr "O GitHub respondeu {code}"
 msgid "GitHub's answer couldn't be read"
 msgstr "Não foi possível ler a resposta do GitHub"
 
-#: crates/vento/ui/pdf.slint:1040
+#: crates/vento/ui/pdf.slint:625
 msgid "Hide files"
 msgstr "Ocultar ficheiros"
 
@@ -955,7 +1003,7 @@ msgstr "Ligações"
 msgid "List"
 msgstr "Lista"
 
-#: crates/vento/ui/pdf.slint:1653
+#: crates/vento/ui/pdf.slint:1238
 msgid "Lossless"
 msgstr "Sem perdas"
 
@@ -966,6 +1014,10 @@ msgstr "MB"
 #: crates/vento-core/src/share.rs:53
 msgid "Mail"
 msgstr "Mail"
+
+#: crates/vento/ui/rename.slint:828
+msgid "Match case"
+msgstr "Maiúsculas/minúsculas"
 
 #: crates/vento-core/src/share.rs:52
 msgid "Messages"
@@ -983,7 +1035,7 @@ msgstr "Em falta"
 msgid "Modified"
 msgstr "Modificado"
 
-#: crates/vento/ui/pdf.slint:1580
+#: crates/vento/ui/pdf.slint:1165
 msgid "More pages"
 msgstr "Mais páginas"
 
@@ -1071,6 +1123,10 @@ msgstr "O nome é demasiado longo"
 msgid "New"
 msgstr "Novo"
 
+#: crates/vento/ui/rename.slint:979
+msgid "New extension"
+msgstr "Nova extensão"
+
 #: crates/vento/ui/settings_pages.slint:1266
 msgid "New time"
 msgstr "Nova duração"
@@ -1082,6 +1138,10 @@ msgstr "Seguinte"
 #: crates/vento/src/exec/pdf.rs:74
 msgid "No PDFs to open"
 msgstr "Nenhum PDF para abrir"
+
+#: crates/vento/ui/rename.slint:992
+msgid "No extension"
+msgstr "Sem extensão"
 
 #: crates/vento/ui/settings_pages.slint:655
 msgid "No pinned folders"
@@ -1135,6 +1195,10 @@ msgstr "Nada para copiar"
 msgid "Nothing to move"
 msgstr "Nada para mover"
 
+#: crates/vento/ui/rename.slint:820
+msgid "Nothing: removes it"
+msgstr "Nada: remove-o"
+
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
 msgstr "Número"
@@ -1143,6 +1207,10 @@ msgstr "Número"
 msgid "Off"
 msgstr "Desligado"
 
+#: crates/vento/ui/rename.slint:1054
+msgid "Oldest first"
+msgstr "Mais antigo primeiro"
+
 #: crates/vento/ui/settings_pages.slint:1520
 msgid "Once a day, from GitHub"
 msgstr "Uma vez por dia, a partir do GitHub"
@@ -1150,6 +1218,10 @@ msgstr "Uma vez por dia, a partir do GitHub"
 #: crates/vento/ui/settings_pages.slint:1307
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr "Só o computador fica acordado; o ecrã escurece e bloqueia como habitualmente"
+
+#: crates/vento/ui/rename.slint:1003
+msgid "Only the name changes: the file is not converted."
+msgstr "Só o nome muda: o ficheiro não é convertido."
 
 #: crates/vento/src/pocket/menu.rs:132
 msgid "Open"
@@ -1225,6 +1297,10 @@ msgstr "Ou pare um momento em Mover: abre-se um anel com as pastas afixadas e re
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr "Ou abane o ponteiro rapidamente enquanto arrasta, se Abanar para abrir estiver ativado."
 
+#: crates/vento/ui/rename.slint:592
+msgid "Order"
+msgstr "Ordem"
+
 #: crates/vento-core/src/pocket_kind.rs:44
 msgid "Other"
 msgstr "Outros"
@@ -1258,6 +1334,10 @@ msgstr "Pausar o Vento"
 #: crates/vento/ui/settings_pages.slint:466
 msgid "Petals"
 msgstr "Pétalas"
+
+#: crates/vento/ui/rename.slint:641
+msgid "Pick a tool to start"
+msgstr "Escolha uma ferramenta para começar"
 
 #: crates/vento/ui/settings_window.slint:318
 msgid "Pick how long under the tile, or leave it on until you stop it."
@@ -1331,7 +1411,7 @@ msgstr "Prima {}: o ecrã escurece."
 msgid "Preview"
 msgstr "Pré-visualização"
 
-#: crates/vento/ui/pdf.slint:1669
+#: crates/vento/ui/pdf.slint:1254
 msgid "Print"
 msgstr "Impressão"
 
@@ -1341,7 +1421,7 @@ msgid_plural "Put back {n} names"
 msgstr[0] "Reposto {n} nome"
 msgstr[1] "Repostos {n} nomes"
 
-#: crates/vento/ui/pdf.slint:1663
+#: crates/vento/ui/pdf.slint:1248
 msgid "Quality"
 msgstr "Qualidade"
 
@@ -1381,7 +1461,7 @@ msgstr "Remover após arrastar"
 msgid "Remove from Pocket"
 msgstr "Remover do Bolso"
 
-#: crates/vento/ui/settings_pages.slint:1248
+#: crates/vento/ui/rename.slint:278
 msgid "Remove {}"
 msgstr "Remover {}"
 
@@ -1425,6 +1505,14 @@ msgstr "Reordenar, rodar e cortar as páginas de um PDF"
 msgid "Replace"
 msgstr "Substituir"
 
+#: crates/vento/ui/rename.slint:818
+msgid "Replace with"
+msgstr "Substituir por"
+
+#: crates/vento/ui/rename.slint:969
+msgid "Replace with…"
+msgstr "Substituir por…"
+
 #: crates/vento/ui/quick.slint:329
 msgid "Restart"
 msgstr "Reiniciar"
@@ -1449,23 +1537,31 @@ msgstr[1] "A repor {n} elementos…"
 msgid "Resume"
 msgstr "Retomar"
 
-#: crates/vento/ui/pdf.slint:1084
+#: crates/vento/ui/rename.slint:1067
+msgid "Reverse"
+msgstr "Inverter"
+
+#: crates/vento/ui/pdf.slint:669
 msgid "Rotate left"
 msgstr "Rodar para a esquerda"
 
-#: crates/vento/ui/pdf.slint:1093
+#: crates/vento/ui/pdf.slint:678
 msgid "Rotate right"
 msgstr "Rodar para a direita"
+
+#: crates/vento/ui/rename.slint:633
+msgid "Rules"
+msgstr "Regras"
 
 #: crates/vento-core/src/rename/labels.rs:86
 msgid "Same name as another item"
 msgstr "Mesmo nome de outro item"
 
-#: crates/vento/ui/pdf.slint:1772
+#: crates/vento/ui/pdf.slint:1357
 msgid "Save"
 msgstr "Guardar"
 
-#: crates/vento/ui/pdf.slint:1424
+#: crates/vento/ui/pdf.slint:1009
 msgid "Save as new PDF"
 msgstr "Guardar como novo PDF"
 
@@ -1475,7 +1571,7 @@ msgid_plural "Save images"
 msgstr[0] "Guardar imagem"
 msgstr[1] "Guardar imagens"
 
-#: crates/vento/ui/pdf.slint:1752
+#: crates/vento/ui/pdf.slint:1337
 msgid "Save your changes as a new PDF?"
 msgstr "Guardar as alterações como novo PDF?"
 
@@ -1495,7 +1591,7 @@ msgid_plural "Saved {n} images in {folder}"
 msgstr[0] "{n} imagem guardada em {folder}"
 msgstr[1] "{n} imagens guardadas em {folder}"
 
-#: crates/vento/ui/pdf.slint:1667
+#: crates/vento/ui/pdf.slint:1252
 msgid "Screen"
 msgstr "Ecrã"
 
@@ -1519,7 +1615,7 @@ msgstr "Ver os detalhes de ficheiros e pastas"
 msgid "See what's new"
 msgstr "Ver novidades"
 
-#: crates/vento/ui/pdf.slint:1066
+#: crates/vento/ui/pdf.slint:651
 msgid "Select all"
 msgstr "Selecionar tudo"
 
@@ -1534,6 +1630,10 @@ msgstr "Enviar com o Mail"
 #: crates/vento-core/src/share.rs:64
 msgid "Send with Messages"
 msgstr "Enviar com Mensagens"
+
+#: crates/vento/ui/rename.slint:912
+msgid "Separator"
+msgstr "Separador"
 
 #: crates/vento/ui/settings_pages.slint:1556
 msgid "Set up Vento again"
@@ -1591,7 +1691,7 @@ msgstr "Mostrar um cartão quando uma captura de ecrã é guardada"
 msgid "Show all {}"
 msgstr "Mostrar tudo: {}"
 
-#: crates/vento/ui/pdf.slint:1040
+#: crates/vento/ui/pdf.slint:625
 msgid "Show files"
 msgstr "Mostrar ficheiros"
 
@@ -1627,9 +1727,13 @@ msgstr "Tamanho"
 msgid "Skip setup"
 msgstr "Saltar configuração"
 
-#: crates/vento/ui/pdf.slint:1655
+#: crates/vento/ui/pdf.slint:1240
 msgid "Smaller file"
 msgstr "Ficheiro mais pequeno"
+
+#: crates/vento/ui/rename.slint:1061
+msgid "Smallest first"
+msgstr "Mais pequeno primeiro"
 
 #: crates/vento-core/src/info.rs:270
 msgid "Some items could not be read"
@@ -1653,7 +1757,7 @@ msgstr[1] "Dividir em {n}"
 msgid "Split {name}"
 msgstr "Dividir {name}"
 
-#: crates/vento/ui/pdf.slint:1135
+#: crates/vento/ui/pdf.slint:720
 msgid "Split…"
 msgstr "Dividir…"
 
@@ -1749,11 +1853,15 @@ msgstr "Não foi possível abrir a transferência"
 msgid "The download didn't match its checksum"
 msgstr "A transferência não corresponde à soma de verificação"
 
+#: crates/vento/ui/rename.slint:798
+msgid "The list and the numbers follow it"
+msgstr "A lista e os números seguem esta ordem"
+
 #: crates/vento/src/updater/mod.rs:69
 msgid "The new version didn't start."
 msgstr "A nova versão não arrancou."
 
-#: crates/vento/ui/pdf.slint:1761
+#: crates/vento/ui/pdf.slint:1346
 msgid "The original stays as it is."
 msgstr "O original fica como está."
 
@@ -1793,7 +1901,7 @@ msgstr "Durações no painel"
 msgid "Title Case"
 msgstr "Título"
 
-#: crates/vento/ui/pdf.slint:1125
+#: crates/vento/ui/pdf.slint:710
 msgid "To images"
 msgstr "Para imagens"
 
@@ -2061,6 +2169,10 @@ msgstr "Enquanto está ativo, aparece uma pequena chávena junto ao ícone do Ve
 msgid "Windows reserves this name"
 msgstr "O Windows reserva este nome"
 
+#: crates/vento/ui/rename.slint:970
+msgid "Without the dot"
+msgstr "Sem o ponto"
+
 #: crates/vento/src/pdf/window/write.rs:507
 msgid "Writing {name}…"
 msgstr "A escrever {name}…"
@@ -2081,7 +2193,7 @@ msgstr "Ontem"
 msgid "You can pick each action in Settings → Wheel."
 msgstr "Pode escolher cada ação em Definições → Roda."
 
-#: crates/vento/ui/pdf.slint:1589
+#: crates/vento/ui/pdf.slint:1174
 msgid "You pick where to cut"
 msgstr "Escolhe onde cortar"
 
@@ -2209,7 +2321,7 @@ msgstr "erro interno"
 msgid "interrupted"
 msgstr "interrompido"
 
-#: crates/vento-core/src/settings.rs:729
+#: crates/vento-core/src/settings.rs:761
 msgid "invalid shortcut \"{spec}\""
 msgstr "atalho inválido «{spec}»"
 
@@ -2256,6 +2368,10 @@ msgstr "O macOS usa este atalho"
 #: crates/vento-core/src/fileops.rs:48
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "movido para {copy}, mas não foi possível remover totalmente o original: {reason}"
+
+#: crates/vento/ui/rename.slint:853
+msgid "name"
+msgstr "nome"
 
 #: crates/vento-platform/src/lib.rs:281
 msgid "no app opened {names}"
@@ -2609,22 +2725,47 @@ msgid_plural "→ {n} files"
 msgstr[0] "→ {n} ficheiro"
 msgstr[1] "→ {n} ficheiros"
 
-#: crates/vento/ui/pdf.slint:1116
+#: crates/vento/ui/rename.slint:930
+msgctxt "Case example"
+msgid "MY TRIP PHOTO"
+msgstr "FOTO DA VIAGEM"
+
+#: crates/vento/ui/rename.slint:931
+msgctxt "Case example"
+msgid "My Trip Photo"
+msgstr "Foto Da Viagem"
+
+#: crates/vento/ui/rename.slint:929
+msgctxt "Case example"
+msgid "my trip photo"
+msgstr "foto da viagem"
+
+#: crates/vento/ui/rename.slint:932
+msgctxt "Case example"
+msgid "my-trip-photo"
+msgstr "foto-da-viagem"
+
+#: crates/vento/ui/rename.slint:933
+msgctxt "Case example"
+msgid "my_trip_photo"
+msgstr "foto_da_viagem"
+
+#: crates/vento/ui/pdf.slint:701
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr "Extrair"
 
-#: crates/vento/ui/pdf.slint:1057
+#: crates/vento/ui/pdf.slint:642
 msgctxt "PDF window"
 msgid "Add"
 msgstr "Adicionar"
 
-#: crates/vento/ui/pdf.slint:1083
+#: crates/vento/ui/pdf.slint:668
 msgctxt "Rotate"
 msgid "Left"
 msgstr "Esquerda"
 
-#: crates/vento/ui/pdf.slint:1092
+#: crates/vento/ui/pdf.slint:677
 msgctxt "Rotate"
 msgid "Right"
 msgstr "Direita"

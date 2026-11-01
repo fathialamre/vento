@@ -31,6 +31,10 @@ msgstr ", "
 msgid "1. Drag this file a little."
 msgstr "1. Bu dosyayı biraz sürükleyin."
 
+#: crates/vento/ui/rename.slint:1047
+msgid "2 before 10"
+msgstr "2, 10'dan önce"
+
 #: crates/vento/ui/welcome.slint:795
 msgid "2. While dragging, press"
 msgstr "2. Sürüklerken şuna basın:"
@@ -59,7 +63,7 @@ msgstr "Eylemler"
 msgid "Add"
 msgstr "Ekle"
 
-#: crates/vento/ui/pdf.slint:1058
+#: crates/vento/ui/pdf.slint:643
 msgid "Add PDF"
 msgstr "PDF ekle"
 
@@ -86,6 +90,18 @@ msgstr "Eklenme"
 #: crates/vento/src/pocket/clip.rs:594
 msgid "Address"
 msgstr "Adres"
+
+#: crates/vento/ui/rename.slint:461
+msgid "Adds 001, 002… in the list's order"
+msgstr "Listenin sırasıyla 001, 002… ekler"
+
+#: crates/vento/ui/rename.slint:460
+msgid "Adds text to every name"
+msgstr "Her ada metin ekler"
+
+#: crates/vento/ui/rename.slint:854
+msgid "After name"
+msgstr "Addan sonra"
 
 #: crates/vento/ui/screen_access.slint:125
 msgid "After you switch it on, macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing, remove Vento with the minus button and add it again."
@@ -123,7 +139,7 @@ msgstr "Arşivler"
 msgid "As a list"
 msgstr "Liste olarak"
 
-#: crates/vento/ui/pdf.slint:1588
+#: crates/vento/ui/pdf.slint:1173
 msgid "At my cuts"
 msgstr "Kesimlerimde"
 
@@ -167,6 +183,10 @@ msgstr "Geri"
 msgid "Back to kinds"
 msgstr "Türlere dön"
 
+#: crates/vento/ui/rename.slint:852
+msgid "Before name"
+msgstr "Addan önce"
+
 #: crates/vento/ui/info.slint:277
 msgid "Biggest inside"
 msgstr "İçindeki en büyük"
@@ -174,6 +194,10 @@ msgstr "İçindeki en büyük"
 #: crates/vento/src/whats_new_window/mod.rs:486
 msgid "Bring back anything you copied earlier"
 msgstr "Daha önce kopyaladığınız her şeyi geri getirin"
+
+#: crates/vento/ui/rename.slint:464
+msgid "Builds every name from parts"
+msgstr "Her adı parçalardan oluşturur"
 
 #: crates/vento/src/exec.rs:301
 msgid "Busy — still working"
@@ -234,6 +258,14 @@ msgstr "Fikrinizi mi değiştirdiniz? Bildirimdeki Geri al'a tıklayın."
 #: crates/vento/src/whats_new_window/mod.rs:461
 msgid "Changes that touch all of Vento"
 msgstr "Vento'nun tamamını etkileyen değişiklikler"
+
+#: crates/vento/ui/rename.slint:462
+msgid "Changes the letters of every name"
+msgstr "Her adın harflerini değiştirir"
+
+#: crates/vento/ui/rename.slint:463
+msgid "Changes the part after the last dot"
+msgstr "Son noktadan sonraki kısmı değiştirir"
 
 #: crates/vento/ui/settings_pages.slint:1519
 msgid "Check for updates automatically"
@@ -579,7 +611,11 @@ msgstr "Koyu"
 msgid "Date"
 msgstr "Tarih"
 
-#: crates/vento/ui/pdf.slint:1101
+#: crates/vento/ui/rename.slint:1053
+msgid "Date modified"
+msgstr "Değiştirilme tarihi"
+
+#: crates/vento/ui/pdf.slint:686
 msgid "Delete"
 msgstr "Sil"
 
@@ -591,11 +627,15 @@ msgstr "Tasarımcı"
 msgid "Developer"
 msgstr "Geliştirici"
 
+#: crates/vento/ui/rename.slint:899
+msgid "Digits"
+msgstr "Basamak"
+
 #: crates/vento/ui/settings_pages.slint:1044
 msgid "Dims the screen so you can pick the text to copy"
 msgstr "Kopyalanacak metni seçebilmeniz için ekranı karartır"
 
-#: crates/vento/ui/pdf.slint:1779
+#: crates/vento/ui/pdf.slint:1364
 msgid "Discard"
 msgstr "Vazgeç"
 
@@ -675,7 +715,7 @@ msgstr "Temel"
 msgid "Every action"
 msgstr "Tüm eylemler"
 
-#: crates/vento/ui/pdf.slint:1554
+#: crates/vento/ui/pdf.slint:1139
 msgid "Every page"
 msgstr "Her sayfa"
 
@@ -723,7 +763,7 @@ msgstr "Çıkarılıyor"
 msgid "Extracting {name}…"
 msgstr "{name} çıkarılıyor…"
 
-#: crates/vento/ui/pdf.slint:1572
+#: crates/vento/ui/pdf.slint:1157
 msgid "Fewer pages"
 msgstr "Daha az sayfa"
 
@@ -731,9 +771,17 @@ msgstr "Daha az sayfa"
 msgid "File"
 msgstr "Dosya"
 
-#: crates/vento/ui/pdf.slint:1039
+#: crates/vento/ui/pdf.slint:624
 msgid "Files"
 msgstr "Dosyalar"
+
+#: crates/vento/ui/rename.slint:808
+msgid "Find"
+msgstr "Bul"
+
+#: crates/vento/ui/rename.slint:459
+msgid "Finds text in every name and replaces it"
+msgstr "Her adda metni bulur ve değiştirir"
 
 #: crates/vento/ui/whats_new.slint:323
 msgid "Fixed"
@@ -751,7 +799,7 @@ msgstr "Klasörler"
 msgid "Folders you use often"
 msgstr "Sık kullandığınız klasörler"
 
-#: crates/vento/ui/pdf.slint:1648
+#: crates/vento/ui/pdf.slint:1233
 msgid "Format"
 msgstr "Biçim"
 
@@ -775,7 +823,7 @@ msgstr "GitHub yanıtı: {code}"
 msgid "GitHub's answer couldn't be read"
 msgstr "GitHub'ın yanıtı okunamadı"
 
-#: crates/vento/ui/pdf.slint:1040
+#: crates/vento/ui/pdf.slint:625
 msgid "Hide files"
 msgstr "Dosyaları gizle"
 
@@ -955,7 +1003,7 @@ msgstr "Bağlantılar"
 msgid "List"
 msgstr "Liste"
 
-#: crates/vento/ui/pdf.slint:1653
+#: crates/vento/ui/pdf.slint:1238
 msgid "Lossless"
 msgstr "Kayıpsız"
 
@@ -966,6 +1014,10 @@ msgstr "MB"
 #: crates/vento-core/src/share.rs:53
 msgid "Mail"
 msgstr "Mail"
+
+#: crates/vento/ui/rename.slint:828
+msgid "Match case"
+msgstr "Büyük/küçük harf eşleştir"
 
 #: crates/vento-core/src/share.rs:52
 msgid "Messages"
@@ -983,7 +1035,7 @@ msgstr "Kayıp"
 msgid "Modified"
 msgstr "Değiştirilme"
 
-#: crates/vento/ui/pdf.slint:1580
+#: crates/vento/ui/pdf.slint:1165
 msgid "More pages"
 msgstr "Daha çok sayfa"
 
@@ -1071,6 +1123,10 @@ msgstr "Ad çok uzun"
 msgid "New"
 msgstr "Yeni"
 
+#: crates/vento/ui/rename.slint:979
+msgid "New extension"
+msgstr "Yeni uzantı"
+
 #: crates/vento/ui/settings_pages.slint:1266
 msgid "New time"
 msgstr "Yeni süre"
@@ -1082,6 +1138,10 @@ msgstr "İleri"
 #: crates/vento/src/exec/pdf.rs:74
 msgid "No PDFs to open"
 msgstr "Açılacak PDF yok"
+
+#: crates/vento/ui/rename.slint:992
+msgid "No extension"
+msgstr "Uzantı yok"
 
 #: crates/vento/ui/settings_pages.slint:655
 msgid "No pinned folders"
@@ -1135,6 +1195,10 @@ msgstr "Kopyalanacak bir şey yok"
 msgid "Nothing to move"
 msgstr "Taşınacak bir şey yok"
 
+#: crates/vento/ui/rename.slint:820
+msgid "Nothing: removes it"
+msgstr "Hiçbir şey: metni siler"
+
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
 msgstr "Sayı"
@@ -1143,6 +1207,10 @@ msgstr "Sayı"
 msgid "Off"
 msgstr "Kapalı"
 
+#: crates/vento/ui/rename.slint:1054
+msgid "Oldest first"
+msgstr "Önce en eski"
+
 #: crates/vento/ui/settings_pages.slint:1520
 msgid "Once a day, from GitHub"
 msgstr "Günde bir kez, GitHub'dan"
@@ -1150,6 +1218,10 @@ msgstr "Günde bir kez, GitHub'dan"
 #: crates/vento/ui/settings_pages.slint:1307
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr "Yalnızca bilgisayar uyanık kalır; ekran her zamanki gibi kararır ve kilitlenir"
+
+#: crates/vento/ui/rename.slint:1003
+msgid "Only the name changes: the file is not converted."
+msgstr "Yalnızca ad değişir: dosya dönüştürülmez."
 
 #: crates/vento/src/pocket/menu.rs:132
 msgid "Open"
@@ -1225,6 +1297,10 @@ msgstr "Ya da Taşı'nın üzerinde biraz bekleyin: sabitlenmiş ve son klasörl
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr "Ya da Sallayarak aç açıksa, sürüklerken imleci hızla ileri geri sallayın."
 
+#: crates/vento/ui/rename.slint:592
+msgid "Order"
+msgstr "Sıralama"
+
 #: crates/vento-core/src/pocket_kind.rs:44
 msgid "Other"
 msgstr "Diğer"
@@ -1258,6 +1334,10 @@ msgstr "Vento'yu duraklat"
 #: crates/vento/ui/settings_pages.slint:466
 msgid "Petals"
 msgstr "Taç yaprak"
+
+#: crates/vento/ui/rename.slint:641
+msgid "Pick a tool to start"
+msgstr "Başlamak için bir araç seçin"
 
 #: crates/vento/ui/settings_window.slint:318
 msgid "Pick how long under the tile, or leave it on until you stop it."
@@ -1331,7 +1411,7 @@ msgstr "{} tuşlarına basın: ekran kararır."
 msgid "Preview"
 msgstr "Önizleme"
 
-#: crates/vento/ui/pdf.slint:1669
+#: crates/vento/ui/pdf.slint:1254
 msgid "Print"
 msgstr "Baskı"
 
@@ -1341,7 +1421,7 @@ msgid_plural "Put back {n} names"
 msgstr[0] "{n} ad geri alındı"
 msgstr[1] "{n} ad geri alındı"
 
-#: crates/vento/ui/pdf.slint:1663
+#: crates/vento/ui/pdf.slint:1248
 msgid "Quality"
 msgstr "Kalite"
 
@@ -1381,7 +1461,7 @@ msgstr "Dışarı sürükleyince kaldır"
 msgid "Remove from Pocket"
 msgstr "Cep'ten kaldır"
 
-#: crates/vento/ui/settings_pages.slint:1248
+#: crates/vento/ui/rename.slint:278
 msgid "Remove {}"
 msgstr "Kaldır: {}"
 
@@ -1425,6 +1505,14 @@ msgstr "Bir PDF'in sayfalarını yeniden sıralayın, döndürün ve bölün"
 msgid "Replace"
 msgstr "Değiştir"
 
+#: crates/vento/ui/rename.slint:818
+msgid "Replace with"
+msgstr "Şununla değiştir"
+
+#: crates/vento/ui/rename.slint:969
+msgid "Replace with…"
+msgstr "Şununla değiştir…"
+
 #: crates/vento/ui/quick.slint:329
 msgid "Restart"
 msgstr "Yeniden başlat"
@@ -1449,23 +1537,31 @@ msgstr[1] "{n} öğe geri yükleniyor…"
 msgid "Resume"
 msgstr "Sürdür"
 
-#: crates/vento/ui/pdf.slint:1084
+#: crates/vento/ui/rename.slint:1067
+msgid "Reverse"
+msgstr "Ters çevir"
+
+#: crates/vento/ui/pdf.slint:669
 msgid "Rotate left"
 msgstr "Sola döndür"
 
-#: crates/vento/ui/pdf.slint:1093
+#: crates/vento/ui/pdf.slint:678
 msgid "Rotate right"
 msgstr "Sağa döndür"
+
+#: crates/vento/ui/rename.slint:633
+msgid "Rules"
+msgstr "Kurallar"
 
 #: crates/vento-core/src/rename/labels.rs:86
 msgid "Same name as another item"
 msgstr "Başka bir öğeyle aynı ad"
 
-#: crates/vento/ui/pdf.slint:1772
+#: crates/vento/ui/pdf.slint:1357
 msgid "Save"
 msgstr "Kaydet"
 
-#: crates/vento/ui/pdf.slint:1424
+#: crates/vento/ui/pdf.slint:1009
 msgid "Save as new PDF"
 msgstr "Yeni PDF olarak kaydet"
 
@@ -1475,7 +1571,7 @@ msgid_plural "Save images"
 msgstr[0] "Görüntüyü kaydet"
 msgstr[1] "Görüntüleri kaydet"
 
-#: crates/vento/ui/pdf.slint:1752
+#: crates/vento/ui/pdf.slint:1337
 msgid "Save your changes as a new PDF?"
 msgstr "Değişiklikleriniz yeni bir PDF olarak kaydedilsin mi?"
 
@@ -1495,7 +1591,7 @@ msgid_plural "Saved {n} images in {folder}"
 msgstr[0] "{n} görüntü {folder} klasörüne kaydedildi"
 msgstr[1] "{n} görüntü {folder} klasörüne kaydedildi"
 
-#: crates/vento/ui/pdf.slint:1667
+#: crates/vento/ui/pdf.slint:1252
 msgid "Screen"
 msgstr "Ekran"
 
@@ -1519,7 +1615,7 @@ msgstr "Dosya ve klasörlerin ayrıntılarını görün"
 msgid "See what's new"
 msgstr "Yenilikleri gör"
 
-#: crates/vento/ui/pdf.slint:1066
+#: crates/vento/ui/pdf.slint:651
 msgid "Select all"
 msgstr "Tümünü seç"
 
@@ -1534,6 +1630,10 @@ msgstr "Mail ile gönder"
 #: crates/vento-core/src/share.rs:64
 msgid "Send with Messages"
 msgstr "Mesajlar ile gönder"
+
+#: crates/vento/ui/rename.slint:912
+msgid "Separator"
+msgstr "Ayırıcı"
 
 #: crates/vento/ui/settings_pages.slint:1556
 msgid "Set up Vento again"
@@ -1591,7 +1691,7 @@ msgstr "Ekran görüntüsü kaydedilince kart göster"
 msgid "Show all {}"
 msgstr "Tümünü göster: {}"
 
-#: crates/vento/ui/pdf.slint:1040
+#: crates/vento/ui/pdf.slint:625
 msgid "Show files"
 msgstr "Dosyaları göster"
 
@@ -1627,9 +1727,13 @@ msgstr "Boyut"
 msgid "Skip setup"
 msgstr "Kurulumu atla"
 
-#: crates/vento/ui/pdf.slint:1655
+#: crates/vento/ui/pdf.slint:1240
 msgid "Smaller file"
 msgstr "Daha küçük dosya"
+
+#: crates/vento/ui/rename.slint:1061
+msgid "Smallest first"
+msgstr "Önce en küçük"
 
 #: crates/vento-core/src/info.rs:270
 msgid "Some items could not be read"
@@ -1653,7 +1757,7 @@ msgstr[1] "{n} parçaya böl"
 msgid "Split {name}"
 msgstr "Böl: {name}"
 
-#: crates/vento/ui/pdf.slint:1135
+#: crates/vento/ui/pdf.slint:720
 msgid "Split…"
 msgstr "Böl…"
 
@@ -1749,11 +1853,15 @@ msgstr "İndirilen dosya açılamadı"
 msgid "The download didn't match its checksum"
 msgstr "İndirilen dosya sağlama toplamıyla eşleşmedi"
 
+#: crates/vento/ui/rename.slint:798
+msgid "The list and the numbers follow it"
+msgstr "Liste ve numaralar bu sırayı izler"
+
 #: crates/vento/src/updater/mod.rs:69
 msgid "The new version didn't start."
 msgstr "Yeni sürüm başlamadı."
 
-#: crates/vento/ui/pdf.slint:1761
+#: crates/vento/ui/pdf.slint:1346
 msgid "The original stays as it is."
 msgstr "Orijinal olduğu gibi kalır."
 
@@ -1793,7 +1901,7 @@ msgstr "Paneldeki süreler"
 msgid "Title Case"
 msgstr "Başlık Biçimi"
 
-#: crates/vento/ui/pdf.slint:1125
+#: crates/vento/ui/pdf.slint:710
 msgid "To images"
 msgstr "Görüntülere"
 
@@ -2061,6 +2169,10 @@ msgstr "Çalışırken Vento simgesinin yanında küçük bir fincan görünür.
 msgid "Windows reserves this name"
 msgstr "Windows bu adı ayırır"
 
+#: crates/vento/ui/rename.slint:970
+msgid "Without the dot"
+msgstr "Nokta olmadan"
+
 #: crates/vento/src/pdf/window/write.rs:507
 msgid "Writing {name}…"
 msgstr "{name} yazılıyor…"
@@ -2081,7 +2193,7 @@ msgstr "Dün"
 msgid "You can pick each action in Settings → Wheel."
 msgstr "Her eylemi Ayarlar → Çark bölümünden seçebilirsiniz."
 
-#: crates/vento/ui/pdf.slint:1589
+#: crates/vento/ui/pdf.slint:1174
 msgid "You pick where to cut"
 msgstr "Nereden bölüneceğini siz seçersiniz"
 
@@ -2209,7 +2321,7 @@ msgstr "iç hata"
 msgid "interrupted"
 msgstr "kesildi"
 
-#: crates/vento-core/src/settings.rs:729
+#: crates/vento-core/src/settings.rs:761
 msgid "invalid shortcut \"{spec}\""
 msgstr "geçersiz kısayol \"{spec}\""
 
@@ -2256,6 +2368,10 @@ msgstr "macOS bu kısayolu kullanıyor"
 #: crates/vento-core/src/fileops.rs:48
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "{copy} konumuna taşındı, ancak orijinal tamamen kaldırılamadı: {reason}"
+
+#: crates/vento/ui/rename.slint:853
+msgid "name"
+msgstr "ad"
 
 #: crates/vento-platform/src/lib.rs:281
 msgid "no app opened {names}"
@@ -2609,22 +2725,47 @@ msgid_plural "→ {n} files"
 msgstr[0] "→ {n} dosya"
 msgstr[1] "→ {n} dosya"
 
-#: crates/vento/ui/pdf.slint:1116
+#: crates/vento/ui/rename.slint:930
+msgctxt "Case example"
+msgid "MY TRIP PHOTO"
+msgstr "GEZİ FOTOĞRAFIM"
+
+#: crates/vento/ui/rename.slint:931
+msgctxt "Case example"
+msgid "My Trip Photo"
+msgstr "Gezi Fotoğrafım"
+
+#: crates/vento/ui/rename.slint:929
+msgctxt "Case example"
+msgid "my trip photo"
+msgstr "gezi fotoğrafım"
+
+#: crates/vento/ui/rename.slint:932
+msgctxt "Case example"
+msgid "my-trip-photo"
+msgstr "gezi-fotoğrafım"
+
+#: crates/vento/ui/rename.slint:933
+msgctxt "Case example"
+msgid "my_trip_photo"
+msgstr "gezi_fotoğrafım"
+
+#: crates/vento/ui/pdf.slint:701
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr "Çıkar"
 
-#: crates/vento/ui/pdf.slint:1057
+#: crates/vento/ui/pdf.slint:642
 msgctxt "PDF window"
 msgid "Add"
 msgstr "Ekle"
 
-#: crates/vento/ui/pdf.slint:1083
+#: crates/vento/ui/pdf.slint:668
 msgctxt "Rotate"
 msgid "Left"
 msgstr "Sola"
 
-#: crates/vento/ui/pdf.slint:1092
+#: crates/vento/ui/pdf.slint:677
 msgctxt "Rotate"
 msgid "Right"
 msgstr "Sağa"

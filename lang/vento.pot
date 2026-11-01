@@ -29,6 +29,10 @@ msgstr ""
 msgid "1. Drag this file a little."
 msgstr ""
 
+#: crates/vento/ui/rename.slint:1047
+msgid "2 before 10"
+msgstr ""
+
 #: crates/vento/ui/welcome.slint:795
 msgid "2. While dragging, press"
 msgstr ""
@@ -57,7 +61,7 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1058
+#: crates/vento/ui/pdf.slint:643
 msgid "Add PDF"
 msgstr ""
 
@@ -83,6 +87,18 @@ msgstr ""
 
 #: crates/vento/src/pocket/clip.rs:594
 msgid "Address"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:461
+msgid "Adds 001, 002… in the list's order"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:460
+msgid "Adds text to every name"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:854
+msgid "After name"
 msgstr ""
 
 #: crates/vento/ui/screen_access.slint:125
@@ -121,7 +137,7 @@ msgstr ""
 msgid "As a list"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1588
+#: crates/vento/ui/pdf.slint:1173
 msgid "At my cuts"
 msgstr ""
 
@@ -165,12 +181,20 @@ msgstr ""
 msgid "Back to kinds"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:852
+msgid "Before name"
+msgstr ""
+
 #: crates/vento/ui/info.slint:277
 msgid "Biggest inside"
 msgstr ""
 
 #: crates/vento/src/whats_new_window/mod.rs:486
 msgid "Bring back anything you copied earlier"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:464
+msgid "Builds every name from parts"
 msgstr ""
 
 #: crates/vento/src/exec.rs:301
@@ -231,6 +255,14 @@ msgstr ""
 
 #: crates/vento/src/whats_new_window/mod.rs:461
 msgid "Changes that touch all of Vento"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:462
+msgid "Changes the letters of every name"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:463
+msgid "Changes the part after the last dot"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1519
@@ -577,7 +609,11 @@ msgstr ""
 msgid "Date"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1101
+#: crates/vento/ui/rename.slint:1053
+msgid "Date modified"
+msgstr ""
+
+#: crates/vento/ui/pdf.slint:686
 msgid "Delete"
 msgstr ""
 
@@ -589,11 +625,15 @@ msgstr ""
 msgid "Developer"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:899
+msgid "Digits"
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:1044
 msgid "Dims the screen so you can pick the text to copy"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1779
+#: crates/vento/ui/pdf.slint:1364
 msgid "Discard"
 msgstr ""
 
@@ -673,7 +713,7 @@ msgstr ""
 msgid "Every action"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1554
+#: crates/vento/ui/pdf.slint:1139
 msgid "Every page"
 msgstr ""
 
@@ -721,7 +761,7 @@ msgstr ""
 msgid "Extracting {name}…"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1572
+#: crates/vento/ui/pdf.slint:1157
 msgid "Fewer pages"
 msgstr ""
 
@@ -729,8 +769,16 @@ msgstr ""
 msgid "File"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1039
+#: crates/vento/ui/pdf.slint:624
 msgid "Files"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:808
+msgid "Find"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:459
+msgid "Finds text in every name and replaces it"
 msgstr ""
 
 #: crates/vento/ui/whats_new.slint:323
@@ -749,7 +797,7 @@ msgstr ""
 msgid "Folders you use often"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1648
+#: crates/vento/ui/pdf.slint:1233
 msgid "Format"
 msgstr ""
 
@@ -773,7 +821,7 @@ msgstr ""
 msgid "GitHub's answer couldn't be read"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1040
+#: crates/vento/ui/pdf.slint:625
 msgid "Hide files"
 msgstr ""
 
@@ -953,7 +1001,7 @@ msgstr ""
 msgid "List"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1653
+#: crates/vento/ui/pdf.slint:1238
 msgid "Lossless"
 msgstr ""
 
@@ -963,6 +1011,10 @@ msgstr ""
 
 #: crates/vento-core/src/share.rs:53
 msgid "Mail"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:828
+msgid "Match case"
 msgstr ""
 
 #: crates/vento-core/src/share.rs:52
@@ -981,7 +1033,7 @@ msgstr ""
 msgid "Modified"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1580
+#: crates/vento/ui/pdf.slint:1165
 msgid "More pages"
 msgstr ""
 
@@ -1069,6 +1121,10 @@ msgstr ""
 msgid "New"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:979
+msgid "New extension"
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:1266
 msgid "New time"
 msgstr ""
@@ -1079,6 +1135,10 @@ msgstr ""
 
 #: crates/vento/src/exec/pdf.rs:74
 msgid "No PDFs to open"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:992
+msgid "No extension"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:655
@@ -1133,6 +1193,10 @@ msgstr ""
 msgid "Nothing to move"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:820
+msgid "Nothing: removes it"
+msgstr ""
+
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
 msgstr ""
@@ -1141,12 +1205,20 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:1054
+msgid "Oldest first"
+msgstr ""
+
 #: crates/vento/ui/settings_pages.slint:1520
 msgid "Once a day, from GitHub"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1307
 msgid "Only the computer stays awake; the screen dims and locks as usual"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:1003
+msgid "Only the name changes: the file is not converted."
 msgstr ""
 
 #: crates/vento/src/pocket/menu.rs:132
@@ -1223,6 +1295,10 @@ msgstr ""
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr ""
 
+#: crates/vento/ui/rename.slint:592
+msgid "Order"
+msgstr ""
+
 #: crates/vento-core/src/pocket_kind.rs:44
 msgid "Other"
 msgstr ""
@@ -1255,6 +1331,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:466
 msgid "Petals"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:641
+msgid "Pick a tool to start"
 msgstr ""
 
 #: crates/vento/ui/settings_window.slint:318
@@ -1329,7 +1409,7 @@ msgstr ""
 msgid "Preview"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1669
+#: crates/vento/ui/pdf.slint:1254
 msgid "Print"
 msgstr ""
 
@@ -1339,7 +1419,7 @@ msgid_plural "Put back {n} names"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1663
+#: crates/vento/ui/pdf.slint:1248
 msgid "Quality"
 msgstr ""
 
@@ -1379,7 +1459,7 @@ msgstr ""
 msgid "Remove from Pocket"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1248
+#: crates/vento/ui/rename.slint:278
 msgid "Remove {}"
 msgstr ""
 
@@ -1423,6 +1503,14 @@ msgstr ""
 msgid "Replace"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:818
+msgid "Replace with"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:969
+msgid "Replace with…"
+msgstr ""
+
 #: crates/vento/ui/quick.slint:329
 msgid "Restart"
 msgstr ""
@@ -1447,23 +1535,31 @@ msgstr[1] ""
 msgid "Resume"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1084
+#: crates/vento/ui/rename.slint:1067
+msgid "Reverse"
+msgstr ""
+
+#: crates/vento/ui/pdf.slint:669
 msgid "Rotate left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1093
+#: crates/vento/ui/pdf.slint:678
 msgid "Rotate right"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:633
+msgid "Rules"
 msgstr ""
 
 #: crates/vento-core/src/rename/labels.rs:86
 msgid "Same name as another item"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1772
+#: crates/vento/ui/pdf.slint:1357
 msgid "Save"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1424
+#: crates/vento/ui/pdf.slint:1009
 msgid "Save as new PDF"
 msgstr ""
 
@@ -1473,7 +1569,7 @@ msgid_plural "Save images"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1752
+#: crates/vento/ui/pdf.slint:1337
 msgid "Save your changes as a new PDF?"
 msgstr ""
 
@@ -1493,7 +1589,7 @@ msgid_plural "Saved {n} images in {folder}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1667
+#: crates/vento/ui/pdf.slint:1252
 msgid "Screen"
 msgstr ""
 
@@ -1517,7 +1613,7 @@ msgstr ""
 msgid "See what's new"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1066
+#: crates/vento/ui/pdf.slint:651
 msgid "Select all"
 msgstr ""
 
@@ -1531,6 +1627,10 @@ msgstr ""
 
 #: crates/vento-core/src/share.rs:64
 msgid "Send with Messages"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:912
+msgid "Separator"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:1556
@@ -1589,7 +1689,7 @@ msgstr ""
 msgid "Show all {}"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1040
+#: crates/vento/ui/pdf.slint:625
 msgid "Show files"
 msgstr ""
 
@@ -1625,8 +1725,12 @@ msgstr ""
 msgid "Skip setup"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1655
+#: crates/vento/ui/pdf.slint:1240
 msgid "Smaller file"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:1061
+msgid "Smallest first"
 msgstr ""
 
 #: crates/vento-core/src/info.rs:270
@@ -1651,7 +1755,7 @@ msgstr[1] ""
 msgid "Split {name}"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1135
+#: crates/vento/ui/pdf.slint:720
 msgid "Split…"
 msgstr ""
 
@@ -1747,11 +1851,15 @@ msgstr ""
 msgid "The download didn't match its checksum"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:798
+msgid "The list and the numbers follow it"
+msgstr ""
+
 #: crates/vento/src/updater/mod.rs:69
 msgid "The new version didn't start."
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1761
+#: crates/vento/ui/pdf.slint:1346
 msgid "The original stays as it is."
 msgstr ""
 
@@ -1791,7 +1899,7 @@ msgstr ""
 msgid "Title Case"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1125
+#: crates/vento/ui/pdf.slint:710
 msgid "To images"
 msgstr ""
 
@@ -2059,6 +2167,10 @@ msgstr ""
 msgid "Windows reserves this name"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:970
+msgid "Without the dot"
+msgstr ""
+
 #: crates/vento/src/pdf/window/write.rs:507
 msgid "Writing {name}…"
 msgstr ""
@@ -2079,7 +2191,7 @@ msgstr ""
 msgid "You can pick each action in Settings → Wheel."
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1589
+#: crates/vento/ui/pdf.slint:1174
 msgid "You pick where to cut"
 msgstr ""
 
@@ -2207,7 +2319,7 @@ msgstr ""
 msgid "interrupted"
 msgstr ""
 
-#: crates/vento-core/src/settings.rs:729
+#: crates/vento-core/src/settings.rs:761
 msgid "invalid shortcut \"{spec}\""
 msgstr ""
 
@@ -2253,6 +2365,10 @@ msgstr ""
 
 #: crates/vento-core/src/fileops.rs:48
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:853
+msgid "name"
 msgstr ""
 
 #: crates/vento-platform/src/lib.rs:281
@@ -2607,22 +2723,47 @@ msgid_plural "→ {n} files"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1116
+#: crates/vento/ui/rename.slint:930
+msgctxt "Case example"
+msgid "MY TRIP PHOTO"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:931
+msgctxt "Case example"
+msgid "My Trip Photo"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:929
+msgctxt "Case example"
+msgid "my trip photo"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:932
+msgctxt "Case example"
+msgid "my-trip-photo"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:933
+msgctxt "Case example"
+msgid "my_trip_photo"
+msgstr ""
+
+#: crates/vento/ui/pdf.slint:701
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1057
+#: crates/vento/ui/pdf.slint:642
 msgctxt "PDF window"
 msgid "Add"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1083
+#: crates/vento/ui/pdf.slint:668
 msgctxt "Rotate"
 msgid "Left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1092
+#: crates/vento/ui/pdf.slint:677
 msgctxt "Rotate"
 msgid "Right"
 msgstr ""
