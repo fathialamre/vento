@@ -2128,37 +2128,40 @@ mod tests {
         );
         // A hidden row dragged among the shown ones stays hidden and the
         // list keeps the shown rows first: it lands first of the hidden.
+        // Pdf and Share are listed only where they are available; Rename
+        // always is, last.
+        let hidden = |head: &[ActionId]| {
+            let mut v = head.to_vec();
+            if ActionId::Pdf.available() {
+                v.push(ActionId::Pdf);
+            }
+            if ActionId::Share.available() {
+                v.push(ActionId::Share);
+            }
+            v.push(ActionId::Rename);
+            v
+        };
         show_action(&mut s, 1, false);
         assert_eq!(
             s.hidden_actions,
-            [
+            hidden(&[
                 ActionId::Pocket,
                 ActionId::CopyTo,
                 ActionId::Archive,
                 ActionId::Info,
                 ActionId::Convert,
-                ActionId::Pdf,
-                ActionId::Share,
-                ActionId::Rename
-            ][..6
-                + usize::from(ActionId::Pdf.available())
-                + usize::from(ActionId::Share.available())]
+            ])
         );
         move_action(&mut s, 5, 1);
         assert_eq!(
             s.hidden_actions,
-            [
+            hidden(&[
                 ActionId::CopyTo,
                 ActionId::Pocket,
                 ActionId::Archive,
                 ActionId::Info,
                 ActionId::Convert,
-                ActionId::Pdf,
-                ActionId::Share,
-                ActionId::Rename
-            ][..6
-                + usize::from(ActionId::Pdf.available())
-                + usize::from(ActionId::Share.available())]
+            ])
         );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();
