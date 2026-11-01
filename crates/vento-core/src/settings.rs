@@ -307,8 +307,7 @@ struct RawSettings {
 
 /// The `[rename]` table. Rules stay raw values so one bad entry is dropped
 /// alone and the order is a plain string that reads leniently.
-#[derive(Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Serialize)]
 struct RawRename {
     last_rules: Vec<toml::Value>,
     order: String,
@@ -321,13 +320,46 @@ impl Default for RawRename {
     }
 }
 
+/// Reads the table field by field: a wrong-typed field falls back to its
+/// default and a non-table value is an empty table, so a hand-edit here never
+/// fails the whole settings file.
+impl<'de> Deserialize<'de> for RawRename {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let mut raw = RawRename::default();
+        let toml::Value::Table(table) = toml::Value::deserialize(d)? else {
+            warn!("ignoring a [rename] that is not a table");
+            return Ok(raw);
+        };
+        match table.get("last_rules") {
+            Some(toml::Value::Array(rules)) => raw.last_rules = rules.clone(),
+            Some(_) => warn!("ignoring rename.last_rules: not a list"),
+            None => {}
+        }
+        match table.get("order") {
+            Some(toml::Value::String(order)) => raw.order = order.clone(),
+            Some(_) => warn!("ignoring rename.order: not a string"),
+            None => {}
+        }
+        match table.get("reverse") {
+            Some(toml::Value::Boolean(reverse)) => raw.reverse = *reverse,
+            Some(_) => warn!("ignoring rename.reverse: not true or false"),
+            None => {}
+        }
+        Ok(raw)
+    }
+}
+
 impl From<&RenameMemory> for RawRename {
     fn from(m: &RenameMemory) -> Self {
         RawRename {
             last_rules: m
                 .rules
                 .iter()
-                .filter_map(|r| toml::Value::try_from(r).ok())
+                .filter_map(|r| {
+                    toml::Value::try_from(r)
+                        .inspect_err(|e| warn!("not saving a rename rule: {e}"))
+                        .ok()
+                })
                 .collect(),
             order: match m.order.by {
                 OrderBy::Name => "name",
@@ -889,6 +921,17 @@ mod tests {
             "[rename]\nlast_rules = [{ kind = \"number\", after = true, start = 1, digits = 0, separator = \"\" }]",
         );
         assert!(matches!(s.rename.rules[0], Rule::Number { digits: 1, .. }));
+    }
+
+    #[test]
+    fn wrong_typed_rename_fields_keep_the_rest_of_the_file() {
+        let s =
+            parse("pdf_image_dpi = 150\n[rename]\nlast_rules = \"x\"\norder = 5\nreverse = \"x\"");
+        assert_eq!(s.rename, RenameMemory::default());
+        assert_eq!(s.pdf_image_dpi, 150);
+        let s = parse("pdf_image_dpi = 150\nrename = \"x\"");
+        assert_eq!(s.rename, RenameMemory::default());
+        assert_eq!(s.pdf_image_dpi, 150);
     }
 
     #[test]
