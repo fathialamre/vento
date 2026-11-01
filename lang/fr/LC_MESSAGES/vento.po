@@ -111,7 +111,7 @@ msgstr "Un élément quitte la Poche dès que vous le déposez quelque part"
 msgid "Appearance"
 msgstr "Apparence"
 
-#: crates/vento-core/src/actions.rs:95
+#: crates/vento-core/src/actions.rs:99
 msgid "Archive"
 msgstr "Archiver"
 
@@ -175,7 +175,7 @@ msgstr "Les plus gros éléments"
 msgid "Bring back anything you copied earlier"
 msgstr "Retrouvez tout ce que vous avez copié"
 
-#: crates/vento/src/exec.rs:300
+#: crates/vento/src/exec.rs:301
 msgid "Busy — still working"
 msgstr "Occupé, travail en cours"
 
@@ -319,7 +319,7 @@ msgstr "Fermer l’aperçu"
 msgid "Colours of the Quick panel and this window"
 msgstr "Couleurs du panneau rapide et de cette fenêtre"
 
-#: crates/vento/src/wheel.rs:224
+#: crates/vento/src/wheel.rs:225
 msgid "Compress"
 msgstr "Compresser"
 
@@ -349,11 +349,11 @@ msgstr "Contient"
 msgid "Continue"
 msgstr "Continuer"
 
-#: crates/vento-core/src/actions.rs:97
+#: crates/vento-core/src/actions.rs:101
 msgid "Convert"
 msgstr "Convertir"
 
-#: crates/vento/src/wheel.rs:307
+#: crates/vento/src/wheel.rs:308
 msgid "Convert to"
 msgstr "Convertir en"
 
@@ -393,7 +393,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} élément copié dans {dest}"
 msgstr[1] "{n} éléments copiés dans {dest}"
 
-#: crates/vento-core/src/actions.rs:90
+#: crates/vento-core/src/actions.rs:94
 msgid "Copy"
 msgstr "Copier"
 
@@ -417,7 +417,7 @@ msgstr "Raccourci de Copier depuis l’écran"
 msgid "Copy from screen uses this shortcut"
 msgstr "Copier depuis l’écran utilise ce raccourci"
 
-#: crates/vento-core/src/actions.rs:92
+#: crates/vento-core/src/actions.rs:96
 msgid "Copy path"
 msgstr "Copier le chemin"
 
@@ -433,7 +433,7 @@ msgstr "Copier le texte"
 msgid "Copy the text from any part of the screen"
 msgstr "Copiez le texte de n’importe quelle partie de l’écran"
 
-#: crates/vento-core/src/actions.rs:94
+#: crates/vento-core/src/actions.rs:98
 msgid "Copy to"
 msgstr "Copier vers"
 
@@ -526,6 +526,10 @@ msgstr "Impossible de lire l’écran"
 #: crates/vento-core/src/rename/labels.rs:160
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "Impossible de renommer {name} : {reason}. Rien n’a été modifié."
+
+#: crates/vento/src/exec.rs:247
+msgid "Couldn't rename: {reason}"
+msgstr "Impossible de renommer : {reason}"
 
 #: crates/vento/src/updater/swap.rs:40
 msgid "Couldn't replace Vento"
@@ -693,7 +697,7 @@ msgstr "Partout"
 msgid "Extension"
 msgstr "Extension"
 
-#: crates/vento/src/wheel.rs:223
+#: crates/vento/src/wheel.rs:224
 msgid "Extract"
 msgstr "Extraire"
 
@@ -775,7 +779,7 @@ msgstr "Réponse de GitHub illisible"
 msgid "Hide files"
 msgstr "Masquer les fichiers"
 
-#: crates/vento/src/exec.rs:305
+#: crates/vento/src/exec.rs:306
 msgid "Hold on Convert to pick a format"
 msgstr "Maintenez sur Convertir pour choisir un format"
 
@@ -827,7 +831,7 @@ msgstr "Images"
 msgid "Improved"
 msgstr "Amélioré"
 
-#: crates/vento-core/src/actions.rs:96
+#: crates/vento-core/src/actions.rs:100
 msgid "Info"
 msgstr "Infos"
 
@@ -995,7 +999,7 @@ msgstr "Plus : {}"
 msgid "More…"
 msgstr "Plus…"
 
-#: crates/vento-core/src/actions.rs:91
+#: crates/vento-core/src/actions.rs:95
 msgid "Move"
 msgstr "Déplacer"
 
@@ -1007,7 +1011,7 @@ msgstr "Déplacez Vento dans Applications pour le mettre à jour"
 msgid "Move or copy files to your pinned and recent folders"
 msgstr "Déplacez ou copiez des fichiers vers vos dossiers épinglés et récents"
 
-#: crates/vento/src/wheel.rs:309
+#: crates/vento/src/wheel.rs:310
 msgid "Move to"
 msgstr "Déplacer vers"
 
@@ -1123,11 +1127,11 @@ msgstr "Aucune sélection"
 msgid "Nothing to convert: already {format}"
 msgstr "Rien à convertir : déjà en {format}"
 
-#: crates/vento/src/exec.rs:835
+#: crates/vento/src/exec.rs:837
 msgid "Nothing to copy"
 msgstr "Rien à copier"
 
-#: crates/vento/src/exec.rs:803
+#: crates/vento/src/exec.rs:805
 msgid "Nothing to move"
 msgstr "Rien à déplacer"
 
@@ -1225,7 +1229,7 @@ msgstr "Ou secouez vivement le pointeur pendant le glissement, si Secouer pour o
 msgid "Other"
 msgstr "Autres"
 
-#: crates/vento-core/src/actions.rs:98
+#: crates/vento-core/src/actions.rs:102
 msgid "PDF"
 msgstr "PDF"
 
@@ -1291,7 +1295,7 @@ msgstr "Placer les coupes"
 msgid "Plain"
 msgstr "Brut"
 
-#: crates/vento-core/src/actions.rs:89
+#: crates/vento-core/src/actions.rs:93
 msgid "Pocket"
 msgstr "Poche"
 
@@ -1392,6 +1396,10 @@ msgid "Removing {n} copy…"
 msgid_plural "Removing {n} copies…"
 msgstr[0] "Retrait de {n} copie…"
 msgstr[1] "Retrait de {n} copies…"
+
+#: crates/vento-core/src/actions.rs:104
+msgid "Rename"
+msgstr "Renommer"
 
 #: crates/vento-core/src/rename/labels.rs:111
 msgid "Rename {n} item"
@@ -1555,7 +1563,7 @@ msgstr "Secouez le pointeur pendant le glissement pour ouvrir la roue"
 msgid "Shake to open"
 msgstr "Secouer pour ouvrir"
 
-#: crates/vento-core/src/actions.rs:99
+#: crates/vento-core/src/actions.rs:103
 msgid "Share"
 msgstr "Partager"
 
@@ -1717,7 +1725,7 @@ msgstr "Faites une capture d’écran avec la touche de capture de votre systèm
 msgid "Template"
 msgstr "Modèle"
 
-#: crates/vento-core/src/actions.rs:93
+#: crates/vento-core/src/actions.rs:97
 msgid "Terminal"
 msgstr "Terminal"
 
@@ -1837,23 +1845,23 @@ msgstr "MAJUSCULES"
 msgid "Undo"
 msgstr "Annuler"
 
-#: crates/vento/src/exec.rs:284
+#: crates/vento/src/exec.rs:285
 msgid "Undo last PDF"
 msgstr "Annuler le dernier PDF"
 
-#: crates/vento/src/exec.rs:282
+#: crates/vento/src/exec.rs:283
 msgid "Undo last archive"
 msgstr "Annuler la dernière archive"
 
-#: crates/vento/src/exec.rs:283
+#: crates/vento/src/exec.rs:284
 msgid "Undo last convert"
 msgstr "Annuler la dernière conversion"
 
-#: crates/vento/src/exec.rs:281
+#: crates/vento/src/exec.rs:282
 msgid "Undo last copy"
 msgstr "Annuler la dernière copie"
 
-#: crates/vento/src/exec.rs:285
+#: crates/vento/src/exec.rs:286
 msgid "Undo last move"
 msgstr "Annuler le dernier déplacement"
 
@@ -2161,7 +2169,7 @@ msgstr "démarrage impossible"
 msgid "cannot start copying: {reason}"
 msgstr "impossible de lancer la copie : {reason}"
 
-#: crates/vento/src/exec.rs:937
+#: crates/vento/src/exec.rs:939
 msgid "cannot start: {reason}"
 msgstr "démarrage impossible : {reason}"
 
@@ -2193,7 +2201,7 @@ msgstr "vide"
 msgid "i/o error: {reason}"
 msgstr "erreur d’E/S : {reason}"
 
-#: crates/vento/src/exec.rs:923
+#: crates/vento/src/exec.rs:925
 msgid "internal error"
 msgstr "erreur interne"
 
@@ -2201,7 +2209,7 @@ msgstr "erreur interne"
 msgid "interrupted"
 msgstr "interrompu"
 
-#: crates/vento-core/src/settings.rs:647
+#: crates/vento-core/src/settings.rs:729
 msgid "invalid shortcut \"{spec}\""
 msgstr "raccourci non valide « {spec} »"
 
@@ -2265,7 +2273,7 @@ msgstr "aucun nom libre pour l’élément déplacé"
 msgid "no free name for the saved item"
 msgstr "aucun nom libre pour l’élément enregistré"
 
-#: crates/vento/src/exec.rs:528
+#: crates/vento/src/exec.rs:530
 msgid "no images"
 msgstr "aucune image"
 

@@ -2138,8 +2138,9 @@ mod tests {
                 ActionId::Info,
                 ActionId::Convert,
                 ActionId::Pdf,
-                ActionId::Share
-            ][..5
+                ActionId::Share,
+                ActionId::Rename
+            ][..6
                 + usize::from(ActionId::Pdf.available())
                 + usize::from(ActionId::Share.available())]
         );
@@ -2153,14 +2154,15 @@ mod tests {
                 ActionId::Info,
                 ActionId::Convert,
                 ActionId::Pdf,
-                ActionId::Share
-            ][..5
+                ActionId::Share,
+                ActionId::Rename
+            ][..6
                 + usize::from(ActionId::Pdf.available())
                 + usize::from(ActionId::Share.available())]
         );
         assert_eq!(s.actions.len(), 4);
         let before = s.clone();
-        move_action(&mut s, 11, 0);
+        move_action(&mut s, 12, 0);
         assert_eq!(s, before);
     }
 

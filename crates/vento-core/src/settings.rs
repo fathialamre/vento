@@ -12,6 +12,7 @@ use crate::awake;
 use crate::durable;
 use crate::geometry::{Layout, MAX_ACTIONS};
 use crate::paths::PathFormat;
+use crate::rename::{Order, OrderBy, RenameMemory, Rule};
 use crate::trigger::{Modifier, Modifiers};
 
 /// Whether the panels and windows use a light or dark look.
@@ -178,6 +179,9 @@ pub struct Settings {
     /// `false` stops the daily check; Check now in About still works. A
     /// file without the key means `true`.
     pub check_for_updates: bool,
+    /// The rules and list order the Rename window last used; it opens on
+    /// them. Saved in the `[rename]` table.
+    pub rename: RenameMemory,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -257,6 +261,7 @@ impl Default for Settings {
             pdf_image_dpi: 300,
             welcome_done: true,
             check_for_updates: true,
+            rename: RenameMemory::default(),
         }
     }
 }
@@ -297,6 +302,81 @@ struct RawSettings {
     pdf_image_dpi: u32,
     welcome_done: bool,
     check_for_updates: bool,
+    rename: RawRename,
+}
+
+/// The `[rename]` table. Rules stay raw values so one bad entry is dropped
+/// alone and the order is a plain string that reads leniently.
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
+struct RawRename {
+    last_rules: Vec<toml::Value>,
+    order: String,
+    reverse: bool,
+}
+
+impl Default for RawRename {
+    fn default() -> Self {
+        RawRename::from(&RenameMemory::default())
+    }
+}
+
+impl From<&RenameMemory> for RawRename {
+    fn from(m: &RenameMemory) -> Self {
+        RawRename {
+            last_rules: m
+                .rules
+                .iter()
+                .filter_map(|r| toml::Value::try_from(r).ok())
+                .collect(),
+            order: match m.order.by {
+                OrderBy::Name => "name",
+                OrderBy::Modified => "modified",
+                OrderBy::Size => "size",
+            }
+            .to_owned(),
+            reverse: m.order.reverse,
+        }
+    }
+}
+
+impl From<RawRename> for RenameMemory {
+    fn from(raw: RawRename) -> Self {
+        let rules = raw
+            .last_rules
+            .into_iter()
+            .filter_map(|v| match v.try_into::<Rule>() {
+                Ok(Rule::Number {
+                    after,
+                    start,
+                    digits,
+                    separator,
+                }) => Some(Rule::Number {
+                    after,
+                    start,
+                    digits: digits.clamp(1, 6),
+                    separator,
+                }),
+                Ok(rule) => Some(rule),
+                Err(e) => {
+                    warn!("ignoring a bad rename rule: {e}");
+                    None
+                }
+            })
+            .collect();
+        let by = match raw.order.as_str() {
+            "modified" => OrderBy::Modified,
+            "size" => OrderBy::Size,
+            _ => OrderBy::Name,
+        };
+        RenameMemory {
+            rules,
+            order: Order {
+                by,
+                reverse: raw.reverse,
+            },
+        }
+    }
 }
 
 impl Default for RawSettings {
@@ -343,6 +423,7 @@ impl From<&Settings> for RawSettings {
             pdf_image_dpi: s.pdf_image_dpi,
             welcome_done: s.welcome_done,
             check_for_updates: s.check_for_updates,
+            rename: RawRename::from(&s.rename),
         }
     }
 }
@@ -448,6 +529,7 @@ impl From<RawSettings> for Settings {
             pdf_image_dpi: if raw.pdf_image_dpi == 150 { 150 } else { 300 },
             welcome_done: raw.welcome_done,
             check_for_updates: raw.check_for_updates,
+            rename: raw.rename.into(),
         }
     }
 }
@@ -769,6 +851,50 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::try_load(&p).unwrap(), s);
+    }
+
+    #[test]
+    fn rename_memory_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            rename: RenameMemory {
+                rules: vec![
+                    Rule::Add {
+                        text: "x".into(),
+                        after: false,
+                    },
+                    Rule::new_number(),
+                ],
+                order: Order {
+                    by: OrderBy::Size,
+                    reverse: true,
+                },
+            },
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::try_load(&p).unwrap(), s);
+    }
+
+    #[test]
+    fn rename_memory_drops_bad_rules() {
+        let s = parse(
+            "[rename]\norder = \"colour\"\nlast_rules = [{ kind = \"add\", text = \"x\", after = true }, { kind = \"nope\" }, { kind = \"number\", after = true, start = 1, digits = 40, separator = \"-\" }]",
+        );
+        assert_eq!(s.rename.order, Order::default());
+        assert_eq!(s.rename.rules.len(), 2);
+        assert!(matches!(s.rename.rules[1], Rule::Number { digits: 6, .. }));
+        let s = parse(
+            "[rename]\nlast_rules = [{ kind = \"number\", after = true, start = 1, digits = 0, separator = \"\" }]",
+        );
+        assert!(matches!(s.rename.rules[0], Rule::Number { digits: 1, .. }));
+    }
+
+    #[test]
+    fn rename_is_not_on_the_default_wheel() {
+        assert!(!Settings::default().actions.contains(&ActionId::Rename));
+        assert_eq!(Settings::default().rename, RenameMemory::default());
     }
 
     #[test]
@@ -1495,6 +1621,7 @@ mod tests {
         if ActionId::Share.available() {
             expected.push((ActionId::Share, false));
         }
+        expected.push((ActionId::Rename, false));
         assert_eq!(Settings::load(&p).action_rows(), expected);
     }
 
@@ -1520,6 +1647,7 @@ mod tests {
         if ActionId::Share.available() {
             rows.push((ActionId::Share, false));
         }
+        rows.push((ActionId::Rename, false));
         assert!(s.set_action_rows(&rows));
         assert_eq!(s.action_rows(), rows);
         s.save(&p).unwrap();

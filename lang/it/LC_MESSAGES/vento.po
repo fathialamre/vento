@@ -111,7 +111,7 @@ msgstr "Un elemento lascia la Tasca quando lo rilasci da qualche parte"
 msgid "Appearance"
 msgstr "Aspetto"
 
-#: crates/vento-core/src/actions.rs:95
+#: crates/vento-core/src/actions.rs:99
 msgid "Archive"
 msgstr "Archivia"
 
@@ -175,7 +175,7 @@ msgstr "Più grandi all'interno"
 msgid "Bring back anything you copied earlier"
 msgstr "Recupera ciò che hai copiato in precedenza"
 
-#: crates/vento/src/exec.rs:300
+#: crates/vento/src/exec.rs:301
 msgid "Busy — still working"
 msgstr "Occupato — ancora al lavoro"
 
@@ -319,7 +319,7 @@ msgstr "Chiudi anteprima"
 msgid "Colours of the Quick panel and this window"
 msgstr "Colori del pannello rapido e di questa finestra"
 
-#: crates/vento/src/wheel.rs:224
+#: crates/vento/src/wheel.rs:225
 msgid "Compress"
 msgstr "Comprimi"
 
@@ -349,11 +349,11 @@ msgstr "Contiene"
 msgid "Continue"
 msgstr "Continua"
 
-#: crates/vento-core/src/actions.rs:97
+#: crates/vento-core/src/actions.rs:101
 msgid "Convert"
 msgstr "Converti"
 
-#: crates/vento/src/wheel.rs:307
+#: crates/vento/src/wheel.rs:308
 msgid "Convert to"
 msgstr "Converti in"
 
@@ -393,7 +393,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} elemento copiato in {dest}"
 msgstr[1] "{n} elementi copiati in {dest}"
 
-#: crates/vento-core/src/actions.rs:90
+#: crates/vento-core/src/actions.rs:94
 msgid "Copy"
 msgstr "Copia"
 
@@ -417,7 +417,7 @@ msgstr "Scorciatoia Copia dallo schermo"
 msgid "Copy from screen uses this shortcut"
 msgstr "Copia dallo schermo usa questa scorciatoia"
 
-#: crates/vento-core/src/actions.rs:92
+#: crates/vento-core/src/actions.rs:96
 msgid "Copy path"
 msgstr "Copia percorso"
 
@@ -433,7 +433,7 @@ msgstr "Copia testo"
 msgid "Copy the text from any part of the screen"
 msgstr "Copia il testo da qualsiasi punto dello schermo"
 
-#: crates/vento-core/src/actions.rs:94
+#: crates/vento-core/src/actions.rs:98
 msgid "Copy to"
 msgstr "Copia in"
 
@@ -526,6 +526,10 @@ msgstr "Impossibile leggere lo schermo"
 #: crates/vento-core/src/rename/labels.rs:160
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "Impossibile rinominare {name}: {reason}. Non è cambiato nulla."
+
+#: crates/vento/src/exec.rs:247
+msgid "Couldn't rename: {reason}"
+msgstr "Impossibile rinominare: {reason}"
 
 #: crates/vento/src/updater/swap.rs:40
 msgid "Couldn't replace Vento"
@@ -693,7 +697,7 @@ msgstr "Ovunque"
 msgid "Extension"
 msgstr "Estensione"
 
-#: crates/vento/src/wheel.rs:223
+#: crates/vento/src/wheel.rs:224
 msgid "Extract"
 msgstr "Estrai"
 
@@ -775,7 +779,7 @@ msgstr "Impossibile leggere la risposta di GitHub"
 msgid "Hide files"
 msgstr "Nascondi file"
 
-#: crates/vento/src/exec.rs:305
+#: crates/vento/src/exec.rs:306
 msgid "Hold on Convert to pick a format"
 msgstr "Soffermati su Converti per scegliere un formato"
 
@@ -827,7 +831,7 @@ msgstr "Immagini"
 msgid "Improved"
 msgstr "Migliorato"
 
-#: crates/vento-core/src/actions.rs:96
+#: crates/vento-core/src/actions.rs:100
 msgid "Info"
 msgstr "Info"
 
@@ -995,7 +999,7 @@ msgstr "Aumenta {}"
 msgid "More…"
 msgstr "Altro…"
 
-#: crates/vento-core/src/actions.rs:91
+#: crates/vento-core/src/actions.rs:95
 msgid "Move"
 msgstr "Sposta"
 
@@ -1007,7 +1011,7 @@ msgstr "Sposta Vento in Applicazioni per aggiornarlo"
 msgid "Move or copy files to your pinned and recent folders"
 msgstr "Sposta o copia file nelle cartelle fissate e recenti"
 
-#: crates/vento/src/wheel.rs:309
+#: crates/vento/src/wheel.rs:310
 msgid "Move to"
 msgstr "Sposta in"
 
@@ -1123,11 +1127,11 @@ msgstr "Nessuna selezione"
 msgid "Nothing to convert: already {format}"
 msgstr "Niente da convertire: già {format}"
 
-#: crates/vento/src/exec.rs:835
+#: crates/vento/src/exec.rs:837
 msgid "Nothing to copy"
 msgstr "Niente da copiare"
 
-#: crates/vento/src/exec.rs:803
+#: crates/vento/src/exec.rs:805
 msgid "Nothing to move"
 msgstr "Niente da spostare"
 
@@ -1225,7 +1229,7 @@ msgstr "Oppure scuoti rapidamente il puntatore avanti e indietro mentre trascini
 msgid "Other"
 msgstr "Altro"
 
-#: crates/vento-core/src/actions.rs:98
+#: crates/vento-core/src/actions.rs:102
 msgid "PDF"
 msgstr "PDF"
 
@@ -1291,7 +1295,7 @@ msgstr "Posiziona tagli"
 msgid "Plain"
 msgstr "Semplice"
 
-#: crates/vento-core/src/actions.rs:89
+#: crates/vento-core/src/actions.rs:93
 msgid "Pocket"
 msgstr "Tasca"
 
@@ -1392,6 +1396,10 @@ msgid "Removing {n} copy…"
 msgid_plural "Removing {n} copies…"
 msgstr[0] "Rimozione di {n} copia…"
 msgstr[1] "Rimozione di {n} copie…"
+
+#: crates/vento-core/src/actions.rs:104
+msgid "Rename"
+msgstr "Rinomina"
 
 #: crates/vento-core/src/rename/labels.rs:111
 msgid "Rename {n} item"
@@ -1555,7 +1563,7 @@ msgstr "Scuoti il puntatore mentre trascini per aprire la ruota"
 msgid "Shake to open"
 msgstr "Scuoti per aprire"
 
-#: crates/vento-core/src/actions.rs:99
+#: crates/vento-core/src/actions.rs:103
 msgid "Share"
 msgstr "Condividi"
 
@@ -1717,7 +1725,7 @@ msgstr "Fai uno screenshot con il tasto screenshot del sistema."
 msgid "Template"
 msgstr "Modello"
 
-#: crates/vento-core/src/actions.rs:93
+#: crates/vento-core/src/actions.rs:97
 msgid "Terminal"
 msgstr "Terminale"
 
@@ -1837,23 +1845,23 @@ msgstr "MAIUSCOLO"
 msgid "Undo"
 msgstr "Annulla"
 
-#: crates/vento/src/exec.rs:284
+#: crates/vento/src/exec.rs:285
 msgid "Undo last PDF"
 msgstr "Annulla ultimo PDF"
 
-#: crates/vento/src/exec.rs:282
+#: crates/vento/src/exec.rs:283
 msgid "Undo last archive"
 msgstr "Annulla ultimo archivio"
 
-#: crates/vento/src/exec.rs:283
+#: crates/vento/src/exec.rs:284
 msgid "Undo last convert"
 msgstr "Annulla ultima conversione"
 
-#: crates/vento/src/exec.rs:281
+#: crates/vento/src/exec.rs:282
 msgid "Undo last copy"
 msgstr "Annulla ultima copia"
 
-#: crates/vento/src/exec.rs:285
+#: crates/vento/src/exec.rs:286
 msgid "Undo last move"
 msgstr "Annulla ultimo spostamento"
 
@@ -2161,7 +2169,7 @@ msgstr "impossibile avviare"
 msgid "cannot start copying: {reason}"
 msgstr "impossibile avviare la copia: {reason}"
 
-#: crates/vento/src/exec.rs:937
+#: crates/vento/src/exec.rs:939
 msgid "cannot start: {reason}"
 msgstr "impossibile avviare: {reason}"
 
@@ -2193,7 +2201,7 @@ msgstr "vuoto"
 msgid "i/o error: {reason}"
 msgstr "errore di I/O: {reason}"
 
-#: crates/vento/src/exec.rs:923
+#: crates/vento/src/exec.rs:925
 msgid "internal error"
 msgstr "errore interno"
 
@@ -2201,7 +2209,7 @@ msgstr "errore interno"
 msgid "interrupted"
 msgstr "interrotto"
 
-#: crates/vento-core/src/settings.rs:647
+#: crates/vento-core/src/settings.rs:729
 msgid "invalid shortcut \"{spec}\""
 msgstr "scorciatoia non valida \"{spec}\""
 
@@ -2265,7 +2273,7 @@ msgstr "nessun nome libero per l'elemento spostato"
 msgid "no free name for the saved item"
 msgstr "nessun nome libero per l'elemento salvato"
 
-#: crates/vento/src/exec.rs:528
+#: crates/vento/src/exec.rs:530
 msgid "no images"
 msgstr "nessuna immagine"
 
