@@ -272,7 +272,9 @@ fn execute_with(
 }
 
 /// Whether the disk still looks as the preview saw it: every item is there, and
-/// every target is free or held by an item that is being renamed away.
+/// every target is free, held by an item that is being renamed away, or held by
+/// the item itself (a case-only rename on a volume that ignores case, which
+/// `os`'s exact names on Linux don't see).
 fn still_matches(steps: &[Step], disk: &dyn Disk, os: Os) -> bool {
     let key = |p: &Path| p.file_name().map(|n| name_key(&n.to_string_lossy(), os));
     let leaving: HashSet<(&Path, String)> = steps
@@ -288,12 +290,19 @@ fn still_matches(steps: &[Step], disk: &dyn Disk, os: Os) -> bool {
             || s.to
                 .parent()
                 .zip(key(&s.to))
-                .is_some_and(|(dir, k)| leaving.contains(&(dir, k)));
+                .is_some_and(|(dir, k)| leaving.contains(&(dir, k)))
+            || same_item(disk, &s.from, &s.to);
         if !free {
             log::warn!("rename: {} appeared", s.to.display());
         }
         free
     })
+}
+
+/// Whether `a` and `b` lead to the same item, as two spellings of one name do on
+/// a volume that ignores case.
+fn same_item(disk: &dyn Disk, a: &Path, b: &Path) -> bool {
+    matches!((disk.print(a), disk.print(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 /// A free temporary name per step, `.vento-rename-<token>-<index>` in the item's
@@ -378,7 +387,7 @@ pub struct UndoOutcome {
 ///
 /// An item is skipped when its new path is gone, it is no longer the same item
 /// (its print differs), or its old name is held by something that is not
-/// itself being put back.
+/// itself being put back (or the item itself, after a case-only rename).
 pub fn undo(record: &RenameRecord, disk: &dyn Disk, os: Os) -> UndoOutcome {
     let key = |p: &Path| {
         p.parent()
@@ -395,8 +404,10 @@ pub fn undo(record: &RenameRecord, disk: &dyn Disk, os: Os) -> UndoOutcome {
     loop {
         let leaving: HashSet<_> = keep.iter().filter_map(|(_, new, _)| key(new)).collect();
         let before = keep.len();
-        keep.retain(|(old, _, _)| {
-            !disk.exists(old) || key(old).is_some_and(|k| leaving.contains(&k))
+        keep.retain(|(old, new, _)| {
+            !disk.exists(old)
+                || key(old).is_some_and(|k| leaving.contains(&k))
+                || same_item(disk, old, new)
         });
         if keep.len() == before {
             break;
@@ -804,6 +815,25 @@ mod tests {
         assert_eq!(disk.paths(), set(&before));
         // Two renames out, the failed one, two back.
         assert_eq!(disk.calls(), 5);
+    }
+
+    #[test]
+    fn case_only_rename_on_insensitive_volume_under_linux() {
+        // A FAT or NTFS volume on Linux: names compare exactly, the disk does not.
+        let disk = FakeDisk::insensitive(&["/t/IMG.JPG"]);
+        let (out, _) = run(&[step("/t/IMG.JPG", "/t/IMG.jpg")], &disk, Os::Linux);
+        let RenameOutcome::Done(record) = out else {
+            panic!("{out:?}");
+        };
+        assert_eq!(disk.paths(), set(&["/t/IMG.jpg"]));
+        let out = undo(&record, &disk, Os::Linux);
+        assert_eq!((out.put_back, out.skipped), (1, 0));
+        assert!(out.failed.is_none(), "{out:?}");
+        assert_eq!(disk.paths(), set(&["/t/IMG.JPG"]));
+        // Another item at the target is still a change, on such a volume too.
+        let disk = FakeDisk::insensitive(&["/t/a", "/t/B"]);
+        let (out, _) = run(&[step("/t/a", "/t/b")], &disk, Os::Linux);
+        assert!(matches!(out, RenameOutcome::Changed), "{out:?}");
     }
 
     #[test]
