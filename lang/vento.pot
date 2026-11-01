@@ -541,8 +541,12 @@ msgstr ""
 msgid "Couldn't open: {reason}"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:179
+#: crates/vento-core/src/rename/labels.rs:183
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
+msgstr ""
+
+#: crates/vento/src/rename/mod.rs:174
+msgid "Couldn't read the items"
 msgstr ""
 
 #: crates/vento/src/pocket/shots_view.rs:914
@@ -553,7 +557,7 @@ msgstr ""
 msgid "Couldn't read the screen"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:160
+#: crates/vento-core/src/rename/labels.rs:164
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr ""
 
@@ -1185,12 +1189,16 @@ msgstr ""
 msgid "Nothing to convert: already {format}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:850
+#: crates/vento/src/exec.rs:849
 msgid "Nothing to copy"
 msgstr ""
 
-#: crates/vento/src/exec.rs:818
+#: crates/vento/src/exec.rs:817
 msgid "Nothing to move"
+msgstr ""
+
+#: crates/vento/src/rename/mod.rs:185
+msgid "Nothing to rename"
 msgstr ""
 
 #: crates/vento/ui/rename.slint:881
@@ -1257,7 +1265,7 @@ msgstr ""
 msgid "Open settings file"
 msgstr ""
 
-#: crates/vento/src/main.rs:228
+#: crates/vento/src/main.rs:238
 msgid "Open the Pocket"
 msgstr ""
 
@@ -1269,7 +1277,7 @@ msgstr ""
 msgid "Open the Welcome setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:232
+#: crates/vento/src/main.rs:242
 msgid "Open the clipboard history"
 msgstr ""
 
@@ -1413,7 +1421,7 @@ msgstr ""
 msgid "Print"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:187
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] ""
@@ -1494,6 +1502,10 @@ msgid "Renamed {n} item"
 msgid_plural "Renamed {n} items"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/vento/src/rename/mod.rs:735
+msgid "Renaming… {done} of {total}"
+msgstr ""
 
 #: crates/vento/src/whats_new_window/mod.rs:489
 msgid "Reorder, rotate and cut the pages of a PDF"
@@ -1737,7 +1749,7 @@ msgstr ""
 msgid "Some items could not be read"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:167
+#: crates/vento-core/src/rename/labels.rs:171
 msgid "Something changed in the folder. Check the list and try again."
 msgstr ""
 
@@ -1799,7 +1811,7 @@ msgstr ""
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr ""
 
-#: crates/vento/src/main.rs:901
+#: crates/vento/src/main.rs:933
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr ""
 
@@ -1911,7 +1923,7 @@ msgstr ""
 msgid "Today"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:172
+#: crates/vento-core/src/rename/labels.rs:176
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr ""
 
@@ -2283,7 +2295,7 @@ msgstr ""
 msgid "cannot start copying: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:952
+#: crates/vento/src/exec.rs:951
 msgid "cannot start: {reason}"
 msgstr ""
 
@@ -2315,7 +2327,7 @@ msgstr ""
 msgid "i/o error: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:938
+#: crates/vento/src/exec.rs:937
 msgid "internal error"
 msgstr ""
 
@@ -2545,7 +2557,7 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:945
+#: crates/vento/src/main.rs:977
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 
@@ -2553,7 +2565,7 @@ msgstr ""
 msgid "{name} · {n} items"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:205
+#: crates/vento-core/src/rename/labels.rs:209
 msgid "{now} should be {old}"
 msgstr ""
 
@@ -2603,7 +2615,7 @@ msgid_plural "{n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:191
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] ""

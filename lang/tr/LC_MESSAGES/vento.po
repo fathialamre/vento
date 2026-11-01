@@ -543,9 +543,13 @@ msgstr "Terminal açılamadı: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "Açılamadı: {reason}"
 
-#: crates/vento-core/src/rename/labels.rs:179
+#: crates/vento-core/src/rename/labels.rs:183
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "{name} geri alınamadı: {reason}. Hiçbir şey değişmedi."
+
+#: crates/vento/src/rename/mod.rs:174
+msgid "Couldn't read the items"
+msgstr "Öğeler okunamadı"
 
 #: crates/vento/src/pocket/shots_view.rs:914
 msgid "Couldn't read the picture"
@@ -555,7 +559,7 @@ msgstr "Resim okunamadı"
 msgid "Couldn't read the screen"
 msgstr "Ekran okunamadı"
 
-#: crates/vento-core/src/rename/labels.rs:160
+#: crates/vento-core/src/rename/labels.rs:164
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "{name} yeniden adlandırılamadı: {reason}. Hiçbir şey değişmedi."
 
@@ -1187,13 +1191,17 @@ msgstr "Hiçbir şey seçilmedi"
 msgid "Nothing to convert: already {format}"
 msgstr "Dönüştürülecek bir şey yok: zaten {format}"
 
-#: crates/vento/src/exec.rs:850
+#: crates/vento/src/exec.rs:849
 msgid "Nothing to copy"
 msgstr "Kopyalanacak bir şey yok"
 
-#: crates/vento/src/exec.rs:818
+#: crates/vento/src/exec.rs:817
 msgid "Nothing to move"
 msgstr "Taşınacak bir şey yok"
+
+#: crates/vento/src/rename/mod.rs:185
+msgid "Nothing to rename"
+msgstr "Yeniden adlandırılacak bir şey yok"
 
 #: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
@@ -1259,7 +1267,7 @@ msgstr "Ekran görüntülerini aç"
 msgid "Open settings file"
 msgstr "Ayarlar dosyasını aç"
 
-#: crates/vento/src/main.rs:228
+#: crates/vento/src/main.rs:238
 msgid "Open the Pocket"
 msgstr "Cep'i aç"
 
@@ -1271,7 +1279,7 @@ msgstr "Son ekran görüntülerinizi görmek için adada Ekran görüntüleri se
 msgid "Open the Welcome setup"
 msgstr "Hoş geldin kurulumunu aç"
 
-#: crates/vento/src/main.rs:232
+#: crates/vento/src/main.rs:242
 msgid "Open the clipboard history"
 msgstr "Pano geçmişini aç"
 
@@ -1415,7 +1423,7 @@ msgstr "Önizleme"
 msgid "Print"
 msgstr "Baskı"
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:187
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] "{n} ad geri alındı"
@@ -1496,6 +1504,10 @@ msgid "Renamed {n} item"
 msgid_plural "Renamed {n} items"
 msgstr[0] "{n} öğe yeniden adlandırıldı"
 msgstr[1] "{n} öğe yeniden adlandırıldı"
+
+#: crates/vento/src/rename/mod.rs:735
+msgid "Renaming… {done} of {total}"
+msgstr "Yeniden adlandırılıyor… {done}/{total}"
 
 #: crates/vento/src/whats_new_window/mod.rs:489
 msgid "Reorder, rotate and cut the pages of a PDF"
@@ -1739,7 +1751,7 @@ msgstr "Önce en küçük"
 msgid "Some items could not be read"
 msgstr "Bazı öğeler okunamadı"
 
-#: crates/vento-core/src/rename/labels.rs:167
+#: crates/vento-core/src/rename/labels.rs:171
 msgid "Something changed in the folder. Check the list and try again."
 msgstr "Klasörde bir şey değişti. Listeyi kontrol edip yeniden deneyin."
 
@@ -1801,7 +1813,7 @@ msgstr "Bu Mac'te şifrelenmeden saklanır. Parola yöneticilerinin özel olarak
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Bu bilgisayarda şifrelenmeden saklanır. Parola yöneticilerinin özel olarak işaretlediği kopyalar atlanır."
 
-#: crates/vento/src/main.rs:901
+#: crates/vento/src/main.rs:933
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ekrandan kopyala için Ekran Kaydı'nı yeniden açın"
 
@@ -1913,7 +1925,7 @@ msgstr "Ekranınızdaki metni okumak için Vento'nun Ekran Kaydı iznine ihtiyac
 msgid "Today"
 msgstr "Bugün"
 
-#: crates/vento-core/src/rename/labels.rs:172
+#: crates/vento-core/src/rename/labels.rs:176
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr "Aynı anda yeniden adlandırılamayacak kadar çok öğe (en fazla 5.000)"
 
@@ -2285,7 +2297,7 @@ msgstr "başlatılamıyor"
 msgid "cannot start copying: {reason}"
 msgstr "kopyalama başlatılamıyor: {reason}"
 
-#: crates/vento/src/exec.rs:952
+#: crates/vento/src/exec.rs:951
 msgid "cannot start: {reason}"
 msgstr "başlatılamıyor: {reason}"
 
@@ -2317,7 +2329,7 @@ msgstr "boş"
 msgid "i/o error: {reason}"
 msgstr "G/Ç hatası: {reason}"
 
-#: crates/vento/src/exec.rs:938
+#: crates/vento/src/exec.rs:937
 msgid "internal error"
 msgstr "iç hata"
 
@@ -2547,7 +2559,7 @@ msgstr[1] "{name} + {n} tane daha"
 msgid "{name} is locked"
 msgstr "{name} kilitli"
 
-#: crates/vento/src/main.rs:945
+#: crates/vento/src/main.rs:977
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "{name} kısayolu kullanılamıyor: {reason}"
 
@@ -2555,7 +2567,7 @@ msgstr "{name} kısayolu kullanılamıyor: {reason}"
 msgid "{name} · {n} items"
 msgstr "{name} · {n} öğe"
 
-#: crates/vento-core/src/rename/labels.rs:205
+#: crates/vento-core/src/rename/labels.rs:209
 msgid "{now} should be {old}"
 msgstr "{now} {old} olmalı"
 
@@ -2605,7 +2617,7 @@ msgid_plural "{n} items"
 msgstr[0] "{n} öğe"
 msgstr[1] "{n} öğe"
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:191
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "{n} öğe o zamandan beri değişti ve olduğu gibi bırakıldı."

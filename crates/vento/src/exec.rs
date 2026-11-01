@@ -744,9 +744,8 @@ impl Executor {
     }
 
     /// Whether a move, copy, archive, convert, PDF write, rename or undo is
-    /// running, which quitting would cancel.
-    // Only the macOS update controller asks.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// running, which quitting would cancel, and which the Rename window
+    /// checks before it waits for its rename.
     pub fn is_busy(&self) -> bool {
         self.busy.get()
     }

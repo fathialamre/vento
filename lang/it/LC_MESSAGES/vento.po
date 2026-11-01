@@ -543,9 +543,13 @@ msgstr "Impossibile aprire il terminale: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "Impossibile aprire: {reason}"
 
-#: crates/vento-core/src/rename/labels.rs:179
+#: crates/vento-core/src/rename/labels.rs:183
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "Impossibile ripristinare {name}: {reason}. Non è cambiato nulla."
+
+#: crates/vento/src/rename/mod.rs:174
+msgid "Couldn't read the items"
+msgstr "Impossibile leggere gli elementi"
 
 #: crates/vento/src/pocket/shots_view.rs:914
 msgid "Couldn't read the picture"
@@ -555,7 +559,7 @@ msgstr "Impossibile leggere l'immagine"
 msgid "Couldn't read the screen"
 msgstr "Impossibile leggere lo schermo"
 
-#: crates/vento-core/src/rename/labels.rs:160
+#: crates/vento-core/src/rename/labels.rs:164
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "Impossibile rinominare {name}: {reason}. Non è cambiato nulla."
 
@@ -1187,13 +1191,17 @@ msgstr "Nessuna selezione"
 msgid "Nothing to convert: already {format}"
 msgstr "Niente da convertire: già {format}"
 
-#: crates/vento/src/exec.rs:850
+#: crates/vento/src/exec.rs:849
 msgid "Nothing to copy"
 msgstr "Niente da copiare"
 
-#: crates/vento/src/exec.rs:818
+#: crates/vento/src/exec.rs:817
 msgid "Nothing to move"
 msgstr "Niente da spostare"
+
+#: crates/vento/src/rename/mod.rs:185
+msgid "Nothing to rename"
+msgstr "Niente da rinominare"
 
 #: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
@@ -1259,7 +1267,7 @@ msgstr "Apri screenshot"
 msgid "Open settings file"
 msgstr "Apri file impostazioni"
 
-#: crates/vento/src/main.rs:228
+#: crates/vento/src/main.rs:238
 msgid "Open the Pocket"
 msgstr "Apri la Tasca"
 
@@ -1271,7 +1279,7 @@ msgstr "Apri la scheda Screenshot nell'isola per vedere gli screenshot recenti."
 msgid "Open the Welcome setup"
 msgstr "Apri la configurazione iniziale"
 
-#: crates/vento/src/main.rs:232
+#: crates/vento/src/main.rs:242
 msgid "Open the clipboard history"
 msgstr "Apri la cronologia appunti"
 
@@ -1415,7 +1423,7 @@ msgstr "Anteprima"
 msgid "Print"
 msgstr "Stampa"
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:187
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] "Ripristinato {n} nome"
@@ -1496,6 +1504,10 @@ msgid "Renamed {n} item"
 msgid_plural "Renamed {n} items"
 msgstr[0] "Rinominato {n} elemento"
 msgstr[1] "Rinominati {n} elementi"
+
+#: crates/vento/src/rename/mod.rs:735
+msgid "Renaming… {done} of {total}"
+msgstr "Rinomina in corso… {done} di {total}"
 
 #: crates/vento/src/whats_new_window/mod.rs:489
 msgid "Reorder, rotate and cut the pages of a PDF"
@@ -1739,7 +1751,7 @@ msgstr "Prima i più piccoli"
 msgid "Some items could not be read"
 msgstr "Impossibile leggere alcuni elementi"
 
-#: crates/vento-core/src/rename/labels.rs:167
+#: crates/vento-core/src/rename/labels.rs:171
 msgid "Something changed in the folder. Check the list and try again."
 msgstr "Qualcosa è cambiato nella cartella. Controlla l’elenco e riprova."
 
@@ -1801,7 +1813,7 @@ msgstr "Archiviate su questo Mac senza crittografia. Le copie che i gestori di p
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Archiviate su questo computer senza crittografia. Le copie che i gestori di password segnano come private vengono saltate."
 
-#: crates/vento/src/main.rs:901
+#: crates/vento/src/main.rs:933
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Riattiva Registrazione schermo per Copia dallo schermo"
 
@@ -1913,7 +1925,7 @@ msgstr "Per leggere il testo sullo schermo, Vento ha bisogno di Registrazione sc
 msgid "Today"
 msgstr "Oggi"
 
-#: crates/vento-core/src/rename/labels.rs:172
+#: crates/vento-core/src/rename/labels.rs:176
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr "Troppi elementi da rinominare insieme (5.000 al massimo)"
 
@@ -2285,7 +2297,7 @@ msgstr "impossibile avviare"
 msgid "cannot start copying: {reason}"
 msgstr "impossibile avviare la copia: {reason}"
 
-#: crates/vento/src/exec.rs:952
+#: crates/vento/src/exec.rs:951
 msgid "cannot start: {reason}"
 msgstr "impossibile avviare: {reason}"
 
@@ -2317,7 +2329,7 @@ msgstr "vuoto"
 msgid "i/o error: {reason}"
 msgstr "errore di I/O: {reason}"
 
-#: crates/vento/src/exec.rs:938
+#: crates/vento/src/exec.rs:937
 msgid "internal error"
 msgstr "errore interno"
 
@@ -2547,7 +2559,7 @@ msgstr[1] "{name} + altri {n}"
 msgid "{name} is locked"
 msgstr "{name} è bloccato"
 
-#: crates/vento/src/main.rs:945
+#: crates/vento/src/main.rs:977
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Scorciatoia {name} non disponibile: {reason}"
 
@@ -2555,7 +2567,7 @@ msgstr "Scorciatoia {name} non disponibile: {reason}"
 msgid "{name} · {n} items"
 msgstr "{name} · {n} elementi"
 
-#: crates/vento-core/src/rename/labels.rs:205
+#: crates/vento-core/src/rename/labels.rs:209
 msgid "{now} should be {old}"
 msgstr "{now} dovrebbe essere {old}"
 
@@ -2605,7 +2617,7 @@ msgid_plural "{n} items"
 msgstr[0] "{n} elemento"
 msgstr[1] "{n} elementi"
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:191
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "{n} elemento è cambiato da allora ed è stato lasciato com’è."

@@ -567,9 +567,13 @@ msgstr "تعذّر فتح الطرفية: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "تعذّر الفتح: {reason}"
 
-#: crates/vento-core/src/rename/labels.rs:179
+#: crates/vento-core/src/rename/labels.rs:183
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "تعذّرت إعادة الاسم {name}: {reason}. لم يتغيّر شيء."
+
+#: crates/vento/src/rename/mod.rs:174
+msgid "Couldn't read the items"
+msgstr "تعذّرت قراءة العناصر"
 
 #: crates/vento/src/pocket/shots_view.rs:914
 msgid "Couldn't read the picture"
@@ -579,7 +583,7 @@ msgstr "تعذّرت قراءة الصورة"
 msgid "Couldn't read the screen"
 msgstr "تعذّرت قراءة الشاشة"
 
-#: crates/vento-core/src/rename/labels.rs:160
+#: crates/vento-core/src/rename/labels.rs:164
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "تعذّرت إعادة تسمية {name}: {reason}. لم يتغيّر شيء."
 
@@ -1251,13 +1255,17 @@ msgstr "لا شيء محدد"
 msgid "Nothing to convert: already {format}"
 msgstr "لا يوجد ما يُحوَّل: الصيغة {format} أصلاً"
 
-#: crates/vento/src/exec.rs:850
+#: crates/vento/src/exec.rs:849
 msgid "Nothing to copy"
 msgstr "لا يوجد شيء لنسخه"
 
-#: crates/vento/src/exec.rs:818
+#: crates/vento/src/exec.rs:817
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
+
+#: crates/vento/src/rename/mod.rs:185
+msgid "Nothing to rename"
+msgstr "لا شيء لإعادة تسميته"
 
 #: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
@@ -1323,7 +1331,7 @@ msgstr "فتح لقطات الشاشة"
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
-#: crates/vento/src/main.rs:228
+#: crates/vento/src/main.rs:238
 msgid "Open the Pocket"
 msgstr "فتح الجيب"
 
@@ -1335,7 +1343,7 @@ msgstr "افتح تبويب لقطات الشاشة في الجزيرة لترى
 msgid "Open the Welcome setup"
 msgstr "فتح إعداد الترحيب"
 
-#: crates/vento/src/main.rs:232
+#: crates/vento/src/main.rs:242
 msgid "Open the clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1487,7 +1495,7 @@ msgstr "معاينة"
 msgid "Print"
 msgstr "طباعة"
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:187
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] "لم تُعَد أي أسماء"
@@ -1588,6 +1596,10 @@ msgstr[2] "تمت إعادة تسمية عنصرين"
 msgstr[3] "تمت إعادة تسمية {n} عناصر"
 msgstr[4] "تمت إعادة تسمية {n} عنصراً"
 msgstr[5] "تمت إعادة تسمية {n} عنصر"
+
+#: crates/vento/src/rename/mod.rs:735
+msgid "Renaming… {done} of {total}"
+msgstr "جارٍ إعادة التسمية… {done} من {total}"
 
 #: crates/vento/src/whats_new_window/mod.rs:489
 msgid "Reorder, rotate and cut the pages of a PDF"
@@ -1851,7 +1863,7 @@ msgstr "الأصغر أولاً"
 msgid "Some items could not be read"
 msgstr "تعذّرت قراءة بعض العناصر"
 
-#: crates/vento-core/src/rename/labels.rs:167
+#: crates/vento-core/src/rename/labels.rs:171
 msgid "Something changed in the folder. Check the list and try again."
 msgstr "تغيّر شيء في المجلد. راجع القائمة وحاول مجدداً."
 
@@ -1917,7 +1929,7 @@ msgstr "يُخزَّن على هذا الجهاز دون تشفير. تُتجا�
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "يُخزَّن على هذا الحاسوب دون تشفير. تُتجاهل النسخ التي تعلّمها برامج إدارة كلمات السر على أنها خاصة."
 
-#: crates/vento/src/main.rs:901
+#: crates/vento/src/main.rs:933
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "فعّل إذن تسجيل الشاشة من جديد للنسخ من الشاشة"
 
@@ -2029,7 +2041,7 @@ msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسج
 msgid "Today"
 msgstr "اليوم"
 
-#: crates/vento-core/src/rename/labels.rs:172
+#: crates/vento-core/src/rename/labels.rs:176
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr "عناصر كثيرة جداً لإعادة تسميتها دفعة واحدة (5,000 كحد أقصى)"
 
@@ -2401,7 +2413,7 @@ msgstr "تعذّر البدء"
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
-#: crates/vento/src/exec.rs:952
+#: crates/vento/src/exec.rs:951
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
@@ -2433,7 +2445,7 @@ msgstr "فارغ"
 msgid "i/o error: {reason}"
 msgstr "خطأ في القراءة أو الكتابة: {reason}"
 
-#: crates/vento/src/exec.rs:938
+#: crates/vento/src/exec.rs:937
 msgid "internal error"
 msgstr "خطأ داخلي"
 
@@ -2675,7 +2687,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:945
+#: crates/vento/src/main.rs:977
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 
@@ -2683,7 +2695,7 @@ msgstr "اختصار {name} غير متاح: {reason}"
 msgid "{name} · {n} items"
 msgstr "‏{name} · العناصر: {n}"
 
-#: crates/vento-core/src/rename/labels.rs:205
+#: crates/vento-core/src/rename/labels.rs:209
 msgid "{now} should be {old}"
 msgstr "‏{now} يجب أن يكون {old}"
 
@@ -2761,7 +2773,7 @@ msgstr[3] "{n} عناصر"
 msgstr[4] "{n} عنصراً"
 msgstr[5] "{n} عنصر"
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:191
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "لم يتغيّر أي عنصر."

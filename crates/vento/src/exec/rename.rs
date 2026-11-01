@@ -60,10 +60,6 @@ impl Executor {
     /// window shows its own progress from `progress`. While another job is
     /// running, toasts Busy and never calls `done`, so the window stays as
     /// it is.
-    #[expect(
-        dead_code,
-        reason = "called by the Rename window controller, not wired yet"
-    )]
     pub fn rename_job(
         &self,
         steps: Vec<Step>,
