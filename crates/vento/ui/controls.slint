@@ -79,6 +79,46 @@ export component Panel inherits Rectangle {
     }
 }
 
+// A scrollbar for a page that overflows (its Flickable's `content-h` and
+// `offset`, as tall as the bar): the thumb shows how much is in view and
+// where, and can be dragged.
+export component ScrollBar inherits Rectangle {
+    in property <length> content-h;
+    in-out property <length> offset;
+
+    property <length> overflow: root.content-h - root.height;
+    property <length> thumb-h: max(24px, root.height * root.height / root.content-h);
+    property <length> travel: root.height - root.thumb-h;
+    property <length> drag-from;
+
+    width: 6px;
+
+    Rectangle {
+        y: root.overflow > 0 ? -root.offset / root.overflow * root.travel : 0;
+        width: parent.width;
+        height: root.thumb-h;
+        border-radius: 3px;
+        background: Theme.text.transparentize(thumb.pressed || thumb.has-hover ? 0.55 : 0.75);
+
+        thumb := TouchArea {
+            // A little wider than the thumb, so it is easy to grab.
+            x: -4px;
+            width: parent.width + 8px;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.drag-from = -root.offset;
+                }
+            }
+            moved => {
+                if self.pressed && root.travel > 0 {
+                    root.offset = -max(0px, min(root.overflow,
+                        root.drag-from + (self.mouse-y - self.pressed-y) * root.overflow / root.travel));
+                }
+            }
+        }
+    }
+}
+
 // One row of the panel: its name, and under it what it does when
 // `description` is set, at the start of the line; anything given to it (a
 // control, a button) at the end. A row that is not `enabled` shows its
