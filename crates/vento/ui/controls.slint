@@ -157,49 +157,66 @@ export component RowButton inherits Rectangle {
     in property <string> label;
     in property <string> name: self.label;
     in property <bool> danger;
+    // The step to take: the accent colour.
+    in property <bool> primary;
+    // Off: greyed out, and a click does nothing.
+    in property <bool> enabled: true;
     callback clicked();
 
     height: 26px;
     min-width: label.preferred-width + 20px;
     border-radius: 6px;
-    background: touch.has-hover ? Theme.field-hover : Theme.field;
-    border-width: Theme.dark ? 0px : 1px;
+    background: root.primary
+        ? (touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent))
+        : (touch.has-hover && root.enabled ? Theme.field-hover : Theme.field);
+    border-width: Theme.dark || root.primary ? 0px : 1px;
     border-color: Theme.separator;
     accessible-role: button;
     accessible-label: self.name;
-    accessible-action-default => { self.clicked(); }
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            self.clicked();
+        }
+    }
 
     label := Text {
         text: root.label;
         font-size: 12px;
-        color: root.danger ? Theme.danger : Theme.text;
+        font-weight: root.primary ? 600 : 400;
+        color: root.primary ? white : (root.enabled ? (root.danger ? Theme.danger : Theme.text) : Theme.muted);
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 
     touch := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
 }
 
 // An on/off switch. It shows `on` as given and asks for the other state
 // when clicked; whoever uses it decides. On is the knob at the end of the
-// line: the right, or the left in a right-to-left language.
+// line: the right, or the left in a right-to-left language. One that is not
+// `enabled` is dimmed and cannot be toggled.
 export component Switch inherits Rectangle {
     in property <bool> on;
     in property <string> label;
+    in property <bool> enabled: true;
     callback toggled(bool);
 
     width: 26px;
     height: 15px;
     border-radius: self.height / 2;
     background: self.on ? Theme.accent : Theme.switch-off;
+    opacity: self.enabled ? 1 : 0.4;
     animate background { duration: 120ms; }
     accessible-role: switch;
     accessible-label: self.label;
     accessible-checkable: true;
     accessible-checked: self.on;
-    accessible-action-default => { self.toggled(!self.on); }
+    accessible-enabled: self.enabled;
+    accessible-action-default => { if (root.enabled) { root.toggled(!root.on); } }
 
     Rectangle {
         x: root.on != Theme.rtl ? root.width - self.width - 2px : 2px;
@@ -215,6 +232,7 @@ export component Switch inherits Rectangle {
 
     // A little larger than the track, so it is easy to hit.
     TouchArea {
+        enabled: root.enabled;
         x: -4px;
         y: -6px;
         width: root.width + 8px;
@@ -775,8 +793,11 @@ export component DragGrip inherits Rectangle {
 export component AwakeChips inherits VerticalLayout {
     // Whether anything is held: Stop is enabled only then.
     in property <bool> on;
-    // The running chip: 0 to 5 the timed ones, 6 until stopped, 7 until a
-    // time; -1 none.
+    // The timed chips' labels, set by vento from the settings (at most six,
+    // one row; none hides the row).
+    in property <[string]> times;
+    // The running chip: the timed ones by place, then until stopped
+    // (`times.length`) and until a time (`times.length + 1`); -1 none.
     in property <int> chip;
     // The time the Until popup shows, set by vento as the panel opens.
     in-out property <int> until-hour;
@@ -787,7 +808,8 @@ export component AwakeChips inherits VerticalLayout {
     callback until-started(int, int);
     callback stop-clicked();
 
-    property <[string]> times: [@tr("15 min"), @tr("30 min"), @tr("1 h"), @tr("2 h"), @tr("4 h"), @tr("8 h")];
+    property <int> forever: self.times.length;
+    property <int> until: self.times.length + 1;
 
     function two-digits(n: int) -> string {
         return (n < 10 ? "0" : "") + n;
@@ -795,7 +817,7 @@ export component AwakeChips inherits VerticalLayout {
 
     spacing: 4px;
 
-    HorizontalLayout {
+    if root.times.length > 0: HorizontalLayout {
         spacing: 4px;
 
         for time[i] in root.times: Chip {
@@ -817,18 +839,18 @@ export component AwakeChips inherits VerticalLayout {
                 layout-order: Theme.rtl ? 3 : 0;
                 horizontal-stretch: 1;
                 label: @tr("Until stopped");
-                chosen: root.chip == 6;
-                clicked => { root.chip-clicked(6); }
+                chosen: root.chip == root.forever;
+                clicked => { root.chip-clicked(root.forever); }
             }
 
             Chip {
                 layout-order: Theme.rtl ? 2 : 0;
                 horizontal-stretch: 1;
                 label: @tr("Until…");
-                chosen: root.chip == 7;
+                chosen: root.chip == root.until;
                 clicked => {
-                    if (root.chip == 7) {
-                        root.chip-clicked(7);
+                    if (root.chip == root.until) {
+                        root.chip-clicked(root.until);
                     } else {
                         until-popup.show();
                     }

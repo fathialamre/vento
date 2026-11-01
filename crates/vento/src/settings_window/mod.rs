@@ -15,6 +15,8 @@ use std::process::Command;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 use log::{debug, warn};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
@@ -23,24 +25,31 @@ use slint::{
     CloseRequestResponse, ComponentHandle, Image, LogicalPosition, Model, ModelRc, SharedString,
     Timer, VecModel,
 };
+use vento_core::awake::{
+    DEFAULT_TIMES, MAX_TIME, MAX_TIMES, MIN_TIME, duration_text, step_time, tidy_times,
+};
 use vento_core::destinations::{
     RecentDestinations, display_path, folder_exists, recent_path, ring_destinations,
 };
 use vento_core::geometry::{Layout, Rect, screen_for};
+use vento_core::i18n::dates::{day_month, time_hm};
 use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView,
-    Settings, SettingsError, ThemeName, is_reserved_shortcut, move_row, parse_shortcut,
+    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS,
+    MOVE_HOLD_STEP_MS, PocketView, Settings, SettingsError, ThemeName, is_reserved_shortcut,
+    move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
+use vento_core::update::state::UpdateState;
+use vento_core::update::version::Version;
 use vento_platform::{Platform, TerminalApp};
 
 use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
-use crate::panel::set_rows;
-use crate::pocket::{display_name, to_image};
+use crate::panel::{UpdateView, set_rows, update_view};
+use crate::pocket::{Access, display_name, to_image};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
 use crate::wheel::action_icon;
@@ -70,6 +79,67 @@ pub(crate) const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Super"];
 pub(crate) const TRIGGER_NAMES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 const PATH_FORMATS: [PathFormat; 2] = [PathFormat::Plain, PathFormat::ShellQuoted];
 
+/// What About's update row shows: the panel's card (`kind` 1 to 5, see
+/// [`UpdateView`]), and when there is no card, up to date (`kind` 0), a
+/// check that failed (6) or a check under way (7).
+pub type AboutUpdateView = UpdateView;
+
+/// About's update row for `state`, in the interface language. `running` is
+/// the version of this copy and `now` the time in Unix seconds, which
+/// "Checked today" is measured against.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn about_update_view(state: &UpdateState, running: Version, now: i64) -> AboutUpdateView {
+    about_update_view_in(state, running, now, &TimeZone::system())
+}
+
+/// [`about_update_view`] with days and clock times read in `zone`.
+fn about_update_view_in(
+    state: &UpdateState,
+    running: Version,
+    now: i64,
+    zone: &TimeZone,
+) -> AboutUpdateView {
+    let row = |kind, title: String, detail: String| AboutUpdateView {
+        kind,
+        title,
+        detail,
+        ..AboutUpdateView::default()
+    };
+    match state {
+        UpdateState::UpToDate { checked_at } => row(
+            0,
+            tr("You're up to date"),
+            checked_at.map_or_else(String::new, |at| checked_text(at, now, zone)),
+        ),
+        UpdateState::Checking => row(7, tr("Checking for updates\u{2026}"), String::new()),
+        UpdateState::CheckFailed { reason } => {
+            row(6, tr("Couldn't check for updates"), reason.clone())
+        }
+        _ => update_view(state, running),
+    }
+}
+
+/// When the last check ran: "Checked today at 10:42", or "Checked 5 Nov"
+/// on another day.
+fn checked_text(checked_at: i64, now: i64, zone: &TimeZone) -> String {
+    let local = |seconds: i64| {
+        Timestamp::from_second(seconds)
+            .ok()
+            .map(|t| t.to_zoned(zone.clone()).datetime())
+    };
+    let Some(at) = local(checked_at) else {
+        return String::new();
+    };
+    if local(now).is_some_and(|now| now.date() == at.date()) {
+        fill(
+            &tr("Checked today at {time}"),
+            &[("time", &time_hm(at.time()))],
+        )
+    } else {
+        fill(&tr("Checked {date}"), &[("date", &day_month(at.date()))])
+    }
+}
+
 /// The licences of Vento and of what it bundles: the README's License
 /// section, which links each licence file.
 const LICENSES_URL: &str = "https://github.com/fathialamre/vento#license";
@@ -92,6 +162,7 @@ pub enum Page {
     Pocket,
     Clipboard,
     CopyFromScreen,
+    Screenshots,
     KeepAwake,
     About,
 }
@@ -104,8 +175,14 @@ impl Page {
         self as i32
     }
 
+    /// The page whose [`Page::key`] is `key`: the What's new window opens a
+    /// feature's page by it.
+    pub fn from_key(key: &str) -> Option<Page> {
+        pages(true).into_iter().find(|page| page.key() == key)
+    }
+
     /// The page's name in `closed_how_to` in the settings file.
-    fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::General => "general",
             Self::Wheel => "wheel",
@@ -113,6 +190,7 @@ impl Page {
             Self::Pocket => "pocket",
             Self::Clipboard => "clipboard",
             Self::CopyFromScreen => "copy_from_screen",
+            Self::Screenshots => "screenshots",
             Self::KeepAwake => "keep_awake",
             Self::About => "about",
         }
@@ -129,6 +207,7 @@ impl Page {
             Self::Pocket => tr("Pocket"),
             Self::Clipboard => tr("Clipboard"),
             Self::CopyFromScreen => tr("Copy from screen"),
+            Self::Screenshots => tr("Screenshots"),
             Self::KeepAwake => tr("Keep Awake"),
             Self::About => tr("About"),
         }
@@ -145,6 +224,7 @@ impl Page {
             Self::Pocket => icons.get_pocket(),
             Self::Clipboard => icons.get_clipboard(),
             Self::CopyFromScreen => panel.get_scan_text(),
+            Self::Screenshots => icons.get_photo(),
             Self::KeepAwake => panel.get_awake(),
             Self::About => icons.get_info(),
         }
@@ -162,6 +242,7 @@ pub fn pages(screen_text_supported: bool) -> Vec<Page> {
         Pocket,
         Clipboard,
         CopyFromScreen,
+        Screenshots,
         KeepAwake,
         About,
     ]
@@ -242,6 +323,29 @@ impl ShortcutFor {
 /// be registered.
 pub type TryShortcut = Box<dyn Fn(ShortcutFor, &str) -> Result<(), String>>;
 
+/// What the Screenshots page asks of the island's screenshots.
+pub struct ShotsLink {
+    /// Whether the folder is being read, and the folder.
+    pub access: Box<dyn Fn() -> (Access, PathBuf)>,
+    /// Reads the folder again: the page was opened.
+    pub touch: Box<dyn Fn()>,
+}
+
+/// What About's update row and link do.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct AboutUpdateActions {
+    /// Update, or Restart once the update is ready.
+    pub update: Box<dyn Fn()>,
+    /// Cancel the download.
+    pub cancel: Box<dyn Fn()>,
+    /// See what's new.
+    pub notes: Box<dyn Fn()>,
+    /// Try again.
+    pub retry: Box<dyn Fn()>,
+    /// Check for an update now.
+    pub check_now: Box<dyn Fn()>,
+}
+
 /// Opens, fills and closes the Settings window.
 pub struct SettingsWindowController {
     platform: Rc<dyn Platform>,
@@ -262,6 +366,11 @@ pub struct SettingsWindowController {
     try_shortcut: TryShortcut,
     /// Empties the clipboard history at once, with no Undo.
     on_clear_history: Box<dyn Fn()>,
+    /// How the Screenshots page reaches the island's screenshots.
+    shots: ShotsLink,
+    /// The Screenshots page has read the folder again since it was shown
+    /// last (once per visit, however it was shown).
+    shots_touched: Cell<bool>,
     /// The shortcut the recording field is for.
     recording: Cell<ShortcutFor>,
     /// Why each shortcut was last refused (indexed by [`ShortcutFor::index`]),
@@ -281,6 +390,8 @@ pub struct SettingsWindowController {
     folder_icons: RefCell<HashMap<PathBuf, Option<Image>>>,
     /// The installed terminals, as the Terminal menu lists them.
     terminals: RefCell<Vec<TerminalApp>>,
+    /// The time the Keep Awake page's Add adds, in minutes.
+    awake_new: Cell<u32>,
     /// The window has been placed since it was made (a new window opens
     /// centred; one shown again stays where the user left it).
     placed: Cell<bool>,
@@ -293,6 +404,13 @@ pub struct SettingsWindowController {
     /// Runs when About's Set up Vento again is pressed; main sets it to
     /// open the Welcome window.
     on_open_welcome: RefCell<Option<Box<dyn Fn()>>>,
+    /// Runs when About's What's new View is pressed.
+    on_open_whats_new: RefCell<Option<Box<dyn Fn()>>>,
+    /// What About's update row shows, for the next window and the open one,
+    /// and what its buttons do. Where there are no actions (this platform
+    /// does not update itself) the row and the automatic check are left out.
+    update: RefCell<AboutUpdateView>,
+    on_update: RefCell<Option<AboutUpdateActions>>,
     /// Whether another vento window (the Quick panel, the Info window) is
     /// open; main sets it. That window keeps the focus when this one closes.
     other_window_open: RefCell<Option<Box<dyn Fn() -> bool>>>,
@@ -305,7 +423,7 @@ impl SettingsWindowController {
     /// executor share; `screen_text_supported` says whether the window has
     /// a Copy from screen page; `try_shortcut` registers a recorded Pocket,
     /// Clipboard or Copy from screen shortcut; `on_clear_history` empties
-    /// the clipboard history.
+    /// the clipboard history; `shots` is the page of the screenshots.
     pub fn new(
         platform: Rc<dyn Platform>,
         hub: Rc<SettingsHub>,
@@ -313,6 +431,7 @@ impl SettingsWindowController {
         screen_text_supported: bool,
         try_shortcut: TryShortcut,
         on_clear_history: Box<dyn Fn()>,
+        shots: ShotsLink,
     ) -> Rc<Self> {
         let controller = Rc::new_cyclic(|this| Self {
             platform,
@@ -323,6 +442,8 @@ impl SettingsWindowController {
             recent,
             try_shortcut,
             on_clear_history,
+            shots,
+            shots_touched: Cell::new(false),
             recording: Cell::new(ShortcutFor::Pocket),
             refusals: [Cell::new(None), Cell::new(None), Cell::new(None)],
             home: std::env::var_os("HOME").map(PathBuf::from),
@@ -332,11 +453,15 @@ impl SettingsWindowController {
             recent_paths: RefCell::new(Vec::new()),
             folder_icons: RefCell::new(HashMap::new()),
             terminals: RefCell::new(Vec::new()),
+            awake_new: Cell::new(NEW_AWAKE_TIME),
             placed: Cell::new(false),
             open: Cell::new(false),
             modifiers: Cell::new(ModifiersState::empty()),
             on_activated: RefCell::new(None),
             on_open_welcome: RefCell::new(None),
+            on_open_whats_new: RefCell::new(None),
+            update: RefCell::new(AboutUpdateView::default()),
+            on_update: RefCell::new(None),
             other_window_open: RefCell::new(None),
             this: this.clone(),
         });
@@ -367,6 +492,47 @@ impl SettingsWindowController {
         *self.on_open_welcome.borrow_mut() = Some(f);
     }
 
+    /// Has About's What's new View call `f`.
+    pub fn set_on_open_whats_new(&self, f: Box<dyn Fn()>) {
+        *self.on_open_whats_new.borrow_mut() = Some(f);
+    }
+
+    /// Turns About's update row and automatic check on, and has their
+    /// buttons call `actions`.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn set_on_update(&self, actions: AboutUpdateActions) {
+        *self.on_update.borrow_mut() = Some(actions);
+        if let Some(window) = self.existing() {
+            window.set_updates_supported(true);
+        }
+    }
+
+    /// Shows `view` on About's update row: now when the window exists, and
+    /// on every window made after.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn set_update(&self, view: AboutUpdateView) {
+        *self.update.borrow_mut() = view;
+        if let Some(window) = self.existing() {
+            self.show_update_on(&window);
+        }
+    }
+
+    fn show_update_on(&self, window: &SettingsWindow) {
+        let view = self.update.borrow();
+        window.set_update_kind(view.kind);
+        window.set_update_title(view.title.as_str().into());
+        window.set_update_detail(view.detail.as_str().into());
+        window.set_update_progress(view.progress);
+        window.set_update_can_retry(view.can_retry);
+    }
+
+    /// Runs the update action `pick` names, if updates are on.
+    fn run_update(&self, pick: impl Fn(&AboutUpdateActions) -> &dyn Fn()) {
+        if let Some(actions) = self.on_update.borrow().as_ref() {
+            pick(actions)();
+        }
+    }
+
     /// Has the window ask `f` whether another vento window is open as it
     /// closes: focus is then left with that window instead of handed back
     /// to the app that had it.
@@ -388,9 +554,12 @@ impl SettingsWindowController {
             window.set_pinned(ModelRc::from(self.pinned.clone()));
             window.set_recent(ModelRc::from(self.recent_rows.clone()));
             window.set_screen_text_supported(self.screen_text_supported);
+            window.set_shots_macos(cfg!(target_os = "macos"));
             let trigger_names: Vec<SharedString> = TRIGGER_NAMES.map(Into::into).into();
             window.set_trigger_names(ModelRc::from(trigger_names.as_slice()));
             window.set_version(env!("CARGO_PKG_VERSION").into());
+            window.set_updates_supported(self.on_update.borrow().is_some());
+            self.show_update_on(&window);
             let theme_names: Vec<SharedString> =
                 ThemeName::ALL.iter().map(|t| t.label().into()).collect();
             window.set_theme_names(ModelRc::from(theme_names.as_slice()));
@@ -465,6 +634,15 @@ impl SettingsWindowController {
             }
         });
         window.on_open_licenses(|| open_link(LICENSES_URL));
+        let this = self.this.clone();
+        window.on_open_whats_new(move || {
+            if let Some(controller) = this.upgrade()
+                && let Some(f) = controller.on_open_whats_new.borrow().as_ref()
+            {
+                f();
+            }
+        });
+        self.connect_update(window);
         self.connect_controls(window);
     }
 
@@ -560,12 +738,14 @@ impl SettingsWindowController {
             }
         });
         self.connect_clipboard_page(window);
+        self.connect_screenshots_page(window);
         let this = self.this.clone();
         window.on_awake_screen_off_toggled(move |on| {
             if let Some(controller) = this.upgrade() {
                 controller.apply(|s| s.keep_awake_screen_off = on);
             }
         });
+        self.connect_awake_page(window);
         let this = self.this.clone();
         window.on_how_to_toggled(move |id, open| {
             let Some(page) = pages(true).into_iter().find(|p| p.id() == id) else {
@@ -606,6 +786,85 @@ impl SettingsWindowController {
         });
     }
 
+    fn connect_awake_page(&self, window: &SettingsWindow) {
+        let this = self.this.clone();
+        window.on_awake_time_removed(move |i| {
+            if let (Some(controller), Ok(i)) = (this.upgrade(), usize::try_from(i)) {
+                controller.apply(|s| remove_awake_time(s, i));
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_times_restored(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(restore_awake_times);
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_new_stepped(move |steps| {
+            let Some(controller) = this.upgrade() else {
+                return;
+            };
+            let new = step_time(controller.awake_new.get(), steps > 0);
+            controller.awake_new.set(new);
+            if let Some(window) = controller.existing() {
+                controller.show_awake(&window, &controller.hub.current());
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_time_added(move || {
+            if let Some(controller) = this.upgrade() {
+                let new = controller.awake_new.get();
+                controller.apply(|s| add_awake_time(s, new));
+            }
+        });
+        let this = self.this.clone();
+        window.on_awake_start_chosen(move |i| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| choose_awake_start(s, i));
+            }
+        });
+    }
+
+    /// About's update row and the automatic check.
+    fn connect_update(&self, window: &SettingsWindow) {
+        let this = self.this.clone();
+        window.on_check_automatically_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.check_for_updates = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_check_now(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.check_now);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.update);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_cancel_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.cancel);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_notes_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.notes);
+            }
+        });
+        let this = self.this.clone();
+        window.on_update_retry_clicked(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.run_update(|a| &*a.retry);
+            }
+        });
+    }
+
     fn connect_clipboard_page(&self, window: &SettingsWindow) {
         let this = self.this.clone();
         window.on_clip_history_toggled(move |on| {
@@ -627,6 +886,81 @@ impl SettingsWindowController {
                 (controller.on_clear_history)();
             }
         });
+    }
+
+    fn connect_screenshots_page(&self, window: &SettingsWindow) {
+        let this = self.this.clone();
+        window.on_shots_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.screenshots = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_shot_card_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.screenshot_card = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_shot_card_stepped(move |steps| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| step_card_secs(s, steps));
+            }
+        });
+        let this = self.this.clone();
+        window.on_shots_show_folder(move || {
+            if let Some(controller) = this.upgrade() {
+                controller.show_shots_folder();
+            }
+        });
+        window.on_shots_open_privacy(|| {
+            if let Err(e) = vento_platform::open_files_privacy() {
+                warn!("cannot open the Files & Folders settings: {e}");
+            }
+        });
+        let this = self.this.clone();
+        window.on_page_shown(move |id| {
+            if let Some(controller) = this.upgrade() {
+                controller.page_shown(id);
+            }
+        });
+    }
+
+    /// The window turned to the page with id `id` (or opened on it): the
+    /// Screenshots page reads the folder again, so a folder the system
+    /// asks about after an update is asked about now, and a denied one is
+    /// tried again.
+    fn page_shown(&self, id: i32) {
+        if id != Page::Screenshots.id() {
+            self.shots_touched.set(false);
+        } else if self.is_open() && !self.shots_touched.replace(true) {
+            (self.shots.touch)();
+            self.show_shots();
+        }
+    }
+
+    /// Opens the screenshot folder in the file manager.
+    fn show_shots_folder(&self) {
+        let (_, folder) = (self.shots.access)();
+        if folder.as_os_str().is_empty() {
+            return;
+        }
+        if let Err(e) = self.platform.open_paths(&[folder]) {
+            warn!("cannot open the screenshot folder: {e}");
+        }
+    }
+
+    /// Shows the screenshot folder and whether it cannot be read, as the
+    /// island's screenshots have them now. Main calls it again whenever a
+    /// listing changes the access.
+    pub fn show_shots(&self) {
+        let Some(window) = self.existing() else {
+            return;
+        };
+        let (access, folder) = (self.shots.access)();
+        window.set_shots_folder(display_path(&folder, self.home.as_deref()).into());
+        window.set_shots_denied(access == Access::Denied);
+        window.set_shots_reveal_label(crate::info::reveal_label().into());
     }
 
     fn connect_move_page(&self, window: &SettingsWindow) {
@@ -899,7 +1233,15 @@ impl SettingsWindowController {
         window.set_keep_copies(settings.pocket_keep_copies);
         window.set_pocket_view(choice_index(&PocketView::ALL, settings.pocket_view));
         window.set_clip_history(settings.clipboard_history);
+        window.set_shots_on(settings.screenshots);
+        window.set_shot_card_on(settings.screenshot_card);
+        window.set_shot_card_secs(card_secs_text(settings.screenshot_card_secs).into());
+        window.set_shot_card_can_decrease(settings.screenshot_card_secs > CARD_SECS_MIN);
+        window.set_shot_card_can_increase(settings.screenshot_card_secs < CARD_SECS_MAX);
+        self.show_shots();
         window.set_awake_screen_off(settings.keep_awake_screen_off);
+        self.show_awake(&window, &settings);
+        window.set_check_automatically(settings.check_for_updates);
         let closed: Vec<bool> = pages(true)
             .into_iter()
             .map(|page| settings.closed_how_to.iter().any(|k| k == page.key()))
@@ -907,6 +1249,30 @@ impl SettingsWindowController {
         window.set_how_to_closed(ModelRc::from(closed.as_slice()));
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+    }
+
+    /// Shows Keep Awake's times, the time Add adds and what the tile
+    /// starts, in the language now in use.
+    fn show_awake(&self, window: &SettingsWindow, settings: &Settings) {
+        let times = &settings.keep_awake_times;
+        let labels: Vec<SharedString> = times
+            .iter()
+            .map(|&m| duration_text(u64::from(m)).into())
+            .collect();
+        window.set_awake_times(ModelRc::from(labels.as_slice()));
+        window.set_awake_times_full(times.len() >= MAX_TIMES);
+        window.set_awake_times_usual(times.as_slice() == DEFAULT_TIMES);
+        let new = self.awake_new.get();
+        window.set_awake_new(duration_text(u64::from(new)).into());
+        window.set_awake_new_can_decrease(new > MIN_TIME);
+        window.set_awake_new_can_increase(new < MAX_TIME);
+        window.set_awake_can_add(can_add_awake_time(settings, new));
+        let names: Vec<SharedString> = std::iter::once(tr("Until stopped"))
+            .chain(times.iter().map(|&m| duration_text(u64::from(m))))
+            .map(Into::into)
+            .collect();
+        window.set_awake_start_names(ModelRc::from(names.as_slice()));
+        window.set_awake_start(awake_start_index(settings));
     }
 
     /// Writes the sidebar's page names again in the language now in use.
@@ -1065,6 +1431,10 @@ impl SettingsWindowController {
                 show_title_bar(&window);
             }
         });
+        // Opened on the Screenshots page: it reads the folder now.
+        if let Some(page) = choice(&pages(self.screen_text_supported), window.get_page()) {
+            self.page_shown(page.id());
+        }
         debug!("settings window open");
     }
 
@@ -1086,6 +1456,7 @@ impl SettingsWindowController {
         if !self.open.replace(false) {
             return;
         }
+        self.shots_touched.set(false);
         let window = self.existing();
         close_with(
             self.is_recording(),
@@ -1382,12 +1753,85 @@ pub(crate) fn unpin_folder(settings: &mut Settings, index: usize) {
     }
 }
 
+/// The time the Keep Awake page's Add offers first, in minutes.
+const NEW_AWAKE_TIME: u32 = 45;
+
+/// Whether `minutes` can join Keep Awake's times: it is not one of them
+/// and there is room.
+fn can_add_awake_time(settings: &Settings, minutes: u32) -> bool {
+    settings.keep_awake_times.len() < MAX_TIMES && !settings.keep_awake_times.contains(&minutes)
+}
+
+/// Adds `minutes` to Keep Awake's times, in its place, when it can join.
+fn add_awake_time(settings: &mut Settings, minutes: u32) {
+    if can_add_awake_time(settings, minutes) {
+        settings.keep_awake_times.push(minutes);
+        settings.keep_awake_times = tidy_times(&settings.keep_awake_times);
+    }
+}
+
+/// Takes the time in row `index` off Keep Awake's times; a tile that
+/// started it starts until stopped instead.
+fn remove_awake_time(settings: &mut Settings, index: usize) {
+    if index < settings.keep_awake_times.len() {
+        let minutes = settings.keep_awake_times.remove(index);
+        if settings.keep_awake_start == minutes {
+            settings.keep_awake_start = 0;
+        }
+    }
+}
+
+/// Puts back the usual times; a tile starting a time no longer among them
+/// starts until stopped instead.
+fn restore_awake_times(settings: &mut Settings) {
+    settings.keep_awake_times = DEFAULT_TIMES.to_vec();
+    if !settings
+        .keep_awake_times
+        .contains(&settings.keep_awake_start)
+    {
+        settings.keep_awake_start = 0;
+    }
+}
+
+/// Makes the tile start item `i` of the page's menu: until stopped, then
+/// each time.
+fn choose_awake_start(settings: &mut Settings, i: i32) {
+    let Ok(i) = usize::try_from(i) else { return };
+    if i == 0 {
+        settings.keep_awake_start = 0;
+    } else if let Some(&minutes) = settings.keep_awake_times.get(i - 1) {
+        settings.keep_awake_start = minutes;
+    }
+}
+
+/// Where what the tile starts is in the page's menu.
+fn awake_start_index(settings: &Settings) -> i32 {
+    settings
+        .keep_awake_times
+        .iter()
+        .position(|&m| m == settings.keep_awake_start)
+        .map_or(0, |i| i32::try_from(i + 1).unwrap_or(0))
+}
+
 /// Moves the hold delay `steps` steps up (or down, when negative), within
 /// its bounds.
 fn step_hold(settings: &mut Settings, steps: i32) {
     let ms = i64::from(settings.move_hold_ms) + i64::from(steps) * i64::from(MOVE_HOLD_STEP_MS);
     let ms = ms.clamp(i64::from(MIN_MOVE_HOLD_MS), i64::from(MAX_MOVE_HOLD_MS));
     settings.move_hold_ms = u32::try_from(ms).unwrap_or(settings.move_hold_ms);
+}
+
+/// Moves the time the screenshot card stays `steps` seconds up (or down,
+/// when negative), within its bounds.
+fn step_card_secs(settings: &mut Settings, steps: i32) {
+    let secs = i64::from(settings.screenshot_card_secs) + i64::from(steps);
+    let secs = secs.clamp(i64::from(CARD_SECS_MIN), i64::from(CARD_SECS_MAX));
+    settings.screenshot_card_secs = u32::try_from(secs).unwrap_or(settings.screenshot_card_secs);
+}
+
+/// The Screenshots page's card time, in the interface language: `"4 s"`.
+fn card_secs_text(secs: u32) -> String {
+    fill(&tr("{n} s"), &[("n", &secs.to_string())])
 }
 
 /// What a key pressed while recording a shortcut means.
@@ -1574,6 +2018,18 @@ fn apply_shortcut(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use vento_core::i18n::with_language;
+
+    #[test]
+    fn page_keys_round_trip() {
+        for page in pages(true) {
+            assert_eq!(Page::from_key(page.key()), Some(page), "{page:?}");
+        }
+        assert_eq!(Page::from_key("nothing"), None);
+        assert_eq!(Page::from_key(""), None);
+    }
+
     #[test]
     fn the_language_picker_maps_to_the_setting_and_back() {
         // Automatic first, then each language in the order Vento lists them.
@@ -1593,8 +2049,6 @@ mod tests {
             assert_eq!(language_index(&language_setting(i)), i);
         }
     }
-
-    use super::*;
 
     #[test]
     fn segmented_choices_map_both_ways() {
@@ -1720,6 +2174,63 @@ mod tests {
     }
 
     #[test]
+    fn keep_awake_times_are_added_in_place_once_and_up_to_six() {
+        let mut s = Settings {
+            keep_awake_times: vec![15, 60],
+            ..Settings::default()
+        };
+        add_awake_time(&mut s, 45);
+        assert_eq!(s.keep_awake_times, [15, 45, 60]);
+        assert!(!can_add_awake_time(&s, 45));
+        add_awake_time(&mut s, 45);
+        assert_eq!(s.keep_awake_times, [15, 45, 60]);
+        for m in [90, 180, 300] {
+            add_awake_time(&mut s, m);
+        }
+        assert_eq!(s.keep_awake_times.len(), MAX_TIMES);
+        assert!(!can_add_awake_time(&s, 600));
+        add_awake_time(&mut s, 600);
+        assert_eq!(s.keep_awake_times, [15, 45, 60, 90, 180, 300]);
+    }
+
+    #[test]
+    fn taking_off_the_time_the_tile_starts_makes_it_start_until_stopped() {
+        let mut s = Settings::default();
+        choose_awake_start(&mut s, 3);
+        assert_eq!(s.keep_awake_start, 60);
+        assert_eq!(awake_start_index(&s), 3);
+        remove_awake_time(&mut s, 0);
+        assert_eq!(s.keep_awake_times, [30, 60, 120, 240, 480]);
+        assert_eq!(s.keep_awake_start, 60);
+        assert_eq!(awake_start_index(&s), 2);
+        remove_awake_time(&mut s, 1);
+        assert_eq!(s.keep_awake_start, 0);
+        assert_eq!(awake_start_index(&s), 0);
+        // Out of range does nothing.
+        remove_awake_time(&mut s, 9);
+        choose_awake_start(&mut s, 9);
+        choose_awake_start(&mut s, -1);
+        assert_eq!(s.keep_awake_times, [30, 120, 240, 480]);
+        assert_eq!(s.keep_awake_start, 0);
+    }
+
+    #[test]
+    fn the_usual_times_come_back_and_keep_a_start_among_them() {
+        let mut s = Settings {
+            keep_awake_times: vec![45, 120],
+            keep_awake_start: 120,
+            ..Settings::default()
+        };
+        restore_awake_times(&mut s);
+        assert_eq!(s.keep_awake_times, DEFAULT_TIMES);
+        assert_eq!(s.keep_awake_start, 120);
+        s.keep_awake_times = vec![45];
+        s.keep_awake_start = 45;
+        restore_awake_times(&mut s);
+        assert_eq!(s.keep_awake_start, 0);
+    }
+
+    #[test]
     fn hold_steps_by_100_within_200_to_1000() {
         let mut s = Settings::default();
         step_hold(&mut s, 1);
@@ -1731,6 +2242,24 @@ mod tests {
         assert_eq!(s.move_hold_ms, MIN_MOVE_HOLD_MS);
         step_hold(&mut s, 20);
         assert_eq!(s.move_hold_ms, MAX_MOVE_HOLD_MS);
+    }
+
+    #[test]
+    fn step_card_secs_stays_in_range() {
+        let mut s = Settings::default();
+        assert_eq!(s.screenshot_card_secs, 4);
+        step_card_secs(&mut s, -5);
+        assert_eq!(s.screenshot_card_secs, 2);
+        step_card_secs(&mut s, 1);
+        assert_eq!(s.screenshot_card_secs, 3);
+        step_card_secs(&mut s, 9);
+        assert_eq!(s.screenshot_card_secs, 8);
+    }
+
+    #[test]
+    fn card_time_reads_in_both_languages() {
+        assert_eq!(card_secs_text(4), "4 s");
+        vento_core::i18n::with_language("ar", || assert_eq!(card_secs_text(4), "\u{200f}4 ث"));
     }
 
     #[test]
@@ -2098,6 +2627,7 @@ mod tests {
                     "الجيب",
                     "الحافظة",
                     "النسخ من الشاشة",
+                    "لقطات الشاشة",
                     // No tanween: a bold title's line box cuts the mark off.
                     "إبقاء الجهاز مستيقظا",
                     "حول"
@@ -2124,12 +2654,14 @@ mod tests {
                 Pocket,
                 Clipboard,
                 CopyFromScreen,
+                Screenshots,
                 KeepAwake,
                 About
             ]
         );
         assert!(!pages(false).contains(&CopyFromScreen));
-        assert_eq!(pages(false).len(), 7);
+        assert!(pages(false).contains(&Screenshots));
+        assert_eq!(pages(false).len(), 8);
     }
 
     #[test]
@@ -2148,13 +2680,14 @@ mod tests {
         use Page::*;
         let all = pages(true);
         let ids: Vec<i32> = all.iter().map(|p| p.id()).collect();
-        assert_eq!(ids, (0..8).collect::<Vec<_>>());
+        assert_eq!(ids, (0..9).collect::<Vec<_>>());
         assert_eq!(General.id(), 0);
         assert_eq!(CopyFromScreen.id(), 5);
-        assert_eq!(About.id(), 7);
+        assert_eq!(Screenshots.id(), 6);
+        assert_eq!(About.id(), 8);
         // A page left out does not shift the ids of the others.
         let ids: Vec<i32> = pages(false).iter().map(|p| p.id()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7]);
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7, 8]);
     }
 
     #[test]
@@ -2221,5 +2754,108 @@ mod tests {
             h: 400.0,
         };
         assert_eq!(centred_on(&small, 680.0, 520.0), (0.0, 25.0));
+    }
+
+    fn running() -> Version {
+        Version::parse("0.3.0").unwrap()
+    }
+
+    /// Unix seconds of 2026-11-05 at the given time, UTC.
+    fn utc(hour: i8, minute: i8) -> i64 {
+        jiff::civil::date(2026, 11, 5)
+            .at(hour, minute, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap()
+            .timestamp()
+            .as_second()
+    }
+
+    fn view_at(state: &UpdateState, now: i64) -> AboutUpdateView {
+        about_update_view_in(state, running(), now, &TimeZone::UTC)
+    }
+
+    #[test]
+    fn up_to_date_says_when_it_last_checked_today() {
+        let state = UpdateState::UpToDate {
+            checked_at: Some(utc(10, 42)),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view.kind, 0);
+        assert_eq!(view.title, "You're up to date");
+        assert_eq!(view.detail, "Checked today at 10:42");
+    }
+
+    #[test]
+    fn an_earlier_day_reads_as_a_date() {
+        let state = UpdateState::UpToDate {
+            checked_at: Some(utc(23, 59) - 2 * 86_400),
+        };
+        let view = view_at(&state, utc(0, 5));
+        assert_eq!(view.detail, "Checked 3 Nov");
+    }
+
+    #[test]
+    fn up_to_date_with_no_check_yet_has_no_detail() {
+        let view = view_at(&UpdateState::UpToDate { checked_at: None }, utc(15, 0));
+        assert_eq!(view.kind, 0);
+        assert_eq!(view.detail, "");
+    }
+
+    #[test]
+    fn checked_today_reads_in_arabic() {
+        let state = UpdateState::UpToDate {
+            checked_at: Some(utc(10, 42)),
+        };
+        with_language("ar", || {
+            let view = view_at(&state, utc(15, 0));
+            assert!(view.detail.contains("10:42"), "{}", view.detail);
+            assert!(!view.detail.contains("Checked"), "{}", view.detail);
+        });
+    }
+
+    #[test]
+    fn the_system_zone_view_agrees_with_the_clock() {
+        let now = utc(15, 0);
+        let state = UpdateState::UpToDate {
+            checked_at: Some(now),
+        };
+        let view = about_update_view(&state, running(), now);
+        assert!(
+            view.detail.starts_with("Checked today at "),
+            "{}",
+            view.detail
+        );
+    }
+
+    #[test]
+    fn a_failed_check_is_kind_6_with_its_reason() {
+        let state = UpdateState::CheckFailed {
+            reason: "No connection".into(),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view.kind, 6);
+        assert_eq!(view.title, "Couldn't check for updates");
+        assert_eq!(view.detail, "No connection");
+    }
+
+    #[test]
+    fn a_check_under_way_is_kind_7() {
+        let view = view_at(&UpdateState::Checking, utc(15, 0));
+        assert_eq!(view.kind, 7);
+        assert_eq!(view.title, "Checking for updates\u{2026}");
+    }
+
+    #[test]
+    fn the_other_states_read_as_the_panel_does() {
+        // A failure the watcher recorded: no update known, yet Try again.
+        let state = UpdateState::Failed {
+            update: None,
+            version: Version::parse("0.4.0").unwrap(),
+            reason: "Vento didn't quit".into(),
+        };
+        let view = view_at(&state, utc(15, 0));
+        assert_eq!(view, crate::panel::update_view(&state, running()));
+        assert_eq!(view.kind, 5);
+        assert!(view.can_retry);
     }
 }

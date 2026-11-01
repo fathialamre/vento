@@ -26,8 +26,8 @@ use super::kinds::{item_meta, shows_pictures};
 use super::out::{Press, drag_ids};
 use super::{PocketController, UNDO_WINDOW, View, display_name};
 
-/// The window's number for the Pocket list (0 and 1 are the Pocket's cells
-/// and the Clipboard).
+/// The window's number for the Pocket list (0, 1 and 3 are the Pocket's
+/// cells, the Clipboard and the Screenshots).
 const LIST_VIEW: i32 = 2;
 
 /// One item as the list sees it: its id, its path, whether it is a folder,
@@ -300,10 +300,12 @@ impl PocketController {
     /// in either view: what the island opens on.
     pub(super) fn reset_look(&self) {
         let list = self.pocket_view.get() == PocketView::List;
+        let shot_peek = self.shots_view.close_peek();
         let changed = self.list.open.replace(list) != list
             || self.list.filter.take().is_some()
             || self.list.peek.take().is_some()
-            || self.close_clip_peek();
+            || self.close_clip_peek()
+            || shot_peek;
         if changed {
             debug!("pocket look reset to {:?}", self.pocket_view.get());
             self.window.set_view(self.window_view());
@@ -392,7 +394,7 @@ impl PocketController {
     }
 
     /// Whether the island shows the Pocket list (it stays open, unseen,
-    /// while the Clipboard view is shown).
+    /// while the Clipboard or the Screenshots view is shown).
     pub(super) fn list_shown(&self) -> bool {
         self.list.open.get() && self.shown_view() == View::Pocket
     }

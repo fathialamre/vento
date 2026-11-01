@@ -182,6 +182,163 @@ component DoneButton inherits Rectangle {
     }
 }
 
+// A small button on the update card: the accent one is the step to take,
+// the plain one is the way out.
+component UpdateButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary;
+    callback clicked();
+
+    height: 26px;
+    border-radius: 8px;
+    background: self.primary
+        ? (touch.pressed ? #e55e15 : (touch.has-hover ? #ff7d38 : Theme.accent))
+        : (touch.has-hover ? Theme.hover : Theme.card);
+    border-width: self.primary ? 0px : 1px;
+    border-color: Theme.card-border;
+    accessible-role: button;
+    accessible-label: self.label;
+    accessible-action-default => { self.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+
+        Text {
+            horizontal-alignment: center;
+            text: root.label;
+            font-size: 12px;
+            font-weight: 600;
+            color: root.primary ? white : Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// The card at the top of the panel when an update is on offer or under
+// way. `kind`: 1 an update is out (Update, and a link to what is new),
+// 2 downloading (a bar, and Cancel until the download is done), 3 ready
+// (Restart, which asks `clicked` too), 4 restarting, 5 failed (red; Try
+// again when `can-retry`). Text on the leading side, the button on the
+// trailing one.
+component UpdateCard inherits Rectangle {
+    in property <int> kind;
+    in property <string> title;
+    in property <string> detail;
+    in property <float> progress;
+    in property <bool> can-retry;
+    callback clicked();
+    callback cancel-clicked();
+    callback notes-clicked();
+    callback retry-clicked();
+
+    // Once the download is done there is nothing left to cancel.
+    property <bool> cancellable: root.kind == 2 && root.progress < 1.0;
+
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.accent;
+    background: Theme.accent.mix(Theme.card, 0.1);
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 1 : 0;
+            alignment: center;
+            spacing: 4px;
+            horizontal-stretch: 1;
+
+            Text {
+                horizontal-alignment: Theme.rtl ? right : left;
+                text: root.title;
+                font-size: 13px;
+                font-weight: 600;
+                color: root.kind == 5 ? Theme.danger : Theme.text;
+                wrap: word-wrap;
+            }
+
+            if root.kind == 1: HorizontalLayout {
+                alignment: Theme.rtl ? end : start;
+
+                Rectangle {
+                    width: link.preferred-width;
+                    height: link.preferred-height;
+                    accessible-role: button;
+                    accessible-label: link.text;
+                    accessible-action-default => { root.notes-clicked(); }
+
+                    link := Text {
+                        text: @tr("See what's new");
+                        font-size: 12px;
+                        color: Theme.accent;
+                    }
+
+                    TouchArea {
+                        clicked => { root.notes-clicked(); }
+                    }
+                }
+            }
+
+            if root.kind == 2: Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.accent-soft;
+                accessible-role: progress-indicator;
+                accessible-value: Math.round(root.progress * 100) + "%";
+
+                Rectangle {
+                    x: Theme.rtl ? parent.width - self.width : 0px;
+                    width: parent.width * Math.clamp(root.progress, 0, 1);
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                }
+            }
+
+            if root.detail != "": Text {
+                horizontal-alignment: Theme.rtl ? right : left;
+                text: root.detail;
+                font-size: 12px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            layout-order: Theme.rtl ? 0 : 1;
+            alignment: center;
+
+            if root.kind == 1: UpdateButton {
+                label: @tr("Update");
+                primary: true;
+                clicked => { root.clicked(); }
+            }
+
+            if root.cancellable: UpdateButton {
+                label: @tr("Cancel");
+                clicked => { root.cancel-clicked(); }
+            }
+
+            if root.kind == 3: UpdateButton {
+                label: @tr("Restart");
+                primary: true;
+                clicked => { root.clicked(); }
+            }
+
+            if root.kind == 5 && root.can-retry: UpdateButton {
+                label: @tr("Try again");
+                clicked => { root.retry-clicked(); }
+            }
+        }
+    }
+}
+
 export component QuickPanel inherits Window {
     default-font-family: Theme.font-family;
     no-frame: true;
@@ -193,7 +350,21 @@ export component QuickPanel inherits Window {
     // vento is paused: the status row says so and offers Resume, and the
     // Copy text, Clipboard and Pocket tiles are greyed out.
     in property <bool> paused;
-    // Shown at the top when not empty.
+    // The update card at the top: what it shows (0 none, 1 an update is
+    // out, 2 downloading, 3 ready to restart, 4 restarting, 5 failed), its
+    // title and detail, the download's progress (0.0 to 1.0) and whether
+    // a failure offers Try again. The button of kinds 1 and 3 calls
+    // `update-clicked`.
+    in property <int> update-kind;
+    in property <string> update-title;
+    in property <string> update-detail;
+    in property <float> update-progress;
+    in property <bool> update-can-retry;
+    callback update-clicked();
+    callback update-cancel-clicked();
+    callback update-notes-clicked();
+    callback update-retry-clicked();
+    // Shown under the update card when not empty.
     in property <string> notice;
     // Whether Copy from screen is available: the Copy text tile shows.
     in property <bool> screen-text-supported;
@@ -208,10 +379,12 @@ export component QuickPanel inherits Window {
     in property <string> pocket-count;
 
     // Keep Awake: the status line, whether anything is held, the running
-    // chip (see AwakeChips), and the time the Until… popup opens at.
+    // chip (see AwakeChips), its timed chips' labels, and the time the
+    // Until… popup opens at.
     in property <string> awake-status;
     in property <bool> awake-on;
     in property <int> awake-chip: -1;
+    in property <[string]> awake-times;
     in-out property <int> awake-until-hour;
     in-out property <int> awake-until-minute;
     // The Keep Awake tile: starts or stops it.
@@ -291,6 +464,18 @@ export component QuickPanel inherits Window {
             layout := VerticalLayout {
                 padding: 12px;
                 spacing: 10px;
+
+                if root.update-kind != 0: UpdateCard {
+                    kind: root.update-kind;
+                    title: root.update-title;
+                    detail: root.update-detail;
+                    progress: root.update-progress;
+                    can-retry: root.update-can-retry;
+                    clicked => { root.update-clicked(); }
+                    cancel-clicked => { root.update-cancel-clicked(); }
+                    notes-clicked => { root.update-notes-clicked(); }
+                    retry-clicked => { root.update-retry-clicked(); }
+                }
 
                 if root.notice != "": Notice {
                     text: root.notice;
@@ -423,6 +608,7 @@ export component QuickPanel inherits Window {
                         AwakeChips {
                             on: root.awake-on;
                             chip: root.awake-chip;
+                            times: root.awake-times;
                             until-hour <=> root.awake-until-hour;
                             until-minute <=> root.awake-until-minute;
                             chip-clicked(i) => { root.awake-chip-clicked(i); }

@@ -58,6 +58,28 @@ Releases page. It needs `cargo-about` for the third-party notices:
 cargo install cargo-about --locked --features cli
 ```
 
+It also writes `target/release-zip/SHA256SUMS.txt` next to the zip. The in-app
+updater checks the download against it, so each release uploads both files.
+
+To publish a release:
+
+1. Add a section for the version to both `CHANGELOG.md` and `CHANGELOG.ar.md`,
+   with the same version and keys. Release notes and the What's new window come
+   from them.
+2. Tag the release (`vX.Y.Z`) and push the tag.
+3. Build the zip, then create the release from the tag, with the changelog
+   section as its notes:
+
+```sh
+scripts/release-macos.sh
+gh release create vX.Y.Z --verify-tag --notes-file <(scripts/release-notes.sh X.Y.Z) \
+  target/release-zip/vento-X.Y.Z-macos-arm64.zip target/release-zip/SHA256SUMS.txt
+```
+
+`scripts/release-notes.sh X.Y.Z` prints that version's section of `CHANGELOG.md`
+and fails if there is none. Do not mark the release as a draft or prerelease:
+the updater ignores both, and ignores tags with a suffix such as `v0.4.0-beta`.
+
 ## Before you send a change
 
 CI runs these on macOS, Linux and Windows; run them locally first:

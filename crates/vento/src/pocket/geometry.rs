@@ -24,7 +24,8 @@ const SCREEN_MARGIN: f64 = 20.0;
 /// Height of the bar under every view: the switch between the views (with
 /// the clipboard history on) and the shown view's own controls.
 const BAR_H: f64 = 44.0;
-/// Height of the Clipboard view and of the Pocket list, above the bar.
+/// Height of the Clipboard view, the Pocket list and the Screenshots view,
+/// above the bar.
 const LIST_H: f64 = 408.0;
 /// One kind's group in the Pocket view, as `pocket.slint` draws it: its
 /// header, its row of tiles and the gap under it; and the room above the
@@ -40,6 +41,9 @@ const FALLBACK_TOP_H: f64 = 32.0;
 const CORNER_GAP: f64 = 12.0;
 /// Height of the drop box the island in that corner shows during a drag.
 const DROP_H: f64 = 150.0;
+/// Height of the card a new screenshot shows below the menu bar: its
+/// picture and actions, with no bar.
+pub(super) const CARD_H: f64 = 158.0;
 
 /// A shape no pointer is ever in: it has a negative size.
 pub(super) const NOWHERE: Rect = Rect {
@@ -59,9 +63,13 @@ pub(super) enum Panel {
     List,
     /// The clipboard history's list.
     Clipboard,
+    /// The screenshots' grid, as tall as the Clipboard view.
+    Screenshots,
     /// Only where to drop, with no bar: the island in the corner by the
     /// taskbar's clock while something is dragged.
     Drop,
+    /// The card of a screenshot just saved, with no bar.
+    Card,
 }
 
 /// The island's rects for one home, in logical top-left global coordinates.
@@ -200,8 +208,9 @@ fn corner_frames(screen: Rect, corner: TrayCorner, panel: Panel) -> Frames {
 fn panel_h(panel: Panel) -> f64 {
     let view = match panel {
         Panel::Kinds { groups } => GROUPS_TOP + groups.clamp(1, GROUPS_SHOWN) as f64 * GROUP_H,
-        Panel::List | Panel::Clipboard => LIST_H,
+        Panel::List | Panel::Clipboard | Panel::Screenshots => LIST_H,
         Panel::Drop => return DROP_H,
+        Panel::Card => return CARD_H,
     };
     view + BAR_H
 }
@@ -360,7 +369,12 @@ mod tests {
         // 12 from the taskbar and the edge; 8 + 2 * 92 + 44 high.
         assert_eq!(f.expanded, rect(708.0, 504.0, 560.0, 236.0));
         // Every view keeps its bottom and its sides: only its top moves.
-        for panel in [Panel::List, Panel::Clipboard, Panel::Drop] {
+        for panel in [
+            Panel::List,
+            Panel::Clipboard,
+            Panel::Screenshots,
+            Panel::Drop,
+        ] {
             let e = frames(&by_the_clock(false), panel).expanded;
             assert_eq!((e.x, e.w, e.y + e.h), (708.0, 560.0, 740.0));
         }
@@ -534,6 +548,7 @@ mod tests {
             Panel::Kinds { groups: 7 },
             Panel::List,
             Panel::Clipboard,
+            Panel::Screenshots,
         ];
         let first = frames(&home, views[0]).expanded;
         for v in views {
@@ -558,6 +573,26 @@ mod tests {
             frames(&small, Panel::List).expanded,
             rect(20.0, 0.0, 460.0, 24.0 + 408.0 + 44.0)
         );
+    }
+
+    #[test]
+    fn card_panel_has_no_bar() {
+        assert_eq!(panel_h(Panel::Card), CARD_H);
+        // As wide as every other view.
+        let card = frames(&notched(200.0, 37.0), Panel::Card);
+        let kinds = frames(&notched(200.0, 37.0), TWO);
+        assert_eq!(card.expanded.w, kinds.expanded.w);
+        assert_eq!(card.expanded.h, card.top_h + CARD_H);
+    }
+
+    #[test]
+    fn screenshots_panel_is_as_tall_as_clipboard() {
+        let home = notched(188.0, 38.0);
+        assert_eq!(
+            frames(&home, Panel::Screenshots).expanded,
+            frames(&home, Panel::Clipboard).expanded
+        );
+        assert_eq!(panel_h(Panel::Screenshots), LIST_H + BAR_H);
     }
 
     #[test]

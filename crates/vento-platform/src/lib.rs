@@ -15,8 +15,11 @@ use vento_core::screen_text::{Selection, TextBox};
 use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
+mod screenshot_dir;
 mod stub;
+mod watch;
 pub use stub::{StubPlatform, StubScreenText};
+pub use watch::{FolderWatch, watch_folder};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -638,6 +641,26 @@ pub fn read_screen_text(sel: &Selection) -> Result<Vec<TextBox>, PlatformError> 
     }
 }
 
+/// Reads the text in the picture file at `path`, a box each, in the picture's
+/// pixels with a top-left origin. Blocks; call off the main thread. No
+/// Screen Recording permission is involved. `Unsupported` where there is no
+/// text reader (Windows, and Linux without Tesseract), `Failed` when the file
+/// is missing or is no picture.
+pub fn read_image_text(path: &Path) -> Result<Vec<TextBox>, PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::read_image_text(path)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::screen_text::read_image_text(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        stub::read_image_text(path)
+    }
+}
+
 /// The languages the text reader recognises, as language codes (`en-US`,
 /// `ar-SA`, ...), for the log. Empty where [`ScreenText::supported`] is
 /// false or the list cannot be had. Loads Vision; call off the main thread.
@@ -751,6 +774,76 @@ pub fn picture_thumbnail(path: &Path, short_px: u32, max_ratio: u32) -> Option<R
     {
         let _ = (path, short_px, max_ratio);
         None
+    }
+}
+
+/// The folder the system saves screenshots in. On the Mac it is the one set
+/// in the Screenshot app (`~/Desktop` when none is set or it is gone); on
+/// Linux and Windows, `Screenshots` in the Pictures folder. The folder may
+/// not exist (yet). A free function so a worker thread can call it.
+pub fn screenshot_folder() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        macos::screenshot_folder()
+    }
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        screenshot_dir::screenshot_folder()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+    {
+        stub::screenshot_folder()
+    }
+}
+
+/// Whether `path` is a screenshot that the system itself saved. On the Mac
+/// the system marks every screenshot (the file name and place can change);
+/// elsewhere nothing marks them, so this is always true. A free function so
+/// a worker thread can call it.
+pub fn is_screen_capture(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_screen_capture(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::is_screen_capture(path)
+    }
+}
+
+/// Whether [`is_screen_capture`] is what tells screenshots from other
+/// pictures in the folder: true on the Mac, where the folder can be the
+/// Desktop, false elsewhere.
+pub fn needs_screen_capture_mark() -> bool {
+    cfg!(target_os = "macos")
+}
+
+/// Whether the system asks the user's leave before an app reads the folder
+/// `path`: on the Mac, the Desktop, Documents and Downloads and what is
+/// inside them. Always false elsewhere. A free function so a worker thread
+/// can call it.
+pub fn is_protected_folder(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_protected_folder(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::is_protected_folder(path)
+    }
+}
+
+/// Opens the page of the system settings where the user lets apps read
+/// folders (the Mac's Privacy & Security → Files & Folders).
+/// `Err(Unsupported)` where there is no such page.
+pub fn open_files_privacy() -> Result<(), PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::open_files_privacy()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        stub::open_files_privacy()
     }
 }
 
@@ -909,6 +1002,12 @@ pub fn current() -> Rc<dyn Platform> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_image_text_of_a_missing_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_image_text(&dir.path().join("missing.png")).is_err());
+    }
 
     #[test]
     fn menus_are_dark_when_their_background_is() {

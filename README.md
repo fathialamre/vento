@@ -26,7 +26,8 @@ Vento is in **early beta**. If something breaks or feels off, please
 Needs macOS 13 or later on an Apple Silicon Mac (M1 or newer). Vento asks for no
 special permissions: no Accessibility, no Input Monitoring. Only
 [Copy from screen](#copy-from-screen) asks for Screen Recording, the first time
-you use it.
+you use it, and [Screenshots](#screenshots), if you turn it on, may ask to see
+the folder your screenshots are saved in.
 
 Vento is free and open source, but not signed or notarized by Apple yet, so
 macOS warns you the first time you open it. [Getting past that](#install-and-first-launch)
@@ -34,6 +35,11 @@ takes a minute, once. You can also read the code, or
 [build it yourself](BUILDING.md).
 
 On an Intel Mac, [build it yourself](BUILDING.md).
+
+On macOS, Vento checks for new versions and updates itself (see
+[Privacy and network](#privacy-and-network)). Versions before 0.3.0 cannot do
+this yet, so if you have one, update it by hand once: download the latest zip
+and replace `Vento.app` as in [Install](#install-and-first-launch) below.
 
 > **This is the macOS version.** Support for Linux and Windows is in progress:
 > the core already builds and is tested on both, and the parts that talk to the
@@ -288,6 +294,25 @@ The history stays after you quit or restart. It is stored **unencrypted** in
 `~/Library/Application Support/vento`; see [SETTINGS.md](SETTINGS.md). Switch it
 off, or change its shortcut, on the **Clipboard** page of the Settings window.
 
+## Screenshots
+
+Off by default; turn it on in **Settings → Screenshots**. Vento reads the folder
+the Screenshot app saves to (**⇧⌘5 → Options**), or on Linux the Screenshots folder
+in your Pictures folder (created if missing). A **card** then drops down from the
+island for each new screenshot: drag the picture anywhere, or **Copy**, **Copy text** (the text found in it; macOS 14+, or
+Tesseract on Linux), **Pocket**, **Move to Trash** (**Undo** for about 5 seconds).
+It closes after 2 to 8 seconds, not while the pointer is on it. <!-- screenshot: card -->
+
+The **Screenshots** tab, beside Clipboard and Pocket, lists the last 7 days (up
+to 60) by day, with a closer look and **Show in Finder**. <!-- screenshot: tab -->
+
+When you turn it on, macOS may ask once to let Vento see the folder your
+screenshots are saved in (the Desktop, Documents or Downloads). It ties that
+permission to the exact build, and Vento is not signed by Apple yet, so after an
+update it may ask again, only when you open the tab or its Settings page, never
+at launch. **Tip:** the Screenshot app's floating thumbnail makes macOS save the
+file about 5 seconds late; turn off **Show Floating Thumbnail** for an instant card.
+
 ## Copy from screen
 
 Copy the text from anything on your screen, even a picture, a video or an app
@@ -317,8 +342,10 @@ things you reach for most one click away:
 - **Keep Awake** keeps your Mac awake, and its screen on unless you choose
   otherwise on the Keep Awake page of Settings. Click the tile to start or
   stop it, or pick how long below it: from 15 minutes up to 8 hours, until a time you
-  choose, or until you stop it. While it runs a small cup shows beside the Vento
-  icon; click the cup to open the panel.
+  choose, or until you stop it. The Keep Awake page of Settings picks those
+  times (up to six, from 5 minutes to 24 hours) and what a click on the tile
+  starts. While it runs a small cup shows beside the Vento icon; click the cup
+  to open the panel.
 
 After a move, copy or archive, an **Undo** row appears at the bottom. While Vento
 is paused, Copy text, Clipboard and Pocket are greyed out; **Resume** brings them
@@ -340,14 +367,15 @@ it stays closed until you open it again.
 | Pocket | The Pocket shortcut, what happens after you drag items out, and which look it opens on: By kind or List. |
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
-| Keep Awake | Whether the screen may turn off while Keep Awake runs. |
-| About | The version, a button that opens the settings file, and one that shows the licenses. |
+| Screenshots | Screenshots in the island on or off, the card on or off, and how long the card stays. |
+| Keep Awake | The times the Quick panel offers, what a click on the tile starts, and whether the screen may turn off while Keep Awake runs. |
+| About | The version, and on macOS the update status with **Check now** and a switch for the daily check; what's new in this version; a button that opens the settings file, and one that shows the licenses. |
 
 The wheel, the Pocket and the notices that offer Undo keep their dark look
 whichever Appearance or Theme you choose.
 
 **Right-click** the icon for the same things as a menu: Copy from screen, the
-clipboard history, the Pocket, Keep Awake, undo the last move, copy or archive,
+clipboard history, the Pocket, the screenshots (when they are on), Keep Awake, undo the last move, copy or archive,
 pause Vento, Settings…, open the settings file, or quit.
 
 <img src=".github/assets/menu.png" alt="Vento menu with Copy from screen, Open clipboard history, Open the Pocket, Start Keep Awake, Undo last move, Pause Vento, Settings…, Open settings file and Quit Vento" width="170">
@@ -367,6 +395,19 @@ the `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG` variables) and falls back to
 English; English and العربية are listed under their own names. Or set
 `language` in `settings.toml` (see [SETTINGS.md](SETTINGS.md)). To add another
 language, see [lang/README.md](lang/README.md).
+
+## Privacy and network
+
+On macOS, Vento makes one request a day to GitHub to look for a new version,
+and nothing else: it sends no data about you or your files, and has no
+analytics. When a newer version exists, Vento downloads it only after you click
+**Update** in the Quick panel or in **Settings → About**, and checks the
+download against the checksums published with the release before it replaces
+itself. Everything else, including Copy from screen, runs on your Mac.
+
+Turn the daily check off with **Settings → About → Check for updates
+automatically**. **Check now** still works when you ask for it. The update check
+is on macOS only for now.
 
 ## Uninstall
 

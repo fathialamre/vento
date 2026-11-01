@@ -40,7 +40,7 @@ const ICON_PT: u32 = 32;
 
 /// The reveal button's text: the file manager is Finder on a Mac, Explorer
 /// on Windows and Files elsewhere.
-fn reveal_label() -> String {
+pub(crate) fn reveal_label() -> String {
     if cfg!(target_os = "macos") {
         tr("Show in Finder")
     } else if cfg!(windows) {

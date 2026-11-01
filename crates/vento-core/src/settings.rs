@@ -8,6 +8,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::actions::ActionId;
+use crate::awake;
 use crate::durable;
 use crate::geometry::{Layout, MAX_ACTIONS};
 use crate::paths::PathFormat;
@@ -120,6 +121,13 @@ pub struct Settings {
     pub pocket_shortcut: String,
     /// Whether copies are recorded into the Clipboard history.
     pub clipboard_history: bool,
+    /// Whether the island lists the screenshots taken in the last week.
+    pub screenshots: bool,
+    /// Whether a card with the picture shows when a screenshot is saved.
+    pub screenshot_card: bool,
+    /// Seconds the screenshot card stays after the pointer leaves it, within
+    /// [`CARD_SECS_MIN`]..=[`CARD_SECS_MAX`].
+    pub screenshot_card_secs: u32,
     /// Global shortcut that shows the island on the Clipboard history, in the
     /// same form as [`Settings::pocket_shortcut`].
     pub clipboard_shortcut: String,
@@ -129,6 +137,14 @@ pub struct Settings {
     /// Whether Keep Awake lets the screen dim, blank and lock as usual,
     /// keeping only the system awake.
     pub keep_awake_screen_off: bool,
+    /// The timed chips of the Quick panel's Keep Awake card, in minutes:
+    /// shortest first, unique, at most [`awake::MAX_TIMES`], each within
+    /// [`awake::MIN_TIME`] and [`awake::MAX_TIME`].
+    pub keep_awake_times: Vec<u32>,
+    /// What a click on the Keep Awake tile (or the menu's Start Keep Awake)
+    /// starts: one of `keep_awake_times`, in minutes, or 0 for until
+    /// stopped. A time not among them reads as 0.
+    pub keep_awake_start: u32,
     /// Folders pinned to the move ring, in order (unique, at most
     /// [`MAX_PINNED`]).
     pub pinned_folders: Vec<PathBuf>,
@@ -157,6 +173,10 @@ pub struct Settings {
     /// writes `false` only on a fresh install and opens the setup while it
     /// is `false`; a file without the key means `true`.
     pub welcome_done: bool,
+    /// Whether Vento looks for a new version on GitHub once a day (macOS).
+    /// `false` stops the daily check; Check now in About still works. A
+    /// file without the key means `true`.
+    pub check_for_updates: bool,
 }
 
 /// The most folders that can be pinned to the move ring.
@@ -168,6 +188,11 @@ const DEFAULT_MOVE_HOLD_MS: u32 = 400;
 pub const MIN_MOVE_HOLD_MS: u32 = 200;
 pub const MAX_MOVE_HOLD_MS: u32 = 1000;
 pub const MOVE_HOLD_STEP_MS: u32 = 100;
+
+/// Default and bounds of [`Settings::screenshot_card_secs`].
+const DEFAULT_CARD_SECS: u32 = 4;
+pub const CARD_SECS_MIN: u32 = 2;
+pub const CARD_SECS_MAX: u32 = 8;
 
 fn default_pocket_shortcut() -> String {
     "ctrl+alt+p".to_owned()
@@ -214,9 +239,14 @@ impl Default for Settings {
             language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
+            screenshots: false,
+            screenshot_card: true,
+            screenshot_card_secs: DEFAULT_CARD_SECS,
             clipboard_shortcut: default_clipboard_shortcut(),
             screen_text_shortcut: default_screen_text_shortcut(),
             keep_awake_screen_off: false,
+            keep_awake_times: awake::DEFAULT_TIMES.to_vec(),
+            keep_awake_start: 0,
             pinned_folders: Vec::new(),
             move_hold_ms: DEFAULT_MOVE_HOLD_MS,
             hidden_actions: Vec::new(),
@@ -225,6 +255,7 @@ impl Default for Settings {
             pdf_image_format: "png".to_owned(),
             pdf_image_dpi: 300,
             welcome_done: true,
+            check_for_updates: true,
         }
     }
 }
@@ -248,9 +279,14 @@ struct RawSettings {
     language: String,
     pocket_shortcut: String,
     clipboard_history: bool,
+    screenshots: bool,
+    screenshot_card: bool,
+    screenshot_card_secs: u32,
     clipboard_shortcut: String,
     screen_text_shortcut: String,
     keep_awake_screen_off: bool,
+    keep_awake_times: Vec<u32>,
+    keep_awake_start: u32,
     pinned_folders: Vec<PathBuf>,
     move_hold_ms: u32,
     hidden_actions: Vec<String>,
@@ -259,6 +295,7 @@ struct RawSettings {
     pdf_image_format: String,
     pdf_image_dpi: u32,
     welcome_done: bool,
+    check_for_updates: bool,
 }
 
 impl Default for RawSettings {
@@ -284,9 +321,14 @@ impl From<&Settings> for RawSettings {
             language: s.language.clone(),
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
+            screenshots: s.screenshots,
+            screenshot_card: s.screenshot_card,
+            screenshot_card_secs: s.screenshot_card_secs,
             clipboard_shortcut: s.clipboard_shortcut.clone(),
             screen_text_shortcut: s.screen_text_shortcut.clone(),
             keep_awake_screen_off: s.keep_awake_screen_off,
+            keep_awake_times: s.keep_awake_times.clone(),
+            keep_awake_start: s.keep_awake_start,
             pinned_folders: s.pinned_folders.clone(),
             move_hold_ms: s.move_hold_ms,
             hidden_actions: s
@@ -299,6 +341,7 @@ impl From<&Settings> for RawSettings {
             pdf_image_format: s.pdf_image_format.clone(),
             pdf_image_dpi: s.pdf_image_dpi,
             welcome_done: s.welcome_done,
+            check_for_updates: s.check_for_updates,
         }
     }
 }
@@ -359,8 +402,15 @@ impl From<RawSettings> for Settings {
             }
         }
         // Round to the nearest 100 (halves up), then keep within bounds.
+        let keep_awake_times = awake::tidy_times(&raw.keep_awake_times);
+        let keep_awake_start = if keep_awake_times.contains(&raw.keep_awake_start) {
+            raw.keep_awake_start
+        } else {
+            0
+        };
         let move_hold_ms = (raw.move_hold_ms.saturating_add(50) / 100 * 100)
             .clamp(MIN_MOVE_HOLD_MS, MAX_MOVE_HOLD_MS);
+        let screenshot_card_secs = raw.screenshot_card_secs.clamp(CARD_SECS_MIN, CARD_SECS_MAX);
         Settings {
             layout: raw.layout,
             trigger: raw.trigger,
@@ -376,9 +426,14 @@ impl From<RawSettings> for Settings {
             language: raw.language,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
+            screenshots: raw.screenshots,
+            screenshot_card: raw.screenshot_card,
+            screenshot_card_secs,
             clipboard_shortcut: raw.clipboard_shortcut,
             screen_text_shortcut: raw.screen_text_shortcut,
             keep_awake_screen_off: raw.keep_awake_screen_off,
+            keep_awake_times,
+            keep_awake_start,
             pinned_folders,
             move_hold_ms,
             hidden_actions,
@@ -391,6 +446,7 @@ impl From<RawSettings> for Settings {
             },
             pdf_image_dpi: if raw.pdf_image_dpi == 150 { 150 } else { 300 },
             welcome_done: raw.welcome_done,
+            check_for_updates: raw.check_for_updates,
         }
     }
 }
@@ -820,6 +876,35 @@ mod tests {
     }
 
     #[test]
+    fn screenshot_keys_default() {
+        let s = Settings::default();
+        assert!(!s.screenshots);
+        assert!(s.screenshot_card);
+        assert_eq!(s.screenshot_card_secs, 4);
+    }
+
+    #[test]
+    fn screenshot_keys_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            screenshots: true,
+            screenshot_card: false,
+            screenshot_card_secs: 6,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn card_secs_are_clamped() {
+        assert_eq!(parse("screenshot_card_secs = 1").screenshot_card_secs, 2);
+        assert_eq!(parse("screenshot_card_secs = 30").screenshot_card_secs, 8);
+        assert_eq!(parse("screenshot_card_secs = 5").screenshot_card_secs, 5);
+    }
+
+    #[test]
     fn keep_awake_keeps_the_screen_on_unless_saved_otherwise() {
         assert!(!Settings::default().keep_awake_screen_off);
         let dir = tempfile::tempdir().unwrap();
@@ -830,6 +915,44 @@ mod tests {
         };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn keep_awake_times_and_start_round_trip() {
+        let s = Settings::default();
+        assert_eq!(s.keep_awake_times, [15, 30, 60, 120, 240, 480]);
+        assert_eq!(s.keep_awake_start, 0);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        let s = Settings {
+            keep_awake_times: vec![45, 180],
+            keep_awake_start: 180,
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+        // No times at all is kept, not refilled.
+        let s = Settings {
+            keep_awake_times: Vec::new(),
+            ..Settings::default()
+        };
+        s.save(&p).unwrap();
+        assert_eq!(Settings::load(&p), s);
+    }
+
+    #[test]
+    fn hand_edited_keep_awake_times_are_tidied() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(
+            &p,
+            "keep_awake_times = [90, 15, 90, 1, 3000]\nkeep_awake_start = 45\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&p).unwrap();
+        assert_eq!(s.keep_awake_times, [15, 90]);
+        // 45 is not among the times: until stopped.
+        assert_eq!(s.keep_awake_start, 0);
     }
 
     #[test]
@@ -1124,6 +1247,27 @@ mod tests {
         .save(&p)
         .unwrap();
         assert!(!Settings::try_load(&p).unwrap().welcome_done);
+    }
+
+    #[test]
+    fn check_for_updates_defaults_on_and_round_trips_off() {
+        assert!(Settings::default().check_for_updates);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.toml");
+        std::fs::write(&p, "layout = \"petals\"\n").unwrap();
+        assert!(Settings::try_load(&p).unwrap().check_for_updates);
+        Settings {
+            check_for_updates: false,
+            ..Settings::default()
+        }
+        .save(&p)
+        .unwrap();
+        assert!(!Settings::try_load(&p).unwrap().check_for_updates);
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("check_for_updates = false")
+        );
     }
 
     #[test]

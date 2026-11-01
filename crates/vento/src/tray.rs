@@ -13,7 +13,6 @@ use log::warn;
 use tray_icon::menu::ContextMenu;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use vento_core::awake::Chip;
 use vento_core::geometry::{Point, Rect};
 #[cfg(target_os = "macos")]
 use vento_core::i18n::current;
@@ -123,7 +122,12 @@ fn icon_frame(
 
 /// Keeps the menu-bar icon alive.
 pub struct TrayHandle {
-    _icon: TrayIcon,
+    /// The flame; the update dot is drawn on it, never on the Keep Awake cup.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    icon: TrayIcon,
+    /// Whether the flame now carries the update dot.
+    #[cfg(target_os = "macos")]
+    dot: Cell<bool>,
     /// Sets the menu's text and direction again from the current language.
     retext: Box<dyn Fn()>,
 }
@@ -134,6 +138,21 @@ impl TrayHandle {
     pub fn retext(&self) {
         (self.retext)();
     }
+
+    /// Shows the flame with an update dot, or the plain flame. Setting the
+    /// state it already has does nothing.
+    #[cfg(target_os = "macos")]
+    pub fn set_dot(&self, on: bool) {
+        if self.dot.replace(on) == on {
+            return;
+        }
+        let rgba = tray_icon_rgba(FLAME_PNG);
+        let rgba = if on { with_dot(rgba) } else { rgba };
+        let icon = Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("tray icon has a valid size");
+        if let Err(e) = self.icon.set_icon_templated(Some(icon)) {
+            warn!("cannot change the menu-bar icon: {e}");
+        }
+    }
 }
 
 /// The menu's items, for writing their text again.
@@ -141,6 +160,7 @@ struct Texted {
     copy_from_screen: Option<MenuItem>,
     clipboard: MenuItem,
     pocket: MenuItem,
+    screenshots: MenuItem,
     keep_awake: MenuItem,
     undo: MenuItem,
     pause: CheckMenuItem,
@@ -241,6 +261,34 @@ fn tray_icon_rgba(mark: &[u8]) -> Vec<u8> {
     rgba
 }
 
+/// Radius of the update dot in pixels.
+#[cfg_attr(windows, allow(dead_code))]
+const DOT_RADIUS: i32 = 4;
+/// Centre of the update dot: the icon's top right corner, in pixels.
+#[cfg_attr(windows, allow(dead_code))]
+const DOT_CENTRE: (i32, i32) = (37, 7);
+
+/// The icon with an update dot drawn in: an opaque black disc, so the image
+/// stays a valid template.
+///
+/// # Panics
+/// If `rgba` is not an `ICON_SIZE` square RGBA image.
+#[cfg_attr(windows, allow(dead_code))]
+fn with_dot(mut rgba: Vec<u8>) -> Vec<u8> {
+    let size = ICON_SIZE as usize;
+    assert_eq!(rgba.len(), size * size * 4, "the icon is 44x44 RGBA");
+    let (cx, cy) = DOT_CENTRE;
+    for y in (cy - DOT_RADIUS)..=(cy + DOT_RADIUS) {
+        for x in (cx - DOT_RADIUS)..=(cx + DOT_RADIUS) {
+            if (x - cx).pow(2) + (y - cy).pow(2) <= DOT_RADIUS.pow(2) {
+                let at = (y as usize * size + x as usize) * 4;
+                rgba[at..at + 4].copy_from_slice(&[0, 0, 0, 255]);
+            }
+        }
+    }
+    rgba
+}
+
 /// What the tray needs to act on clicks.
 pub struct TrayDeps {
     pub exec: Rc<Executor>,
@@ -257,11 +305,14 @@ pub struct TrayDeps {
     pub on_open_clipboard: Box<dyn Fn()>,
     /// Opens the island on the Pocket.
     pub on_open_pocket: Box<dyn Fn()>,
+    /// Opens the island on the screenshots.
+    pub on_open_screenshots: Box<dyn Fn()>,
     /// Opens the Settings window.
     pub on_open_settings: Box<dyn Fn()>,
     /// Whether vento is paused, shared with the panel's Pause.
     pub pause: Rc<PauseSwitch>,
-    /// The settings, for whether the clipboard history is on.
+    /// The settings, for whether the clipboard history and the screenshots
+    /// are on.
     pub hub: Rc<SettingsHub>,
     /// Starts Copy from screen; `None` leaves the item out (macOS 13).
     pub on_copy_from_screen: Option<Box<dyn Fn()>>,
@@ -281,6 +332,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         on_open_panel,
         on_open_clipboard,
         on_open_pocket,
+        on_open_screenshots,
         on_open_settings,
         pause,
         hub,
@@ -295,6 +347,11 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         None,
     );
     let pocket = MenuItem::new(tr("Open the Pocket"), !paused, None);
+    let screenshots = MenuItem::new(
+        tr("Open screenshots"),
+        !paused && hub.current().screenshots,
+        None,
+    );
     let keep_awake_item = MenuItem::new(
         keep_awake_menu_text(keep_awake.session().is_some()),
         true,
@@ -317,6 +374,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     menu.append_items(&[
         &clipboard,
         &pocket,
+        &screenshots,
         &PredefinedMenuItem::separator(),
         &keep_awake_item,
         &undo,
@@ -354,21 +412,24 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     }
 
     // Pausing greys out the items that do nothing meanwhile, and the
-    // clipboard item is greyed too while the history is off. Both the
-    // Pause and the setting move, so each listener refreshes all three.
+    // clipboard item is greyed too while the history is off, the
+    // screenshots one while they are. Both the Pause and the settings move,
+    // so each listener refreshes all of them.
     let sync_gated = {
         let items = (
             copy_from_screen.as_ref().map(|(item, _)| item.clone()),
             clipboard.clone(),
             pocket.clone(),
+            screenshots.clone(),
         );
-        Rc::new(move |paused: bool, history: bool| {
-            let (copy, clipboard, pocket) = &items;
+        Rc::new(move |paused: bool, history: bool, shots: bool| {
+            let (copy, clipboard, pocket, screenshots) = &items;
             if let Some(copy) = copy {
                 copy.set_enabled(!paused);
             }
             clipboard.set_enabled(!paused && history);
             pocket.set_enabled(!paused);
+            screenshots.set_enabled(!paused && shots);
         })
     };
 
@@ -378,14 +439,15 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         let (sync_gated, hub) = (sync_gated.clone(), hub.clone());
         pause.on_change(Box::new(move |paused| {
             pause_item.set_checked(paused);
-            sync_gated(paused, hub.current().clipboard_history);
+            let current = hub.current();
+            sync_gated(paused, current.clipboard_history, current.screenshots);
         }));
     }
     {
         let pause = Rc::downgrade(&pause);
         hub.on_change(Box::new(move |_old, new| {
             if let Some(pause) = pause.upgrade() {
-                sync_gated(pause.is_paused(), new.clipboard_history);
+                sync_gated(pause.is_paused(), new.clipboard_history, new.screenshots);
             }
         }));
     }
@@ -406,6 +468,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         copy_from_screen: copy_from_screen.as_ref().map(|(item, _)| item.clone()),
         clipboard: clipboard.clone(),
         pocket: pocket.clone(),
+        screenshots: screenshots.clone(),
         keep_awake: keep_awake_item.clone(),
         undo: undo.clone(),
         pause: pause_item.clone(),
@@ -429,12 +492,10 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
                 on_open_clipboard();
             } else if id == pocket.id() {
                 on_open_pocket();
+            } else if id == screenshots.id() {
+                on_open_screenshots();
             } else if id == keep_awake_item.id() {
-                if menu_keep.session().is_some() {
-                    menu_keep.stop();
-                } else {
-                    menu_keep.start(Chip::Forever);
-                }
+                menu_keep.toggle_start();
             } else if id == undo.id() {
                 exec.undo_last();
             } else if id == pause_item.id() {
@@ -537,6 +598,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
             }
             texted.clipboard.set_text(tr("Open clipboard history"));
             texted.pocket.set_text(tr("Open the Pocket"));
+            texted.screenshots.set_text(tr("Open screenshots"));
             if let Some(keep) = keep.upgrade() {
                 texted
                     .keep_awake
@@ -556,7 +618,9 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
         }
     };
     TrayHandle {
-        _icon: tray,
+        icon: tray,
+        #[cfg(target_os = "macos")]
+        dot: Cell::new(false),
         retext: Box::new(retext),
     }
 }
@@ -636,6 +700,19 @@ mod tests {
 
     fn screen(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }
+    }
+
+    #[test]
+    fn dot_is_opaque_at_its_centre_and_leaves_the_flame() {
+        let plain = tray_icon_rgba(FLAME_PNG);
+        let dotted = with_dot(plain.clone());
+        let a = |img: &[u8], x: usize, y: usize| img[(y * ICON_SIZE as usize + x) * 4 + 3];
+        assert_eq!(a(&dotted, 37, 7), 255);
+        assert_eq!(
+            &dotted[(22 * 44 * 4)..(23 * 44 * 4)],
+            &plain[(22 * 44 * 4)..(23 * 44 * 4)],
+            "middle row untouched"
+        );
     }
 
     #[test]

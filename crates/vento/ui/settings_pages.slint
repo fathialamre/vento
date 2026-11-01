@@ -1061,10 +1061,246 @@ export component CopyFromScreenPage inherits VerticalLayout {
     }
 }
 
-// Keep Awake's one option; starting and stopping it is the panel's.
+// The screenshots in the island: whether they show, the card for a new one,
+// and the folder they come from.
+export component ScreenshotsPage inherits VerticalLayout {
+    in property <bool> on;
+    // A card shows when a screenshot is saved, and for how long ("4 s").
+    in property <bool> card-on;
+    in property <string> card-secs;
+    in property <bool> card-can-decrease;
+    in property <bool> card-can-increase;
+    // The folder vento watches, the file manager's name for the button
+    // that shows it, and whether the system refuses to let vento read it.
+    in property <string> folder;
+    in property <string> reveal-label;
+    in property <bool> denied;
+    // On a Mac: the note about the floating thumbnail, and the button that
+    // opens Privacy & Security.
+    in property <bool> macos;
+    callback toggled(bool);
+    callback card-toggled(bool);
+    callback card-stepped(int);
+    callback show-folder();
+    callback open-privacy();
+
+    SettingRow {
+        label: @tr("Show screenshots in the island");
+
+        Switch {
+            label: @tr("Show screenshots in the island");
+            on: root.on;
+            toggled(on) => { root.toggled(on); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Show a card when a screenshot is saved");
+        enabled: root.on;
+
+        Switch {
+            label: @tr("Show a card when a screenshot is saved");
+            on: root.card-on;
+            enabled: root.on;
+            toggled(on) => { root.card-toggled(on); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Card stays for");
+        enabled: root.on && root.card-on;
+
+        Stepper {
+            text: root.card-secs;
+            label: @tr("Card stays for");
+            can-decrease: root.on && root.card-on && root.card-can-decrease;
+            can-increase: root.on && root.card-on && root.card-can-increase;
+            decrease => { root.card-stepped(-1); }
+            increase => { root.card-stepped(1); }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("Folder");
+        padding-bottom: 4px;
+
+        RowButton {
+            label: root.reveal-label;
+            clicked => { root.show-folder(); }
+        }
+    }
+
+    RowBody {
+        LineText {
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+            text: root.folder;
+            font-size: 12px;
+            color: Theme.muted;
+        }
+    }
+
+    if root.on && root.denied: RowError {
+        text: @tr("Vento can't read this folder.");
+    }
+
+    if root.on && root.denied && root.macos: RowBody {
+        HorizontalLayout {
+            alignment: Theme.rtl ? end : start;
+
+            RowButton {
+                label: @tr("Open Privacy & Security");
+                clicked => { root.open-privacy(); }
+            }
+        }
+    }
+
+    if root.macos: RowSeparator { }
+
+    if root.macos: RowBody {
+        padding-top: 12px;
+
+        WrapText {
+            text: @tr("macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options.");
+            font-size: 12px;
+            color: Theme.muted;
+        }
+    }
+}
+
+// Keep Awake's options: the panel's times, what the tile starts and the
+// screen. Starting and stopping it is the panel's.
 export component KeepAwakePage inherits VerticalLayout {
     in property <bool> screen-off;
+    // The timed chips, as the panel shows them, and whether there are as
+    // many as it holds or the usual ones.
+    in property <[string]> times;
+    in property <bool> times-full;
+    in property <bool> times-usual;
+    // The time Add adds and its stepper's limits; whether Add can add it.
+    in property <string> new-time;
+    in property <bool> new-can-decrease;
+    in property <bool> new-can-increase;
+    in property <bool> can-add;
+    // What the tile can start, until stopped first, and which it starts.
+    in property <[string]> start-names;
+    in property <int> start-choice;
     callback screen-off-toggled(bool);
+    callback time-removed(int);
+    callback times-restored();
+    callback new-stepped(int);
+    callback time-added();
+    callback start-chosen(int);
+
+    SettingRow {
+        label: @tr("Times in the panel");
+        description: @tr("Shown under the Keep Awake tile, with Until stopped and Until…");
+        padding-bottom: 6px;
+
+        TextButton {
+            label: @tr("Use the usual times");
+            enabled: !root.times-usual;
+            clicked => { root.times-restored(); }
+        }
+    }
+
+    RowBody {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-bottom: 8px;
+
+        if root.times.length == 0: EmptyLine {
+            text: @tr("No times");
+        }
+
+        for time[i] in root.times: Rectangle {
+            height: 30px;
+            accessible-role: list-item;
+            accessible-label: time;
+
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 8px;
+
+                Text {
+                    layout-order: Theme.rtl ? 2 : 0;
+                    horizontal-alignment: Theme.rtl ? right : left;
+                    text: time;
+                    font-size: 13px;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    alignment: center;
+
+                    IconButton {
+                        icon: Icons.remove;
+                        label: @tr("Remove {}", time);
+                        clicked => { root.time-removed(i); }
+                    }
+                }
+            }
+        }
+
+        // A new time: its stepper, then Add.
+        HorizontalLayout {
+            padding-top: 6px;
+            padding-left: 6px;
+            padding-right: 6px;
+            spacing: 8px;
+            alignment: Theme.rtl ? end : start;
+
+            Stepper {
+                layout-order: Theme.rtl ? 2 : 0;
+                text: root.new-time;
+                label: @tr("New time");
+                can-decrease: root.new-can-decrease;
+                can-increase: root.new-can-increase;
+                decrease => { root.new-stepped(-1); }
+                increase => { root.new-stepped(1); }
+            }
+
+            VerticalLayout {
+                layout-order: Theme.rtl ? 1 : 0;
+                alignment: center;
+
+                TextButton {
+                    label: root.times-full ? @tr("Up to 6 times") : @tr("Add");
+                    icon: PanelIcons.add;
+                    has-icon: !root.times-full;
+                    enabled: root.can-add;
+                    clicked => { root.time-added(); }
+                }
+            }
+        }
+    }
+
+    RowSeparator { }
+
+    SettingRow {
+        label: @tr("The tile starts");
+        description: @tr("What a click on the Keep Awake tile, or Start Keep Awake in the menu, starts");
+
+        MenuField {
+            width: 130px;
+            label: @tr("The tile starts");
+            items: root.start-names;
+            current: root.start-choice;
+            chosen(i) => { root.start-chosen(i); }
+        }
+    }
+
+    RowSeparator { }
 
     SettingRow {
         label: @tr("Let the screen turn off");
@@ -1078,9 +1314,153 @@ export component KeepAwakePage inherits VerticalLayout {
     }
 }
 
+// About's update row. `kind`: 0 up to date, 1 an update is out (Update, and
+// a link to what is new), 2 downloading (a bar, and Cancel until the
+// download is done), 3 ready (Restart), 4 restarting, 5 failed (red; Try
+// again when `can-retry`), 6 the check failed, 7 a check is under way. Kinds
+// 0 and 6 offer Check now. Text on the leading side, the button on the
+// trailing one.
+component UpdateStatusRow inherits HorizontalLayout {
+    in property <int> kind;
+    in property <string> title;
+    in property <string> detail;
+    in property <float> progress;
+    in property <bool> can-retry;
+    callback check-now();
+    callback clicked();
+    callback cancel-clicked();
+    callback notes-clicked();
+    callback retry-clicked();
+
+    // Once the download is done there is nothing left to cancel.
+    property <bool> cancellable: root.kind == 2 && root.progress < 1.0;
+
+    min-height: 52px;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    spacing: 12px;
+
+    VerticalLayout {
+        layout-order: Theme.rtl ? 2 : 0;
+        alignment: center;
+        spacing: 2px;
+        horizontal-stretch: 1;
+
+        WrapText {
+            text: root.title;
+            font-size: 13px;
+            font-weight: 500;
+            color: root.kind == 5 || root.kind == 6 ? Theme.danger : Theme.text;
+        }
+
+        if root.kind == 1: HorizontalLayout {
+            alignment: Theme.rtl ? end : start;
+
+            Rectangle {
+                width: link.preferred-width;
+                height: link.preferred-height;
+                accessible-role: button;
+                accessible-label: link.text;
+                accessible-action-default => { root.notes-clicked(); }
+
+                link := Text {
+                    text: @tr("See what's new");
+                    font-size: 12px;
+                    color: Theme.accent;
+                }
+
+                TouchArea {
+                    clicked => { root.notes-clicked(); }
+                }
+            }
+        }
+
+        if root.kind == 2: Rectangle {
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.accent-soft;
+            accessible-role: progress-indicator;
+            accessible-value: Math.round(root.progress * 100) + "%";
+
+            Rectangle {
+                x: Theme.rtl ? parent.width - self.width : 0px;
+                width: parent.width * Math.clamp(root.progress, 0, 1);
+                height: parent.height;
+                border-radius: parent.border-radius;
+                background: Theme.accent;
+            }
+        }
+
+        if root.detail != "": WrapText {
+            text: root.detail;
+            font-size: 12px;
+            color: Theme.muted;
+        }
+    }
+
+    VerticalLayout {
+        layout-order: Theme.rtl ? 1 : 0;
+        alignment: center;
+        horizontal-stretch: 0;
+
+        if root.kind == 0 || root.kind == 6: RowButton {
+            label: @tr("Check now");
+            name: @tr("Check for updates now");
+            clicked => { root.check-now(); }
+        }
+
+        if root.kind == 7: RowButton {
+            label: @tr("Checking\u{2026}");
+            enabled: false;
+        }
+
+        if root.kind == 1: RowButton {
+            label: @tr("Update");
+            primary: true;
+            clicked => { root.clicked(); }
+        }
+
+        if root.cancellable: RowButton {
+            label: @tr("Cancel");
+            clicked => { root.cancel-clicked(); }
+        }
+
+        if root.kind == 3: RowButton {
+            label: @tr("Restart");
+            primary: true;
+            clicked => { root.clicked(); }
+        }
+
+        if root.kind == 5 && root.can-retry: RowButton {
+            label: @tr("Try again");
+            clicked => { root.retry-clicked(); }
+        }
+    }
+}
+
 export component AboutPage inherits VerticalLayout {
     // The running version, "0.2.0".
     in property <string> version;
+    // Whether this platform updates itself: where it does not, the update
+    // row and the automatic check are left out.
+    in property <bool> updates-supported;
+    // The update row (see `UpdateStatusRow`) and the automatic check.
+    in property <int> update-kind;
+    in property <string> update-title;
+    in property <string> update-detail;
+    in property <float> update-progress;
+    in property <bool> update-can-retry;
+    in property <bool> check-automatically;
+    callback check-now();
+    callback update-clicked();
+    callback update-cancel-clicked();
+    callback update-notes-clicked();
+    callback update-retry-clicked();
+    callback check-automatically-toggled(bool);
+    // Opens the What's new window for the running version.
+    callback open-whats-new();
     callback open-settings-file();
     // Opens the Welcome setup again.
     callback open-welcome();
@@ -1115,6 +1495,46 @@ export component AboutPage inherits VerticalLayout {
             text: @tr("Version {}", root.version);
             font-size: 12px;
             color: Theme.muted;
+        }
+    }
+
+    RowSeparator { }
+
+    if root.updates-supported: UpdateStatusRow {
+        kind: root.update-kind;
+        title: root.update-title;
+        detail: root.update-detail;
+        progress: root.update-progress;
+        can-retry: root.update-can-retry;
+        check-now => { root.check-now(); }
+        clicked => { root.update-clicked(); }
+        cancel-clicked => { root.update-cancel-clicked(); }
+        notes-clicked => { root.update-notes-clicked(); }
+        retry-clicked => { root.update-retry-clicked(); }
+    }
+
+    if root.updates-supported: RowSeparator { }
+
+    if root.updates-supported: SettingRow {
+        label: @tr("Check for updates automatically");
+        description: @tr("Once a day, from GitHub");
+
+        Switch {
+            label: @tr("Check for updates automatically");
+            on: root.check-automatically;
+            toggled(on) => { root.check-automatically-toggled(on); }
+        }
+    }
+
+    if root.updates-supported: RowSeparator { }
+
+    SettingRow {
+        label: @tr("What's new in {}", root.version);
+
+        RowButton {
+            label: @tr("View");
+            name: @tr("View what's new");
+            clicked => { root.open-whats-new(); }
         }
     }
 

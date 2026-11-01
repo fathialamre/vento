@@ -70,6 +70,11 @@ pub(crate) enum Press {
     All,
     /// The "Drag N" of this kind's group.
     Kind(PocketKind),
+    /// The tile (or the peek's picture) of the screenshot at this place in
+    /// the Screenshots view.
+    Shot(u32),
+    /// The picture on the card of a screenshot just saved.
+    Card,
 }
 
 /// How far, in logical pixels, a press moves before it becomes a drag.

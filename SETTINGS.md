@@ -17,8 +17,9 @@ Vento lives in the menu bar.
   in what order), Move (pinned and recent folders, the hold delay), Pocket
   (shortcut, remove after drag-out, keep a copy, whether it opens by kind or
   as a list), Clipboard (history on or off,
-  its shortcut, Clear history), Copy from screen (its shortcut), Keep Awake (let
-  the screen turn off) and About (the version, Open settings file). Changes
+  its shortcut, Clear history), Copy from screen (its shortcut), Keep Awake (the
+  times the Quick panel offers, what its tile starts, let the screen turn off)
+  and About (the version, Open settings file). Changes
   apply and are saved at once.
 - **Right click** for the menu: Copy from screen (macOS 14 or later), Open
   clipboard history, Open the Pocket, Start or Stop Keep Awake, Undo last
@@ -120,9 +121,34 @@ clipboard_history = true
 # as pocket_shortcut
 clipboard_shortcut = "ctrl+alt+v"
 
+# Screenshots: list the screenshots of the last 7 days in the island's
+# Screenshots view (off until you turn it on)
+screenshots = false
+
+# Screenshots: show a card with the picture when a screenshot is saved
+screenshot_card = true
+
+# Screenshots: seconds the card stays after the pointer leaves it, from 2 to 8
+screenshot_card_secs = 4
+
 # Global shortcut for Copy from screen; same form as pocket_shortcut
 # ("ctrl+alt+o" on Linux, where GNOME opens a terminal on Ctrl+Alt+T)
 screen_text_shortcut = "ctrl+alt+t"
+
+# Keep Awake: the times the Quick panel offers under its tile, in minutes
+# (besides Until stopped and Until…). Each from 5 to 1440 (24 hours); they are
+# sorted, repeats dropped and only the first 6 kept. An empty list leaves only
+# Until stopped and Until…
+keep_awake_times = [15, 30, 60, 120, 240, 480]
+
+# Keep Awake: what a click on its tile, or Start Keep Awake in the menu,
+# starts: one of keep_awake_times, in minutes, or 0 for until you stop it. A
+# time not in keep_awake_times means 0
+keep_awake_start = 0
+
+# Keep Awake: let the screen dim, blank and lock as usual, keeping only the
+# computer awake
+keep_awake_screen_off = false
 
 # PDF window, Images: the format last picked, "png" or "jpeg" (JPEG is
 # drawn on white); any other value means "png". macOS only for now
@@ -140,6 +166,10 @@ closed_how_to = []
 # true once the Welcome setup was finished, skipped or closed; Vento writes
 # false only on a fresh install, and opens the setup while it is false
 welcome_done = true
+
+# Look for a new version on GitHub once a day (macOS). false stops the daily
+# check; Settings → About → Check now still works
+check_for_updates = true
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the
