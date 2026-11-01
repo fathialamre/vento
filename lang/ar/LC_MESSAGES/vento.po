@@ -567,9 +567,13 @@ msgstr "تعذّر فتح الطرفية: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "تعذّر الفتح: {reason}"
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:200
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "تعذّرت إعادة الاسم {name}: {reason}. لم يتغيّر شيء."
+
+#: crates/vento-core/src/rename/labels.rs:202
+msgid "Couldn't put back {name}: {reason}. These items could not be put back:"
+msgstr "تعذّرت إعادة الاسم {name}: {reason}. تعذّرت إعادة هذه العناصر:"
 
 #: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
@@ -583,9 +587,13 @@ msgstr "تعذّرت قراءة الصورة"
 msgid "Couldn't read the screen"
 msgstr "تعذّرت قراءة الشاشة"
 
-#: crates/vento-core/src/rename/labels.rs:164
+#: crates/vento-core/src/rename/labels.rs:165
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "تعذّرت إعادة تسمية {name}: {reason}. لم يتغيّر شيء."
+
+#: crates/vento-core/src/rename/labels.rs:167
+msgid "Couldn't rename {name}: {reason}. These items could not be put back:"
+msgstr "تعذّرت إعادة تسمية {name}: {reason}. تعذّرت إعادة هذه العناصر:"
 
 #: crates/vento/src/exec.rs:250
 msgid "Couldn't rename: {reason}"
@@ -1495,7 +1503,7 @@ msgstr "معاينة"
 msgid "Print"
 msgstr "طباعة"
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:207
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] "لم تُعَد أي أسماء"
@@ -1597,7 +1605,7 @@ msgstr[3] "تمت إعادة تسمية {n} عناصر"
 msgstr[4] "تمت إعادة تسمية {n} عنصراً"
 msgstr[5] "تمت إعادة تسمية {n} عنصر"
 
-#: crates/vento/src/rename/mod.rs:776
+#: crates/vento/src/rename/mod.rs:781
 msgid "Renaming… {done} of {total}"
 msgstr "جارٍ إعادة التسمية… {done} من {total}"
 
@@ -1863,9 +1871,13 @@ msgstr "الأصغر أولاً"
 msgid "Some items could not be read"
 msgstr "تعذّرت قراءة بعض العناصر"
 
-#: crates/vento-core/src/rename/labels.rs:171
+#: crates/vento-core/src/rename/labels.rs:184
 msgid "Something changed in the folder. Check the list and try again."
 msgstr "تغيّر شيء في المجلد. راجع القائمة وحاول مجدداً."
+
+#: crates/vento-core/src/rename/labels.rs:195
+msgid "Something changed since the rename. Nothing was put back."
+msgstr "تغيّر شيء منذ إعادة التسمية. لم تُعَد أي أسماء."
 
 #: crates/vento/src/pdf/window/write.rs:217
 msgid "Split"
@@ -2041,7 +2053,7 @@ msgstr "لقراءة النص على شاشتك، يحتاج Vento إذن تسج
 msgid "Today"
 msgstr "اليوم"
 
-#: crates/vento-core/src/rename/labels.rs:176
+#: crates/vento-core/src/rename/labels.rs:189
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr "عناصر كثيرة جداً لإعادة تسميتها دفعة واحدة (5,000 كحد أقصى)"
 
@@ -2529,6 +2541,10 @@ msgstr "لا يوجد اسم متاح للعنصر المنقول"
 msgid "no free name for the saved item"
 msgstr "لا يوجد اسم متاح للعنصر المحفوظ"
 
+#: crates/vento-core/src/rename/run.rs:277
+msgid "no free temporary name"
+msgstr "لا يوجد اسم مؤقت متاح"
+
 #: crates/vento/src/exec.rs:542
 msgid "no images"
 msgstr "لا توجد صور"
@@ -2695,7 +2711,7 @@ msgstr "اختصار {name} غير متاح: {reason}"
 msgid "{name} · {n} items"
 msgstr "‏{name} · العناصر: {n}"
 
-#: crates/vento-core/src/rename/labels.rs:209
+#: crates/vento-core/src/rename/labels.rs:225
 msgid "{now} should be {old}"
 msgstr "‏{now} يجب أن يكون {old}"
 
@@ -2773,7 +2789,7 @@ msgstr[3] "{n} عناصر"
 msgstr[4] "{n} عنصراً"
 msgstr[5] "{n} عنصر"
 
-#: crates/vento-core/src/rename/labels.rs:191
+#: crates/vento-core/src/rename/labels.rs:211
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "لم يتغيّر أي عنصر."

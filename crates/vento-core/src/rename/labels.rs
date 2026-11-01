@@ -158,12 +158,25 @@ pub fn done_text(record: &RenameRecord) -> String {
     }
 }
 
-/// The toast when a rename failed and was reversed.
-pub fn failed_text(path: &Path, reason: &str) -> String {
-    fill(
-        &tr("Couldn't rename {name}: {reason}. Nothing was changed."),
-        &[("name", &file_name(path)), ("reason", reason)],
-    )
+/// The toast when a rename failed and was reversed; with a line per item in
+/// `stuck`, which the reversal could not put back.
+pub fn failed_text(path: &Path, reason: &str, stuck: &[(PathBuf, PathBuf)]) -> String {
+    let template = if stuck.is_empty() {
+        tr("Couldn't rename {name}: {reason}. Nothing was changed.")
+    } else {
+        tr("Couldn't rename {name}: {reason}. These items could not be put back:")
+    };
+    let text = fill(&template, &[("name", &file_name(path)), ("reason", reason)]);
+    with_stuck(text, stuck)
+}
+
+/// `text`, then a line per stuck item.
+fn with_stuck(mut text: String, stuck: &[(PathBuf, PathBuf)]) -> String {
+    if !stuck.is_empty() {
+        text.push('\n');
+        text.push_str(&stuck_text(stuck));
+    }
+    text
 }
 
 /// The toast when the disk no longer matches the preview.
@@ -178,11 +191,18 @@ pub fn too_many_text() -> String {
 
 /// The toast after an Undo.
 pub fn undo_text(o: &UndoOutcome) -> String {
-    let mut text = match &o.failed {
-        Some((path, reason)) => fill(
-            &tr("Couldn't put back {name}: {reason}. Nothing was changed."),
-            &[("name", &file_name(path)), ("reason", reason)],
-        ),
+    if o.changed {
+        return tr("Something changed since the rename. Nothing was put back.");
+    }
+    let text = match &o.failed {
+        Some((path, reason)) => {
+            let template = if o.stuck.is_empty() {
+                tr("Couldn't put back {name}: {reason}. Nothing was changed.")
+            } else {
+                tr("Couldn't put back {name}: {reason}. These items could not be put back:")
+            };
+            fill(&template, &[("name", &file_name(path)), ("reason", reason)])
+        }
         None => {
             let put_back = trn("Put back {n} name", "Put back {n} names", o.put_back as u64);
             if o.skipped == 0 {
@@ -197,11 +217,7 @@ pub fn undo_text(o: &UndoOutcome) -> String {
             }
         }
     };
-    if !o.stuck.is_empty() {
-        text.push('\n');
-        text.push_str(&stuck_text(&o.stuck));
-    }
-    text
+    with_stuck(text, &o.stuck)
 }
 
 /// One line per item a reversal could not put back: where it is now, and what it should be.
@@ -425,8 +441,15 @@ mod tests {
     #[test]
     fn failure_and_state_toasts() {
         assert_eq!(
-            failed_text(Path::new("/t/a.txt"), "permission denied"),
+            failed_text(Path::new("/t/a.txt"), "permission denied", &[]),
             "Couldn't rename a.txt: permission denied. Nothing was changed."
+        );
+        // Items left under the wrong name: the toast doesn't say nothing changed.
+        let stuck = vec![("/t/.vento-rename-0123abcd-0".into(), "/t/a.txt".into())];
+        assert_eq!(
+            failed_text(Path::new("/t/a.txt"), "disk removed", &stuck),
+            "Couldn't rename a.txt: disk removed. These items could not be put back:\n\
+             .vento-rename-0123abcd-0 should be a.txt"
         );
         assert_eq!(
             changed_text(),
@@ -464,6 +487,15 @@ mod tests {
             undo_text(&failed),
             "Couldn't put back b: permission denied. Nothing was changed."
         );
+        let changed = UndoOutcome {
+            skipped: 1,
+            changed: true,
+            ..UndoOutcome::default()
+        };
+        assert_eq!(
+            undo_text(&changed),
+            "Something changed since the rename. Nothing was put back."
+        );
     }
 
     #[test]
@@ -481,6 +513,11 @@ mod tests {
             stuck,
             ..UndoOutcome::default()
         };
-        assert!(undo_text(&failed).ends_with("\n.vento-tmp-1 should be a\nfinal should be b"));
+        assert_eq!(
+            undo_text(&failed),
+            "Couldn't put back b: x. These items could not be put back:\n\
+             .vento-tmp-1 should be a\n\
+             final should be b"
+        );
     }
 }

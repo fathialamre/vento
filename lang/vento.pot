@@ -541,8 +541,12 @@ msgstr ""
 msgid "Couldn't open: {reason}"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:200
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
+msgstr ""
+
+#: crates/vento-core/src/rename/labels.rs:202
+msgid "Couldn't put back {name}: {reason}. These items could not be put back:"
 msgstr ""
 
 #: crates/vento/src/rename/mod.rs:177
@@ -557,8 +561,12 @@ msgstr ""
 msgid "Couldn't read the screen"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:164
+#: crates/vento-core/src/rename/labels.rs:165
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
+msgstr ""
+
+#: crates/vento-core/src/rename/labels.rs:167
+msgid "Couldn't rename {name}: {reason}. These items could not be put back:"
 msgstr ""
 
 #: crates/vento/src/exec.rs:250
@@ -1421,7 +1429,7 @@ msgstr ""
 msgid "Print"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:207
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] ""
@@ -1503,7 +1511,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/rename/mod.rs:776
+#: crates/vento/src/rename/mod.rs:781
 msgid "Renaming… {done} of {total}"
 msgstr ""
 
@@ -1749,8 +1757,12 @@ msgstr ""
 msgid "Some items could not be read"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:171
+#: crates/vento-core/src/rename/labels.rs:184
 msgid "Something changed in the folder. Check the list and try again."
+msgstr ""
+
+#: crates/vento-core/src/rename/labels.rs:195
+msgid "Something changed since the rename. Nothing was put back."
 msgstr ""
 
 #: crates/vento/src/pdf/window/write.rs:217
@@ -1923,7 +1935,7 @@ msgstr ""
 msgid "Today"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:176
+#: crates/vento-core/src/rename/labels.rs:189
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr ""
 
@@ -2403,6 +2415,10 @@ msgstr ""
 msgid "no free name for the saved item"
 msgstr ""
 
+#: crates/vento-core/src/rename/run.rs:277
+msgid "no free temporary name"
+msgstr ""
+
 #: crates/vento/src/exec.rs:542
 msgid "no images"
 msgstr ""
@@ -2565,7 +2581,7 @@ msgstr ""
 msgid "{name} · {n} items"
 msgstr ""
 
-#: crates/vento-core/src/rename/labels.rs:209
+#: crates/vento-core/src/rename/labels.rs:225
 msgid "{now} should be {old}"
 msgstr ""
 
@@ -2615,7 +2631,7 @@ msgid_plural "{n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento-core/src/rename/labels.rs:191
+#: crates/vento-core/src/rename/labels.rs:211
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] ""

@@ -274,7 +274,7 @@ fn execute_with(
         log::warn!("rename: no free temporary name");
         return RenameOutcome::Failed {
             path: steps[0].from.clone(),
-            reason: "no free temporary name".into(),
+            reason: crate::i18n::tr("no free temporary name"),
             stuck: Vec::new(),
         };
     };
@@ -430,6 +430,9 @@ pub struct UndoOutcome {
     pub failed: Option<(PathBuf, String)>,
     /// As in [`RenameOutcome::Failed`]: items the reversal could not put back.
     pub stuck: Vec<(PathBuf, PathBuf)>,
+    /// Whether the disk changed between Undo's own check and the put-back, so
+    /// nothing was touched.
+    pub changed: bool,
 }
 
 /// Puts back the names of a finished rename, with the same two phases and rollback.
@@ -486,7 +489,7 @@ pub fn undo(record: &RenameRecord, disk: &dyn Disk, os: Os) -> UndoOutcome {
         },
         RenameOutcome::Changed => UndoOutcome {
             skipped,
-            failed: Some((steps[0].from.clone(), "something changed".into())),
+            changed: true,
             ..UndoOutcome::default()
         },
         RenameOutcome::Failed {
@@ -498,6 +501,7 @@ pub fn undo(record: &RenameRecord, disk: &dyn Disk, os: Os) -> UndoOutcome {
             skipped,
             failed: Some((path, reason)),
             stuck,
+            changed: false,
         },
     }
 }
@@ -1356,6 +1360,65 @@ mod tests {
         assert_eq!((out.put_back, out.skipped), (1, 0));
         assert!(out.failed.is_none(), "{out:?}");
         assert_eq!(disk.paths(), set(&["/t/a.JPG"]));
+    }
+
+    /// A [`FakeDisk`] on which `gone` stops existing after `seen` checks of it,
+    /// as when another program moves it away.
+    struct Vanishing {
+        disk: FakeDisk,
+        gone: PathBuf,
+        seen: usize,
+        checks: AtomicUsize,
+    }
+
+    impl Disk for Vanishing {
+        fn exists(&self, p: &Path) -> bool {
+            if p == self.gone && self.checks.fetch_add(1, Ordering::Relaxed) >= self.seen {
+                return false;
+            }
+            self.disk.exists(p)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.disk.rename(from, to)
+        }
+        fn names_in(&self, dir: &Path) -> io::Result<Vec<String>> {
+            self.disk.names_in(dir)
+        }
+        fn print(&self, p: &Path) -> io::Result<ItemPrint> {
+            self.disk.print(p)
+        }
+    }
+
+    #[test]
+    fn undo_reports_a_change_since_its_own_check() {
+        let disk = Vanishing {
+            disk: FakeDisk::new(&["/t/a"]),
+            gone: "/t/x".into(),
+            seen: 1,
+            checks: AtomicUsize::new(0),
+        };
+        let record = renamed(&[step("/t/a", "/t/x")], &disk.disk);
+        // Undo's own check sees "x"; the rename's check no longer does.
+        let out = undo(&record, &disk, Os::Linux);
+        assert!(out.changed, "{out:?}");
+        assert!(out.failed.is_none(), "{out:?}");
+        assert_eq!(out.put_back, 0);
+        assert_eq!(disk.disk.paths(), set(&["/t/x"]));
+    }
+
+    #[test]
+    fn no_free_temporary_name_is_a_failure() {
+        let disk = FakeDisk::new(&["/t/a"]);
+        for n in 0..TOKEN_TRIES {
+            disk.add(&format!("/t/{TMP_PREFIX}{}-0", token(n)));
+        }
+        let done = AtomicUsize::new(0);
+        let out = execute_with(&[step("/t/a", "/t/b")], &disk, Os::Linux, &done, 0);
+        let RenameOutcome::Failed { reason, .. } = out else {
+            panic!("{out:?}");
+        };
+        assert_eq!(reason, "no free temporary name");
+        assert_eq!(disk.calls(), 0);
     }
 
     #[test]

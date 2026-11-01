@@ -543,9 +543,13 @@ msgstr "Impossibile aprire il terminale: {reason}"
 msgid "Couldn't open: {reason}"
 msgstr "Impossibile aprire: {reason}"
 
-#: crates/vento-core/src/rename/labels.rs:183
+#: crates/vento-core/src/rename/labels.rs:200
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "Impossibile ripristinare {name}: {reason}. Non è cambiato nulla."
+
+#: crates/vento-core/src/rename/labels.rs:202
+msgid "Couldn't put back {name}: {reason}. These items could not be put back:"
+msgstr "Impossibile ripristinare {name}: {reason}. Questi elementi non sono stati ripristinati:"
 
 #: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
@@ -559,9 +563,13 @@ msgstr "Impossibile leggere l'immagine"
 msgid "Couldn't read the screen"
 msgstr "Impossibile leggere lo schermo"
 
-#: crates/vento-core/src/rename/labels.rs:164
+#: crates/vento-core/src/rename/labels.rs:165
 msgid "Couldn't rename {name}: {reason}. Nothing was changed."
 msgstr "Impossibile rinominare {name}: {reason}. Non è cambiato nulla."
+
+#: crates/vento-core/src/rename/labels.rs:167
+msgid "Couldn't rename {name}: {reason}. These items could not be put back:"
+msgstr "Impossibile rinominare {name}: {reason}. Questi elementi non sono stati ripristinati:"
 
 #: crates/vento/src/exec.rs:250
 msgid "Couldn't rename: {reason}"
@@ -1423,7 +1431,7 @@ msgstr "Anteprima"
 msgid "Print"
 msgstr "Stampa"
 
-#: crates/vento-core/src/rename/labels.rs:187
+#: crates/vento-core/src/rename/labels.rs:207
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
 msgstr[0] "{n} nome ripristinato"
@@ -1505,7 +1513,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] "{n} elemento rinominato"
 msgstr[1] "{n} elementi rinominati"
 
-#: crates/vento/src/rename/mod.rs:776
+#: crates/vento/src/rename/mod.rs:781
 msgid "Renaming… {done} of {total}"
 msgstr "Rinomina in corso… {done} di {total}"
 
@@ -1751,9 +1759,13 @@ msgstr "Prima i più piccoli"
 msgid "Some items could not be read"
 msgstr "Impossibile leggere alcuni elementi"
 
-#: crates/vento-core/src/rename/labels.rs:171
+#: crates/vento-core/src/rename/labels.rs:184
 msgid "Something changed in the folder. Check the list and try again."
 msgstr "Qualcosa è cambiato nella cartella. Controlla l'elenco e riprova."
+
+#: crates/vento-core/src/rename/labels.rs:195
+msgid "Something changed since the rename. Nothing was put back."
+msgstr "Qualcosa è cambiato dopo la rinomina. Non è stato ripristinato nulla."
 
 #: crates/vento/src/pdf/window/write.rs:217
 msgid "Split"
@@ -1925,7 +1937,7 @@ msgstr "Per leggere il testo sullo schermo, Vento ha bisogno di Registrazione sc
 msgid "Today"
 msgstr "Oggi"
 
-#: crates/vento-core/src/rename/labels.rs:176
+#: crates/vento-core/src/rename/labels.rs:189
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr "Troppi elementi da rinominare insieme (5.000 al massimo)"
 
@@ -2405,6 +2417,10 @@ msgstr "nessun nome libero per l'elemento spostato"
 msgid "no free name for the saved item"
 msgstr "nessun nome libero per l'elemento salvato"
 
+#: crates/vento-core/src/rename/run.rs:277
+msgid "no free temporary name"
+msgstr "nessun nome temporaneo libero"
+
 #: crates/vento/src/exec.rs:542
 msgid "no images"
 msgstr "nessuna immagine"
@@ -2567,7 +2583,7 @@ msgstr "Scorciatoia {name} non disponibile: {reason}"
 msgid "{name} · {n} items"
 msgstr "{name} · {n} elementi"
 
-#: crates/vento-core/src/rename/labels.rs:209
+#: crates/vento-core/src/rename/labels.rs:225
 msgid "{now} should be {old}"
 msgstr "{now} dovrebbe essere {old}"
 
@@ -2617,7 +2633,7 @@ msgid_plural "{n} items"
 msgstr[0] "{n} elemento"
 msgstr[1] "{n} elementi"
 
-#: crates/vento-core/src/rename/labels.rs:191
+#: crates/vento-core/src/rename/labels.rs:211
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "{n} elemento è cambiato da allora ed è stato lasciato com'è."

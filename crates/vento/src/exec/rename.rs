@@ -11,7 +11,7 @@ use vento_core::geometry::Point;
 use vento_core::i18n::tr;
 use vento_core::rename::{
     Os, RealDisk, RenameOutcome, RenameRecord, Step, UndoOutcome, changed_text, done_text, execute,
-    failed_text, stuck_text, undo, undo_text,
+    failed_text, undo, undo_text,
 };
 
 use super::{Executor, LastOp};
@@ -31,14 +31,7 @@ fn rename_toast_text(outcome: &RenameOutcome) -> String {
             path,
             reason,
             stuck,
-        } => {
-            let mut text = failed_text(path, reason);
-            if !stuck.is_empty() {
-                text.push('\n');
-                text.push_str(&stuck_text(stuck));
-            }
-            text
-        }
+        } => failed_text(path, reason, stuck),
     }
 }
 
@@ -147,6 +140,9 @@ impl Executor {
         if let Some((path, _)) = &outcome.failed {
             warn!("undo: put-back failed at {}, reversed", path.display());
         }
+        if outcome.changed {
+            info!("undo: the folder changed since its check, nothing put back");
+        }
         log_stuck(&outcome.stuck);
         info!(
             "undo: put back {}, skipped {} changed since",
@@ -198,7 +194,7 @@ mod tests {
         };
         assert_eq!(
             rename_toast_text(&outcome),
-            "Couldn't rename a.jpg: disk removed. Nothing was changed.\n\
+            "Couldn't rename a.jpg: disk removed. These items could not be put back:\n\
              .vento-rename-0123abcd-0 should be a.jpg\n\
              b2.jpg should be b.jpg"
         );
