@@ -249,7 +249,7 @@ msgstr "O cartão fica por"
 
 #: crates/vento-core/src/rename/labels.rs:27
 msgid "Case"
-msgstr "Maiúsculas e minúsculas"
+msgstr "Maiúsculas"
 
 #: crates/vento/ui/settings_window.slint:282
 msgid "Changed your mind? Click Undo on the notice."
@@ -547,7 +547,7 @@ msgstr "Não foi possível abrir: {reason}"
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "Não foi possível restaurar {name}: {reason}. Nada foi alterado."
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr "Não foi possível ler os itens"
 
@@ -1199,7 +1199,7 @@ msgstr "Nada para copiar"
 msgid "Nothing to move"
 msgstr "Nada para mover"
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
 msgstr "Nada para renomear"
 
@@ -1505,7 +1505,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] "{n} item renomeado"
 msgstr[1] "{n} itens renomeados"
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr "Renomeando… {done} de {total}"
 
@@ -1911,7 +1911,7 @@ msgstr "Durações no painel"
 
 #: crates/vento-core/src/rename/labels.rs:66
 msgid "Title Case"
-msgstr "Título"
+msgstr "Iniciais Maiúsculas"
 
 #: crates/vento/ui/pdf.slint:710
 msgid "To images"
@@ -2569,7 +2569,7 @@ msgstr "{name} · {n} itens"
 
 #: crates/vento-core/src/rename/labels.rs:209
 msgid "{now} should be {old}"
-msgstr "{now} devia ser {old}"
+msgstr "{now} deveria ser {old}"
 
 #: crates/vento/src/exec/convert.rs:90
 msgid "{n} already {format}"

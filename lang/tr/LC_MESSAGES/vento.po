@@ -249,7 +249,7 @@ msgstr "Kartın kalma süresi"
 
 #: crates/vento-core/src/rename/labels.rs:27
 msgid "Case"
-msgstr "Büyük/küçük harf"
+msgstr "Harfler"
 
 #: crates/vento/ui/settings_window.slint:282
 msgid "Changed your mind? Click Undo on the notice."
@@ -547,7 +547,7 @@ msgstr "Açılamadı: {reason}"
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "{name} geri alınamadı: {reason}. Hiçbir şey değişmedi."
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr "Öğeler okunamadı"
 
@@ -1199,7 +1199,7 @@ msgstr "Kopyalanacak bir şey yok"
 msgid "Nothing to move"
 msgstr "Taşınacak bir şey yok"
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
 msgstr "Yeniden adlandırılacak bir şey yok"
 
@@ -1209,7 +1209,7 @@ msgstr "Hiçbir şey: metni siler"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
-msgstr "Sayı"
+msgstr "Numara"
 
 #: crates/vento/ui/quick.slint:543
 msgid "Off"
@@ -1505,7 +1505,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] "{n} öğe yeniden adlandırıldı"
 msgstr[1] "{n} öğe yeniden adlandırıldı"
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr "Yeniden adlandırılıyor… {done}/{total}"
 
@@ -1927,7 +1927,7 @@ msgstr "Bugün"
 
 #: crates/vento-core/src/rename/labels.rs:176
 msgid "Too many items to rename at once (5,000 at most)"
-msgstr "Aynı anda yeniden adlandırılamayacak kadar çok öğe (en fazla 5.000)"
+msgstr "Aynı anda yeniden adlandırmak için çok fazla öğe (en fazla 5.000)"
 
 #: crates/vento/ui/pocket.slint:2281
 msgid "Trash"
@@ -2183,7 +2183,7 @@ msgstr "Çalışırken Vento simgesinin yanında küçük bir fincan görünür.
 
 #: crates/vento-core/src/rename/labels.rs:102
 msgid "Windows reserves this name"
-msgstr "Windows bu adı ayırır"
+msgstr "Bu ad Windows için ayrılmış"
 
 #: crates/vento/ui/rename.slint:1031
 msgid "Without the dot"

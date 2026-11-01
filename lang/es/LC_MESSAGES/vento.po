@@ -547,7 +547,7 @@ msgstr "No se pudo abrir: {reason}"
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "No se pudo restaurar {name}: {reason}. No se cambió nada."
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr "No se pudieron leer los elementos"
 
@@ -565,7 +565,7 @@ msgstr "No se pudo renombrar {name}: {reason}. No se cambió nada."
 
 #: crates/vento/src/exec.rs:250
 msgid "Couldn't rename: {reason}"
-msgstr "No se pudo cambiar el nombre: {reason}"
+msgstr "No se pudo renombrar: {reason}"
 
 #: crates/vento/src/updater/swap.rs:40
 msgid "Couldn't replace Vento"
@@ -1199,13 +1199,13 @@ msgstr "Nada que copiar"
 msgid "Nothing to move"
 msgstr "Nada que mover"
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
 msgstr "Nada que renombrar"
 
 #: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
-msgstr "Nada: lo elimina"
+msgstr "Nada: lo quita"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
@@ -1217,7 +1217,7 @@ msgstr "Desactivado"
 
 #: crates/vento/ui/rename.slint:1115
 msgid "Oldest first"
-msgstr "Más antiguo primero"
+msgstr "Más antiguos primero"
 
 #: crates/vento/ui/settings_pages.slint:1520
 msgid "Once a day, from GitHub"
@@ -1426,8 +1426,8 @@ msgstr "Impresión"
 #: crates/vento-core/src/rename/labels.rs:187
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
-msgstr[0] "Se restauró {n} nombre"
-msgstr[1] "Se restauraron {n} nombres"
+msgstr[0] "{n} nombre restaurado"
+msgstr[1] "{n} nombres restaurados"
 
 #: crates/vento/ui/pdf.slint:1248
 msgid "Quality"
@@ -1497,15 +1497,15 @@ msgstr[1] "Renombrar {n} elementos"
 
 #: crates/vento-core/src/rename/labels.rs:152
 msgid "Renamed {name}"
-msgstr "Se renombró {name}"
+msgstr "{name} renombrado"
 
 #: crates/vento-core/src/rename/labels.rs:153
 msgid "Renamed {n} item"
 msgid_plural "Renamed {n} items"
-msgstr[0] "Se renombró {n} elemento"
-msgstr[1] "Se renombraron {n} elementos"
+msgstr[0] "{n} elemento renombrado"
+msgstr[1] "{n} elementos renombrados"
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr "Renombrando… {done} de {total}"
 
@@ -1745,7 +1745,7 @@ msgstr "Archivo más pequeño"
 
 #: crates/vento/ui/rename.slint:1122
 msgid "Smallest first"
-msgstr "Más pequeño primero"
+msgstr "Más pequeños primero"
 
 #: crates/vento-core/src/info.rs:270
 msgid "Some items could not be read"
@@ -1927,7 +1927,7 @@ msgstr "Hoy"
 
 #: crates/vento-core/src/rename/labels.rs:176
 msgid "Too many items to rename at once (5,000 at most)"
-msgstr "Demasiados elementos para renombrar a la vez (5,000 como máximo)"
+msgstr "Demasiados elementos para renombrar a la vez (5000 como máximo)"
 
 #: crates/vento/ui/pocket.slint:2281
 msgid "Trash"
@@ -1995,7 +1995,7 @@ msgstr "Deshacer ({} s)"
 
 #: crates/vento-core/src/rename/labels.rs:77
 msgid "Unknown {tag}"
-msgstr "Desconocido {tag}"
+msgstr "{tag} desconocido"
 
 #: crates/vento/ui/pocket.slint:875
 msgid "Unpin"

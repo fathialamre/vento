@@ -93,7 +93,7 @@ msgstr "Indirizzo"
 
 #: crates/vento/ui/rename.slint:472
 msgid "Adds 001, 002… in the list's order"
-msgstr "Aggiunge 001, 002… nell'ordine della lista"
+msgstr "Aggiunge 001, 002… nell'ordine dell'elenco"
 
 #: crates/vento/ui/rename.slint:471
 msgid "Adds text to every name"
@@ -547,7 +547,7 @@ msgstr "Impossibile aprire: {reason}"
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "Impossibile ripristinare {name}: {reason}. Non è cambiato nulla."
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr "Impossibile leggere gli elementi"
 
@@ -901,7 +901,7 @@ msgstr "Info: elementi non trovati"
 
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
-msgstr "Dentro una cartella che viene rinominata"
+msgstr "Dentro una cartella anch'essa da rinominare"
 
 #: crates/vento/ui/settings_pages.slint:802
 msgid "Its items by kind, or as a list; the bar under it switches between the two"
@@ -1199,7 +1199,7 @@ msgstr "Niente da copiare"
 msgid "Nothing to move"
 msgstr "Niente da spostare"
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
 msgstr "Niente da rinominare"
 
@@ -1426,8 +1426,8 @@ msgstr "Stampa"
 #: crates/vento-core/src/rename/labels.rs:187
 msgid "Put back {n} name"
 msgid_plural "Put back {n} names"
-msgstr[0] "Ripristinato {n} nome"
-msgstr[1] "Ripristinati {n} nomi"
+msgstr[0] "{n} nome ripristinato"
+msgstr[1] "{n} nomi ripristinati"
 
 #: crates/vento/ui/pdf.slint:1248
 msgid "Quality"
@@ -1497,15 +1497,15 @@ msgstr[1] "Rinomina {n} elementi"
 
 #: crates/vento-core/src/rename/labels.rs:152
 msgid "Renamed {name}"
-msgstr "Rinominato {name}"
+msgstr "{name} rinominato"
 
 #: crates/vento-core/src/rename/labels.rs:153
 msgid "Renamed {n} item"
 msgid_plural "Renamed {n} items"
-msgstr[0] "Rinominato {n} elemento"
-msgstr[1] "Rinominati {n} elementi"
+msgstr[0] "{n} elemento rinominato"
+msgstr[1] "{n} elementi rinominati"
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr "Rinomina in corso… {done} di {total}"
 
@@ -1753,7 +1753,7 @@ msgstr "Impossibile leggere alcuni elementi"
 
 #: crates/vento-core/src/rename/labels.rs:171
 msgid "Something changed in the folder. Check the list and try again."
-msgstr "Qualcosa è cambiato nella cartella. Controlla l’elenco e riprova."
+msgstr "Qualcosa è cambiato nella cartella. Controlla l'elenco e riprova."
 
 #: crates/vento/src/pdf/window/write.rs:217
 msgid "Split"
@@ -1867,7 +1867,7 @@ msgstr "Il download non corrisponde al checksum"
 
 #: crates/vento/ui/rename.slint:859
 msgid "The list and the numbers follow it"
-msgstr "La lista e i numeri lo seguono"
+msgstr "L'elenco e i numeri lo seguono"
 
 #: crates/vento/src/updater/mod.rs:69
 msgid "The new version didn't start."
@@ -1995,7 +1995,7 @@ msgstr "Annulla ({} s)"
 
 #: crates/vento-core/src/rename/labels.rs:77
 msgid "Unknown {tag}"
-msgstr "Sconosciuto {tag}"
+msgstr "{tag} sconosciuto"
 
 #: crates/vento/ui/pocket.slint:875
 msgid "Unpin"
@@ -2620,7 +2620,7 @@ msgstr[1] "{n} elementi"
 #: crates/vento-core/src/rename/labels.rs:191
 msgid "{n} item changed since and was left as it is."
 msgid_plural "{n} items changed since and were left as they are."
-msgstr[0] "{n} elemento è cambiato da allora ed è stato lasciato com’è."
+msgstr[0] "{n} elemento è cambiato da allora ed è stato lasciato com'è."
 msgstr[1] "{n} elementi sono cambiati da allora e sono stati lasciati come sono."
 
 #: crates/vento/src/exec.rs:151

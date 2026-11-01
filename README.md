@@ -119,7 +119,7 @@ files, like the wheel itself; turn it off with **Shake to open** in the
 ## The actions
 
 The wheel shows **Pocket, Copy, Move, Copy path** and **Terminal** at first.
-**Copy to, Archive, Convert, Info, PDF** and **Share** are off until you switch them
+**Copy to, Archive, Convert, Info, PDF, Rename** and **Share** are off until you switch them
 on in the **Wheel** page of the Settings window, where you can also change the
 order.
 
@@ -228,6 +228,52 @@ footer says what was written, with **Show in Finder** and **Undo**; **Undo**
 there, on the notice once the window has closed, or from the menu bar icon,
 moves what was written to the Trash. A PDF that is locked with a password is
 skipped.
+
+### Rename *(off at first)*
+
+Renames many files and folders at once, on macOS, Windows and Linux. Drag them
+and let go on **Rename**: a window lists every item with its new name beside
+it, and the new names change as you type. Nothing is renamed until you press
+**Rename** (⌘↩, or Ctrl+Enter on Windows and Linux).
+
+Pick a tool along the top to add a rule. Rules run in the order you added them,
+each shown as a chip you can click to change or ✕ to remove:
+
+- **Replace** finds text in every name and replaces it (leave **Replace with**
+  empty to remove it), with **Match case** if you need it.
+- **Add** puts text before or after the name.
+- **Number** adds 001, 002… before or after the name, with the start, the
+  number of digits and a separator you choose.
+- **Case** makes names lowercase, UPPERCASE, Title Case, kebab-case or
+  snake_case.
+- **Extension** changes the part after the last dot: lowercase, UPPERCASE,
+  replaced with another, or removed. Only the name changes: the file is not
+  converted (that is what **Convert** is for).
+- **Template** builds the whole name from parts: `{name}`, a counter `{n}`
+  (`{n:3}` for 001), the folder's name `{folder}` and the date it was last
+  changed `{modified}`.
+
+Every rule but Extension leaves the extension alone, so `IMG_4821.HEIC` stays a
+`.HEIC`. **⌘Z** (Ctrl+Z) in the window takes back the last change to the rules.
+**Order** sorts the list, and with it the numbers, by **Name** (`2` before `10`),
+**Date** modified (oldest first) or **Size** (smallest first), with **Reverse**;
+folders always come first. **Folders** shows when you dragged a folder and is on
+at first: switch it off to leave the folders' names alone. A folder is renamed
+as one item; what is inside it is never touched. The window remembers your last
+rules and order for next time.
+
+A row that cannot be renamed turns red and says why: two items would get the
+same name, the name is already taken in that folder, it is empty or too long, or
+it has a character the system does not allow (`:` on macOS; `\ / : * ? " < > |`,
+names such as `CON` and a dot or space at the end on Windows). **Rename** stays
+off until every row is fine. Swapping two names, or changing only the case
+(`.JPG` to `.jpg`), works.
+
+Vento never overwrites a file. If anything goes wrong half-way, every name goes
+back as it was and the notice says which item failed. **Undo** on the notice, or
+**Undo last rename** from the menu bar icon, puts every old name back; an item
+you have renamed, moved or deleted since is left as it is. Up to 5,000 items
+can be renamed at once.
 
 ### Share *(off at first)*
 

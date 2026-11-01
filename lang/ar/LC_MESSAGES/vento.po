@@ -571,7 +571,7 @@ msgstr "تعذّر الفتح: {reason}"
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "تعذّرت إعادة الاسم {name}: {reason}. لم يتغيّر شيء."
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr "تعذّرت قراءة العناصر"
 
@@ -1263,9 +1263,9 @@ msgstr "لا يوجد شيء لنسخه"
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
-msgstr "لا شيء لإعادة تسميته"
+msgstr "لا يوجد شيء لإعادة تسميته"
 
 #: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
@@ -1273,7 +1273,7 @@ msgstr "لا شيء: يحذفه"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
-msgstr "رقم"
+msgstr "ترقيم"
 
 #: crates/vento/ui/quick.slint:543
 msgid "Off"
@@ -1597,7 +1597,7 @@ msgstr[3] "تمت إعادة تسمية {n} عناصر"
 msgstr[4] "تمت إعادة تسمية {n} عنصراً"
 msgstr[5] "تمت إعادة تسمية {n} عنصر"
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr "جارٍ إعادة التسمية… {done} من {total}"
 
@@ -2111,7 +2111,7 @@ msgstr "تراجع ({} ث)"
 
 #: crates/vento-core/src/rename/labels.rs:77
 msgid "Unknown {tag}"
-msgstr "وسم غير معروف {tag}"
+msgstr "‏{tag} غير معروف"
 
 #: crates/vento/ui/pocket.slint:875
 msgid "Unpin"

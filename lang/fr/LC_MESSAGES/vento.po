@@ -547,7 +547,7 @@ msgstr "Impossible d’ouvrir : {reason}"
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr "Impossible de rétablir {name} : {reason}. Rien n’a été modifié."
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr "Impossible de lire les éléments"
 
@@ -1199,13 +1199,13 @@ msgstr "Rien à copier"
 msgid "Nothing to move"
 msgstr "Rien à déplacer"
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
 msgstr "Rien à renommer"
 
 #: crates/vento/ui/rename.slint:881
 msgid "Nothing: removes it"
-msgstr "Rien : le supprime"
+msgstr "Rien : le retire"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
@@ -1217,7 +1217,7 @@ msgstr "Désactivé"
 
 #: crates/vento/ui/rename.slint:1115
 msgid "Oldest first"
-msgstr "Plus ancien d’abord"
+msgstr "Plus anciens d’abord"
 
 #: crates/vento/ui/settings_pages.slint:1520
 msgid "Once a day, from GitHub"
@@ -1505,7 +1505,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] "{n} élément renommé"
 msgstr[1] "{n} éléments renommés"
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr "Renommage… {done} sur {total}"
 
@@ -1745,7 +1745,7 @@ msgstr "Fichier plus léger"
 
 #: crates/vento/ui/rename.slint:1122
 msgid "Smallest first"
-msgstr "Plus petit d’abord"
+msgstr "Plus petits d’abord"
 
 #: crates/vento-core/src/info.rs:270
 msgid "Some items could not be read"
@@ -1995,7 +1995,7 @@ msgstr "Annuler ({} s)"
 
 #: crates/vento-core/src/rename/labels.rs:77
 msgid "Unknown {tag}"
-msgstr "Inconnu {tag}"
+msgstr "{tag} inconnu"
 
 #: crates/vento/ui/pocket.slint:875
 msgid "Unpin"

@@ -545,7 +545,7 @@ msgstr ""
 msgid "Couldn't put back {name}: {reason}. Nothing was changed."
 msgstr ""
 
-#: crates/vento/src/rename/mod.rs:174
+#: crates/vento/src/rename/mod.rs:177
 msgid "Couldn't read the items"
 msgstr ""
 
@@ -1197,7 +1197,7 @@ msgstr ""
 msgid "Nothing to move"
 msgstr ""
 
-#: crates/vento/src/rename/mod.rs:185
+#: crates/vento/src/rename/mod.rs:188
 msgid "Nothing to rename"
 msgstr ""
 
@@ -1503,7 +1503,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/rename/mod.rs:735
+#: crates/vento/src/rename/mod.rs:776
 msgid "Renaming… {done} of {total}"
 msgstr ""
 
