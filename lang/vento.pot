@@ -1213,6 +1213,10 @@ msgstr ""
 msgid "Nothing: removes it"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:871
+msgid "* for the whole name"
+msgstr ""
+
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
 msgstr ""

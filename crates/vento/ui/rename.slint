@@ -868,6 +868,7 @@ export component RenameWindow inherits Window {
                     LabeledField {
                         label: @tr("Find");
                         value: root.form.find;
+                        placeholder: @tr("* for the whole name");
                         autofocus: true;
                         edited(text) => {
                             root.form.find = text;

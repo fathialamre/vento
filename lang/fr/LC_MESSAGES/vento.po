@@ -1215,6 +1215,10 @@ msgstr "Rien à renommer"
 msgid "Nothing: removes it"
 msgstr "Rien : le retire"
 
+#: crates/vento/ui/rename.slint:871
+msgid "* for the whole name"
+msgstr "* pour le nom entier"
+
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
 msgstr "Numéro"

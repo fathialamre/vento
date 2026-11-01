@@ -41,7 +41,8 @@ pub enum ExtTo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Rule {
-    /// Replaces every occurrence of `find` in the stem.
+    /// Replaces every occurrence of `find` in the stem; a lone `*` replaces
+    /// the whole stem.
     Replace {
         find: String,
         with: String,
@@ -146,7 +147,11 @@ pub fn apply_rules(rules: &[Rule], parts: &NameParts, is_dir: bool, ctx: &Ctx) -
 }
 
 /// Replaces every non-overlapping occurrence of `find`, scanning left to right.
+/// A lone `*` stands for the whole stem.
 fn replace(stem: &str, find: &str, with: &str, match_case: bool) -> String {
+    if find == "*" {
+        return with.to_string();
+    }
     if match_case {
         return stem.replace(find, with);
     }
@@ -334,6 +339,23 @@ mod tests {
             match_case: true,
         };
         assert_eq!(run(&[r], "IMG_img.JPG", 0), "IMG_.JPG");
+    }
+
+    #[test]
+    fn replace_star_swaps_the_whole_stem() {
+        let r = Rule::Replace {
+            find: "*".into(),
+            with: "Trip".into(),
+            match_case: false,
+        };
+        assert_eq!(run(std::slice::from_ref(&r), "IMG_001.jpg", 0), "Trip.jpg");
+        assert_eq!(run(&[r], "notes", 0), "Trip");
+        let r = Rule::Replace {
+            find: "a*b".into(),
+            with: "x".into(),
+            match_case: true,
+        };
+        assert_eq!(run(&[r], "a*b c.txt", 0), "x c.txt");
     }
 
     #[test]

@@ -1279,6 +1279,10 @@ msgstr "لا يوجد شيء لإعادة تسميته"
 msgid "Nothing: removes it"
 msgstr "لا شيء: يحذفه"
 
+#: crates/vento/ui/rename.slint:871
+msgid "* for the whole name"
+msgstr "* للاسم كامل"
+
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
 msgstr "ترقيم"
