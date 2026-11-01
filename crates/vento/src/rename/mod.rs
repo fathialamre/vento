@@ -694,13 +694,18 @@ impl RenameController {
     }
 
     /// The items read again for `list`; when none is left, the window
-    /// closes.
+    /// closes and the toast says so, in place of the "something changed"
+    /// one, which asks to check a list that is gone.
     fn reloaded(&self, list: u64, mut batch: Batch) {
         if list != self.list.get() {
             return;
         }
         if batch.items.is_empty() {
+            let at = self.shown.borrow().as_ref().map(|shown| shown.at);
             self.hide();
+            if let Some(at) = at {
+                self.toaster.show(&tr("Nothing to rename"), None, at);
+            }
             return;
         }
         if let Some(shown) = self.shown.borrow_mut().as_mut() {
