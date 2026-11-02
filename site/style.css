@@ -51,8 +51,30 @@ h2.disp { font-size: 38px; margin-bottom: 16px; }
 .plate.pair { padding: 44px 44px 0; display: grid; grid-template-columns: 1.35fr 1fr; gap: 22px; align-items: end; }
 .plate.pair img:first-child { border-radius: 12px 12px 0 0; }
 .plate.pair img:last-child { margin-bottom: 44px; }
-.plate.settings { margin-top: 56px; padding: 56px 56px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; height: 560px; }
-.plate.settings img:last-child { margin-top: 64px; }
+.plate.settings { margin-top: 56px; padding: 64px 72px; }
+.plate.dark { padding: 0 44px 44px; background: radial-gradient(90% 80% at 15% 0%, #FFB36B, transparent 60%), linear-gradient(135deg, #FF7A2E 0%, #D9346B 50%, #5B3FB8 100%); }
+.plate.dark img { border-radius: 0 0 22px 22px; box-shadow: 0 30px 60px -24px #000c; }
+
+/* A Mac window around a rendered Vento window. */
+.mac { max-width: 880px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px #111A2E1f, 0 30px 60px -22px #111A2E66, 0 10px 20px -10px #111A2E33; }
+.mac .bar { position: relative; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #F2F2F4; border-bottom: 1px solid #E1E3E8; }
+.mac .bar i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; box-shadow: inset 0 0 0 .5px #0000001f; }
+.mac .bar i:nth-child(2) { background: #FEBC2E; }
+.mac .bar i:nth-child(3) { background: #28C840; }
+.mac .bar span { position: absolute; inset: 0 80px; line-height: 34px; text-align: center; text-overflow: ellipsis; font-size: 13px; font-weight: 600; color: #3A3F4A; white-space: nowrap; overflow: hidden; }
+.plate .mac img { width: 100%; border-radius: 0; box-shadow: none; }
+.stack { margin-top: 112px; }
+.stack .txt { max-width: 640px; margin-bottom: 36px; }
+.stack h3 { font-family: Unbounded, sans-serif; font-weight: 500; font-size: 24px; letter-spacing: -0.02em; margin: 14px 0 12px; }
+.stack p { color: var(--muted); margin: 0; }
+.stack .plate { padding: 64px 72px; }
+
+/* Clickable sidebar over the Settings render (720 x 600 points). */
+.pages { position: relative; }
+.pages img { transition: opacity .15s; }
+.pages nav button { position: absolute; left: 1.39%; width: 20.56%; height: 5%; padding: 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.pages nav button:hover { background: #111A2E0d; }
+.pages nav button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; margin-top: 56px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
 .card { background: #fff; padding: 26px 24px; transition: background .2s; }
@@ -162,8 +184,14 @@ footer a:hover { color: var(--ink); }
   .plate { padding: 22px; }
   .plate.pair { padding: 22px 22px 0; }
   .plate.pair img:last-child { margin-bottom: 22px; }
-  .plate.settings { padding: 24px 24px 0; gap: 14px; height: 300px; }
-  .plate.settings img:last-child { margin-top: 32px; }
+  .plate.settings, .stack .plate { padding: 20px; }
+  .plate.dark { padding: 0 14px 14px; }
+  .plate.dark img { border-radius: 0 0 12px 12px; }
+  .stack { margin-top: 72px; }
+  .mac { border-radius: 8px; }
+  .mac .bar { height: 24px; padding: 0 9px; gap: 5px; }
+  .mac .bar i { width: 8px; height: 8px; }
+  .mac .bar span { inset: 0 50px; line-height: 24px; font-size: 10.5px; }
   .steps .plate { height: 260px; padding: 22px; }
   nav .links a { margin-left: 14px; }
   nav .links .wide { display: none; }

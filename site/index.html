@@ -22,7 +22,7 @@
 <header class="in">
   <nav class="k">
     <a class="brand" href="./"><img src="assets/icon.png" alt="">vento/</a>
-    <span class="links"><a href="#actions">actions</a><a href="#install">install</a><a class="wide" href="https://github.com/fathialamre/vento/blob/main/CHANGELOG.md">changelog</a><a href="https://github.com/fathialamre/vento">github ↗</a></span>
+    <span class="links"><a href="#actions">actions</a><a class="wide" href="#island">island</a><a class="wide" href="#settings">settings</a><a href="#install">install</a><a class="wide" href="https://github.com/fathialamre/vento/blob/main/CHANGELOG.md">changelog</a><a href="https://github.com/fathialamre/vento">github ↗</a></span>
   </nav>
 
   <div class="hero">
@@ -63,33 +63,63 @@
     <div class="scene" data-scene="archive" role="img" aria-label="Releasing the Photos folder on Compress to make Photos.zip, then releasing the zip on Extract"></div>
   </div>
 
-  <div class="row flip">
+  <div class="stack">
+    <div class="txt"><span class="key sm">rename</span><h3>Rename a whole batch, and see it first</h3><p>Release a pile of files on Rename and every new name shows beside the old one as you type. Replace, add, number, change the case or the extension, or build names from a template. Nothing changes until you press Rename.</p></div>
+    <div class="plate"><div class="mac"><div class="bar"><i></i><i></i><i></i><span>Rename 9 items</span></div><img src="assets/rename.png" alt="Rename window: a Replace rule turns IMG_ into Lisbon- and the extensions go lowercase, with every new name listed beside the old one" loading="lazy"></div></div>
+  </div>
+
+  <div class="stack">
+    <div class="txt"><span class="key sm">pdf</span><h3>Every page, laid out to rearrange</h3><p>Release one PDF or several and the pages open side by side. Merge files, drag pages into order, rotate or delete them, then save a new PDF, extract the pages you picked, split it, or turn pages into images. The original is never touched.</p></div>
+    <div class="plate"><div class="mac"><div class="bar"><i></i><i></i><i></i><span>Report.pdf + Scans.pdf — 8 pages · edited</span></div><img src="assets/pdf.png" alt="PDF window with Report.pdf and Scans.pdf merged into eight pages, two of them selected" loading="lazy"></div></div>
+  </div>
+
+  <div class="row">
     <div class="txt"><span class="key sm">info</span><h3>What's in there?</h3><p>Size, file count and the biggest files, without opening Get Info. Everything else is one click away in the menu bar.</p></div>
     <div class="plate pair">
-      <img src="assets/info.png" alt="Info window for the Photos folder: 15.7 MB, 5 files, with the three biggest files listed">
-      <img src="assets/menu.png" alt="Vento menu with Copy from screen, clipboard history, the Pocket, Keep Awake and Settings">
+      <img src="assets/info.png" alt="Info window for the Photos folder: 15.7 MB, 5 files, with the three biggest files listed" loading="lazy">
+      <img src="assets/menu.png" alt="Vento menu with Copy from screen, clipboard history, the Pocket, Keep Awake and Settings" loading="lazy">
     </div>
   </div>
 
   <div class="grid">
     <div class="card"><i class="ti ti-photo"></i><b>Convert</b><span>Turn images into JPEG, PNG, HEIC, WebP and more.</span></div>
-    <div class="card"><i class="ti ti-text-scan-2"></i><b>Copy from screen</b><span>Grab text from anything you can see.</span></div>
-    <div class="card"><i class="ti ti-clipboard-list"></i><b>Clipboard history</b><span>What you copied, a shortcut away.</span></div>
-    <div class="card"><i class="ti ti-file-type-pdf"></i><b>PDF pages</b><span>Merge, reorder, rotate, split and extract pages.</span></div>
-    <div class="card"><i class="ti ti-share"></i><b>Share</b><span>Send a file without opening an app.</span></div>
+    <div class="card"><i class="ti ti-share"></i><b>Share</b><span>AirDrop, Mail or Messages, straight from the drag.</span></div>
+    <div class="card"><i class="ti ti-copy-plus"></i><b>Copy to</b><span>Copy into one of your folders, the way Move moves.</span></div>
+    <div class="card"><i class="ti ti-link"></i><b>Copy path</b><span>The file's full path, ready to paste.</span></div>
     <div class="card"><i class="ti ti-terminal-2"></i><b>Terminal</b><span>Open a Terminal right in that folder.</span></div>
-    <div class="card"><i class="ti ti-screenshot"></i><b>Screenshots</b><span>New shots land right in the island.</span></div>
+    <div class="card"><i class="ti ti-text-scan-2"></i><b>Copy from screen</b><span>Grab text from anything you can see.</span></div>
     <div class="card"><i class="ti ti-coffee"></i><b>Keep Awake</b><span>Keep the Mac awake, on a timer.</span></div>
+    <div class="card"><i class="ti ti-language"></i><b>Eight languages</b><span>English, العربية, Español, Français, Italiano, Português, Türkçe.</span></div>
   </div>
 </div></section>
 
-<section><div class="in">
+<section id="island"><div class="in">
+  <p class="eyebrow">// island</p>
+  <h2 class="disp">What you copy and capture, one shortcut away.</h2>
+  <p class="lead">The island under the menu bar holds the Pocket, your clipboard history and your latest screenshots, a tab apart.</p>
+
+  <div class="row">
+    <div class="txt"><span class="key sm">⌃⌥V</span><h3>Clipboard history</h3><p>Copy several things, paste them one by one. Click a copy to put it back exactly as it was, pin the ones you keep reaching for, and filter by text, links, pictures or files.</p></div>
+    <div class="plate dark"><img src="assets/island-clipboard.png" alt="The island's Clipboard tab: an address, a link, text, a picture and a file, with filters along the top" loading="lazy"></div>
+  </div>
+
+  <div class="row flip">
+    <div class="txt"><span class="key sm">screenshots</span><h3>Your screenshots, sorted by day</h3><p>A card drops from the island for each new screenshot: drag it anywhere, copy it or the text in it, or send it to the Pocket. The Screenshots tab keeps the last week close.</p></div>
+    <div class="plate dark"><img src="assets/island-shots.png" alt="The island's Screenshots tab: today's and yesterday's screenshots as thumbnails with their times and sizes" loading="lazy"></div>
+  </div>
+</div></section>
+
+<section id="settings"><div class="in">
   <p class="eyebrow">// settings</p>
   <h2 class="disp">Make the wheel yours.</h2>
-  <p class="lead">Order the actions, choose your folders, set the hotkeys. One settings window, no account.</p>
+  <p class="lead">Pick a theme, order the actions, choose your folders, set the shortcuts. One window, no account. Click a page to look around.</p>
   <div class="plate settings">
-    <img src="assets/settings-wheel.png" alt="Wheel settings: layout and the list of actions">
-    <img src="assets/settings-move.png" alt="Move settings: pinned and recent folders">
+    <div class="mac" data-settings><div class="bar"><i></i><i></i><i></i><span>Vento Settings</span></div>
+      <div class="pages">
+        <img src="assets/settings-general.png" alt="Vento Settings, General page: appearance, theme, language, trigger key, shake to open and terminal" loading="lazy">
+        <nav aria-label="Settings pages"></nav>
+      </div>
+    </div>
   </div>
   <div class="priv"><span><i class="ti ti-check"></i>no Accessibility</span><span><i class="ti ti-check"></i>no Input Monitoring</span><span><i class="ti ti-check"></i>no account</span><span><i class="ti ti-check"></i>open source</span></div>
 </div></section>
@@ -116,6 +146,45 @@
 </div></footer>
 
 <script src="scenes.js"></script>
+<script>
+// Settings: the sidebar in the picture switches pages; it turns by itself
+// while on screen until someone clicks.
+(() => {
+  const box = document.querySelector('[data-settings]');
+  if (!box) return;
+  const img = box.querySelector('img'), nav = box.querySelector('nav');
+  const pages = [
+    ['general', 'General: appearance, theme, language, trigger key, shake to open and terminal'],
+    ['wheel', 'Wheel: layout and the actions, each with a switch'],
+    ['move', 'Move: pinned and recent folders'],
+    ['pocket', 'Pocket: shortcut and what happens after a drop'],
+    ['clipboard', 'Clipboard: history on or off and its shortcut'],
+    ['screen', 'Copy from screen: its shortcut'],
+    ['screenshots', 'Screenshots: the island tab, the card and the folder'],
+    ['awake', 'Keep Awake: the times on the menu and the default'],
+    ['about', 'About: version and updates'],
+  ];
+  let at = 0, auto = true;
+  const show = i => {
+    at = i;
+    img.src = `assets/settings-${pages[i][0]}.png`;
+    img.alt = 'Vento Settings, ' + pages[i][1];
+  };
+  pages.forEach(([name, label], i) => {
+    new Image().src = `assets/settings-${name}.png`;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.top = ((10 + i * 32) / 600 * 100) + '%';
+    b.setAttribute('aria-label', label.split(':')[0]);
+    b.onclick = () => { auto = false; show(i); };
+    nav.append(b);
+  });
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let seen = false;
+  new IntersectionObserver(([e]) => { seen = e.isIntersecting; }).observe(box);
+  setInterval(() => { if (auto && seen && !document.hidden) show((at + 1) % pages.length); }, 3200);
+})();
+</script>
 <script>
 // Point the download buttons at the macOS zip of the latest release.
 fetch('https://api.github.com/repos/fathialamre/vento/releases/latest')
