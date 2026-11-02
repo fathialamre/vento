@@ -34,6 +34,10 @@ env_logger = "0.11"
 [build-dependencies]
 slint-build = "1.18.1"
 
+# The icon and version of vento.exe, through the Windows SDK's rc.exe.
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
+
 [dev-dependencies]
 tempfile = "3"
 

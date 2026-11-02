@@ -141,9 +141,34 @@ Not there yet on Linux: Copy from screen.
 
 ## Windows
 
-`vento-core` builds and passes its tests on Windows. What is missing is a
-`Platform` implementation in `vento-platform` (mouse and key state, the dragged
-files, overlay windows for the wheel, the Pocket's drop target, clipboard,
-terminals, the folder picker, the Trash) and the app's windows; until then
-`stub.rs` stands in. If you want to help, `vento-platform/src/lib.rs` lists
-everything a new system needs.
+Vento runs on Windows 10 and 11, on x64 and ARM64 PCs. Building needs the
+Visual Studio Build Tools with the C++ tools (and the Windows SDK, which brings
+`rc.exe` for the app's icon); on an ARM64 PC, add the x64 tools as well to
+build for x64. `cargo run -p vento` starts a debug build, with a console window
+for its log; release builds have none.
+
+To build the installer (one setup for x64 and ARM64 PCs, which installs for
+the current user without administrator rights):
+
+```powershell
+rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+winget install JRSoftware.InnoSetup
+cargo install cargo-about --locked --features cli
+.\scripts\release-windows.ps1
+```
+
+On an ARM64 PC, install cargo-about with `--target x86_64-pc-windows-msvc`:
+its `ring` dependency needs clang to build for ARM64. The setup lands in
+`target\release-setup\vento-<version>-windows-setup.exe`. It is signed with
+Azure Trusted Signing when `VENTO_SIGN_DLIB` (the `Azure.CodeSigning.Dlib.dll`
+from the `Microsoft.Trusted.Signing.Client` package) and `VENTO_SIGN_METADATA`
+(its `metadata.json`) are set and you are signed in with `az login`; see the
+top of the script.
+
+A Vento started from inside a packaged (MSIX) app, such as a terminal in a
+Store app, has its `%APPDATA%` redirected into that app's package, where other
+apps cannot see the Pocket's files. Start it from Explorer, the Start menu or
+a plain terminal to try it.
+
+Not there yet on Windows: Copy from screen, PDF pages, Share, and HEIC in
+Convert.
