@@ -19,6 +19,10 @@ msgstr " · {text}"
 msgid "\"{name}\" is protected"
 msgstr "\"{name}\" korumalı"
 
+#: crates/vento/ui/rename.slint:814
+msgid "* for the whole name"
+msgstr "* adın tamamı için"
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr "+{n} daha"
@@ -227,7 +231,7 @@ msgstr "macOS'ta {char} içeremez"
 msgid "Can't end with a dot or space"
 msgstr "Nokta veya boşlukla bitemez"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "{folder} klasöründeki Vento değiştirilemiyor"
 
@@ -575,7 +579,7 @@ msgstr "{name} yeniden adlandırılamadı: {reason}. Şu öğeler geri alınamad
 msgid "Couldn't rename: {reason}"
 msgstr "Yeniden adlandırılamadı: {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "Vento değiştirilemedi"
 
@@ -831,7 +835,7 @@ msgstr "Genel"
 msgid "GitHub answered {code}"
 msgstr "GitHub yanıtı: {code}"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "GitHub's answer couldn't be read"
 msgstr "GitHub'ın yanıtı okunamadı"
 
@@ -855,7 +859,7 @@ msgstr "Seçenek halkası açmak için Taşı, Şuraya kopyala ya da Dönüştü
 msgid "Honeycomb"
 msgstr "Petek"
 
-#: crates/vento/ui/controls.slint:906
+#: crates/vento/ui/controls.slint:946
 msgid "Hour"
 msgstr "Saat"
 
@@ -910,6 +914,10 @@ msgstr "Bilgi: öğeler bulunamadı"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "Aynı zamanda yeniden adlandırılan bir klasörün içinde"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "Güncellemek için Vento'yu kurulum programıyla yükleyin"
 
 #: crates/vento/ui/settings_pages.slint:802
 msgid "Its items by kind, or as a list; the bar under it switches between the two"
@@ -971,7 +979,7 @@ msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] "Artık var olmayan {n} öğe dışarıda bırakıldı"
 msgstr[1] "Artık var olmayan {n} öğe dışarıda bırakıldı"
 
-#: crates/vento/ui/controls.slint:601
+#: crates/vento/ui/controls.slint:641
 msgid "Less {}"
 msgstr "Azalt: {}"
 
@@ -1035,7 +1043,7 @@ msgstr "Büyük/küçük harf eşleştir"
 msgid "Messages"
 msgstr "Mesajlar"
 
-#: crates/vento/ui/controls.slint:922
+#: crates/vento/ui/controls.slint:962
 msgid "Minute"
 msgstr "Dakika"
 
@@ -1055,7 +1063,7 @@ msgstr "Daha çok sayfa"
 msgid "More ways to share"
 msgstr "Diğer paylaşma yolları"
 
-#: crates/vento/ui/controls.slint:621
+#: crates/vento/ui/controls.slint:661
 msgid "More {}"
 msgstr "Artır: {}"
 
@@ -1067,7 +1075,7 @@ msgstr "Diğer…"
 msgid "Move"
 msgstr "Taşı"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "Güncellemek için Vento'yu Uygulamalar klasörüne taşıyın"
 
@@ -1171,7 +1179,7 @@ msgstr "Metin bulunamadı"
 msgid "No times"
 msgstr "Süre yok"
 
-#: crates/vento/ui/controls.slint:334
+#: crates/vento/ui/controls.slint:374
 msgid "None found"
 msgstr "Hiçbiri bulunamadı"
 
@@ -1214,14 +1222,6 @@ msgstr "Yeniden adlandırılacak bir şey yok"
 #: crates/vento/ui/rename.slint:825
 msgid "Nothing: removes it"
 msgstr "Hiçbir şey: metni siler"
-
-#: crates/vento/ui/rename.slint:814
-msgid "* for the whole name"
-msgstr "* adın tamamı için"
-
-#: crates/vento/ui/rename.slint:772
-msgid "Pick a tool, or a rule above, to set it here"
-msgstr "Burada ayarlamak için bir araç ya da yukarıdan bir kural seçin"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
@@ -1267,7 +1267,7 @@ msgstr "Ayarlar'ı aç"
 msgid "Open With"
 msgstr "Birlikte Aç"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "Pano geçmişini aç"
 
@@ -1275,11 +1275,11 @@ msgstr "Pano geçmişini aç"
 msgid "Open in browser"
 msgstr "Tarayıcıda aç"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "Ekran görüntülerini aç"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "Ayarlar dosyasını aç"
 
@@ -1351,7 +1351,7 @@ msgstr "Parola"
 msgid "Pause"
 msgstr "Duraklat"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "Vento'yu duraklat"
 
@@ -1362,6 +1362,10 @@ msgstr "Taç yaprak"
 #: crates/vento/ui/rename.slint:699
 msgid "Pick a tool to start"
 msgstr "Başlamak için bir araç seçin"
+
+#: crates/vento/ui/rename.slint:772
+msgid "Pick a tool, or a rule above, to set it here"
+msgstr "Burada ayarlamak için bir araç ya da yukarıdan bir kural seçin"
 
 #: crates/vento/ui/settings_window.slint:318
 msgid "Pick how long under the tile, or leave it on until you stop it."
@@ -1411,7 +1415,7 @@ msgstr "Cep temizlendi"
 msgid "Pocket shortcut"
 msgstr "Cep kısayolu"
 
-#: crates/vento/ui/controls.slint:648
+#: crates/vento/ui/controls.slint:688
 msgid "Press a shortcut…"
 msgstr "Bir kısayola basın…"
 
@@ -1457,7 +1461,7 @@ msgstr "Sürüklediğiniz dosyanın altında hızlı eylemler"
 msgid "Quit"
 msgstr "Çık"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "Vento'dan çık"
 
@@ -1675,7 +1679,7 @@ msgstr "Ayarlar"
 msgid "Settings file"
 msgstr "Ayarlar dosyası"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "Ayarlar…"
 
@@ -1793,7 +1797,7 @@ msgstr "Böl: {name}"
 msgid "Split…"
 msgstr "Böl…"
 
-#: crates/vento/ui/controls.slint:934
+#: crates/vento/ui/controls.slint:974
 msgid "Start"
 msgstr "Başlat"
 
@@ -1805,7 +1809,7 @@ msgstr "Uyanık Tut'u başlat"
 msgid "Start dragging a file, then press {} while still dragging."
 msgstr "Bir dosyayı sürüklemeye başlayın, sonra hâlâ sürüklerken {} tuşlarına basın."
 
-#: crates/vento/ui/controls.slint:895
+#: crates/vento/ui/controls.slint:935
 msgid "Stay awake until"
 msgstr "Şu saate dek uyanık kal"
 
@@ -1813,7 +1817,7 @@ msgstr "Şu saate dek uyanık kal"
 msgid "Still on {running}. {reason}"
 msgstr "Hâlâ {running} sürümü kullanılıyor. {reason}"
 
-#: crates/vento/ui/controls.slint:865
+#: crates/vento/ui/controls.slint:905
 msgid "Stop"
 msgstr "Durdur"
 
@@ -1833,7 +1837,7 @@ msgstr "Bu Mac'te şifrelenmeden saklanır. Parola yöneticilerinin özel olarak
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Bu bilgisayarda şifrelenmeden saklanır. Parola yöneticilerinin özel olarak işaretlediği kopyalar atlanır."
 
-#: crates/vento/src/main.rs:933
+#: crates/vento/src/main.rs:949
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ekrandan kopyala için Ekran Kaydı'nı yeniden açın"
 
@@ -1877,11 +1881,11 @@ msgstr "Pano bu kısayolu kullanıyor"
 msgid "The Pocket uses this shortcut"
 msgstr "Cep bu kısayolu kullanıyor"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "İndirilen dosya açılamadı"
 
-#: crates/vento/src/updater/mod.rs:176
+#: crates/vento/src/updater/mod.rs:210
 msgid "The download didn't match its checksum"
 msgstr "İndirilen dosya sağlama toplamıyla eşleşmedi"
 
@@ -1889,7 +1893,7 @@ msgstr "İndirilen dosya sağlama toplamıyla eşleşmedi"
 msgid "The list and the numbers follow it"
 msgstr "Liste ve numaralar bu sırayı izler"
 
-#: crates/vento/src/updater/mod.rs:69
+#: crates/vento/src/updater/mod.rs:77
 msgid "The new version didn't start."
 msgstr "Yeni sürüm başlamadı."
 
@@ -1912,6 +1916,10 @@ msgstr "Kutucuğun başlattığı"
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
 msgstr "Güncelleme adresi güvenli değil"
+
+#: crates/vento/src/updater/mod.rs:79
+msgid "The update couldn't be installed."
+msgstr "Güncelleme yüklenemedi."
 
 #: crates/vento/ui/settings_pages.slint:314
 msgid "Theme"
@@ -2029,7 +2037,7 @@ msgstr "Sabitlemeyi kaldır: {}"
 msgid "Until stopped"
 msgstr "Durdurana dek"
 
-#: crates/vento/ui/controls.slint:849
+#: crates/vento/ui/controls.slint:889
 msgid "Until…"
 msgstr "Şu saate dek…"
 
@@ -2085,7 +2093,7 @@ msgstr "Vento'nun tamamı"
 msgid "Vento can't read this folder."
 msgstr "Vento bu klasörü okuyamıyor."
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "Vento didn't quit"
 msgstr "Vento kapanmadı"
 
@@ -2583,7 +2591,7 @@ msgstr[1] "{name} + {n} tane daha"
 msgid "{name} is locked"
 msgstr "{name} kilitli"
 
-#: crates/vento/src/main.rs:977
+#: crates/vento/src/main.rs:1000
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "{name} kısayolu kullanılamıyor: {reason}"
 
@@ -2765,27 +2773,27 @@ msgid_plural "→ {n} files"
 msgstr[0] "→ {n} dosya"
 msgstr[1] "→ {n} dosya"
 
-#: crates/vento/ui/rename.slint:991
+#: crates/vento/ui/rename.slint:935
 msgctxt "Case example"
 msgid "MY TRIP PHOTO"
 msgstr "GEZİ FOTOĞRAFIM"
 
-#: crates/vento/ui/rename.slint:992
+#: crates/vento/ui/rename.slint:936
 msgctxt "Case example"
 msgid "My Trip Photo"
 msgstr "Gezi Fotoğrafım"
 
-#: crates/vento/ui/rename.slint:990
+#: crates/vento/ui/rename.slint:934
 msgctxt "Case example"
 msgid "my trip photo"
 msgstr "gezi fotoğrafım"
 
-#: crates/vento/ui/rename.slint:993
+#: crates/vento/ui/rename.slint:937
 msgctxt "Case example"
 msgid "my-trip-photo"
 msgstr "gezi-fotoğrafım"
 
-#: crates/vento/ui/rename.slint:994
+#: crates/vento/ui/rename.slint:938
 msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr "gezi_fotoğrafım"

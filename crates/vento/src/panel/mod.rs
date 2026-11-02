@@ -88,7 +88,7 @@ pub struct UpdateView {
 
 /// The card for `state`, in the interface language. `running` is the
 /// version of this copy, which a failure says it is still on.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub fn update_view(state: &UpdateState, running: Version) -> UpdateView {
     let v = |version: Version| version.to_string();
     let card = |kind, title: String, detail: String| UpdateView {
@@ -139,7 +139,7 @@ pub fn update_view(state: &UpdateState, running: Version) -> UpdateView {
 }
 
 /// What the card's buttons and link do.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub struct UpdateActions {
     /// Update, or Restart once the update is ready.
     pub update: Box<dyn Fn()>,
@@ -512,14 +512,14 @@ impl PanelController {
     }
 
     /// Has the update card's buttons call `actions`.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     pub fn set_on_update(&self, actions: UpdateActions) {
         *self.on_update.borrow_mut() = Some(actions);
     }
 
     /// Shows `view` on the update card: now when the window exists, and
     /// on every window made after.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     pub fn set_update(&self, view: UpdateView) {
         let resized = self.update.borrow().kind != view.kind;
         *self.update.borrow_mut() = view;

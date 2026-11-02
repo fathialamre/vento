@@ -17,6 +17,10 @@ msgstr ""
 msgid "\"{name}\" is protected"
 msgstr ""
 
+#: crates/vento/ui/rename.slint:814
+msgid "* for the whole name"
+msgstr ""
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr ""
@@ -225,7 +229,7 @@ msgstr ""
 msgid "Can't end with a dot or space"
 msgstr ""
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr ""
 
@@ -573,7 +577,7 @@ msgstr ""
 msgid "Couldn't rename: {reason}"
 msgstr ""
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr ""
 
@@ -829,7 +833,7 @@ msgstr ""
 msgid "GitHub answered {code}"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "GitHub's answer couldn't be read"
 msgstr ""
 
@@ -853,7 +857,7 @@ msgstr ""
 msgid "Honeycomb"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:906
+#: crates/vento/ui/controls.slint:946
 msgid "Hour"
 msgstr ""
 
@@ -907,6 +911,10 @@ msgstr ""
 
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
+msgstr ""
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:802
@@ -969,7 +977,7 @@ msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/controls.slint:601
+#: crates/vento/ui/controls.slint:641
 msgid "Less {}"
 msgstr ""
 
@@ -1033,7 +1041,7 @@ msgstr ""
 msgid "Messages"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:922
+#: crates/vento/ui/controls.slint:962
 msgid "Minute"
 msgstr ""
 
@@ -1053,7 +1061,7 @@ msgstr ""
 msgid "More ways to share"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:621
+#: crates/vento/ui/controls.slint:661
 msgid "More {}"
 msgstr ""
 
@@ -1065,7 +1073,7 @@ msgstr ""
 msgid "Move"
 msgstr ""
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr ""
 
@@ -1169,7 +1177,7 @@ msgstr ""
 msgid "No times"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:334
+#: crates/vento/ui/controls.slint:374
 msgid "None found"
 msgstr ""
 
@@ -1211,14 +1219,6 @@ msgstr ""
 
 #: crates/vento/ui/rename.slint:825
 msgid "Nothing: removes it"
-msgstr ""
-
-#: crates/vento/ui/rename.slint:814
-msgid "* for the whole name"
-msgstr ""
-
-#: crates/vento/ui/rename.slint:772
-msgid "Pick a tool, or a rule above, to set it here"
 msgstr ""
 
 #: crates/vento-core/src/rename/labels.rs:26
@@ -1265,7 +1265,7 @@ msgstr ""
 msgid "Open With"
 msgstr ""
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr ""
 
@@ -1273,11 +1273,11 @@ msgstr ""
 msgid "Open in browser"
 msgstr ""
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr ""
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr ""
 
@@ -1349,7 +1349,7 @@ msgstr ""
 msgid "Pause"
 msgstr ""
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr ""
 
@@ -1359,6 +1359,10 @@ msgstr ""
 
 #: crates/vento/ui/rename.slint:699
 msgid "Pick a tool to start"
+msgstr ""
+
+#: crates/vento/ui/rename.slint:772
+msgid "Pick a tool, or a rule above, to set it here"
 msgstr ""
 
 #: crates/vento/ui/settings_window.slint:318
@@ -1409,7 +1413,7 @@ msgstr ""
 msgid "Pocket shortcut"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:648
+#: crates/vento/ui/controls.slint:688
 msgid "Press a shortcut…"
 msgstr ""
 
@@ -1455,7 +1459,7 @@ msgstr ""
 msgid "Quit"
 msgstr ""
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr ""
 
@@ -1673,7 +1677,7 @@ msgstr ""
 msgid "Settings file"
 msgstr ""
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr ""
 
@@ -1791,7 +1795,7 @@ msgstr ""
 msgid "Split…"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:934
+#: crates/vento/ui/controls.slint:974
 msgid "Start"
 msgstr ""
 
@@ -1803,7 +1807,7 @@ msgstr ""
 msgid "Start dragging a file, then press {} while still dragging."
 msgstr ""
 
-#: crates/vento/ui/controls.slint:895
+#: crates/vento/ui/controls.slint:935
 msgid "Stay awake until"
 msgstr ""
 
@@ -1811,7 +1815,7 @@ msgstr ""
 msgid "Still on {running}. {reason}"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:865
+#: crates/vento/ui/controls.slint:905
 msgid "Stop"
 msgstr ""
 
@@ -1831,7 +1835,7 @@ msgstr ""
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr ""
 
-#: crates/vento/src/main.rs:933
+#: crates/vento/src/main.rs:949
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr ""
 
@@ -1875,11 +1879,11 @@ msgstr ""
 msgid "The Pocket uses this shortcut"
 msgstr ""
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:176
+#: crates/vento/src/updater/mod.rs:210
 msgid "The download didn't match its checksum"
 msgstr ""
 
@@ -1887,7 +1891,7 @@ msgstr ""
 msgid "The list and the numbers follow it"
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:69
+#: crates/vento/src/updater/mod.rs:77
 msgid "The new version didn't start."
 msgstr ""
 
@@ -1909,6 +1913,10 @@ msgstr ""
 
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
+msgstr ""
+
+#: crates/vento/src/updater/mod.rs:79
+msgid "The update couldn't be installed."
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:314
@@ -2027,7 +2035,7 @@ msgstr ""
 msgid "Until stopped"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:849
+#: crates/vento/ui/controls.slint:889
 msgid "Until…"
 msgstr ""
 
@@ -2083,7 +2091,7 @@ msgstr ""
 msgid "Vento can't read this folder."
 msgstr ""
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "Vento didn't quit"
 msgstr ""
 
@@ -2581,7 +2589,7 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:977
+#: crates/vento/src/main.rs:1000
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 
@@ -2763,27 +2771,27 @@ msgid_plural "→ {n} files"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/rename.slint:991
+#: crates/vento/ui/rename.slint:935
 msgctxt "Case example"
 msgid "MY TRIP PHOTO"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:992
+#: crates/vento/ui/rename.slint:936
 msgctxt "Case example"
 msgid "My Trip Photo"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:990
+#: crates/vento/ui/rename.slint:934
 msgctxt "Case example"
 msgid "my trip photo"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:993
+#: crates/vento/ui/rename.slint:937
 msgctxt "Case example"
 msgid "my-trip-photo"
 msgstr ""
 
-#: crates/vento/ui/rename.slint:994
+#: crates/vento/ui/rename.slint:938
 msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr ""

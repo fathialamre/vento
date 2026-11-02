@@ -52,6 +52,13 @@ jiff = { version = "0.2", default-features = false, features = ["std", "tz-syste
 tray-icon = "0.26"
 global-hotkey = "0.9"
 drag = "2.1.1"
+# The self-update check and download (the only networking in the app),
+# through Windows' own TLS and certificate store: rustls' ring needs clang
+# to build for ARM64.
+ureq = { version = "3", default-features = false, features = ["gzip", "native-tls-no-default"] }
+# The update watcher waits for a process to end and kills a copy that does
+# not start. Already in the app through winit.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The tray as a StatusNotifierItem, on the zbus and async-io the app already

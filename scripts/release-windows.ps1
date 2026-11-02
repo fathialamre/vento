@@ -1,6 +1,7 @@
 # Builds the Windows installer published on GitHub:
 # target\release-setup\vento-<version>-windows-setup.exe, one setup for x64
-# and ARM64 PCs (it installs the build that fits). Needs:
+# and ARM64 PCs (it installs the build that fits), and its line for the
+# release's SHA256SUMS.txt in target\release-setup\SHA256SUMS.txt. Needs:
 #   - the Rust targets: rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
 #   - Inno Setup 6 (winget install JRSoftware.InnoSetup)
 #   - cargo-about (cargo install cargo-about --locked --features cli; on an
@@ -85,4 +86,12 @@ if ($LASTEXITCODE -ne 0) { throw "release-windows.ps1: Inno Setup failed" }
 $setup = "$out\vento-$version-windows-setup.exe"
 Sign @($setup)
 if (-not $signing) { Write-Warning "unsigned: set VENTO_SIGN_DLIB and VENTO_SIGN_METADATA to sign" }
+
+# The in-app updater checks the downloaded setup against its line in the
+# release's SHA256SUMS.txt. Taken after signing, which changes the file;
+# written with a bare LF, as shasum writes the Mac's line.
+$sums = "$out\SHA256SUMS.txt"
+$hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText("$root\$sums", "$hash  vento-$version-windows-setup.exe`n")
 $setup
+$sums

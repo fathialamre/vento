@@ -43,7 +43,7 @@ mod toast;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[cfg_attr(target_os = "linux", path = "tray_linux.rs")]
 mod tray;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 mod updater;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod welcome_window;
@@ -87,7 +87,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // so its warnings show when it is run by hand.
     // A watcher line that does not read starts nothing: the app here would
     // be a second copy.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     match updater::watch::dispatch(&std::env::args().collect::<Vec<_>>()) {
         updater::watch::Dispatch::Watch(args) => {
             let _ = updater::watch::run(args);
@@ -392,9 +392,9 @@ fn main() -> Result<(), slint::PlatformError> {
     };
     // The menu-bar icon needs the running event loop, and lives as long as the app.
     let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
-    // Updates (macOS): the daily check, the download and the restart. Its
+    // Updates (macOS and Windows): the daily check, the download and the restart. Its
     // quit asks the PDF windows with unsaved edits first, as any quit does.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     let updates = match welcome::data_dir() {
         Some(data_dir) => {
             let (exec, pdf) = (Rc::downgrade(&executor), Rc::downgrade(&pdf));
@@ -424,7 +424,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // The panel's update card and About's update row follow the controller,
     // and their buttons drive it. Both are written again when the language
     // changes.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     if let (Some(updates), Some(running)) = (&updates, running_version()) {
         let show = {
             let (panel, settings, updates) = (
@@ -832,7 +832,7 @@ fn main() -> Result<(), slint::PlatformError> {
         open_on(pocket::View::Pocket),
         open_on(pocket::View::Screenshots),
     );
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     let start_updates = updates.clone();
     let start_whats_new = whats_new.clone();
     slint::Timer::single_shot(Duration::ZERO, move || {
@@ -884,8 +884,24 @@ fn main() -> Result<(), slint::PlatformError> {
         {
             remove_old_copy_later(old);
         }
+        // The same on Windows, where the old copy is the `vento-old.exe`
+        // the watcher ran from: any start deletes it a minute in, as the
+        // watcher is gone by then whether the update worked or not.
+        #[cfg(windows)]
+        if let Some(data_dir) = welcome::data_dir() {
+            if std::env::args().any(|a| a == updater::watch::AFTER_UPDATE)
+                && let Some(running) = running_version()
+                && let Err(e) = updater::watch::write_marker(&data_dir, running)
+            {
+                log::warn!("cannot write the update marker: {e}");
+            }
+            let old = updater::install::old_path(&data_dir);
+            if old.exists() {
+                remove_old_copy_later(old);
+            }
+        }
         show_whats_new_on_start(&start_whats_new, fresh);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         if let Some(updates) = start_updates {
             if let Some(tray) = keep.borrow().as_ref() {
                 tray.set_dot(updates.state().shows_dot());
@@ -944,17 +960,24 @@ fn show_whats_new_on_start(whats_new: &whats_new_window::WhatsNewController, fre
 }
 
 /// Deletes `old`, the old copy an update left beside the bundle
-/// (`Vento.app.old`), 60 seconds from now and off the main thread.
-#[cfg(target_os = "macos")]
+/// (`Vento.app.old`; on Windows the file `vento-old.exe` in the data
+/// folder), 60 seconds from now and off the main thread.
+#[cfg(any(target_os = "macos", windows))]
 fn remove_old_copy_later(old: std::path::PathBuf) {
     slint::Timer::single_shot(std::time::Duration::from_secs(60), move || {
         let removed = std::thread::Builder::new()
             .name("vento-remove-old".into())
-            .spawn(move || match std::fs::remove_dir_all(&old) {
-                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                    log::warn!("cannot remove {}: {e}", old.display());
+            .spawn(move || {
+                #[cfg(target_os = "macos")]
+                let gone = std::fs::remove_dir_all(&old);
+                #[cfg(windows)]
+                let gone = std::fs::remove_file(&old);
+                match gone {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                        log::warn!("cannot remove {}: {e}", old.display());
+                    }
+                    _ => {}
                 }
-                _ => {}
             });
         if let Err(e) = removed {
             log::warn!("cannot remove the old copy: {e}");

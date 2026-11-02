@@ -1,17 +1,26 @@
-//! Self-update for the macOS build: asks GitHub for the latest release,
-//! downloads it and swaps the app in place, with a watcher process that
-//! starts the new copy and rolls back when it does not start.
+//! Self-update for the macOS and Windows builds: asks GitHub for the latest
+//! release, downloads it and puts it in place, with a watcher process that
+//! starts the new copy and rolls back when it does not start. On the Mac
+//! the app is swapped before Vento quits; on Windows the watcher runs the
+//! release's setup once Vento has quit.
 //! [`UpdateController`] runs that flow from the event loop for the banner,
 //! the About rows and the tray dot.
 
+mod error;
+#[cfg(windows)]
+pub mod install;
 pub mod net;
+#[cfg(target_os = "macos")]
 pub mod swap;
 pub mod watch;
+
+use error::SwapError;
 
 use std::cell::{Cell, RefCell};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,7 +35,6 @@ use vento_core::update::version::Version;
 
 use crate::settings_hub::SettingsHub;
 use net::NetError;
-use swap::SwapError;
 
 /// The first check runs this long after start, never at launch.
 const FIRST_CHECK: Duration = Duration::from_secs(3 * 60);
@@ -62,12 +70,13 @@ fn notes_of(state: &UpdateState) -> Option<(Version, String)> {
 }
 
 /// The state a failure the watcher recorded starts in. The watcher writes
-/// its reasons in English; the two it knows are shown in the interface
+/// its reasons in English; the ones it knows are shown in the interface
 /// language, anything else as it was written.
 fn failed_state(failed: &FailedUpdate) -> UpdateState {
     let reason = match failed.reason.as_str() {
         watch::NOT_STARTED_REASON => tr("The new version didn't start."),
         watch::NOT_QUIT_REASON => tr("Vento didn't quit"),
+        watch::NOT_INSTALLED_REASON => tr("The update couldn't be installed."),
         other => other.to_owned(),
     };
     UpdateState::Failed {
@@ -103,6 +112,7 @@ fn retry_for(state: &UpdateState) -> Retry {
 /// marker in `data_dir` says this version started after that update and the
 /// old copy is still there. A start with `--after-update` removes it a
 /// minute in; a copy that quit or was killed sooner leaves it behind.
+#[cfg(target_os = "macos")]
 pub fn left_old_copy(data_dir: &Path, bundle: &Path, running: Version) -> Option<PathBuf> {
     let old = swap::old_path(bundle);
     (watch::read_marker(data_dir) == Some(running) && old.exists()).then_some(old)
@@ -119,8 +129,16 @@ fn version_dir(data_dir: &Path, version: Version) -> PathBuf {
 }
 
 /// Where one version's archive is unpacked.
+#[cfg(target_os = "macos")]
 fn unpack_dir(data_dir: &Path, version: Version) -> PathBuf {
     version_dir(data_dir, version).join("unpacked")
+}
+
+/// Where the setup writes its log on Windows: beside `update.json`, where
+/// it outlives the download, until the next update writes it again.
+#[cfg(windows)]
+pub fn setup_log(data_dir: &Path) -> PathBuf {
+    data_dir.join("update-setup.log")
 }
 
 /// The share of a download done, 0.0 to 1.0: of `total` as the server says
@@ -134,8 +152,15 @@ fn fraction(done: u64, total: u64, expected: u64) -> f32 {
 }
 
 /// The binary the watcher runs from: the old copy's, at its `.old` path.
+#[cfg(target_os = "macos")]
 fn watcher_program(old: &Path) -> PathBuf {
     old.join("Contents/MacOS/vento")
+}
+
+/// The binary the watcher runs from: the copy of the old `vento.exe`.
+#[cfg(windows)]
+fn watcher_program(old: &Path) -> PathBuf {
+    old.to_path_buf()
 }
 
 /// The time now in Unix seconds.
@@ -147,8 +172,15 @@ pub fn unix_now() -> i64 {
 
 /// The build releases carry for this Mac: Apple silicon only, so an Intel
 /// Mac is offered no update.
-fn mac_platform() -> Option<AssetPlatform> {
+#[cfg(target_os = "macos")]
+fn platform() -> Option<AssetPlatform> {
     cfg!(target_arch = "aarch64").then_some(AssetPlatform::MacArm64)
+}
+
+/// What releases carry for Windows: one setup for x64 and ARM64 PCs.
+#[cfg(windows)]
+fn platform() -> Option<AssetPlatform> {
+    Some(AssetPlatform::WindowsSetup)
 }
 
 /// Logs once per run why an Intel Mac looks for no update.
@@ -160,6 +192,7 @@ enum Failure {
     /// The request or the download did not complete.
     Net(NetError),
     /// The app could not be unpacked or replaced.
+    #[cfg(target_os = "macos")]
     Swap(SwapError),
     /// The archive does not match its line in the checksum list.
     Checksum,
@@ -172,6 +205,7 @@ impl Failure {
     fn user_text(&self) -> String {
         match self {
             Failure::Net(e) => e.user_text(),
+            #[cfg(target_os = "macos")]
             Failure::Swap(e) => e.user_text(),
             Failure::Checksum => tr("The download didn't match its checksum"),
             Failure::Unreadable => tr("GitHub's answer couldn't be read"),
@@ -184,6 +218,7 @@ impl std::fmt::Display for Failure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Failure::Net(e) => write!(f, "{e}"),
+            #[cfg(target_os = "macos")]
             Failure::Swap(e) => write!(f, "{e}"),
             Failure::Checksum => write!(f, "checksum mismatch"),
             Failure::Unreadable => write!(f, "unreadable release"),
@@ -253,6 +288,7 @@ fn report(report: Report) {
 }
 
 /// The running bundle, once it is known to be replaceable.
+#[cfg(target_os = "macos")]
 fn replaceable_bundle() -> Result<PathBuf, SwapError> {
     let bundle = swap::running_bundle()
         .ok_or_else(|| SwapError::NotABundle(std::env::current_exe().unwrap_or_default()))?;
@@ -260,11 +296,17 @@ fn replaceable_bundle() -> Result<PathBuf, SwapError> {
     Ok(bundle)
 }
 
+/// The installed `vento.exe`, once the setup can replace it.
+#[cfg(windows)]
+fn replaceable_bundle() -> Result<PathBuf, SwapError> {
+    install::installed_exe()
+}
+
 /// Asks GitHub for the latest release and picks the update for this copy.
 /// A latest release that is not a final one is no update, and a Mac with no
 /// build is never offered one (nothing is asked).
 fn check(url: &str, running: Option<Version>) -> Result<Option<Update>, Failure> {
-    let Some(platform) = mac_platform() else {
+    let Some(platform) = platform() else {
         NO_BUILD_LOGGED.call_once(|| {
             info!("releases are built for Apple silicon only: no update is looked for");
         });
@@ -298,8 +340,8 @@ fn fresh_dir(dir: &Path) -> io::Result<()> {
 }
 
 /// Downloads `update`, checks it against its checksum and unpacks it, on a
-/// worker thread: the unpacked `Vento.app`. On any failure, a cancel
-/// included, the version's folder is removed.
+/// worker thread: the unpacked `Vento.app` (on Windows, the checked setup).
+/// On any failure, a cancel included, the version's folder is removed.
 fn prepare(
     data_dir: &Path,
     update: &Update,
@@ -311,13 +353,14 @@ fn prepare(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     DOWNLOAD_BEGAN.store(true, Ordering::Relaxed);
     let dir = version_dir(data_dir, update.version);
-    let result = prepare_in(
-        &dir,
-        &unpack_dir(data_dir, update.version),
-        update,
-        cancel,
-        progress,
-    );
+    let result = prepare_in(&dir, update, cancel, progress);
+    #[cfg(target_os = "macos")]
+    let result = result.and_then(|archive| {
+        let unpacked = unpack_dir(data_dir, update.version);
+        // `unpack` wants an empty folder of its own.
+        fresh_dir(&unpacked).map_err(|e| Failure::Net(NetError::Io(e.to_string())))?;
+        swap::unpack(&archive, &unpacked).map_err(Failure::Swap)
+    });
     if result.is_err()
         && let Err(e) = fs::remove_dir_all(&dir)
         && e.kind() != io::ErrorKind::NotFound
@@ -327,9 +370,10 @@ fn prepare(
     result
 }
 
+/// Downloads the checksum list and the archive into `dir` and checks the
+/// archive: its path.
 fn prepare_in(
     dir: &Path,
-    unpacked: &Path,
     update: &Update,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(f32),
@@ -362,13 +406,12 @@ fn prepare_in(
     if cancel.load(Ordering::Relaxed) {
         return Err(Failure::Net(NetError::Cancelled));
     }
-    // `unpack` wants an empty folder of its own.
-    fresh_dir(unpacked).map_err(io_failure)?;
-    swap::unpack(&archive, unpacked).map_err(Failure::Swap)
+    Ok(archive)
 }
 
 /// Starts the watcher `program` with `args` in a session of its own, so it
 /// outlives this copy, with no stdio tied to it, and does not wait for it.
+#[cfg(target_os = "macos")]
 fn spawn_watcher(program: &Path, args: &[String]) -> io::Result<()> {
     use std::os::unix::process::CommandExt;
 
@@ -393,6 +436,14 @@ fn spawn_watcher(program: &Path, args: &[String]) -> io::Result<()> {
     command.spawn().map(drop)
 }
 
+/// Starts the watcher `program` with `args` detached from this copy's
+/// console and process group, so it outlives this copy, with no stdio tied
+/// to it, and does not wait for it.
+#[cfg(windows)]
+fn spawn_watcher(program: &Path, args: &[String]) -> io::Result<()> {
+    watch::detached(program, args).spawn().map(drop)
+}
+
 /// Runs the update flow on the event loop: the daily check, Check now, the
 /// download and the restart. Work runs on worker threads; their results
 /// come back to the main thread, which alone reads and writes
@@ -411,7 +462,7 @@ pub struct UpdateController {
     job: Cell<u64>,
     /// The running download's cancel flag; `None` when none runs.
     cancel: RefCell<Option<Arc<AtomicBool>>>,
-    /// The unpacked app of the update that is ready.
+    /// The unpacked app (on Windows, the setup) of the update that is ready.
     unpacked: RefCell<Option<PathBuf>>,
     /// Whether a quit for the update is asking or under way.
     quitting: Cell<bool>,
@@ -636,7 +687,8 @@ impl UpdateController {
 
     /// The quit was agreed: saves whether Screen Recording was granted,
     /// moves the new copy in and starts the watcher from the old one. When
-    /// the watcher cannot start, the old copy is put back.
+    /// the watcher cannot start, the old copy is put back. On Windows
+    /// `new_app` is the setup, which the watcher runs once this copy is gone.
     fn swap_and_watch(&self, new_app: &Path, version: Version) -> Result<(), String> {
         let path = UpdateFile::path(&self.data_dir);
         let mut file = UpdateFile::load(&path);
@@ -650,15 +702,25 @@ impl UpdateController {
             e.user_text()
         };
         let bundle = replaceable_bundle().map_err(fail)?;
-        let old = swap::swap(&bundle, new_app).map_err(fail)?;
+        #[cfg(target_os = "macos")]
+        let (old, installer) = (swap::swap(&bundle, new_app).map_err(fail)?, None);
+        // Nothing is replaced yet: the watcher, run from a copy of this
+        // `vento.exe`, runs the setup once this copy has quit.
+        #[cfg(windows)]
+        let (old, installer) = (
+            install::keep_old_copy(&bundle, &self.data_dir).map_err(fail)?,
+            Some(new_app.to_path_buf()),
+        );
         let args = watch::to_args(&watch::WatchArgs {
             old_pid: std::process::id(),
             bundle: bundle.clone(),
             old: old.clone(),
             data_dir: self.data_dir.clone(),
             version,
+            installer,
         });
         if let Err(e) = spawn_watcher(&watcher_program(&old), &args) {
+            #[cfg(target_os = "macos")]
             if let Err(back) = swap::restore(&bundle, &old) {
                 warn!("cannot put {} back: {back}", old.display());
             }
@@ -767,9 +829,9 @@ impl UpdateController {
         }
         let app = self.unpacked.borrow().clone();
         match app {
-            Some(app) if app.is_dir() => self.ask_restart(app),
+            Some(app) if app.exists() => self.ask_restart(app),
             _ => {
-                let gone = SwapError::Unpack("the unpacked app is gone".into());
+                let gone = SwapError::Unpack("the downloaded update is gone".into());
                 warn!("restart for the update: {gone}");
                 self.apply(UpdateEvent::Failed(gone.user_text()));
             }
@@ -806,8 +868,8 @@ mod tests {
     use vento_core::update::state::{self, FailedUpdate, UpdateEvent, UpdateFile, UpdateState};
     use vento_core::update::version::Version;
 
+    use super::SwapError;
     use super::net::NetError;
-    use super::swap::SwapError;
     use super::*;
 
     fn v(s: &str) -> Version {
@@ -908,6 +970,14 @@ mod tests {
                 reason: "Vento didn't quit".into(),
             }
         );
+        assert_eq!(
+            failed_state(&failed(watch::NOT_INSTALLED_REASON)),
+            UpdateState::Failed {
+                update: None,
+                version: v("0.4.0"),
+                reason: "The update couldn't be installed.".into(),
+            }
+        );
         // Any other text is shown as it was recorded.
         assert_eq!(
             failed_state(&failed("disk full")),
@@ -929,7 +999,18 @@ mod tests {
                 panic!("not failed");
             };
             assert_ne!(reason, watch::NOT_QUIT_REASON);
+            let UpdateState::Failed { reason, .. } =
+                failed_state(&failed(watch::NOT_INSTALLED_REASON))
+            else {
+                panic!("not failed");
+            };
+            assert_ne!(reason, watch::NOT_INSTALLED_REASON);
         });
+    }
+
+    /// Why the test binary, which no bundle or setup holds, cannot update.
+    fn not_replaceable() -> String {
+        SwapError::NotABundle(PathBuf::new()).user_text()
     }
 
     #[test]
@@ -938,9 +1019,15 @@ mod tests {
             Failure::Net(NetError::Http(403)).user_text(),
             "GitHub answered 403"
         );
+        #[cfg(target_os = "macos")]
         assert_eq!(
             Failure::Swap(SwapError::Translocated).user_text(),
             "Move Vento to Applications to update it"
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            not_replaceable(),
+            "Install Vento with its setup to update it"
         );
         assert_eq!(
             Failure::Checksum.user_text(),
@@ -960,6 +1047,7 @@ mod tests {
             version_dir(data, v("0.4.0")),
             PathBuf::from("/data/updates/0.4.0")
         );
+        #[cfg(target_os = "macos")]
         assert_eq!(
             unpack_dir(data, v("0.4.0")),
             PathBuf::from("/data/updates/0.4.0/unpacked")
@@ -974,12 +1062,22 @@ mod tests {
         assert_eq!(fraction(30, 0, 20), 1.0);
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn the_watcher_is_the_old_binary() {
         assert_eq!(
             watcher_program(Path::new("/Applications/Vento.app.old")),
             PathBuf::from("/Applications/Vento.app.old/Contents/MacOS/vento")
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_watcher_is_the_copy_of_the_old_exe() {
+        let data = Path::new(r"C:\Users\me\AppData\Roaming\vento\data");
+        let old = install::old_path(data);
+        assert_eq!(watcher_program(&old), data.join("vento-old.exe"));
+        assert_eq!(setup_log(data), data.join("update-setup.log"));
     }
 
     /// The callbacks one `quit_for_update` call was handed.
@@ -1154,7 +1252,8 @@ mod tests {
 
     #[test]
     fn update_fails_before_downloading_when_vento_cannot_be_replaced() {
-        // The test binary is not inside an `.app` bundle.
+        // The test binary is not inside an `.app` bundle (on Windows: not
+        // installed by the setup).
         let h = harness();
         h.controller
             .set_state(UpdateState::Available(update("0.4.0")));
@@ -1164,7 +1263,7 @@ mod tests {
             UpdateState::Failed {
                 update: Some(update("0.4.0")),
                 version: v("0.4.0"),
-                reason: "Move Vento to Applications to update it".into(),
+                reason: not_replaceable(),
             }
         );
         assert_eq!(h.controller.job.get(), 0, "nothing downloaded");
@@ -1220,7 +1319,7 @@ mod tests {
     #[test]
     fn a_failed_swap_is_failed_after_restarting_and_keeps_the_update() {
         // The swap itself fails at once here: the test binary is not in a
-        // bundle, so nothing on disk is touched but `update.json`.
+        // bundle (or setup), so nothing on disk is touched but `update.json`.
         let h = harness();
         let (job, _) = h.downloading();
         h.controller.on_report(Report::Prepared {
@@ -1231,7 +1330,7 @@ mod tests {
         let failed = UpdateState::Failed {
             update: Some(update("0.4.0")),
             version: v("0.4.0"),
-            reason: "Move Vento to Applications to update it".into(),
+            reason: not_replaceable(),
         };
         assert_eq!(h.controller.state(), failed);
         {
@@ -1396,16 +1495,23 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn updates_are_looked_for_on_apple_silicon_only() {
         assert_eq!(
-            mac_platform(),
+            platform(),
             cfg!(target_arch = "aarch64").then_some(AssetPlatform::MacArm64)
         );
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn every_windows_pc_looks_for_the_setup() {
+        assert_eq!(platform(), Some(AssetPlatform::WindowsSetup));
+    }
+
     /// An Intel Mac asks nothing: the unreachable address is never tried.
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
     #[test]
     fn an_intel_mac_is_offered_no_update() {
         assert!(matches!(
@@ -1414,6 +1520,7 @@ mod tests {
         ));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn an_old_copy_is_left_only_after_a_finished_update_to_this_version() {
         let dir = tempfile::tempdir().unwrap();

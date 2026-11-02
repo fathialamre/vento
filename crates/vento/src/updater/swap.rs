@@ -7,53 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use vento_core::i18n::{fill, tr};
-
-/// Why the app cannot be replaced.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SwapError {
-    /// macOS runs the app from a read-only copy (App Translocation) because
-    /// it was opened straight from the Downloads folder or a disk image.
-    Translocated,
-    /// The running copy is not inside an `.app` bundle.
-    NotABundle(PathBuf),
-    /// The folder holding the bundle cannot be written to.
-    NotWritable(PathBuf),
-    /// The downloaded archive could not be unpacked, or holds no app.
-    Unpack(String),
-    /// A rename or copy failed.
-    Io(String),
-}
-
-impl SwapError {
-    /// The text the banner shows for this error, in the interface language.
-    pub fn user_text(&self) -> String {
-        match self {
-            SwapError::Translocated | SwapError::NotABundle(_) => {
-                tr("Move Vento to Applications to update it")
-            }
-            SwapError::NotWritable(folder) => fill(
-                &tr("Can't replace Vento in {folder}"),
-                &[("folder", &folder.display().to_string())],
-            ),
-            SwapError::Unpack(_) => tr("The download couldn't be opened"),
-            SwapError::Io(_) => tr("Couldn't replace Vento"),
-        }
-    }
-}
-
-impl std::fmt::Display for SwapError {
-    /// The error in English, for log lines.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SwapError::Translocated => write!(f, "running from App Translocation"),
-            SwapError::NotABundle(p) => write!(f, "not an app bundle: {}", p.display()),
-            SwapError::NotWritable(p) => write!(f, "folder not writable: {}", p.display()),
-            SwapError::Unpack(r) => write!(f, "cannot unpack the download: {r}"),
-            SwapError::Io(r) => write!(f, "cannot replace the app: {r}"),
-        }
-    }
-}
+use super::SwapError;
 
 /// The `.app` bundle the running executable lives in: three levels above
 /// `Vento.app/Contents/MacOS/vento`. `None` when it is not in a bundle (a

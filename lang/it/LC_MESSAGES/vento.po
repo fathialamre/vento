@@ -19,6 +19,10 @@ msgstr " · {text}"
 msgid "\"{name}\" is protected"
 msgstr "\"{name}\" è protetto"
 
+#: crates/vento/ui/rename.slint:814
+msgid "* for the whole name"
+msgstr "* per l'intero nome"
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr "+{n} altri"
@@ -227,7 +231,7 @@ msgstr "Non può contenere {char} su macOS"
 msgid "Can't end with a dot or space"
 msgstr "Non può finire con un punto o uno spazio"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "Impossibile sostituire Vento in {folder}"
 
@@ -575,7 +579,7 @@ msgstr "Impossibile rinominare {name}: {reason}. Questi elementi non sono stati 
 msgid "Couldn't rename: {reason}"
 msgstr "Impossibile rinominare: {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "Impossibile sostituire Vento"
 
@@ -831,7 +835,7 @@ msgstr "Generali"
 msgid "GitHub answered {code}"
 msgstr "GitHub ha risposto {code}"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "GitHub's answer couldn't be read"
 msgstr "Impossibile leggere la risposta di GitHub"
 
@@ -855,7 +859,7 @@ msgstr "Soffermati su Sposta, Copia in o Converti per aprire un anello di scelte
 msgid "Honeycomb"
 msgstr "Nido d'ape"
 
-#: crates/vento/ui/controls.slint:906
+#: crates/vento/ui/controls.slint:946
 msgid "Hour"
 msgstr "Ora"
 
@@ -910,6 +914,10 @@ msgstr "Info: elementi non trovati"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "Dentro una cartella anch'essa da rinominare"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "Installa Vento con il suo programma di installazione per aggiornarlo"
 
 #: crates/vento/ui/settings_pages.slint:802
 msgid "Its items by kind, or as a list; the bar under it switches between the two"
@@ -971,7 +979,7 @@ msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] "Escluso {n} elemento che non esiste più"
 msgstr[1] "Esclusi {n} elementi che non esistono più"
 
-#: crates/vento/ui/controls.slint:601
+#: crates/vento/ui/controls.slint:641
 msgid "Less {}"
 msgstr "Riduci {}"
 
@@ -1035,7 +1043,7 @@ msgstr "Maiuscole/minuscole"
 msgid "Messages"
 msgstr "Messaggi"
 
-#: crates/vento/ui/controls.slint:922
+#: crates/vento/ui/controls.slint:962
 msgid "Minute"
 msgstr "Minuto"
 
@@ -1055,7 +1063,7 @@ msgstr "Più pagine"
 msgid "More ways to share"
 msgstr "Altri modi per condividere"
 
-#: crates/vento/ui/controls.slint:621
+#: crates/vento/ui/controls.slint:661
 msgid "More {}"
 msgstr "Aumenta {}"
 
@@ -1067,7 +1075,7 @@ msgstr "Altro…"
 msgid "Move"
 msgstr "Sposta"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "Sposta Vento in Applicazioni per aggiornarlo"
 
@@ -1171,7 +1179,7 @@ msgstr "Nessun testo trovato"
 msgid "No times"
 msgstr "Nessun orario"
 
-#: crates/vento/ui/controls.slint:334
+#: crates/vento/ui/controls.slint:374
 msgid "None found"
 msgstr "Nessun risultato"
 
@@ -1214,14 +1222,6 @@ msgstr "Niente da rinominare"
 #: crates/vento/ui/rename.slint:825
 msgid "Nothing: removes it"
 msgstr "Niente: lo rimuove"
-
-#: crates/vento/ui/rename.slint:814
-msgid "* for the whole name"
-msgstr "* per l'intero nome"
-
-#: crates/vento/ui/rename.slint:772
-msgid "Pick a tool, or a rule above, to set it here"
-msgstr "Scegli uno strumento, o una regola qui sopra, per impostarla qui"
 
 #: crates/vento-core/src/rename/labels.rs:26
 msgid "Number"
@@ -1267,7 +1267,7 @@ msgstr "Apri Impostazioni"
 msgid "Open With"
 msgstr "Apri con"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "Apri cronologia appunti"
 
@@ -1275,11 +1275,11 @@ msgstr "Apri cronologia appunti"
 msgid "Open in browser"
 msgstr "Apri nel browser"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "Apri screenshot"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "Apri file impostazioni"
 
@@ -1351,7 +1351,7 @@ msgstr "Password"
 msgid "Pause"
 msgstr "Pausa"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "Metti in pausa Vento"
 
@@ -1362,6 +1362,10 @@ msgstr "Petali"
 #: crates/vento/ui/rename.slint:699
 msgid "Pick a tool to start"
 msgstr "Scegli uno strumento per iniziare"
+
+#: crates/vento/ui/rename.slint:772
+msgid "Pick a tool, or a rule above, to set it here"
+msgstr "Scegli uno strumento, o una regola qui sopra, per impostarla qui"
 
 #: crates/vento/ui/settings_window.slint:318
 msgid "Pick how long under the tile, or leave it on until you stop it."
@@ -1411,7 +1415,7 @@ msgstr "Tasca svuotata"
 msgid "Pocket shortcut"
 msgstr "Scorciatoia Tasca"
 
-#: crates/vento/ui/controls.slint:648
+#: crates/vento/ui/controls.slint:688
 msgid "Press a shortcut…"
 msgstr "Premi una scorciatoia…"
 
@@ -1457,7 +1461,7 @@ msgstr "Azioni rapide sotto il file che trascini"
 msgid "Quit"
 msgstr "Esci"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "Esci da Vento"
 
@@ -1675,7 +1679,7 @@ msgstr "Impostazioni"
 msgid "Settings file"
 msgstr "File impostazioni"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "Impostazioni…"
 
@@ -1793,7 +1797,7 @@ msgstr "Dividi {name}"
 msgid "Split…"
 msgstr "Dividi…"
 
-#: crates/vento/ui/controls.slint:934
+#: crates/vento/ui/controls.slint:974
 msgid "Start"
 msgstr "Avvia"
 
@@ -1805,7 +1809,7 @@ msgstr "Avvia Mantieni attivo"
 msgid "Start dragging a file, then press {} while still dragging."
 msgstr "Inizia a trascinare un file, poi premi {} mentre trascini ancora."
 
-#: crates/vento/ui/controls.slint:895
+#: crates/vento/ui/controls.slint:935
 msgid "Stay awake until"
 msgstr "Resta attivo fino alle"
 
@@ -1813,7 +1817,7 @@ msgstr "Resta attivo fino alle"
 msgid "Still on {running}. {reason}"
 msgstr "Ancora alla versione {running}. {reason}"
 
-#: crates/vento/ui/controls.slint:865
+#: crates/vento/ui/controls.slint:905
 msgid "Stop"
 msgstr "Ferma"
 
@@ -1833,7 +1837,7 @@ msgstr "Archiviate su questo Mac senza crittografia. Le copie che i gestori di p
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Archiviate su questo computer senza crittografia. Le copie che i gestori di password segnano come private vengono saltate."
 
-#: crates/vento/src/main.rs:933
+#: crates/vento/src/main.rs:949
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Riattiva Registrazione schermo per Copia dallo schermo"
 
@@ -1877,11 +1881,11 @@ msgstr "La cronologia appunti usa questa scorciatoia"
 msgid "The Pocket uses this shortcut"
 msgstr "La Tasca usa questa scorciatoia"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "Impossibile aprire il download"
 
-#: crates/vento/src/updater/mod.rs:176
+#: crates/vento/src/updater/mod.rs:210
 msgid "The download didn't match its checksum"
 msgstr "Il download non corrisponde al checksum"
 
@@ -1889,7 +1893,7 @@ msgstr "Il download non corrisponde al checksum"
 msgid "The list and the numbers follow it"
 msgstr "L'elenco e i numeri lo seguono"
 
-#: crates/vento/src/updater/mod.rs:69
+#: crates/vento/src/updater/mod.rs:77
 msgid "The new version didn't start."
 msgstr "La nuova versione non si è avviata."
 
@@ -1912,6 +1916,10 @@ msgstr "Il riquadro avvia"
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
 msgstr "L'indirizzo di aggiornamento non è sicuro"
+
+#: crates/vento/src/updater/mod.rs:79
+msgid "The update couldn't be installed."
+msgstr "Impossibile installare l'aggiornamento."
 
 #: crates/vento/ui/settings_pages.slint:314
 msgid "Theme"
@@ -2029,7 +2037,7 @@ msgstr "Sgancia {}"
 msgid "Until stopped"
 msgstr "Fino all'arresto"
 
-#: crates/vento/ui/controls.slint:849
+#: crates/vento/ui/controls.slint:889
 msgid "Until…"
 msgstr "Fino a…"
 
@@ -2085,7 +2093,7 @@ msgstr "Vento nel suo insieme"
 msgid "Vento can't read this folder."
 msgstr "Vento non riesce a leggere questa cartella."
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "Vento didn't quit"
 msgstr "Vento non si è chiuso"
 
@@ -2583,7 +2591,7 @@ msgstr[1] "{name} + altri {n}"
 msgid "{name} is locked"
 msgstr "{name} è bloccato"
 
-#: crates/vento/src/main.rs:977
+#: crates/vento/src/main.rs:1000
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Scorciatoia {name} non disponibile: {reason}"
 
@@ -2765,27 +2773,27 @@ msgid_plural "→ {n} files"
 msgstr[0] "→ {n} file"
 msgstr[1] "→ {n} file"
 
-#: crates/vento/ui/rename.slint:991
+#: crates/vento/ui/rename.slint:935
 msgctxt "Case example"
 msgid "MY TRIP PHOTO"
 msgstr "FOTO DEL VIAGGIO"
 
-#: crates/vento/ui/rename.slint:992
+#: crates/vento/ui/rename.slint:936
 msgctxt "Case example"
 msgid "My Trip Photo"
 msgstr "Foto Del Viaggio"
 
-#: crates/vento/ui/rename.slint:990
+#: crates/vento/ui/rename.slint:934
 msgctxt "Case example"
 msgid "my trip photo"
 msgstr "foto del viaggio"
 
-#: crates/vento/ui/rename.slint:993
+#: crates/vento/ui/rename.slint:937
 msgctxt "Case example"
 msgid "my-trip-photo"
 msgstr "foto-del-viaggio"
 
-#: crates/vento/ui/rename.slint:994
+#: crates/vento/ui/rename.slint:938
 msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr "foto_del_viaggio"
