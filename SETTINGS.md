@@ -114,8 +114,10 @@ pocket_keep_copies = false
 pocket_view = "kinds"
 
 # Island: "virtual" (a drawn island at the top of the screen) or "classic" (the
-# island that grows out of the notch). A new install gets "virtual"; a settings
-# file written before this key existed keeps "classic" until you change it
+# island that grows out of the notch). A new install starts on "virtual"
+# through the Welcome setup; anything else without this key (a settings file
+# written before it existed, or no settings file at all) keeps "classic" until
+# you change it
 island_mode = "virtual"
 
 # Island: where the virtual island sits along the top edge: "left", "centre" or

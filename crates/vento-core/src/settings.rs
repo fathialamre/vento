@@ -86,14 +86,17 @@ impl PocketView {
 }
 
 /// Which island the screen shows: a drawn one that stands in for a notch, or
-/// the classic one that grows out of the real notch.
+/// the classic one that grows out of the real notch. A new install starts on
+/// the virtual one through the Welcome setup
+/// ([`crate::welcome::first_settings`]); anything else without the key, such
+/// as a missing or older settings file, keeps the classic one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IslandMode {
     /// A drawn island at the top of the screen.
-    #[default]
     Virtual,
     /// The island that grows out of the notch.
+    #[default]
     Classic,
 }
 
@@ -173,7 +176,7 @@ pub struct Settings {
     pub pocket_shortcut: String,
     /// Whether copies are recorded into the Clipboard history.
     pub clipboard_history: bool,
-    /// Which island is shown.
+    /// Which island is shown; see [`IslandMode`] for who starts on which.
     pub island_mode: IslandMode,
     /// Where the virtual island sits along the top edge.
     pub island_place: IslandPlace,
@@ -301,7 +304,7 @@ impl Default for Settings {
             language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
-            island_mode: IslandMode::Virtual,
+            island_mode: IslandMode::Classic,
             island_place: IslandPlace::Centre,
             island_glass: GLASS_DEFAULT,
             screenshots: false,
@@ -346,7 +349,8 @@ struct RawSettings {
     pocket_shortcut: String,
     clipboard_history: bool,
     /// `None` is a file written before the virtual island existed, which
-    /// keeps the classic one; a new install has no file and gets the default.
+    /// keeps the classic one; a new install gets the virtual one from the
+    /// Welcome setup, which writes the key.
     island_mode: Option<IslandMode>,
     island_place: IslandPlace,
     island_glass: u32,
@@ -479,7 +483,7 @@ impl From<RawRename> for RenameMemory {
 impl Default for RawSettings {
     fn default() -> Self {
         let mut raw = RawSettings::from(&Settings::default());
-        // A file without the key is told apart from a new install.
+        // A file without the key keeps the classic island.
         raw.island_mode = None;
         raw
     }
@@ -1263,11 +1267,20 @@ mod tests {
 
     #[test]
     fn a_new_install_gets_the_virtual_island() {
-        let dir = tempfile::tempdir().unwrap();
-        let s = Settings::try_load(&dir.path().join("nope.toml")).unwrap();
+        let s = crate::welcome::first_settings(&["en-US".into()]);
         assert_eq!(s.island_mode, IslandMode::Virtual);
         assert_eq!(s.island_place, IslandPlace::Centre);
         assert_eq!(s.island_glass, 55);
+    }
+
+    #[test]
+    fn a_missing_settings_file_keeps_the_classic_island() {
+        // v0.1 and v0.2 never wrote the file at startup: no file is an
+        // existing user unless the Welcome setup wrote one.
+        let dir = tempfile::tempdir().unwrap();
+        let s = Settings::try_load(&dir.path().join("nope.toml")).unwrap();
+        assert_eq!(s.island_mode, IslandMode::Classic);
+        assert_eq!(Settings::default().island_mode, IslandMode::Classic);
     }
 
     #[test]
@@ -1615,7 +1628,6 @@ mod tests {
         assert_eq!(
             Settings {
                 trigger: Modifier::Ctrl,
-                island_mode: IslandMode::Virtual,
                 ..s
             },
             Settings::default()
