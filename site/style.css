@@ -55,6 +55,14 @@ h2.disp { font-size: 38px; margin-bottom: 16px; }
 .plate.dark { padding: 0 44px 44px; background: radial-gradient(90% 80% at 15% 0%, #FFB36B, transparent 60%), linear-gradient(135deg, #FF7A2E 0%, #D9346B 50%, #5B3FB8 100%); }
 .plate.dark img { border-radius: 0 0 22px 22px; box-shadow: 0 30px 60px -24px #000c; }
 
+/* The Quick panel hanging from a drawn menu bar; .vi sits over the panel's arrow. */
+.plate.menu { --pw: 300px; --pr: 72px; padding: 0 0 48px; background: radial-gradient(80% 90% at 90% 0%, #9EE7F5, transparent 60%), linear-gradient(150deg, #3B82F6 0%, #1E9E8F 55%, #0F5E57 100%); }
+.plate.menu .mb { position: relative; height: 30px; display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 0 18px; background: #ffffff59; backdrop-filter: blur(12px); color: #1D1F24; font-size: 13px; font-weight: 500; }
+.plate.menu .mb i { font-size: 16px; }
+.plate.menu .mb .vi { position: absolute; right: calc(var(--pr) + var(--pw) / 2 - 8px); }
+.plate.menu .mb .cup { position: absolute; right: calc(var(--pr) + var(--pw) / 2 + 16px); }
+.plate.menu img { width: var(--pw); margin: 2px var(--pr) 0 auto; border-radius: 0; box-shadow: none; filter: drop-shadow(0 24px 30px #00000040) drop-shadow(0 2px 4px #0000001f); }
+
 /* A Mac window around a rendered Vento window. */
 .mac { max-width: 880px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px #111A2E1f, 0 30px 60px -22px #111A2E66, 0 10px 20px -10px #111A2E33; }
 .mac .bar { position: relative; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #F2F2F4; border-bottom: 1px solid #E1E3E8; }
@@ -188,6 +196,8 @@ footer a:hover { color: var(--ink); }
   .plate.dark { padding: 0 14px 14px; }
   .plate.dark img { border-radius: 0 0 12px 12px; }
   .stack { margin-top: 72px; }
+  .plate.menu { --pw: 250px; --pr: 24px; padding-bottom: 24px; }
+  .plate.menu .mb .ti-wifi, .plate.menu .mb .ti-battery-3 { display: none; }
   .mac { border-radius: 8px; }
   .mac .bar { height: 24px; padding: 0 9px; gap: 5px; }
   .mac .bar i { width: 8px; height: 8px; }
