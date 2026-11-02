@@ -2669,6 +2669,17 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
+    // The virtual island (no notch, any place on the top edge): it rests in
+    // sight as a pill, and opens when pushed against the top edge.
+    in property <bool> virtual-style;
+    // It rests as the lip over the front window's bar instead of the pill.
+    in property <bool> lip;
+    // How opaque its resting forms are, 0.1 to 1 (the settings' Glass).
+    in property <float> glass;
+    // How far a push against the top edge has filled, 0 to 1.
+    in property <float> push-progress;
+    // The Pocket's count on the resting pill; 0 shows none.
+    in property <int> rest-count;
     // The Pocket view's groups, one per kind present, and their tiles.
     in property <[PocketGroup]> groups;
     in property <[PocketTile]> tiles;

@@ -51,7 +51,7 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{fill, tr, with_language};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
-use vento_core::settings::{PocketView, Settings};
+use vento_core::settings::{IslandMode, IslandPlace, PocketView, Settings};
 use vento_core::trigger::InputSample;
 use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
@@ -66,7 +66,10 @@ use crate::drag;
 use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
-use geometry::{Frames, frames, hits, hover_event, interactive_rect, island_inputs, window_frame};
+use geometry::{
+    Frames, VirtualSpot, frames, hits, hover_event, interactive_rect, island_inputs,
+    virtual_frames, virtual_mid_x, window_frame,
+};
 use kinds::Kinds;
 use list_view::ListView;
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
@@ -105,6 +108,10 @@ const UNDO_WINDOW: Duration = UNDO_LIFETIME.saturating_add(Duration::from_millis
 /// so the app they were dropped on can read them first, even slowly
 /// (ruling P16).
 const DROP_GRACE: Duration = Duration::from_secs(60);
+/// How often the virtual island asks whether the front window has a bar
+/// under it: often enough to follow a window that is maximized or moved,
+/// rarely enough to cost nothing on the wheel's samples.
+pub(super) const FRONT_CHECK: Duration = Duration::from_millis(250);
 
 thread_local! {
     /// The controller on the main thread, for copy jobs finishing on a
@@ -200,6 +207,18 @@ fn wing_view(pocket_empty: bool, clip_has: bool, shots_has: bool, last: View) ->
         _ if shots_has => View::Screenshots,
         _ => View::Pocket,
     }
+}
+
+/// Whether the island is the virtual one: chosen in the settings, on a
+/// screen with no notch (where the notch island stays), and where the
+/// platform can place it and let clicks through it.
+pub(super) fn virtual_active(mode: IslandMode, home: &IslandHome, supported: bool) -> bool {
+    mode == IslandMode::Virtual && home.notch.is_none() && supported
+}
+
+/// The window's `glass` for the settings' Glass level, in percent.
+fn glass_alpha(percent: u32) -> f32 {
+    percent as f32 / 100.0
 }
 
 /// What the island's Undo puts back.
@@ -348,6 +367,21 @@ pub struct PocketController {
     list: ListView,
     /// Brings the window down to the island's height once it has shrunk.
     shrink_timer: Timer,
+    /// The island's mode and its place on the top edge in the settings.
+    mode: Cell<IslandMode>,
+    place: Cell<IslandPlace>,
+    /// The front window has a bar under the virtual island, which then
+    /// rests as the lip; asked at most every [`FRONT_CHECK`].
+    bar_under: Cell<bool>,
+    /// When the front window was last asked about; `None` to ask at the
+    /// next sample.
+    front_checked: Cell<Option<Instant>>,
+    /// Where the window was last laid out for the virtual island; `None`
+    /// in the other modes.
+    laid_out: Cell<Option<VirtualSpot>>,
+    /// Whether the desktop was last told to keep room for the island in
+    /// its top bar, which it does until told otherwise.
+    slot_kept: Cell<bool>,
     this: Weak<Self>,
 }
 
@@ -371,7 +405,11 @@ impl PocketController {
         let kinds = Kinds::new(&window);
         let clip_view = ClipView::new(&window);
         let shots_view = ShotsView::new(&window);
-        let pocket_view = settings.borrow().pocket_view;
+        let (pocket_view, mode, place, glass) = {
+            let s = settings.borrow();
+            (s.pocket_view, s.island_mode, s.island_place, s.island_glass)
+        };
+        window.set_glass(glass_alpha(glass));
         let list = ListView::new(&window, pocket_view);
         let home = platform.pocket_home();
         let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
@@ -422,6 +460,12 @@ impl PocketController {
             pocket_view: Cell::new(pocket_view),
             list,
             shrink_timer: Timer::default(),
+            mode: Cell::new(mode),
+            place: Cell::new(place),
+            bar_under: Cell::new(false),
+            front_checked: Cell::new(None),
+            laid_out: Cell::new(None),
+            slot_kept: Cell::new(true),
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -1065,11 +1109,13 @@ impl PocketController {
 
     /// Drops the island to its resting presence at once — no collapse delay,
     /// no waiting for the next poll tick — and releases the pointer. Used by
-    /// pause and by closing the island with the shortcut.
+    /// pause, by closing the island with the shortcut and by a change of
+    /// the island's settings. The virtual island rests in sight even with
+    /// nothing in it.
     fn settle_now(&self) -> Presence {
-        let has_items = self.has_content();
+        let visible = self.has_content() || self.island_frames().is_some_and(|f| f.virtual_island);
         let before = self.island.borrow().presence();
-        let after = self.island.borrow_mut().settle(has_items);
+        let after = self.island.borrow_mut().settle(visible);
         self.pin_until.set(None);
         if after != before {
             self.present(before, after);
@@ -1240,7 +1286,18 @@ impl PocketController {
         let Some(home) = self.home.get() else {
             return;
         };
-        let corner = home.tray_corner.is_some();
+        // The virtual island follows the front window's bar, and is laid out
+        // again when it changes form or the mode takes effect.
+        if self.virtual_spot(&home).is_some() {
+            self.check_front(&home, now);
+        }
+        let spot = self.virtual_spot(&home);
+        if spot != self.laid_out.get() {
+            self.apply_home(&home);
+        }
+        // The virtual island lives on top even where the taskbar's clock
+        // has a corner for the island.
+        let corner = home.tray_corner.is_some() && spot.is_none();
         // Another window of vento's in the corner (the Quick panel) has it
         // to itself: the island rests at once. A drag still brings the drop
         // box out.
@@ -1277,7 +1334,7 @@ impl PocketController {
         if after != Presence::Expanded && self.card.is_up() {
             self.close_card();
             if !self.has_content() {
-                after = self.island.borrow_mut().settle(false);
+                after = self.island.borrow_mut().settle(f.virtual_island);
             }
         }
         self.card_hover(after, hits(&f, after, sample.cursor), now);
@@ -1328,9 +1385,22 @@ impl PocketController {
         let f = self.island_frames().unwrap_or(f);
         self.window.set_bar_hover(
             home.slot.is_some()
+                && !f.virtual_island
                 && after == Presence::Collapsed
                 && geometry::contains(&f.collapsed, sample.cursor),
         );
+        // The push against the top edge fills under the resting island; set
+        // only when it moves, so nothing redraws at rest.
+        if f.virtual_island {
+            let progress = if after == Presence::Collapsed {
+                self.island.borrow().push_progress(now)
+            } else {
+                0.0
+            };
+            if self.window.get_push_progress() != progress {
+                self.window.set_push_progress(progress);
+            }
+        }
         if !self.shape_input(after) {
             let inside = hits(&f, after, sample.cursor);
             if changed || inside != self.hittest.get() {
@@ -1343,6 +1413,25 @@ impl PocketController {
         self.place_catcher(catches.then_some(f.expanded));
         if !sample.left_down {
             self.replay_hover(&f, after, sample.cursor);
+        }
+    }
+
+    /// Asks whether the front window has a bar under the virtual island, at
+    /// most every [`FRONT_CHECK`]. No front window (or one of vento's own,
+    /// where only the focused one is known) means no bar: the pill.
+    fn check_front(&self, home: &IslandHome, now: Instant) {
+        if self
+            .front_checked
+            .get()
+            .is_some_and(|t| now.saturating_duration_since(t) < FRONT_CHECK)
+        {
+            return;
+        }
+        self.front_checked.set(Some(now));
+        let mid_x = virtual_mid_x(home, self.place.get());
+        let under = geometry::bar_under(self.platform.front_window_frame(), home, mid_x);
+        if self.bar_under.replace(under) != under {
+            debug!("pocket bar under the island: {under}");
         }
     }
 
@@ -1510,6 +1599,9 @@ impl PocketController {
     /// height as it animates; a window that shrinks waits for it, so the
     /// shrinking is seen.
     fn apply_home(&self, home: &IslandHome) {
+        let spot = self.virtual_spot(home);
+        self.keep_slot(spot.is_none());
+        self.laid_out.set(spot);
         let f = self.frames_of(home);
         let panel_h = (f.expanded.h - f.top_h) as f32;
         self.window.set_panel_w(f.expanded.w as f32);
@@ -1533,7 +1625,19 @@ impl PocketController {
         self.window.set_notch_style(f.notch_style);
         self.window.set_notch_w(f.notch_w as f32);
         self.window.set_top_h(f.top_h as f32);
+        self.window.set_virtual_style(f.virtual_island);
+        self.window.set_lip(f.lip);
         self.place_window(&f);
+    }
+
+    /// Has the desktop keep room for the island in its top bar (GNOME's)
+    /// only while the island is not the virtual one. Asked only when that
+    /// changes: the call blocks.
+    fn keep_slot(&self, keep: bool) {
+        if self.slot_kept.replace(keep) != keep {
+            debug!("pocket keeps its top bar slot: {keep}");
+            self.platform.reserve_island_slot(keep);
+        }
     }
 
     /// Moves the window to where it goes for `f`, as tall as it is now.
@@ -1774,6 +1878,33 @@ impl PocketController {
         }
     }
 
+    /// Follows the island's mode, place and Glass in the settings: the
+    /// island moves, changes form or rests in sight at once. The desktop's
+    /// room in its top bar is kept only for an island that is not the
+    /// virtual one.
+    pub fn island_settings_changed(&self) {
+        let glass = {
+            let s = self.settings.borrow();
+            self.mode.set(s.island_mode);
+            self.place.set(s.island_place);
+            s.island_glass
+        };
+        self.window.set_glass(glass_alpha(glass));
+        // The place may have moved under another part of the front window.
+        self.front_checked.set(None);
+        if let Some(home) = self.home.get() {
+            self.keep_slot(self.virtual_spot(&home).is_none());
+        }
+        self.rehome();
+        if let Some(home) = self.home.get() {
+            self.apply_home(&home);
+        }
+        if self.warm.get() {
+            let after = self.settle_now();
+            debug!("pocket island settings changed: {after:?}");
+        }
+    }
+
     /// Follows the Pocket look of `s`: a change shows it at once.
     pub fn apply_pocket_settings(&self, s: &Settings) {
         let look = s.pocket_view;
@@ -1829,9 +1960,9 @@ impl PocketController {
     pub fn refresh(&self) {
         self.refresh_kinds();
         self.refresh_list();
-        let count = self.item_count();
-        self.window
-            .set_count(i32::try_from(count).unwrap_or(i32::MAX));
+        let count = i32::try_from(self.item_count()).unwrap_or(i32::MAX);
+        self.window.set_count(count);
+        self.window.set_rest_count(count);
         self.refresh_clip();
         self.refresh_shots();
         self.fit_panel();
@@ -1923,9 +2054,22 @@ impl PocketController {
         })
     }
 
+    /// Where the virtual island sits at `home`, or `None` when the island
+    /// is not the virtual one there.
+    fn virtual_spot(&self, home: &IslandHome) -> Option<VirtualSpot> {
+        let supported = self.platform.virtual_island_supported();
+        virtual_active(self.mode.get(), home, supported).then(|| VirtualSpot {
+            place: self.place.get(),
+            bar_under: self.bar_under.get(),
+        })
+    }
+
     /// The island's frames for `home`, sized for the view it shows now.
     fn frames_of(&self, home: &IslandHome) -> Frames {
-        frames(home, self.panel())
+        match self.virtual_spot(home) {
+            Some(spot) => virtual_frames(home, spot, self.panel()),
+            None => frames(home, self.panel()),
+        }
     }
 
     fn island_frames(&self) -> Option<Frames> {
@@ -2054,5 +2198,34 @@ mod tests {
         assert!(to_image(&icon(2, 2, 16)).is_some());
         assert!(to_image(&icon(2, 2, 15)).is_none());
         assert!(to_image(&icon(0, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn virtual_mode_needs_no_notch_and_support() {
+        let plain = IslandHome {
+            screen: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 1440.0,
+                h: 900.0,
+            },
+            notch: None,
+            menu_bar_h: 24.0,
+            slot: None,
+            tray_corner: None,
+        };
+        let notched = IslandHome {
+            notch: Some(Rect {
+                x: 660.0,
+                y: 0.0,
+                w: 180.0,
+                h: 32.0,
+            }),
+            ..plain
+        };
+        assert!(virtual_active(IslandMode::Virtual, &plain, true));
+        assert!(!virtual_active(IslandMode::Classic, &plain, true));
+        assert!(!virtual_active(IslandMode::Virtual, &notched, true));
+        assert!(!virtual_active(IslandMode::Virtual, &plain, false));
     }
 }

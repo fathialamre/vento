@@ -802,6 +802,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 pocket.apply_clip_settings(new);
                 pocket.apply_shot_settings(new);
                 pocket.apply_pocket_settings(new);
+                if old.island_mode != new.island_mode
+                    || old.island_place != new.island_place
+                    || old.island_glass != new.island_glass
+                {
+                    pocket.island_settings_changed();
+                }
                 // The first listener has switched the language by now.
                 if old.language != new.language {
                     pocket.apply_language();

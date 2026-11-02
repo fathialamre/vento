@@ -1,9 +1,6 @@
 //! Where the island's shapes sit on its screen, and which of them takes the
 //! pointer.
 
-// The virtual island's frames are used once the pocket loop builds them.
-#![allow(dead_code)]
-
 use slint::LogicalPosition;
 use slint::platform::WindowEvent;
 use vento_core::geometry::{Point, Rect};
