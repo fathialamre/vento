@@ -31,6 +31,8 @@ mod pocket;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod quit;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+mod rename;
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod screen_text;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod settings_hub;
@@ -163,10 +165,17 @@ fn main() -> Result<(), slint::PlatformError> {
         executor.clone(),
         hub.clone(),
     );
+    let rename = rename::RenameController::new(
+        platform.clone(),
+        toaster.clone(),
+        executor.clone(),
+        hub.clone(),
+    );
     let drop_executor = executor.clone();
     let drop_pocket = pocket.clone();
     let drop_info = info.clone();
     let drop_pdf = pdf.clone();
+    let drop_rename = rename.clone();
     // The Welcome window, once it exists: a drop of its sample file while it
     // is open is practice, and goes no further.
     let welcome_slot: Rc<RefCell<Weak<welcome_window::WelcomeController>>> =
@@ -189,6 +198,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ActionId::Pocket => drop_pocket.add(drop.paths, POCKET_CONFIRM),
                     ActionId::Info => drop_info.open(drop.paths, drop.at),
                     ActionId::Pdf => drop_pdf.open(drop.paths, drop.at),
+                    ActionId::Rename => drop_rename.open(drop.paths, drop.at),
                     _ => drop_executor.run(drop),
                 },
             );
@@ -588,6 +598,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }));
     }
     {
+        let rename = Rc::downgrade(&rename);
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (pdf, welcome) = (Rc::downgrade(&pdf), Rc::downgrade(&welcome));
         let whats_new = Rc::downgrade(&whats_new);
@@ -595,6 +606,7 @@ fn main() -> Result<(), slint::PlatformError> {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || pdf.upgrade().is_some_and(|p| p.has_windows())
+                || rename.upgrade().is_some_and(|r| r.is_open())
                 || welcome.upgrade().is_some_and(|w| w.is_open())
                 || whats_new.upgrade().is_some_and(|w| w.is_open())
         }));
@@ -602,6 +614,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // The Welcome window, closing, leaves the focus with any other vento
     // window open, the Settings window its Open Settings opens included.
     {
+        let rename = Rc::downgrade(&rename);
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (pdf, settings) = (Rc::downgrade(&pdf), Rc::downgrade(&settings));
         let whats_new = Rc::downgrade(&whats_new);
@@ -609,12 +622,14 @@ fn main() -> Result<(), slint::PlatformError> {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || pdf.upgrade().is_some_and(|p| p.has_windows())
+                || rename.upgrade().is_some_and(|r| r.is_open())
                 || settings.upgrade().is_some_and(|s| s.is_open())
                 || whats_new.upgrade().is_some_and(|w| w.is_open())
         }));
     }
     // So does the What's new window.
     {
+        let rename = Rc::downgrade(&rename);
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (pdf, settings) = (Rc::downgrade(&pdf), Rc::downgrade(&settings));
         let welcome = Rc::downgrade(&welcome);
@@ -622,6 +637,7 @@ fn main() -> Result<(), slint::PlatformError> {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
                 || pdf.upgrade().is_some_and(|p| p.has_windows())
+                || rename.upgrade().is_some_and(|r| r.is_open())
                 || settings.upgrade().is_some_and(|s| s.is_open())
                 || welcome.upgrade().is_some_and(|w| w.is_open())
         }));
@@ -629,12 +645,28 @@ fn main() -> Result<(), slint::PlatformError> {
     // The last PDF window to close leaves the focus with another vento
     // window that is open.
     {
+        let rename = Rc::downgrade(&rename);
         let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
         let (settings, welcome) = (Rc::downgrade(&settings), Rc::downgrade(&welcome));
         let whats_new = Rc::downgrade(&whats_new);
         pdf.set_other_window_open(Box::new(move || {
             panel.upgrade().is_some_and(|p| p.is_open())
                 || info.upgrade().is_some_and(|i| i.is_open())
+                || rename.upgrade().is_some_and(|r| r.is_open())
+                || settings.upgrade().is_some_and(|s| s.is_open())
+                || welcome.upgrade().is_some_and(|w| w.is_open())
+                || whats_new.upgrade().is_some_and(|w| w.is_open())
+        }));
+    }
+    // So does the Rename window.
+    {
+        let (panel, info) = (Rc::downgrade(&panel), Rc::downgrade(&info));
+        let (pdf, settings) = (Rc::downgrade(&pdf), Rc::downgrade(&settings));
+        let (welcome, whats_new) = (Rc::downgrade(&welcome), Rc::downgrade(&whats_new));
+        rename.set_other_window_open(Box::new(move || {
+            panel.upgrade().is_some_and(|p| p.is_open())
+                || info.upgrade().is_some_and(|i| i.is_open())
+                || pdf.upgrade().is_some_and(|p| p.has_windows())
                 || settings.upgrade().is_some_and(|s| s.is_open())
                 || welcome.upgrade().is_some_and(|w| w.is_open())
                 || whats_new.upgrade().is_some_and(|w| w.is_open())

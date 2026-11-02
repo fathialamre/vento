@@ -21,6 +21,7 @@ use vento_core::geometry::Point;
 use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{fill, tr, trn, with_language};
 use vento_core::paths::format_paths;
+use vento_core::rename::RenameRecord;
 use vento_core::settings::Settings;
 use vento_platform::Platform;
 
@@ -31,10 +32,12 @@ use crate::wheel::WheelDrop;
 mod archive;
 mod convert;
 mod pdf;
+mod rename;
 mod share;
 
 use archive::archive_undo_toast_text;
 pub use pdf::{PdfDone, pdf_open_toast_text, pdf_toast_text};
+pub use rename::RenameDone;
 
 /// The side notes of a move or an undo: what failed, and what was moved
 /// but could not be removed from where it came from. Each is a clause of
@@ -244,6 +247,7 @@ fn action_error_text(action: ActionId, reason: &str) -> String {
         ActionId::Convert => tr("Couldn't convert: {reason}"),
         ActionId::Pdf => tr("Couldn't open the PDF: {reason}"),
         ActionId::Share => tr("Couldn't share: {reason}"),
+        ActionId::Rename => tr("Couldn't rename: {reason}"),
     };
     fill(&template, &[("reason", reason)])
 }
@@ -272,6 +276,8 @@ pub enum UndoKind {
     Convert,
     /// The last PDF write (the file or folder it made).
     Pdf,
+    /// The last Rename (the names it changed).
+    Rename,
 }
 
 /// The tray's Undo item text: names what would be undone, and reads
@@ -282,6 +288,7 @@ pub fn undo_menu_text(kind: Option<UndoKind>) -> String {
         Some(UndoKind::Archive) => tr("Undo last archive"),
         Some(UndoKind::Convert) => tr("Undo last convert"),
         Some(UndoKind::Pdf) => tr("Undo last PDF"),
+        Some(UndoKind::Rename) => tr("Undo last rename"),
         Some(UndoKind::Move) | None => tr("Undo last move"),
     }
 }
@@ -373,6 +380,8 @@ enum LastOp {
     Convert(CopyRecord),
     /// What a PDF write job made, undone like an Archive.
     Pdf(CopyRecord),
+    /// The names a Rename changed, put back by name.
+    Rename(RenameRecord),
 }
 
 impl LastOp {
@@ -383,6 +392,7 @@ impl LastOp {
             LastOp::Archive(_) => UndoKind::Archive,
             LastOp::Convert(_) => UndoKind::Convert,
             LastOp::Pdf(_) => UndoKind::Pdf,
+            LastOp::Rename(_) => UndoKind::Rename,
         }
     }
 }
@@ -421,8 +431,8 @@ pub struct Executor {
     last_serial: Cell<u64>,
     /// Folders recently moved or copied to; saved after each addition.
     recent: Rc<RefCell<RecentDestinations>>,
-    /// Whether a move, copy, archive, convert, PDF write or undo is running on
-    /// a worker thread.
+    /// Whether a move, copy, archive, convert, PDF write, rename or undo is
+    /// running on a worker thread.
     busy: Cell<bool>,
     /// That job, until its result is handled on the main thread.
     running: RefCell<Option<RunningJob>>,
@@ -436,6 +446,8 @@ pub struct Executor {
     /// finishes. It lives here, not with the worker, because it is not
     /// `Send`.
     pdf_done: RefCell<Option<pdf::PdfDone>>,
+    /// Told how the running Rename ended, as `pdf_done` for a PDF job.
+    rename_done: RefCell<Option<RenameDone>>,
     this: Weak<Self>,
 }
 
@@ -465,6 +477,7 @@ impl Executor {
             password,
             on_undo_changed: RefCell::new(Vec::new()),
             pdf_done: RefCell::new(None),
+            rename_done: RefCell::new(None),
             this: this.clone(),
         });
         MAIN_EXECUTOR.with(|slot| *slot.borrow_mut() = Rc::downgrade(&executor));
@@ -522,6 +535,7 @@ impl Executor {
             ActionId::Info => warn!("Info is handled by the info controller"),
             ActionId::Pdf => warn!("PDF is handled by the PDF controller"),
             ActionId::Share => self.share(paths, target, at),
+            ActionId::Rename => warn!("Rename is handled by the rename controller"),
             ActionId::Convert => match format {
                 Some(format) => self.convert(paths, format, at),
                 None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
@@ -586,6 +600,7 @@ impl Executor {
             LastOp::Archive(record) => self.undo_copy(record, UndoKind::Archive, at),
             LastOp::Convert(record) => self.undo_copy(record, UndoKind::Convert, at),
             LastOp::Pdf(record) => self.undo_copy(record, UndoKind::Pdf, at),
+            LastOp::Rename(record) => self.undo_rename(record, at),
         }
         true
     }
@@ -728,10 +743,9 @@ impl Executor {
         self.last.borrow().as_ref().map(|last| last.op.kind())
     }
 
-    /// Whether a move, copy, archive, convert, PDF write or undo is running,
-    /// which quitting would cancel.
-    // Only the macOS update controller asks.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// Whether a move, copy, archive, convert, PDF write, rename or undo is
+    /// running, which quitting would cancel, and which the Rename window
+    /// checks before it waits for its rename.
     pub fn is_busy(&self) -> bool {
         self.busy.get()
     }
@@ -1004,6 +1018,7 @@ mod tests {
         assert_eq!(undo_menu_text(Some(UndoKind::Archive)), "Undo last archive");
         assert_eq!(undo_menu_text(Some(UndoKind::Convert)), "Undo last convert");
         assert_eq!(undo_menu_text(Some(UndoKind::Pdf)), "Undo last PDF");
+        assert_eq!(undo_menu_text(Some(UndoKind::Rename)), "Undo last rename");
         assert_eq!(undo_menu_text(None), "Undo last move");
     }
     use std::io;
@@ -1278,6 +1293,7 @@ mod tests {
                 "Couldn't convert: no folder to open",
                 "Couldn't open the PDF: no folder to open",
                 "Couldn't share: no folder to open",
+                "Couldn't rename: no folder to open",
             ]
         );
         vento_core::i18n::with_language("ar", || {

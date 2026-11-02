@@ -51,10 +51,10 @@ trigger = "ctrl"
 shake_to_open = true
 
 # Actions shown on the wheel, in order: "pocket", "copy", "move", "copy_path",
-# "terminal", "copy_to", "archive", "info", "convert", "pdf", "share". A file
-# that already lists `actions` must add "pocket", "copy_to", "archive", "info",
-# "convert", "pdf" or "share" to show it. "pdf" and "share" are macOS only, and
-# are ignored elsewhere.
+# "terminal", "copy_to", "archive", "info", "convert", "pdf", "share" and
+# "rename". A file that already lists `actions` must add "pocket", "copy_to",
+# "archive", "info", "convert", "pdf", "share" or "rename" to show it. "pdf"
+# and "share" are macOS only, and are ignored elsewhere.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
 # Actions turned off in the Settings window
@@ -173,6 +173,17 @@ welcome_done = true
 # Look for a new version on GitHub once a day (macOS). false stops the daily
 # check; Settings → About → Check now still works
 check_for_updates = true
+
+# Rename window: the rules and order it opens on, written when you rename.
+# last_rules lists the rules top to bottom, each with a kind ("replace",
+# "add", "number", "case", "extension" or "template") and that kind's fields;
+# a rule that does not read is dropped alone. A number rule's digits are kept
+# between 1 and 6. order is "name", "modified" or "size" (anything else means
+# "name"); reverse flips it
+[rename]
+last_rules = []
+order = "name"
+reverse = false
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

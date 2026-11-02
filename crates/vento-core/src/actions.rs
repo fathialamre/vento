@@ -31,12 +31,14 @@ pub enum ActionId {
     Pdf,
     /// Send the dragged items with AirDrop, or with a service from a ring.
     Share,
+    /// Open a window to rename the dragged items in a batch.
+    Rename,
 }
 
 impl ActionId {
     /// Every action, in the order the settings list offers the ones not yet
     /// placed.
-    pub const ALL: [ActionId; 11] = [
+    pub const ALL: [ActionId; 12] = [
         ActionId::Pocket,
         ActionId::Copy,
         ActionId::Move,
@@ -48,6 +50,7 @@ impl ActionId {
         ActionId::Convert,
         ActionId::Pdf,
         ActionId::Share,
+        ActionId::Rename,
     ];
 
     /// Whether this platform can run the action. PDF pages need the system's
@@ -80,6 +83,7 @@ impl ActionId {
             ActionId::Convert => "convert",
             ActionId::Pdf => "pdf",
             ActionId::Share => "share",
+            ActionId::Rename => "rename",
         }
     }
 
@@ -97,6 +101,7 @@ impl ActionId {
             ActionId::Convert => tr("Convert"),
             ActionId::Pdf => tr("PDF"),
             ActionId::Share => tr("Share"),
+            ActionId::Rename => tr("Rename"),
         }
     }
 
@@ -114,6 +119,7 @@ impl ActionId {
             "convert" => Some(ActionId::Convert),
             "pdf" => Some(ActionId::Pdf),
             "share" => Some(ActionId::Share),
+            "rename" => Some(ActionId::Rename),
             _ => None,
         }
     }
@@ -196,7 +202,16 @@ mod tests {
         assert_eq!(ActionId::Share.label(), "Share");
         assert_eq!(ActionId::from_key("share"), Some(ActionId::Share));
         assert!(ActionId::Share.takes_ring());
-        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Share));
+    }
+
+    #[test]
+    fn rename_key_label_and_no_ring() {
+        assert_eq!(ActionId::Rename.key(), "rename");
+        assert_eq!(ActionId::Rename.label(), "Rename");
+        assert_eq!(ActionId::from_key("rename"), Some(ActionId::Rename));
+        assert!(!ActionId::Rename.takes_ring());
+        assert!(ActionId::Rename.available());
+        assert_eq!(ActionId::ALL.last(), Some(&ActionId::Rename));
     }
 
     #[test]
@@ -229,7 +244,8 @@ mod tests {
                     "معلومات",
                     "تحويل",
                     "\u{200f}PDF",
-                    "مشاركة"
+                    "مشاركة",
+                    "إعادة تسمية"
                 ]
             );
             assert_eq!(ActionId::Move.label(), "نقل");

@@ -1,0 +1,1160 @@
+// The Rename window: an ordinary, resizable window listing every item
+// dropped on the wheel's Rename cell, each with its current name and the
+// name it will get. A toolbar of rule tools sits on top (Replace, Add,
+// Number, Case, Extension, Template, then the Order menu and the Folders
+// toggle at the far end); under it a row of chips, one per rule in the
+// order they apply. The rule panel is docked at the window's end, beside
+// the list, so the names stay in view: clicking a tool adds its rule and
+// shows it there; clicking a chip shows that rule again. Edits in the
+// panel apply at once: every one sends the whole edited form
+// to Rust, which owns the rules and sends back the new rows. A row whose
+// new name cannot be used is tinted red and says why. The footer counts
+// what will change, with Cancel and Rename. Everything mirrors in a
+// right-to-left language; names keep their own direction. Rust handles
+// every click and key; this file only draws.
+
+import { ListView } from "std-widgets.slint";
+import { LineText, Theme } from "theme.slint";
+import { Switch } from "controls.slint";
+import { ChoicePair, FieldLabel, IconTool, OptionRow, PlainButton, PopoverHead, PrimaryButton, ToolGap } from "window_parts.slint";
+
+// One item of the list: whether it is a folder, its current name, the name
+// the rules give it, whether that differs, and why it cannot be used (empty
+// when it can).
+export struct RenameRow { is-dir: bool, old: string, new: string, changed: bool, problem: string }
+
+// One rule's chip: its name, what it is set to, whether its popover is
+// open, and whether it warns (an unknown {tag} in a template).
+export struct RenameChip { title: string, summary: string, open: bool, warn: bool }
+
+// The open popover's rule, as its fields show it. `kind` counts from 0 in
+// toolbar order (Replace, Add, Number, Case, Extension, Template); `choice`
+// is the Case or Extension option picked; `after` puts Add's text or
+// Number's counter after the name.
+export struct RuleForm {
+    kind: int,
+    find: string,
+    with: string,
+    text: string,
+    separator: string,
+    match-case: bool,
+    after: bool,
+    start: int,
+    digits: int,
+    choice: int,
+}
+
+// A one-line text field in a popover. It shows `value` and reports every
+// edit; whoever uses it decides what the value becomes. Made of a
+// `TextInput` rather than the std-widgets `LineEdit`, which takes its
+// colours from the system's scheme and would ignore the Appearance
+// setting.
+component Field inherits Rectangle {
+    in property <string> value;
+    in property <string> placeholder;
+    // Names the field for assistive technology.
+    in property <string> label;
+    in property <bool> enabled: true;
+    // Takes the keyboard when it appears.
+    in property <bool> autofocus;
+    callback edited(string);
+
+    height: 28px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    background: Theme.selected;
+    opacity: self.enabled ? 1 : 0.45;
+
+    init => {
+        input.text = root.value;
+        if (root.autofocus && root.enabled) {
+            input.focus();
+        }
+    }
+
+    // Asked to take the keyboard while shown (Extension's "Replace with…"
+    // chosen).
+    changed autofocus => {
+        if (root.autofocus && root.enabled) {
+            input.focus();
+        }
+    }
+
+    // A new value from Rust (another rule's popover, a token added): the
+    // field follows it, unless it already shows it.
+    changed value => {
+        if (input.text != root.value) {
+            input.text = root.value;
+        }
+    }
+
+    // A click anywhere on the field, its margins too.
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+
+    // Clips a long text and scrolls it to keep the cursor in view, as the
+    // std-widgets `LineEdit` does.
+    Rectangle {
+        x: 8px;
+        width: parent.width - 16px;
+        clip: true;
+
+        input := TextInput {
+            property <length> computed-x;
+
+            x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+            width: max(parent.width - self.text-cursor-width, self.preferred-width);
+            height: 100%;
+            enabled: root.enabled;
+            vertical-alignment: center;
+            horizontal-alignment: Theme.rtl ? right : left;
+            color: Theme.text;
+            font-size: 12px;
+            selection-background-color: Theme.accent-soft;
+            selection-foreground-color: Theme.text;
+            single-line: true;
+            accessible-label: root.label;
+            accessible-placeholder-text: root.placeholder;
+            cursor-position-changed(cursor-position) => {
+                if cursor-position.x + self.computed-x < 0px {
+                    self.computed-x = -cursor-position.x;
+                } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                    self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                }
+            }
+            edited => { root.edited(self.text); }
+        }
+    }
+
+    // The placeholder, over the empty field.
+    if input.text == "": LineText {
+        x: 8px;
+        width: parent.width - 16px;
+        height: parent.height;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+        text: root.placeholder;
+        color: Theme.muted;
+        font-size: 12px;
+    }
+}
+
+// A caption over its field, in a column.
+component LabeledField inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> placeholder;
+    in property <bool> autofocus;
+    callback edited(string);
+
+    spacing: 4px;
+
+    FieldLabel {
+        text: root.label;
+    }
+
+    Field {
+        label: root.label;
+        value: root.value;
+        placeholder: root.placeholder;
+        autofocus: root.autofocus;
+        edited(text) => { root.edited(text); }
+    }
+}
+
+// A line with a caption at its start and a switch at its end (Match case,
+// Reverse).
+component SwitchLine inherits HorizontalLayout {
+    in property <string> label;
+    in property <bool> on;
+    callback toggled(bool);
+
+    height: 30px;
+    spacing: 8px;
+
+    Text {
+        layout-order: Theme.rtl ? 1 : 0;
+        horizontal-stretch: 1;
+        text: root.label;
+        font-size: 12.5px;
+        color: Theme.text;
+        vertical-alignment: center;
+        horizontal-alignment: Theme.rtl ? right : left;
+    }
+
+    VerticalLayout {
+        layout-order: Theme.rtl ? 0 : 1;
+        alignment: center;
+
+        Switch {
+            label: root.label;
+            on: root.on;
+            toggled(on) => { root.toggled(on); }
+        }
+    }
+}
+
+// A template token's button: the token in braces on a raised chip; a
+// click adds it to the template.
+component TokenButton inherits Rectangle {
+    in property <string> token;
+    callback clicked();
+
+    height: 24px;
+    width: token-text.preferred-width + 14px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: touch.pressed ? Theme.hover : touch.has-hover ? Theme.surface : Theme.selected;
+    accessible-role: button;
+    accessible-label: self.token;
+    accessible-action-default => { self.clicked(); }
+
+    token-text := Text {
+        text: root.token;
+        font-size: 11px;
+        color: Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// A rule's chip: its name in bold, what it is set to, and ✕ to remove it.
+// The rule whose popover is open is drawn in the accent; one that warns, in
+// the danger colour.
+component Chip inherits Rectangle {
+    in property <RenameChip> chip;
+    // Its popover is open (the window's `open-rule`, not `chip.open`, so it
+    // stays right when the Order popover opens without Rust).
+    in property <bool> open;
+    callback clicked();
+    callback removed();
+
+    property <color> tone: root.open ? Theme.accent : self.chip.warn ? Theme.danger : Theme.muted;
+
+    height: 24px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.open ? Theme.accent : self.chip.warn ? Theme.danger : Theme.border;
+    background: root.open ? Theme.accent-soft
+        : self.chip.warn ? Theme.danger.transparentize(0.9)
+        : touch.has-hover ? Theme.hover
+        : Theme.dark ? Theme.surface : Theme.selected;
+    accessible-role: button;
+    accessible-label: self.chip.title;
+    accessible-description: self.chip.summary;
+    accessible-action-default => { self.clicked(); }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.rtl ? 4px : 8px;
+        padding-right: Theme.rtl ? 8px : 4px;
+        spacing: 6px;
+
+        Text {
+            layout-order: Theme.rtl ? 2 : 0;
+            text: root.chip.title;
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+
+        LineText {
+            layout-order: Theme.rtl ? 1 : 1;
+            max-width: 180px;
+            text: root.chip.summary;
+            font-size: 12px;
+            color: root.tone;
+            vertical-alignment: center;
+        }
+
+        // ✕: removes the rule. A square centred in a full-height cell (the
+        // layout puts a fixed-height child at the top), so its hover stays
+        // inside the chip's border with the same 4px gap on every side.
+        Rectangle {
+            layout-order: Theme.rtl ? 0 : 2;
+            width: 16px;
+
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                background: remove.has-hover ? Theme.hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Remove {}", root.chip.title);
+                accessible-action-default => { root.removed(); }
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 10px;
+                    height: 10px;
+                    source: @image-url("icons/x.svg");
+                    colorize: root.tone;
+                }
+
+                remove := TouchArea {
+                    clicked => { root.removed(); }
+                }
+            }
+        }
+    }
+}
+
+// One item of the list: its icon (folder or file), its current name, an
+// arrow, and its new name; a name that does not change is muted. A row with
+// a problem is tinted red and says why under the new name. The two names
+// share the width evenly.
+component NameRow inherits Rectangle {
+    in property <RenameRow> item;
+    // Every other row is shaded, from the first.
+    in property <bool> shaded;
+
+    // Each name's column: what is left after the padding, the icon, the
+    // arrow and the gaps, halved.
+    property <length> column: (self.width - 84px) / 2;
+    property <bool> bad: self.item.problem != "";
+
+    height: 42px;
+    border-radius: 7px;
+    background: self.bad ? Theme.danger.transparentize(0.92) : self.shaded ? Theme.card : transparent;
+    accessible-role: list-item;
+    accessible-label: self.item.old;
+    accessible-value: self.item.new;
+    accessible-description: self.item.problem;
+
+    // Where a column starting at `x` (from the start edge) and `w` wide
+    // lies in the row, mirrored in a right-to-left language.
+    pure function at(x: length, w: length) -> length {
+        Theme.rtl ? root.width - x - w : x
+    }
+
+    Image {
+        x: root.at(10px, 18px);
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        source: root.item.is-dir ? @image-url("icons/folder.svg") : @image-url("icons/file.svg");
+        colorize: root.item.is-dir ? Theme.accent : Theme.muted;
+    }
+
+    LineText {
+        x: root.at(40px, root.column);
+        width: root.column;
+        height: parent.height;
+        text: root.item.old;
+        font-size: 12px;
+        color: Theme.muted;
+        vertical-alignment: center;
+        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    }
+
+    // Points from the old name to the new one: to the left in a
+    // right-to-left language.
+    Image {
+        x: root.at(50px + root.column, 12px);
+        y: (parent.height - self.height) / 2;
+        width: 12px;
+        height: 12px;
+        source: @image-url("icons/arrow-right.svg");
+        colorize: Theme.muted;
+        transform-rotation: Theme.rtl ? 180deg : 0deg;
+    }
+
+    VerticalLayout {
+        x: root.at(74px + root.column, root.column);
+        width: root.column;
+        height: parent.height;
+        alignment: center;
+        spacing: 1px;
+
+        LineText {
+            text: root.item.new;
+            font-size: 12px;
+            font-weight: 500;
+            color: root.bad ? Theme.danger : root.item.changed ? Theme.text : Theme.muted;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        }
+
+        if root.bad: LineText {
+            text: root.item.problem;
+            font-size: 11px;
+            color: Theme.danger;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        }
+    }
+}
+
+export component RenameWindow inherits Window {
+    default-font-family: Theme.font-family;
+    default-font-size: 13px;
+    title: root.title-text;
+    preferred-width: 920px;
+    preferred-height: 660px;
+    // Room for the whole toolbar, and for the list beside the panel.
+    min-width: 760px;
+    min-height: 400px;
+    background: Theme.bg;
+    forward-focus: keys;
+
+    // The window title: "Rename 9 items".
+    in property <string> title-text;
+    // The footer, in three parts: the middle one is drawn in the danger
+    // colour ("7 will change · ", "1 problem", " · 2 unchanged").
+    in property <string> footer-before;
+    in property <string> footer-red;
+    in property <string> footer-after;
+    // The Order tool's label: the order picked ("Name", "Date", "Size").
+    in property <string> order-label;
+    // What a running rename is doing, shown in the footer while `busy`.
+    in property <string> progress-text;
+    // The list, in order.
+    in property <[RenameRow]> rows;
+    // The rules' chips, in the order they apply.
+    in property <[RenameChip]> chips;
+    // The list holds a folder: the Folders toggle shows.
+    in property <bool> has-folders;
+    // The rules rename folders too.
+    in property <bool> include-folders;
+    // Nothing stands in the way of Rename: no row has a problem and some
+    // name changes.
+    in property <bool> can-rename;
+    // A rename is running: the tools and Rename are held.
+    in property <bool> busy;
+    // The Order popover: the order picked (0 Name, 1 Date modified, 2 Size)
+    // and whether it is reversed.
+    in property <int> order-by;
+    in property <bool> order-reverse;
+    // The open popover's rule.
+    in-out property <RuleForm> form;
+    // Which popover is open: -1 none, a chip's index for that rule's, -2
+    // the Order popover.
+    in-out property <int> open-rule: -1;
+
+    // A rule tool, by its kind (0 Replace … 5 Template).
+    callback tool-clicked(int);
+    // A chip, or its ✕, by its index.
+    callback chip-clicked(int);
+    callback chip-removed(int);
+    // A field of the open popover changed: the whole form as it is now.
+    callback form-edited(RuleForm);
+    // The Folders toggle, with the state it asks for.
+    callback folders-toggled(bool);
+    // The Order popover: the order picked and whether it is reversed.
+    callback order-chosen(int, bool);
+    // A click outside the open popover.
+    callback close-popover();
+    callback rename-clicked();
+    callback cancel-clicked();
+    // A key, with ⌘ (Ctrl): true when Rust used it.
+    callback key-pressed(string, bool) -> bool;
+
+    property <length> toolbar-height: 56px;
+    property <length> chips-height: 40px;
+    property <length> panel-width: 320px;
+    property <bool> rule-open: root.open-rule >= 0;
+    // The popovers' icons and titles, by rule kind.
+    property <[image]> kind-icons: [
+        @image-url("icons/replace.svg"),
+        @image-url("icons/text-plus.svg"),
+        @image-url("icons/list-numbers.svg"),
+        @image-url("icons/letter-case.svg"),
+        @image-url("icons/file-dots.svg"),
+        @image-url("icons/braces.svg"),
+    ];
+    property <[string]> kind-titles: [@tr("Replace"), @tr("Add"), @tr("Number"), @tr("Case"), @tr("Extension"), @tr("Template")];
+    property <[string]> kind-hints: [
+        @tr("Finds text in every name and replaces it"),
+        @tr("Adds text to every name"),
+        @tr("Adds 001, 002… in the list's order"),
+        @tr("Changes the letters of every name"),
+        @tr("Changes the part after the last dot"),
+        @tr("Builds every name from parts"),
+    ];
+    property <[string]> zeros: ["", "0", "00", "000", "0000", "00000"];
+
+    // `n` written with at least `digits` digits, as Number writes it.
+    pure function padded(n: int, digits: int) -> string {
+        let len = n < 10 ? 1 : n < 100 ? 2 : n < 1000 ? 3 : n < 10000 ? 4 : n < 100000 ? 5 : 6;
+        "\{root.zeros[max(0, min(5, digits - len))]}\{n}"
+    }
+
+    // The form changed here: Rust takes it.
+    function send() {
+        root.form-edited(root.form);
+    }
+
+    // The open popover: a rule kind, -2 Order, -1 none.
+    property <int> open-kind: root.open-rule == -2 ? -2 : root.open-rule >= 0 ? root.form.kind : -1;
+    // The open popover has a field that takes the keyboard when it shows
+    // (Replace, Add, Template, and Extension's "Replace with…").
+    property <bool> wants-field: root.open-kind == 0 || root.open-kind == 1 || root.open-kind == 5
+        || (root.open-kind == 4 && root.form.choice == 2);
+
+    // Esc closes the popover, then the window; ⌘↩ renames; ⌘Z undoes a
+    // rule change. Rust decides, so the keyboard goes back to the window
+    // whenever the field that had it may be gone and no new one takes it.
+    changed open-kind => {
+        if (!root.wants-field) {
+            keys.focus();
+        }
+    }
+    changed wants-field => {
+        if (!root.wants-field) {
+            keys.focus();
+        }
+    }
+
+    // In a right-to-left language the chips start at the right: show that
+    // end when they overflow.
+    function chips-to-start() {
+        if (Theme.rtl) {
+            chip-flick.content-x = min(0px, chip-flick.width - chip-flick.content-width);
+        }
+    }
+
+    keys := FocusScope {
+        // ⌘↩ renames even from a popover's field, which would take every
+        // Return for itself. ⌘Z there stays the field's own undo.
+        capture-key-pressed(event) => {
+            if (event.modifiers.control && event.text == Key.Return) {
+                if (root.key-pressed(event.text, true)) {
+                    return accept;
+                }
+            }
+            return reject;
+        }
+        // `control` is ⌘ on a Mac.
+        key-pressed(event) => {
+            if (root.key-pressed(event.text, event.modifiers.control)) {
+                return accept;
+            }
+            return reject;
+        }
+
+        VerticalLayout {
+            // The toolbar.
+            Rectangle {
+                height: root.toolbar-height;
+
+                HorizontalLayout {
+                    padding: 6px;
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 2px;
+
+                    replace-tool := IconTool {
+                        layout-order: Theme.rtl ? 9 : 0;
+                        icon: @image-url("icons/replace.svg");
+                        label: @tr("Replace");
+                        enabled: !root.busy;
+                        on: root.rule-open && root.form.kind == 0;
+                        clicked => { root.tool-clicked(0); }
+                    }
+
+                    add-tool := IconTool {
+                        layout-order: Theme.rtl ? 8 : 1;
+                        icon: @image-url("icons/text-plus.svg");
+                        label: @tr("Add");
+                        enabled: !root.busy;
+                        on: root.rule-open && root.form.kind == 1;
+                        clicked => { root.tool-clicked(1); }
+                    }
+
+                    number-tool := IconTool {
+                        layout-order: Theme.rtl ? 7 : 2;
+                        icon: @image-url("icons/list-numbers.svg");
+                        label: @tr("Number");
+                        enabled: !root.busy;
+                        on: root.rule-open && root.form.kind == 2;
+                        clicked => { root.tool-clicked(2); }
+                    }
+
+                    case-tool := IconTool {
+                        layout-order: Theme.rtl ? 6 : 3;
+                        icon: @image-url("icons/letter-case.svg");
+                        label: @tr("Case");
+                        enabled: !root.busy;
+                        on: root.rule-open && root.form.kind == 3;
+                        clicked => { root.tool-clicked(3); }
+                    }
+
+                    extension-tool := IconTool {
+                        layout-order: Theme.rtl ? 5 : 4;
+                        icon: @image-url("icons/file-dots.svg");
+                        label: @tr("Extension");
+                        enabled: !root.busy;
+                        on: root.rule-open && root.form.kind == 4;
+                        clicked => { root.tool-clicked(4); }
+                    }
+
+                    template-tool := IconTool {
+                        layout-order: Theme.rtl ? 4 : 5;
+                        icon: @image-url("icons/braces.svg");
+                        label: @tr("Template");
+                        enabled: !root.busy;
+                        on: root.rule-open && root.form.kind == 5;
+                        clicked => { root.tool-clicked(5); }
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 3 : 6;
+                        alignment: center;
+                        padding-left: 4px;
+                        padding-right: 4px;
+
+                        ToolGap { }
+                    }
+
+                    // Pushes Order and Folders to the far end.
+                    Rectangle {
+                        layout-order: Theme.rtl ? 2 : 7;
+                        horizontal-stretch: 1;
+                    }
+
+                    order-tool := IconTool {
+                        layout-order: Theme.rtl ? 1 : 8;
+                        icon: @image-url("icons/arrows-sort.svg");
+                        label: root.order-label;
+                        name: @tr("Order");
+                        enabled: !root.busy;
+                        on: root.open-rule == -2;
+                        clicked => {
+                            if (root.open-rule == -2) {
+                                root.open-rule = -1;
+                                root.close-popover();
+                            } else {
+                                root.open-rule = -2;
+                            }
+                        }
+                    }
+
+                    if root.has-folders: IconTool {
+                        layout-order: Theme.rtl ? 0 : 9;
+                        icon: @image-url("icons/folder.svg");
+                        label: @tr("Folders");
+                        enabled: !root.busy;
+                        on: root.include-folders;
+                        clicked => { root.folders-toggled(!root.include-folders); }
+                    }
+                }
+
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+            }
+
+            // The rules and the list, with the rule panel docked at the end.
+            HorizontalLayout {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    layout-order: Theme.rtl ? 1 : 0;
+                    horizontal-stretch: 1;
+
+                    // The rules row: one chip per rule; it scrolls sideways when
+                    // they do not fit.
+                    Rectangle {
+                        height: root.chips-height;
+
+                        chip-flick := Flickable {
+                            x: 12px;
+                            width: parent.width - 24px;
+                            content-width: max(self.width, chip-row.preferred-width);
+
+                            changed content-width => { root.chips-to-start(); }
+                            changed width => { root.chips-to-start(); }
+
+                            chip-row := HorizontalLayout {
+                                width: chip-flick.content-width;
+                                height: chip-flick.height;
+                                alignment: Theme.rtl ? end : start;
+                                spacing: 6px;
+
+                                Text {
+                                    layout-order: Theme.rtl ? 1 : -1;
+                                    text: @tr("Rules");
+                                    font-size: 11.5px;
+                                    color: Theme.muted;
+                                    vertical-alignment: center;
+                                }
+
+                                if root.chips.length == 0: Text {
+                                    layout-order: Theme.rtl ? 0 : 0;
+                                    text: @tr("Pick a tool to start");
+                                    font-size: 12px;
+                                    color: Theme.muted;
+                                    vertical-alignment: center;
+                                }
+
+                                for chip[i] in root.chips: VerticalLayout {
+                                    layout-order: Theme.rtl ? -i : 0;
+                                    alignment: center;
+
+                                    Chip {
+                                        chip: chip;
+                                        open: root.open-rule == i;
+                                        clicked => {
+                                            if (!root.busy) {
+                                                root.chip-clicked(i);
+                                            }
+                                        }
+                                        removed => {
+                                            if (!root.busy) {
+                                                root.chip-removed(i);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.separator;
+                        }
+                    }
+
+                    // The list.
+                    VerticalLayout {
+                        vertical-stretch: 1;
+                        padding-top: 7px;
+                        padding-bottom: 7px;
+
+                        ListView {
+                            for row[i] in root.rows: Rectangle {
+                                height: 44px;
+
+                                NameRow {
+                                    x: 8px;
+                                    y: 1px;
+                                    width: parent.width - 16px;
+                                    item: row;
+                                    shaded: Math.mod(i, 2) == 0;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // The rule panel: the open rule's settings, or Order's, or a
+                // hint while none is open. It scrolls when they do not fit.
+                Rectangle {
+                    layout-order: Theme.rtl ? 0 : 1;
+                    width: root.panel-width;
+                    background: Theme.panel;
+
+                    Rectangle {
+                        x: Theme.rtl ? parent.width - 1px : 0;
+                        width: 1px;
+                        background: Theme.separator;
+                    }
+
+                    if root.open-rule == -1: Text {
+                        x: 20px;
+                        width: parent.width - 40px;
+                        text: @tr("Pick a tool, or a rule above, to set it here");
+                        font-size: 12px;
+                        color: Theme.muted;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    panel-flick := Flickable {
+                        content-height: pop-col.height;
+
+                        pop-col := VerticalLayout {
+                            width: panel-flick.width;
+                            // At least the panel's height, so it never caps how tall the
+                            // window's layout may grow; the rows stay at the top.
+                            height: max(panel-flick.height, self.preferred-height);
+                            alignment: start;
+
+                            padding: 14px;
+                            spacing: 6px;
+
+                            if root.rule-open: PopoverHead {
+                                icon: root.kind-icons[root.form.kind];
+                                title: root.kind-titles[root.form.kind];
+                                subtitle: root.kind-hints[root.form.kind];
+                            }
+
+                            if root.open-rule == -2: PopoverHead {
+                                icon: @image-url("icons/arrows-sort.svg");
+                                title: @tr("Order");
+                                subtitle: @tr("The list and the numbers follow it");
+                            }
+
+                            Rectangle { height: 6px; }
+
+                            // Replace: Find, Replace with, Match case.
+                            if root.rule-open && root.form.kind == 0: VerticalLayout {
+                                spacing: 8px;
+
+                                LabeledField {
+                                    label: @tr("Find");
+                                    value: root.form.find;
+                                    placeholder: @tr("* for the whole name");
+                                    autofocus: true;
+                                    edited(text) => {
+                                        root.form.find = text;
+                                        root.send();
+                                    }
+                                }
+
+                                LabeledField {
+                                    label: @tr("Replace with");
+                                    value: root.form.with;
+                                    placeholder: @tr("Nothing: removes it");
+                                    edited(text) => {
+                                        root.form.with = text;
+                                        root.send();
+                                    }
+                                }
+
+                                SwitchLine {
+                                    label: @tr("Match case");
+                                    on: root.form.match-case;
+                                    toggled(on) => {
+                                        root.form.match-case = on;
+                                        root.send();
+                                    }
+                                }
+                            }
+
+                            // Add: the text, before or after the name.
+                            if root.rule-open && root.form.kind == 1: VerticalLayout {
+                                spacing: 8px;
+
+                                LabeledField {
+                                    label: @tr("Text");
+                                    value: root.form.text;
+                                    autofocus: true;
+                                    edited(text) => {
+                                        root.form.text = text;
+                                        root.send();
+                                    }
+                                }
+
+                                ChoicePair {
+                                    first: @tr("Before name");
+                                    first-detail: root.form.text + @tr("name");
+                                    second: @tr("After name");
+                                    second-detail: @tr("name") + root.form.text;
+                                    second-on: root.form.after;
+                                    chosen(after) => {
+                                        root.form.after = after;
+                                        root.send();
+                                    }
+                                }
+                            }
+
+                            // Number: before or after the name, Start, Digits, Separator.
+                            if root.rule-open && root.form.kind == 2: VerticalLayout {
+                                spacing: 10px;
+
+                                ChoicePair {
+                                    first: @tr("Before name");
+                                    first-detail: root.padded(root.form.start, root.form.digits) + root.form.separator + @tr("name");
+                                    second: @tr("After name");
+                                    second-detail: @tr("name") + root.form.separator + root.padded(root.form.start, root.form.digits);
+                                    second-on: root.form.after;
+                                    chosen(after) => {
+                                        root.form.after = after;
+                                        root.send();
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    LabeledField {
+                                        layout-order: Theme.rtl ? 2 : 0;
+                                        horizontal-stretch: 1;
+                                        label: @tr("Start");
+                                        value: root.form.start;
+                                        edited(text) => {
+                                            if (text.is-float()) {
+                                                root.form.start = max(0, round(text.to-float()));
+                                                root.send();
+                                            }
+                                        }
+                                    }
+
+                                    LabeledField {
+                                        layout-order: Theme.rtl ? 1 : 1;
+                                        horizontal-stretch: 1;
+                                        label: @tr("Digits");
+                                        value: root.form.digits;
+                                        edited(text) => {
+                                            if (text.is-float()) {
+                                                root.form.digits = max(1, min(6, round(text.to-float())));
+                                                root.send();
+                                            }
+                                        }
+                                    }
+
+                                    LabeledField {
+                                        layout-order: Theme.rtl ? 0 : 2;
+                                        horizontal-stretch: 1;
+                                        label: @tr("Separator");
+                                        value: root.form.separator;
+                                        edited(text) => {
+                                            root.form.separator = text;
+                                            root.send();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Case: one of five.
+                            if root.rule-open && root.form.kind == 3: VerticalLayout {
+                                spacing: 4px;
+
+                                for title[i] in [@tr("lowercase"), @tr("UPPERCASE"), @tr("Title Case"), @tr("kebab-case"), @tr("snake_case")]: OptionRow {
+                                    title: title;
+                                    detail: [
+                                        @tr("Case example" => "my trip photo"),
+                                        @tr("Case example" => "MY TRIP PHOTO"),
+                                        @tr("Case example" => "My Trip Photo"),
+                                        @tr("Case example" => "my-trip-photo"),
+                                        @tr("Case example" => "my_trip_photo"),
+                                    ][i];
+                                    on: root.form.choice == i;
+                                    chosen => {
+                                        root.form.choice = i;
+                                        root.send();
+                                    }
+                                }
+                            }
+
+                            // Extension: one of four, the new one typed for "Replace
+                            // with", and what the rule does not do.
+                            if root.rule-open && root.form.kind == 4: VerticalLayout {
+                                spacing: 4px;
+
+                                OptionRow {
+                                    title: @tr("lowercase");
+                                    detail: ".jpg";
+                                    on: root.form.choice == 0;
+                                    chosen => {
+                                        root.form.choice = 0;
+                                        root.send();
+                                    }
+                                }
+
+                                OptionRow {
+                                    title: @tr("UPPERCASE");
+                                    detail: ".JPG";
+                                    on: root.form.choice == 1;
+                                    chosen => {
+                                        root.form.choice = 1;
+                                        root.send();
+                                    }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Replace with…");
+                                    detail: @tr("Without the dot");
+                                    on: root.form.choice == 2;
+                                    chosen => {
+                                        root.form.choice = 2;
+                                        root.send();
+                                    }
+
+                                    Field {
+                                        width: 96px;
+                                        label: @tr("New extension");
+                                        value: root.form.text;
+                                        enabled: root.form.choice == 2;
+                                        autofocus: root.form.choice == 2;
+                                        edited(text) => {
+                                            root.form.text = text;
+                                            root.send();
+                                        }
+                                    }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Remove");
+                                    detail: @tr("No extension");
+                                    on: root.form.choice == 3;
+                                    chosen => {
+                                        root.form.choice = 3;
+                                        root.send();
+                                    }
+                                }
+
+                                Rectangle { height: 2px; }
+
+                                Text {
+                                    text: @tr("Only the name changes: the file is not converted.");
+                                    font-size: 11.5px;
+                                    color: Theme.muted;
+                                    wrap: word-wrap;
+                                    horizontal-alignment: Theme.rtl ? right : left;
+                                }
+                            }
+
+                            // Template: the text, and a button per token that adds it.
+                            if root.rule-open && root.form.kind == 5: VerticalLayout {
+                                spacing: 8px;
+
+                                Field {
+                                    label: @tr("Template");
+                                    value: root.form.text;
+                                    placeholder: "{name}-{n:3}";
+                                    autofocus: true;
+                                    edited(text) => {
+                                        root.form.text = text;
+                                        root.send();
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    alignment: Theme.rtl ? end : start;
+
+                                    for token[i] in ["{name}", "{n}", "{n:3}", "{folder}", "{modified}"]: TokenButton {
+                                        layout-order: Theme.rtl ? -i : 0;
+                                        token: token;
+                                        clicked => {
+                                            root.form.text = root.form.text + token;
+                                            root.send();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Order: by name, date modified or size, and Reverse.
+                            if root.open-rule == -2: VerticalLayout {
+                                spacing: 4px;
+
+                                OptionRow {
+                                    title: @tr("Name");
+                                    detail: @tr("2 before 10");
+                                    on: root.order-by == 0;
+                                    chosen => { root.order-chosen(0, root.order-reverse); }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Date modified");
+                                    detail: @tr("Oldest first");
+                                    on: root.order-by == 1;
+                                    chosen => { root.order-chosen(1, root.order-reverse); }
+                                }
+
+                                OptionRow {
+                                    title: @tr("Size");
+                                    detail: @tr("Smallest first");
+                                    on: root.order-by == 2;
+                                    chosen => { root.order-chosen(2, root.order-reverse); }
+                                }
+
+                                SwitchLine {
+                                    label: @tr("Reverse");
+                                    on: root.order-reverse;
+                                    toggled(on) => { root.order-chosen(root.order-by, on); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // The footer.
+            Rectangle {
+                height: 46px;
+
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+
+                    HorizontalLayout {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        horizontal-stretch: 1;
+                        alignment: Theme.rtl ? end : start;
+
+                        if root.busy: LineText {
+                            layout-order: Theme.rtl ? 0 : 0;
+                            text: root.progress-text;
+                            font-size: 12px;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+
+                        if !root.busy: Text {
+                            layout-order: Theme.rtl ? 2 : 0;
+                            text: root.footer-before;
+                            font-size: 12px;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+
+                        if !root.busy: Text {
+                            layout-order: Theme.rtl ? 1 : 1;
+                            text: root.footer-red;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.danger;
+                            vertical-alignment: center;
+                        }
+
+                        if !root.busy: Text {
+                            layout-order: Theme.rtl ? 0 : 2;
+                            text: root.footer-after;
+                            font-size: 12px;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 1 : 1;
+                        alignment: center;
+
+                        PlainButton {
+                            label: @tr("Cancel");
+                            clicked => { root.cancel-clicked(); }
+                        }
+                    }
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 0 : 2;
+                        alignment: center;
+
+                        PrimaryButton {
+                            label: @tr("Rename");
+                            enabled: root.can-rename && !root.busy;
+                            clicked => { root.rename-clicked(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
