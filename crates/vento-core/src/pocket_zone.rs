@@ -482,6 +482,22 @@ mod tests {
         s.update(&virt(false, false, ON_EDGE), t0);
         s.update(&virt(false, false, ON_EDGE), ms(t0, 300));
         let panel = virt(false, false, Point { x: 400.0, y: 140.0 });
+        // The first sample off the edge only starts the countdown; the
+        // island must still be open once the collapse delay has run out.
         assert_eq!(s.update(&panel, ms(t0, 2000)), Presence::Expanded);
+        assert_eq!(s.update(&panel, ms(t0, 2401)), Presence::Expanded);
+        assert_eq!(s.update(&panel, ms(t0, 5000)), Presence::Expanded);
+    }
+
+    #[test]
+    fn an_empty_island_without_a_push_rect_does_not_stay_open_on_its_panel() {
+        let t0 = Instant::now();
+        let mut s = IslandState::new();
+        s.update(&virt(false, false, ON_EDGE), t0);
+        s.update(&virt(false, false, ON_EDGE), ms(t0, 300));
+        let panel = Point { x: 400.0, y: 140.0 };
+        let plain = inputs(false, false, panel, false);
+        assert_eq!(s.update(&plain, ms(t0, 2000)), Presence::Expanded);
+        assert_eq!(s.update(&plain, ms(t0, 2401)), Presence::Hidden);
     }
 }
