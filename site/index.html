@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vento: a wheel of quick actions under your drag</title>
+<meta name="description" content="Start dragging a file, press Ctrl, and a small wheel of actions opens under the pointer. Free and open source for macOS.">
+<meta property="og:title" content="Vento">
+<meta property="og:description" content="A wheel of quick actions that opens right under the file you are dragging.">
+<meta property="og:image" content="assets/social-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="in">
+  <nav class="k">
+    <a class="brand" href="./"><img src="assets/icon.png" alt="">vento/</a>
+    <span class="links"><a href="#actions">actions</a><a href="#install">install</a><a class="wide" href="https://github.com/fathialamre/vento/blob/main/CHANGELOG.md">changelog</a><a href="https://github.com/fathialamre/vento">github ↗</a></span>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-eq">
+      <span class="key"><i class="ti ti-hand-grab"></i> drag</span><span class="op">+</span>
+      <span class="key o">⌃ ctrl</span><span class="op">=</span>
+      <span class="key"><i class="ti ti-hexagons"></i> wheel</span>
+    </div>
+    <h1 class="disp">Your drag just got a menu.</h1>
+    <p class="lead">Start dragging a file, press Ctrl, and a small wheel opens under the pointer. Let go over an action. Let go anywhere else and the drop works as it always did.</p>
+    <div class="cta">
+      <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download for Mac</span></a>
+      <span class="k req">macOS 13+ · Apple Silicon · free and open source</span>
+    </div>
+  </div>
+
+  <div class="scene big" data-scene="copy" role="img" aria-label="Dragging Quarterly Report.pdf in Finder, pressing Ctrl to open the Vento wheel, and releasing on Copy"></div>
+</header>
+
+<main>
+<section id="actions"><div class="in">
+  <p class="eyebrow">// actions</p>
+  <h2 class="disp">One wheel, many places to drop.</h2>
+  <p class="lead">Each action lives on the wheel. Pick the ones you use, hide the rest.</p>
+
+  <div class="row">
+    <div class="txt"><span class="key sm">pocket</span><h3>Park it for later</h3><p>Release a file on Pocket and it waits in the island at the top of the screen. Drag it out when you reach the folder.</p></div>
+    <div class="scene" data-scene="pocket" role="img" aria-label="Releasing Notes.txt on Pocket; the island at the top of the screen opens and holds the file"></div>
+  </div>
+
+  <div class="row flip">
+    <div class="txt"><span class="key sm">move</span><h3>Your folders, one hold away</h3><p>Hold on Move and a ring of the folders you use opens. Release on one. Changed your mind? Undo.</p></div>
+    <div class="scene" data-scene="move" role="img" aria-label="Holding on Move until a ring of folders opens, then releasing on Projects; a notice offers Undo"></div>
+  </div>
+
+  <div class="row">
+    <div class="txt"><span class="key sm">archive</span><h3>Zip and unzip in one move</h3><p>Release a folder to make a zip next to it. Release a zip, rar or 7z to extract it, and a locked one asks for the password.</p></div>
+    <div class="scene" data-scene="archive" role="img" aria-label="Releasing the Photos folder on Compress to make Photos.zip, then releasing the zip on Extract"></div>
+  </div>
+
+  <div class="row flip">
+    <div class="txt"><span class="key sm">info</span><h3>What's in there?</h3><p>Size, file count and the biggest files, without opening Get Info. Everything else is one click away in the menu bar.</p></div>
+    <div class="plate pair">
+      <img src="assets/info.png" alt="Info window for the Photos folder: 15.7 MB, 5 files, with the three biggest files listed">
+      <img src="assets/menu.png" alt="Vento menu with Copy from screen, clipboard history, the Pocket, Keep Awake and Settings">
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><i class="ti ti-photo"></i><b>Convert</b><span>Turn images into JPEG, PNG, HEIC, WebP and more.</span></div>
+    <div class="card"><i class="ti ti-text-scan-2"></i><b>Copy from screen</b><span>Grab text from anything you can see.</span></div>
+    <div class="card"><i class="ti ti-clipboard-list"></i><b>Clipboard history</b><span>What you copied, a shortcut away.</span></div>
+    <div class="card"><i class="ti ti-file-type-pdf"></i><b>PDF pages</b><span>Merge, reorder, rotate, split and extract pages.</span></div>
+    <div class="card"><i class="ti ti-share"></i><b>Share</b><span>Send a file without opening an app.</span></div>
+    <div class="card"><i class="ti ti-terminal-2"></i><b>Terminal</b><span>Open a Terminal right in that folder.</span></div>
+    <div class="card"><i class="ti ti-screenshot"></i><b>Screenshots</b><span>New shots land right in the island.</span></div>
+    <div class="card"><i class="ti ti-coffee"></i><b>Keep Awake</b><span>Keep the Mac awake, on a timer.</span></div>
+  </div>
+</div></section>
+
+<section><div class="in">
+  <p class="eyebrow">// settings</p>
+  <h2 class="disp">Make the wheel yours.</h2>
+  <p class="lead">Order the actions, choose your folders, set the hotkeys. One settings window, no account.</p>
+  <div class="plate settings">
+    <img src="assets/settings-wheel.png" alt="Wheel settings: layout and the list of actions">
+    <img src="assets/settings-move.png" alt="Move settings: pinned and recent folders">
+  </div>
+  <div class="priv"><span><i class="ti ti-check"></i>no Accessibility</span><span><i class="ti ti-check"></i>no Input Monitoring</span><span><i class="ti ti-check"></i>no account</span><span><i class="ti ti-check"></i>open source</span></div>
+</div></section>
+
+<section id="install"><div class="in">
+  <p class="eyebrow">// install</p>
+  <h2 class="disp">First launch takes a minute, once.</h2>
+  <p class="lead">Vento isn't signed by Apple yet, so macOS warns you the first time you open it. Here's the way past it.</p>
+  <div class="steps">
+    <div><p class="k"><span class="key sm">1</span>&nbsp; Open Vento, then click Done</p><div class="plate"><img src="assets/gatekeeper-15-blocked.png" alt="macOS dialog saying Vento could not be verified"></div></div>
+    <div><p class="k"><span class="key sm">2</span>&nbsp; Privacy and Security → Open Anyway</p><div class="plate"><img src="assets/gatekeeper-15-open-anyway.png" alt="Privacy and Security settings: Vento was blocked, with an Open Anyway button"></div></div>
+  </div>
+  <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">On macOS 13 or 14: Control-click Vento.app in Applications, choose Open, then Open again.</p>
+  <div class="after">
+    <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download for Mac</span></a>
+    <span class="k req" style="font-size:13px;color:var(--muted)">On an Intel Mac? <a href="https://github.com/fathialamre/vento/blob/main/BUILDING.md">Build it yourself</a>.</span>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="in k">
+  <span>vento/ · free and open source</span>
+  <span><a href="https://github.com/fathialamre/vento">github</a><a href="https://github.com/fathialamre/vento/blob/main/CHANGELOG.md">changelog</a><a href="https://github.com/fathialamre/vento/issues">report an issue</a></span>
+</div></footer>
+
+<script src="scenes.js"></script>
+<script>
+// Point the download buttons at the macOS zip of the latest release.
+fetch('https://api.github.com/repos/fathialamre/vento/releases/latest')
+  .then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(rel => {
+    const zip = (rel.assets || []).find(a => /macos-arm64\.zip$/.test(a.name));
+    if (!zip) return;
+    document.querySelectorAll('[data-download]').forEach(a => {
+      a.href = zip.browser_download_url;
+      a.querySelector('span').textContent = zip.name;
+    });
+  })
+  .catch(() => {});
+</script>
+</body>
+</html>
