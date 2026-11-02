@@ -1627,6 +1627,10 @@ impl PocketController {
         self.window.set_top_h(f.top_h as f32);
         self.window.set_virtual_style(f.virtual_island);
         self.window.set_lip(f.lip);
+        // A push under way ends with the virtual island.
+        if !f.virtual_island && self.window.get_push_progress() != 0.0 {
+            self.window.set_push_progress(0.0);
+        }
         self.place_window(&f);
     }
 
@@ -1882,7 +1886,11 @@ impl PocketController {
     /// island moves, changes form or rests in sight at once. The desktop's
     /// room in its top bar is kept only for an island that is not the
     /// virtual one.
+    /// An island that is not the virtual one before or after is left as it
+    /// is.
     pub fn island_settings_changed(&self) {
+        let is_virtual = |c: &Self| c.home.get().is_some_and(|h| c.virtual_spot(&h).is_some());
+        let was_virtual = is_virtual(self);
         let glass = {
             let s = self.settings.borrow();
             self.mode.set(s.island_mode);
@@ -1890,15 +1898,22 @@ impl PocketController {
             s.island_glass
         };
         self.window.set_glass(glass_alpha(glass));
-        // The place may have moved under another part of the front window.
-        self.front_checked.set(None);
-        if let Some(home) = self.home.get() {
-            self.keep_slot(self.virtual_spot(&home).is_none());
+        let now_virtual = is_virtual(self);
+        if !was_virtual && !now_virtual {
+            return;
         }
+        self.keep_slot(!now_virtual);
         self.rehome();
-        if let Some(home) = self.home.get() {
-            self.apply_home(&home);
+        let Some(home) = self.home.get() else {
+            return;
+        };
+        // The place may have moved under another part of the front window:
+        // ask now, so the island doesn't show a stale form for a sample.
+        if now_virtual {
+            self.front_checked.set(None);
+            self.check_front(&home, Instant::now());
         }
+        self.apply_home(&home);
         if self.warm.get() {
             let after = self.settle_now();
             debug!("pocket island settings changed: {after:?}");

@@ -246,8 +246,10 @@ pub(super) fn bar_under(front: Option<Rect>, home: &IslandHome, mid_x: f64) -> b
 
 /// The virtual island: the pill [`VIRTUAL_GAP`] under the screen's top
 /// (less under a top bar), or the lip hanging from the bar's lower edge
-/// over a window's bar. It is centred on `spot.place`; expanded, it grows
-/// from the pill's top, [`ISLAND_W`] wide as in every mode. Pushing against
+/// over a window's bar. It is centred on `spot.place`; expanded, it is
+/// [`ISLAND_W`] wide as in every mode. Like the notch island, its window
+/// starts at the bar's edge, with the gap as its top height, so the lip and
+/// the pill both lie in it. Pushing against
 /// the top edge near the pill opens it, so the push zone is a thin strip
 /// along the screen's top, and the zone for a drag is the pill and the lip
 /// grown by [`ZONE_MARGIN`] on the left, right and bottom.
@@ -293,14 +295,14 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
         },
         notch_style: false,
         notch_w: 0.0,
-        top_h: 0.0,
+        top_h: gap,
         collapsed,
         zone,
         expanded: Rect {
             x: mid - w / 2.0,
-            y: pill.y,
+            y: bar,
             w,
-            h: panel_h(panel),
+            h: gap + panel_h(panel),
         },
     }
 }
@@ -795,7 +797,30 @@ mod tests {
         assert!(f.virtual_island && !f.corner && !f.lip);
         assert_eq!(f.collapsed, rect(580.0, 6.0, 120.0, 28.0));
         assert_eq!(f.push, rect(540.0, 0.0, 200.0, 2.0));
-        assert_eq!(f.expanded, rect(360.0, 6.0, 560.0, 8.0 + 2.0 * 92.0 + 44.0));
+        assert_eq!(
+            f.expanded,
+            rect(360.0, 0.0, 560.0, 6.0 + 8.0 + 2.0 * 92.0 + 44.0)
+        );
+        assert_eq!(f.top_h, 6.0);
+    }
+
+    #[test]
+    fn the_virtual_window_holds_the_lip_and_the_pill() {
+        for home in [by_the_clock(false), plain(24.0)] {
+            for bar in [false, true] {
+                let f = virtual_frames(&home, spot(IslandPlace::Centre, bar), TWO);
+                let window = window_frame(&f, f.expanded.h - f.top_h);
+                let lip = virtual_frames(&home, spot(IslandPlace::Centre, true), TWO).collapsed;
+                let pill = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO).collapsed;
+                for shape in [lip, pill] {
+                    assert_eq!(union(window, shape), window, "{shape:?} outside {window:?}");
+                }
+                assert_eq!(window, f.expanded);
+            }
+        }
+        let f = virtual_frames(&plain(24.0), spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(f.expanded.y, 24.0);
+        assert_eq!(f.top_h, 4.0);
     }
 
     #[test]
