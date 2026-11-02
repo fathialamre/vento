@@ -121,11 +121,11 @@ pocket_view = "kinds"
 island_mode = "virtual"
 
 # Island: where the virtual island sits along the top edge: "left", "centre" or
-# "right"
+# "right" ("center" is read as "centre")
 island_place = "centre"
 
-# Island: how see-through the virtual island is, in percent. Other values are
-# rounded to the nearest 5 and kept between 10 and 100
+# Island: how solid the virtual island is while resting, in percent (100 =
+# solid). Other values are rounded to the nearest 5 and kept between 10 and 100
 island_glass = 55
 
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta

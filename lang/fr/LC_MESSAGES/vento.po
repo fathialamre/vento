@@ -647,11 +647,11 @@ msgstr "Date de modification"
 msgid "Delete"
 msgstr "Supprimer"
 
-#: crates/vento-core/src/welcome.rs:86
+#: crates/vento-core/src/welcome.rs:91
 msgid "Designer"
 msgstr "Designer"
 
-#: crates/vento-core/src/welcome.rs:85
+#: crates/vento-core/src/welcome.rs:90
 msgid "Developer"
 msgstr "Développeur"
 
@@ -735,11 +735,11 @@ msgstr "Vide"
 msgid "Empty folder"
 msgstr "Dossier vide"
 
-#: crates/vento-core/src/welcome.rs:84
+#: crates/vento-core/src/welcome.rs:89
 msgid "Essentials"
 msgstr "L’essentiel"
 
-#: crates/vento-core/src/welcome.rs:95
+#: crates/vento-core/src/welcome.rs:100
 msgid "Every action"
 msgstr "Toutes les actions"
 
@@ -753,7 +753,7 @@ msgid_plural "Every {n} pages"
 msgstr[0] "Chaque page"
 msgstr[1] "Toutes les {n} pages"
 
-#: crates/vento-core/src/welcome.rs:87
+#: crates/vento-core/src/welcome.rs:92
 msgid "Everything"
 msgstr "Tout"
 
@@ -892,8 +892,8 @@ msgid "How long to rest on Move, Copy to or Convert before its ring opens"
 msgstr "Durée d’arrêt sur Déplacer, Copier vers ou Convertir avant l’ouverture de l’anneau"
 
 #: crates/vento/ui/settings_pages.slint:799
-msgid "How see-through the island is while resting"
-msgstr "La transparence de l’îlot au repos"
+msgid "How solid the island is while resting"
+msgstr "L’opacité de l’îlot au repos"
 
 #: crates/vento/ui/settings_pages.slint:463
 msgid "How the actions sit around the pointer"
@@ -2417,7 +2417,7 @@ msgstr "erreur interne"
 msgid "interrupted"
 msgstr "interrompu"
 
-#: crates/vento-core/src/settings.rs:835
+#: crates/vento-core/src/settings.rs:840
 msgid "invalid shortcut \"{spec}\""
 msgstr "raccourci non valide « {spec} »"
 

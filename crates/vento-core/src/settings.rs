@@ -111,8 +111,9 @@ impl IslandMode {
 pub enum IslandPlace {
     /// Against the left side.
     Left,
-    /// In the middle.
+    /// In the middle; `"center"` is read as well.
     #[default]
+    #[serde(alias = "center")]
     Centre,
     /// Against the right side.
     Right,
@@ -123,8 +124,8 @@ impl IslandPlace {
     pub const ALL: [Self; 3] = [Self::Left, Self::Centre, Self::Right];
 }
 
-/// Bounds, step, default and presets of [`Settings::island_glass`], how see-
-/// through the virtual island is, in percent.
+/// Bounds, step, default and presets of [`Settings::island_glass`], how solid
+/// the virtual island is, in percent (100 = solid).
 pub const GLASS_MIN: u32 = 10;
 pub const GLASS_MAX: u32 = 100;
 pub const GLASS_STEP: u32 = 5;
@@ -180,8 +181,8 @@ pub struct Settings {
     pub island_mode: IslandMode,
     /// Where the virtual island sits along the top edge.
     pub island_place: IslandPlace,
-    /// How see-through the virtual island is, in percent, from [`GLASS_MIN`]
-    /// to [`GLASS_MAX`] in steps of [`GLASS_STEP`].
+    /// How solid the virtual island is while resting, in percent (100 =
+    /// solid), from [`GLASS_MIN`] to [`GLASS_MAX`] in steps of [`GLASS_STEP`].
     pub island_glass: u32,
     /// Whether the island lists the screenshots taken in the last week.
     pub screenshots: bool,
@@ -1281,6 +1282,18 @@ mod tests {
         let s = Settings::try_load(&dir.path().join("nope.toml")).unwrap();
         assert_eq!(s.island_mode, IslandMode::Classic);
         assert_eq!(Settings::default().island_mode, IslandMode::Classic);
+    }
+
+    #[test]
+    fn center_is_read_as_centre() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "island_place = \"center\"\n").unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_place, IslandPlace::Centre);
+        s.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("island_place = \"centre\""), "{text}");
     }
 
     #[test]

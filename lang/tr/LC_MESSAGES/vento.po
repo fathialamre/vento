@@ -647,11 +647,11 @@ msgstr "Değiştirilme tarihi"
 msgid "Delete"
 msgstr "Sil"
 
-#: crates/vento-core/src/welcome.rs:86
+#: crates/vento-core/src/welcome.rs:91
 msgid "Designer"
 msgstr "Tasarımcı"
 
-#: crates/vento-core/src/welcome.rs:85
+#: crates/vento-core/src/welcome.rs:90
 msgid "Developer"
 msgstr "Geliştirici"
 
@@ -735,11 +735,11 @@ msgstr "Boş"
 msgid "Empty folder"
 msgstr "Boş klasör"
 
-#: crates/vento-core/src/welcome.rs:84
+#: crates/vento-core/src/welcome.rs:89
 msgid "Essentials"
 msgstr "Temel"
 
-#: crates/vento-core/src/welcome.rs:95
+#: crates/vento-core/src/welcome.rs:100
 msgid "Every action"
 msgstr "Tüm eylemler"
 
@@ -753,7 +753,7 @@ msgid_plural "Every {n} pages"
 msgstr[0] "Her {n} sayfada"
 msgstr[1] "Her {n} sayfada"
 
-#: crates/vento-core/src/welcome.rs:87
+#: crates/vento-core/src/welcome.rs:92
 msgid "Everything"
 msgstr "Her şey"
 
@@ -892,8 +892,8 @@ msgid "How long to rest on Move, Copy to or Convert before its ring opens"
 msgstr "Halkanın açılması için Taşı, Şuraya kopyala ya da Dönüştür'ün üzerinde ne kadar bekleneceği"
 
 #: crates/vento/ui/settings_pages.slint:799
-msgid "How see-through the island is while resting"
-msgstr "Ada boştayken ne kadar saydam görünür"
+msgid "How solid the island is while resting"
+msgstr "Ada boştayken ne kadar opak görünür"
 
 #: crates/vento/ui/settings_pages.slint:463
 msgid "How the actions sit around the pointer"
@@ -2417,7 +2417,7 @@ msgstr "iç hata"
 msgid "interrupted"
 msgstr "kesildi"
 
-#: crates/vento-core/src/settings.rs:835
+#: crates/vento-core/src/settings.rs:840
 msgid "invalid shortcut \"{spec}\""
 msgstr "geçersiz kısayol \"{spec}\""
 

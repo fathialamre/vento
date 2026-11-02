@@ -3429,6 +3429,8 @@ export component PocketIsland inherits Window {
     // when it is full. Nothing shows at 0.
     if root.resting: Rectangle {
         width: root.push-progress * 120px;
+        // Fills smoothly between the 100 ms samples.
+        animate width { duration: 100ms; easing: linear; }
         height: 3px;
         x: (root.width - self.width) / 2;
         y: island.y + island.height + 2px;

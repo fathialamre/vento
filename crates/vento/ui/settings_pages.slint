@@ -751,7 +751,7 @@ export component PocketPage inherits VerticalLayout {
     in property <string> classic-label;
     // Where the virtual island sits: 0 Left, 1 Centre, 2 Right.
     in property <int> island-place;
-    // How see-through it is while resting, in percent.
+    // How solid it is while resting, in percent (100 = solid).
     in property <int> island-glass;
     callback recording-started();
     callback recording-cancelled();
@@ -796,7 +796,7 @@ export component PocketPage inherits VerticalLayout {
 
             SettingRow {
                 label: @tr("Glass");
-                description: @tr("How see-through the island is while resting");
+                description: @tr("How solid the island is while resting");
                 padding-bottom: 6px;
 
                 Text {
