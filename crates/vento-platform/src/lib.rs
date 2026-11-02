@@ -418,6 +418,12 @@ pub trait Platform {
     fn reserve_island_slot(&self, on: bool) {
         let _ = on;
     }
+    /// Whether the desktop has kept room for the island in its top bar at
+    /// any time (GNOME's, through the Vento extension), even if given back
+    /// since. Main thread only.
+    fn island_slot_seen(&self) -> bool {
+        false
+    }
     /// Float this window above the menu bar on every Space (including
     /// full-screen ones), out of the window cycle and without a shadow.
     /// Main thread only.

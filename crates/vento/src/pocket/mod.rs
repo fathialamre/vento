@@ -209,11 +209,17 @@ fn wing_view(pocket_empty: bool, clip_has: bool, shots_has: bool, last: View) ->
     }
 }
 
-/// Whether the island is the virtual one: chosen in the settings, on a
-/// screen with no notch (where the notch island stays), and where the
-/// platform can place it and let clicks through it.
+/// Whether the island is the virtual one: chosen in the settings where it
+/// is offered.
 pub(super) fn virtual_active(mode: IslandMode, home: &IslandHome, supported: bool) -> bool {
-    mode == IslandMode::Virtual && home.notch.is_none() && supported
+    mode == IslandMode::Virtual && virtual_offered(home, supported)
+}
+
+/// Whether the virtual island can be chosen at `home`: on a screen with no
+/// notch (where the notch island stays), and where the platform can place
+/// it and let clicks through it (`supported`).
+pub(crate) fn virtual_offered(home: &IslandHome, supported: bool) -> bool {
+    home.notch.is_none() && supported
 }
 
 /// The window's `glass` for the settings' Glass level, in percent.

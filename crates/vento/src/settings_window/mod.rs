@@ -37,19 +37,19 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS,
-    MOVE_HOLD_STEP_MS, PocketView, Settings, SettingsError, ThemeName, is_reserved_shortcut,
-    move_row, parse_shortcut,
+    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, MAX_MOVE_HOLD_MS,
+    MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView, Settings, SettingsError,
+    ThemeName, clamp_glass, is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_core::update::state::UpdateState;
 use vento_core::update::version::Version;
-use vento_platform::{Platform, TerminalApp};
+use vento_platform::{IslandHome, Platform, TerminalApp};
 
 use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
 use crate::panel::{UpdateView, set_rows, update_view};
-use crate::pocket::{Access, display_name, to_image};
+use crate::pocket::{Access, display_name, to_image, virtual_offered};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
 use crate::wheel::action_icon;
@@ -732,6 +732,26 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
+        window.on_island_mode_chosen(move |i| {
+            if let (Some(controller), Some(mode)) = (this.upgrade(), choice(&IslandMode::ALL, i)) {
+                controller.apply(|s| s.island_mode = mode);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_place_chosen(move |i| {
+            if let (Some(controller), Some(place)) = (this.upgrade(), choice(&IslandPlace::ALL, i))
+            {
+                controller.apply(|s| s.island_place = place);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_glass_changed(move |v| {
+            if let Some(controller) = this.upgrade() {
+                let v = u32::try_from(v).unwrap_or(0);
+                controller.apply(|s| apply_glass(s, v));
+            }
+        });
+        let this = self.this.clone();
         window.on_shake_to_open_toggled(move |on| {
             if let Some(controller) = this.upgrade() {
                 controller.apply(|s| s.shake_to_open = on);
@@ -1232,6 +1252,7 @@ impl SettingsWindowController {
         window.set_remove_after_drop(settings.pocket_remove_after_drop);
         window.set_keep_copies(settings.pocket_keep_copies);
         window.set_pocket_view(choice_index(&PocketView::ALL, settings.pocket_view));
+        self.show_island(&window, &settings);
         window.set_clip_history(settings.clipboard_history);
         window.set_shots_on(settings.screenshots);
         window.set_shot_card_on(settings.screenshot_card);
@@ -1249,6 +1270,23 @@ impl SettingsWindowController {
         window.set_how_to_closed(ModelRc::from(closed.as_slice()));
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+    }
+
+    /// Shows the Pocket page's Island rows, offered where the virtual
+    /// island can be chosen at the island's home. The other island is named
+    /// by where it sits there; GNOME's top bar room counts once the
+    /// extension has kept it, as the virtual island gives it back.
+    fn show_island(&self, window: &SettingsWindow, settings: &Settings) {
+        let home = self.platform.pocket_home();
+        let supported = self.platform.virtual_island_supported();
+        window.set_island_offered(home.is_some_and(|h| virtual_offered(&h, supported)));
+        if let Some(home) = home {
+            let gnome_slot = home.slot.is_some() || self.platform.island_slot_seen();
+            window.set_classic_label(classic_label(&home, gnome_slot).into());
+        }
+        window.set_island_virtual(settings.island_mode == IslandMode::Virtual);
+        window.set_island_place(choice_index(&IslandPlace::ALL, settings.island_place));
+        window.set_island_glass(i32::try_from(settings.island_glass).unwrap_or(0));
     }
 
     /// Shows Keep Awake's times, the time Add adds and what the tile
@@ -1813,6 +1851,26 @@ fn awake_start_index(settings: &Settings) -> i32 {
         .map_or(0, |i| i32::try_from(i + 1).unwrap_or(0))
 }
 
+/// What the Island menu calls the island that is not the virtual one, by
+/// where it sits at `home`: by the taskbar's clock (Windows), in the top
+/// bar where GNOME's keeps room for it (`gnome_slot`), or else a pill at
+/// the top of the screen.
+pub(crate) fn classic_label(home: &IslandHome, gnome_slot: bool) -> String {
+    if home.tray_corner.is_some() {
+        tr("By the clock")
+    } else if gnome_slot {
+        tr("In the top bar")
+    } else {
+        tr("Plain pill")
+    }
+}
+
+/// Sets the Glass level the slider or a preset asks for, `v` percent, kept
+/// within its bounds and on a step.
+fn apply_glass(settings: &mut Settings, v: u32) {
+    settings.island_glass = clamp_glass(v);
+}
+
 /// Moves the hold delay `steps` steps up (or down, when negative), within
 /// its bounds.
 fn step_hold(settings: &mut Settings, steps: i32) {
@@ -2020,6 +2078,7 @@ fn apply_shortcut(
 mod tests {
     use super::*;
     use vento_core::i18n::with_language;
+    use vento_platform::TrayCorner;
 
     #[test]
     fn page_keys_round_trip() {
@@ -2256,6 +2315,50 @@ mod tests {
         assert_eq!(s.move_hold_ms, MIN_MOVE_HOLD_MS);
         step_hold(&mut s, 20);
         assert_eq!(s.move_hold_ms, MAX_MOVE_HOLD_MS);
+    }
+
+    /// A screen with no notch, no top bar room and no taskbar corner.
+    fn plain_home() -> IslandHome {
+        IslandHome {
+            screen: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 1280.0,
+                h: 800.0,
+            },
+            notch: None,
+            menu_bar_h: 24.0,
+            slot: None,
+            tray_corner: None,
+        }
+    }
+
+    #[test]
+    fn classic_label_names_todays_place() {
+        let windows = IslandHome {
+            tray_corner: Some(TrayCorner {
+                work: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 1280.0,
+                    h: 752.0,
+                },
+                left: false,
+            }),
+            ..plain_home()
+        };
+        assert_eq!(classic_label(&windows, false), "By the clock");
+        assert_eq!(classic_label(&plain_home(), true), "In the top bar");
+        assert_eq!(classic_label(&plain_home(), false), "Plain pill");
+    }
+
+    #[test]
+    fn glass_presets_and_slider_store_stepped_values() {
+        let mut s = Settings::default();
+        apply_glass(&mut s, 58);
+        assert_eq!(s.island_glass, 60);
+        apply_glass(&mut s, 3);
+        assert_eq!(s.island_glass, 10);
     }
 
     #[test]

@@ -314,6 +314,10 @@ impl Platform for LinuxPlatform {
         self.shell.reserve_island(on);
     }
 
+    fn island_slot_seen(&self) -> bool {
+        self.shell.island_slot_seen()
+    }
+
     /// Override-redirect, which on X11 does all three: above everything,
     /// never focused, kept where vento puts it.
     fn make_overlay(

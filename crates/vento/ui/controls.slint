@@ -664,6 +664,122 @@ export component Stepper inherits HorizontalLayout {
     }
 }
 
+// A value on a track, `minimum` at the start of the line and `maximum` at
+// its end (the left and the right, the other way round in a right-to-left
+// language), in steps of `step`. It shows `value` as given and asks for
+// another one, a whole step, when clicked or dragged, or with the arrow
+// keys once clicked; whoever uses it decides.
+export component Slider inherits Rectangle {
+    in property <float> minimum;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <float> value;
+    in property <string> label;
+    callback changed(float);
+
+    property <length> knob: 14px;
+    property <float> span: max(1, root.maximum - root.minimum);
+    // How far along the line `value` is, 0 to 1, and so from the left.
+    property <float> along: clamp((root.value - root.minimum) / root.span, 0, 1);
+    property <float> from-left: Theme.rtl ? 1 - root.along : root.along;
+
+    // Asks for `v`, on a step and within the bounds, unless shown already.
+    function ask(v: float) {
+        let stepped = clamp(
+            root.minimum + round((v - root.minimum) / root.step) * root.step,
+            root.minimum, root.maximum);
+        if stepped != root.value {
+            root.changed(stepped);
+        }
+    }
+
+    // The value under the pointer at `x`, from the left.
+    function value-at(x: length) -> float {
+        let f = clamp((x - root.knob / 2) / max(1px, root.width - root.knob), 0, 1);
+        return root.minimum + (Theme.rtl ? 1 - f : f) * root.span;
+    }
+
+    height: 20px;
+    accessible-role: slider;
+    accessible-label: self.label;
+    accessible-value: round(self.value);
+    accessible-value-minimum: self.minimum;
+    accessible-value-maximum: self.maximum;
+    accessible-value-step: self.step;
+    accessible-action-increment => { root.ask(root.value + root.step); }
+    accessible-action-decrement => { root.ask(root.value - root.step); }
+    accessible-action-set-value(v) => {
+        if v.is-float() {
+            root.ask(v.to-float());
+        }
+    }
+
+    // The track, filled up to the knob from the start of the line.
+    Rectangle {
+        x: root.knob / 2;
+        y: (root.height - self.height) / 2;
+        width: root.width - root.knob;
+        height: 4px;
+        border-radius: self.height / 2;
+        background: Theme.switch-off;
+
+        Rectangle {
+            x: Theme.rtl ? root.from-left * parent.width : 0;
+            y: 0;
+            width: (Theme.rtl ? 1 - root.from-left : root.from-left) * parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+
+    Rectangle {
+        x: root.from-left * (root.width - root.knob);
+        y: (root.height - self.height) / 2;
+        width: root.knob;
+        height: root.knob;
+        border-radius: self.height / 2;
+        background: white;
+        border-width: scope.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+        drop-shadow-blur: 2px;
+        drop-shadow-color: #00000040;
+    }
+
+    scope := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        // The arrow keys move the knob the way they point.
+        key-pressed(event) => {
+            if event.text == Key.RightArrow {
+                root.ask(root.value + (Theme.rtl ? -root.step : root.step));
+                return accept;
+            }
+            if event.text == Key.LeftArrow {
+                root.ask(root.value + (Theme.rtl ? root.step : -root.step));
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea {
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                scope.focus();
+                root.ask(root.value-at(self.mouse-x));
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.ask(root.value-at(self.mouse-x));
+            }
+        }
+    }
+}
+
 // A field showing a keyboard shortcut. Clicking it starts recording: it
 // then reads "Press a shortcut…" and takes the keyboard, so no other key
 // handling in the panel reacts; Esc, a second click or losing focus

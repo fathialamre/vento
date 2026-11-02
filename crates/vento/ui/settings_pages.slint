@@ -6,7 +6,8 @@ import { LineText, Theme, ThemeColors } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
     PanelIcons, RowSeparator, Switch, Segmented, MenuField, TextButton, IconButton, Stepper,
-    ShortcutField, ReorderRow, DragGrip, WrapText, SettingRow, RowBody, RowError, RowButton,
+    ShortcutField, ReorderRow, DragGrip, WrapText, SettingRow, RowBody, RowError, RowButton, Chip,
+    Slider,
 } from "controls.slint";
 
 // One action in the Wheel page's list, shown on the wheel or not.
@@ -742,11 +743,123 @@ export component PocketPage inherits VerticalLayout {
     in property <bool> keep-copies;
     // What the Pocket view opens on: 0 its kinds, 1 the list.
     in property <int> pocket-view;
+    // Whether the virtual island can be chosen on the island's screen (it
+    // has no notch, and the platform can place it), and whether it is.
+    in property <bool> island-offered;
+    in property <bool> island-virtual;
+    // What the other island is called there: where it sits today.
+    in property <string> classic-label;
+    // Where the virtual island sits: 0 Left, 1 Centre, 2 Right.
+    in property <int> island-place;
+    // How see-through it is while resting, in percent.
+    in property <int> island-glass;
     callback recording-started();
     callback recording-cancelled();
     callback remove-after-drop-toggled(bool);
     callback keep-copies-toggled(bool);
     callback pocket-view-chosen(int);
+    // 0 the virtual island, 1 the other one.
+    callback island-mode-chosen(int);
+    callback island-place-chosen(int);
+    callback island-glass-changed(int);
+
+    if root.island-offered: VerticalLayout {
+        SettingRow {
+            label: @tr("Island");
+            description: @tr("Where the Pocket, Clipboard and Screenshots live on this screen");
+
+            MenuField {
+                width: 190px;
+                label: @tr("Island");
+                items: [@tr("Virtual island"), root.classic-label];
+                current: root.island-virtual ? 0 : 1;
+                chosen(i) => { root.island-mode-chosen(i); }
+            }
+        }
+
+        if root.island-virtual: VerticalLayout {
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Place");
+                description: @tr("Along the top edge; the corners stay free");
+
+                Segmented {
+                    width: 210px;
+                    items: [@tr("Left"), @tr("Centre"), @tr("Right")];
+                    current: root.island-place;
+                    chosen(i) => { root.island-place-chosen(i); }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Glass");
+                description: @tr("How see-through the island is while resting");
+                padding-bottom: 6px;
+
+                Text {
+                    min-width: 40px;
+                    text: @tr("{}%", root.island-glass);
+                    font-size: 13px;
+                    color: Theme.text;
+                    horizontal-alignment: Theme.rtl ? left : right;
+                    vertical-alignment: center;
+                }
+            }
+
+            RowBody {
+                HorizontalLayout {
+                    spacing: 6px;
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 4 : 0;
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        // The bounds and step of the settings' Glass, and
+                        // its presets below (`GLASS_*` in vento-core).
+                        Slider {
+                            minimum: 10;
+                            maximum: 100;
+                            step: 5;
+                            value: root.island-glass;
+                            label: @tr("Glass");
+                            changed(v) => { root.island-glass-changed(round(v)); }
+                        }
+                    }
+
+                    // The presets, from the most see-through.
+                    Chip {
+                        layout-order: Theme.rtl ? 3 : 0;
+                        width: 64px;
+                        label: @tr("Ghost");
+                        chosen: root.island-glass == 25;
+                        clicked => { root.island-glass-changed(25); }
+                    }
+
+                    Chip {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        width: 64px;
+                        label: @tr("Glass");
+                        chosen: root.island-glass == 55;
+                        clicked => { root.island-glass-changed(55); }
+                    }
+
+                    Chip {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        width: 64px;
+                        label: @tr("Solid");
+                        chosen: root.island-glass == 100;
+                        clicked => { root.island-glass-changed(100); }
+                    }
+                }
+            }
+        }
+
+        RowSeparator { }
+    }
 
     SettingRow {
         label: @tr("Shortcut");

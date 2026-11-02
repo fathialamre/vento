@@ -92,6 +92,14 @@ export component SettingsWindow inherits Window {
     in property <int> wheel-layout;
     // What the Pocket view opens on: 0 its kinds, 1 the list.
     in property <int> pocket-view;
+    // The Pocket page's Island rows: shown where the virtual island can be
+    // chosen; whether it is, what the other island is called, and the
+    // virtual one's place (0 Left, 1 Centre, 2 Right) and Glass in percent.
+    in property <bool> island-offered;
+    in property <bool> island-virtual;
+    in property <string> classic-label;
+    in property <int> island-place;
+    in property <int> island-glass;
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
@@ -188,6 +196,10 @@ export component SettingsWindow inherits Window {
     callback theme-chosen(int);
     callback layout-chosen(int);
     callback pocket-view-chosen(int);
+    // 0 the virtual island, 1 the other one.
+    callback island-mode-chosen(int);
+    callback island-place-chosen(int);
+    callback island-glass-changed(int);
     callback action-toggled(int, bool);
     // A row of the Wheel page's list dragged from one place to another.
     callback action-moved(int, int);
@@ -459,11 +471,19 @@ export component SettingsWindow inherits Window {
                                 remove-after-drop: root.remove-after-drop;
                                 keep-copies: root.keep-copies;
                                 pocket-view: root.pocket-view;
+                                island-offered: root.island-offered;
+                                island-virtual: root.island-virtual;
+                                classic-label: root.classic-label;
+                                island-place: root.island-place;
+                                island-glass: root.island-glass;
                                 recording-started => { root.shortcut-recording-started(); }
                                 recording-cancelled => { root.stop-recording(); }
                                 remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
                                 keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
                                 pocket-view-chosen(i) => { root.pocket-view-chosen(i); }
+                                island-mode-chosen(i) => { root.island-mode-chosen(i); }
+                                island-place-chosen(i) => { root.island-place-chosen(i); }
+                                island-glass-changed(v) => { root.island-glass-changed(v); }
                             }
                             if root.page-id == 4: ClipboardPage {
                                 history: root.clip-history;
