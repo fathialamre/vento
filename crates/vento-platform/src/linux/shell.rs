@@ -410,8 +410,7 @@ struct Latest {
     monitors_serial: Option<u32>,
     /// The room in the top bar for the Pocket island, read with the monitors.
     island_slot: Option<Rect>,
-    /// Whether the extension has ever kept that room, so can host the
-    /// island on Wayland.
+    /// Whether the extension has ever kept that room.
     island_slot_seen: bool,
     /// Whether the room was given back ([`Shell::reserve_island`] with
     /// false): asked for again with the monitors unless so.
