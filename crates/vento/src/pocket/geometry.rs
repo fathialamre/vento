@@ -234,11 +234,13 @@ pub(super) fn virtual_mid_x(home: &IslandHome, place: IslandPlace) -> f64 {
 }
 
 /// Whether the front window has a bar under the island: its frame's top is
-/// within [`BAR_TOLERANCE`] of the bar's bottom (or the screen's top) and
-/// it spans the pill's x range around `mid_x`.
+/// within [`BAR_TOLERANCE`] of the bar's bottom or of the screen's top (a
+/// fullscreen video, game or slide show under a menu bar, GNOME's top bar or
+/// a top taskbar) and it spans the pill's x range around `mid_x`.
 pub(super) fn bar_under(front: Option<Rect>, home: &IslandHome, mid_x: f64) -> bool {
     front.is_some_and(|f| {
-        (f.y - bar_bottom(home)).abs() <= BAR_TOLERANCE
+        ((f.y - bar_bottom(home)).abs() <= BAR_TOLERANCE
+            || (f.y - home.screen.y).abs() <= BAR_TOLERANCE)
             && f.x <= mid_x - PILL_W / 2.0
             && f.x + f.w >= mid_x + PILL_W / 2.0
     })
@@ -257,7 +259,7 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
     let screen = home.screen;
     let bar = bar_bottom(home);
     let mid = virtual_mid_x(home, spot.place);
-    let gap = if bar == screen.y {
+    let gap = if (bar - screen.y).abs() < 0.5 {
         VIRTUAL_GAP
     } else {
         VIRTUAL_GAP_UNDER_BAR
@@ -902,5 +904,57 @@ mod tests {
     fn fullscreen_front_window_counts_as_bar_under() {
         let home = by_the_clock(false);
         assert!(bar_under(Some(home.screen), &home, 640.0));
+    }
+
+    #[test]
+    fn fullscreen_under_a_top_bar_counts_as_bar_under() {
+        // A Mac menu bar: fullscreen video, a game or slides.
+        let home = plain(24.0);
+        assert!(bar_under(Some(home.screen), &home, 720.0));
+        // GNOME's 32-px top bar.
+        let home = plain(32.0);
+        assert!(bar_under(Some(home.screen), &home, 720.0));
+        // A normal window starting at the bar's bottom still counts.
+        let home = plain(24.0);
+        assert!(bar_under(
+            Some(rect(200.0, 24.0, 1000.0, 600.0)),
+            &home,
+            720.0
+        ));
+        // Between the screen's top and the bar's bottom, past the tolerance
+        // of both, it does not.
+        assert!(!bar_under(
+            Some(rect(200.0, 12.0, 1000.0, 600.0)),
+            &home,
+            720.0
+        ));
+        // A fullscreen window off the pill's span does not either.
+        assert!(!bar_under(Some(rect(0.0, 0.0, 600.0, 900.0)), &home, 720.0));
+    }
+
+    #[test]
+    fn under_a_top_taskbar_the_island_hangs_from_the_work_area() {
+        // Windows with the taskbar along the top: the work area starts at 48.
+        let home = IslandHome {
+            tray_corner: Some(TrayCorner {
+                work: rect(0.0, 48.0, 1280.0, 752.0),
+                left: false,
+            }),
+            screen: rect(0.0, 0.0, 1280.0, 800.0),
+            ..plain(0.0)
+        };
+        assert_eq!(bar_bottom(&home), 48.0);
+        let f = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(f.collapsed, rect(580.0, 52.0, 120.0, 28.0));
+        let f = virtual_frames(&home, spot(IslandPlace::Centre, true), TWO);
+        assert_eq!(f.collapsed, rect(598.0, 48.0, 84.0, 6.0));
+    }
+
+    #[test]
+    fn a_bar_a_hair_off_the_screen_top_keeps_the_full_gap() {
+        // A scaled screen can put the bar a fraction off the screen's top.
+        let home = plain(0.2);
+        let f = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(f.collapsed.y, 0.2 + 6.0);
     }
 }
