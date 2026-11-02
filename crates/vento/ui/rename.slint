@@ -280,10 +280,12 @@ component Chip inherits Rectangle {
             vertical-alignment: center;
         }
 
-        // ✕: removes the rule.
+        // ✕: removes the rule. Square, so its hover stays inside the chip's
+        // border with the same 4px gap on every side.
         Rectangle {
             layout-order: Theme.rtl ? 0 : 2;
             width: 16px;
+            height: 16px;
             border-radius: 4px;
             background: remove.has-hover ? Theme.hover : transparent;
             accessible-role: button;
