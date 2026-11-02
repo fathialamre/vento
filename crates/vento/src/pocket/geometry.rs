@@ -1,10 +1,14 @@
 //! Where the island's shapes sit on its screen, and which of them takes the
 //! pointer.
 
+// The virtual island's frames are used once the pocket loop builds them.
+#![allow(dead_code)]
+
 use slint::LogicalPosition;
 use slint::platform::WindowEvent;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket_zone::{IslandInputs, Presence, ZONE_MARGIN};
+use vento_core::settings::IslandPlace;
 use vento_platform::{IslandHome, TrayCorner};
 
 /// Width of each wing beside the notch.
@@ -45,6 +49,24 @@ const DROP_H: f64 = 150.0;
 /// picture and actions, with no bar.
 pub(super) const CARD_H: f64 = 158.0;
 
+/// Room the virtual island keeps free at each end of the top edge, for
+/// whatever lives in the corners.
+const SIDE_KEEP: f64 = 180.0;
+/// Gap between the screen's top and the virtual pill, or between a top bar
+/// and it.
+const VIRTUAL_GAP: f64 = 6.0;
+const VIRTUAL_GAP_UNDER_BAR: f64 = 4.0;
+/// The lip the virtual island rests as over a bar of the front window.
+const LIP_W: f64 = 84.0;
+const LIP_H: f64 = 6.0;
+/// How far the push zone reaches past the pill on each side, and how deep
+/// it is: a thin strip along the screen's top edge.
+const PUSH_PAD: f64 = 40.0;
+const PUSH_DEPTH: f64 = 2.0;
+/// How far the front window's top may be from the bar's bottom and still
+/// count as a bar under the island.
+const BAR_TOLERANCE: f64 = 8.0;
+
 /// A shape no pointer is ever in: it has a negative size.
 pub(super) const NOWHERE: Rect = Rect {
     x: 0.0,
@@ -72,12 +94,30 @@ pub(super) enum Panel {
     Card,
 }
 
+/// What the virtual island needs to know besides its home: where on the top
+/// edge it sits, and whether the front window has a bar under it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct VirtualSpot {
+    pub(super) place: IslandPlace,
+    /// The front window's own bar lies along the island's place, so the
+    /// island rests as a lip instead of a pill.
+    pub(super) bar_under: bool,
+}
+
 /// The island's rects for one home, in logical top-left global coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Frames {
     /// The island lives in the corner by the taskbar's clock and grows up
     /// from there.
     pub(super) corner: bool,
+    /// The virtual island: a pill at the top that rests visible, opens when
+    /// pushed against the screen's top edge and is not tied to a notch.
+    pub(super) virtual_island: bool,
+    /// Its resting form is the lip rather than the pill.
+    pub(super) lip: bool,
+    /// Where pushing the pointer against the top edge opens it; [`NOWHERE`]
+    /// outside the virtual island.
+    pub(super) push: Rect,
     pub(super) notch_style: bool,
     pub(super) notch_w: f64,
     pub(super) top_h: f64,
@@ -155,12 +195,116 @@ pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
     };
     Frames {
         corner: false,
+        virtual_island: false,
+        lip: false,
+        push: NOWHERE,
         notch_style,
         notch_w,
         top_h,
         collapsed,
         zone,
         expanded,
+    }
+}
+
+/// The bottom of the bar the virtual island hangs from: the top of the
+/// taskbar's work area on Windows, else the menu bar's bottom; the screen's
+/// top when there is no bar.
+pub(super) fn bar_bottom(home: &IslandHome) -> f64 {
+    match home.tray_corner {
+        Some(corner) => corner.work.y,
+        None => home.screen.y + home.menu_bar_h,
+    }
+}
+
+/// The x the virtual island is centred on: the screen's middle, or
+/// [`SIDE_KEEP`] in from its left or right end. On a screen too small to
+/// keep both corners free, every place is the middle.
+pub(super) fn virtual_mid_x(home: &IslandHome, place: IslandPlace) -> f64 {
+    let screen = home.screen;
+    let w = ISLAND_W.min(screen.w - 2.0 * SCREEN_MARGIN);
+    let centre = screen.x + screen.w / 2.0;
+    let left = screen.x + SIDE_KEEP + w / 2.0;
+    let right = screen.x + screen.w - SIDE_KEEP - w / 2.0;
+    if left > centre {
+        return centre;
+    }
+    match place {
+        IslandPlace::Left => left,
+        IslandPlace::Centre => centre,
+        IslandPlace::Right => right,
+    }
+}
+
+/// Whether the front window has a bar under the island: its frame's top is
+/// within [`BAR_TOLERANCE`] of the bar's bottom (or the screen's top) and
+/// it spans the pill's x range around `mid_x`.
+pub(super) fn bar_under(front: Option<Rect>, home: &IslandHome, mid_x: f64) -> bool {
+    front.is_some_and(|f| {
+        (f.y - bar_bottom(home)).abs() <= BAR_TOLERANCE
+            && f.x <= mid_x - PILL_W / 2.0
+            && f.x + f.w >= mid_x + PILL_W / 2.0
+    })
+}
+
+/// The virtual island: the pill [`VIRTUAL_GAP`] under the screen's top
+/// (less under a top bar), or the lip hanging from the bar's lower edge
+/// over a window's bar. It is centred on `spot.place`; expanded, it grows
+/// from the pill's top, [`ISLAND_W`] wide as in every mode. Pushing against
+/// the top edge near the pill opens it, so the push zone is a thin strip
+/// along the screen's top, and the zone for a drag is the pill and the lip
+/// grown by [`ZONE_MARGIN`] on the left, right and bottom.
+pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel) -> Frames {
+    let screen = home.screen;
+    let bar = bar_bottom(home);
+    let mid = virtual_mid_x(home, spot.place);
+    let gap = if bar == screen.y {
+        VIRTUAL_GAP
+    } else {
+        VIRTUAL_GAP_UNDER_BAR
+    };
+    let pill = Rect {
+        x: mid - PILL_W / 2.0,
+        y: bar + gap,
+        w: PILL_W,
+        h: PILL_H,
+    };
+    let lip = Rect {
+        x: mid - LIP_W / 2.0,
+        y: bar,
+        w: LIP_W,
+        h: LIP_H,
+    };
+    let collapsed = if spot.bar_under { lip } else { pill };
+    let rest = union(pill, lip);
+    let zone = Rect {
+        x: rest.x - ZONE_MARGIN,
+        y: rest.y,
+        w: rest.w + 2.0 * ZONE_MARGIN,
+        h: rest.h + ZONE_MARGIN,
+    };
+    let w = ISLAND_W.min(screen.w - 2.0 * SCREEN_MARGIN);
+    Frames {
+        corner: false,
+        virtual_island: true,
+        lip: spot.bar_under,
+        push: Rect {
+            x: pill.x - PUSH_PAD,
+            y: screen.y,
+            w: PILL_W + 2.0 * PUSH_PAD,
+            h: PUSH_DEPTH,
+        },
+        notch_style: false,
+        notch_w: 0.0,
+        top_h: 0.0,
+        collapsed,
+        zone,
+        expanded: Rect {
+            x: mid - w / 2.0,
+            y: pill.y,
+            w,
+            h: panel_h(panel),
+        },
     }
 }
 
@@ -184,6 +328,9 @@ fn corner_frames(screen: Rect, corner: TrayCorner, panel: Panel) -> Frames {
     let h = panel_h(panel);
     Frames {
         corner: true,
+        virtual_island: false,
+        lip: false,
+        push: NOWHERE,
         notch_style: false,
         notch_w: 0.0,
         top_h: 0.0,
@@ -265,8 +412,8 @@ pub(super) fn island_inputs(
         zone: f.zone,
         hold: hold(f),
         pinned_open,
-        rest_visible: false,
-        push: None,
+        rest_visible: f.virtual_island,
+        push: f.virtual_island.then_some(f.push),
     }
 }
 
@@ -275,7 +422,7 @@ pub(super) fn island_inputs(
 pub(super) fn interactive_rect(f: &Frames, presence: Presence) -> Option<Rect> {
     match presence {
         Presence::Hidden => None,
-        Presence::Collapsed => (!f.corner).then_some(f.collapsed),
+        Presence::Collapsed => (!f.corner && !f.virtual_island).then_some(f.collapsed),
         Presence::Expanded => Some(hold(f)),
     }
 }
@@ -639,5 +786,99 @@ mod tests {
             t0 + Duration::from_millis(200),
         );
         assert_eq!(presence, Presence::Expanded);
+    }
+
+    fn spot(place: IslandPlace, bar_under: bool) -> VirtualSpot {
+        VirtualSpot { place, bar_under }
+    }
+
+    #[test]
+    fn virtual_pill_sits_at_the_top_centre_of_a_windows_screen() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        assert!(f.virtual_island && !f.corner && !f.lip);
+        assert_eq!(f.collapsed, rect(580.0, 6.0, 120.0, 28.0));
+        assert_eq!(f.push, rect(540.0, 0.0, 200.0, 2.0));
+        assert_eq!(f.expanded, rect(360.0, 6.0, 560.0, 8.0 + 2.0 * 92.0 + 44.0));
+    }
+
+    #[test]
+    fn over_a_bar_it_rests_as_a_lip_on_the_edge() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, true), TWO);
+        assert!(f.lip);
+        assert_eq!(f.collapsed, rect(598.0, 0.0, 84.0, 6.0));
+    }
+
+    #[test]
+    fn under_a_menu_bar_the_lip_hangs_from_the_bar() {
+        let f = virtual_frames(&plain(24.0), spot(IslandPlace::Centre, true), TWO);
+        assert_eq!(f.collapsed, rect(678.0, 24.0, 84.0, 6.0));
+        let f = virtual_frames(&plain(24.0), spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(f.collapsed, rect(660.0, 28.0, 120.0, 28.0));
+        assert_eq!(f.push.y, 0.0);
+    }
+
+    #[test]
+    fn left_and_right_keep_the_corners_free() {
+        let home = by_the_clock(false);
+        assert_eq!(virtual_mid_x(&home, IslandPlace::Left), 180.0 + 280.0);
+        assert_eq!(
+            virtual_mid_x(&home, IslandPlace::Right),
+            1280.0 - 180.0 - 280.0
+        );
+    }
+
+    #[test]
+    fn small_screen_places_everything_at_centre() {
+        let home = IslandHome {
+            screen: rect(0.0, 0.0, 900.0, 600.0),
+            ..plain(0.0)
+        };
+        for p in IslandPlace::ALL {
+            assert_eq!(virtual_mid_x(&home, p), 450.0);
+        }
+        let f = virtual_frames(&home, spot(IslandPlace::Left, false), TWO);
+        assert!(f.expanded.x >= 0.0 && f.expanded.x + f.expanded.w <= 900.0);
+    }
+
+    #[test]
+    fn virtual_frames_follow_the_screen_origin() {
+        let home = IslandHome {
+            screen: rect(-1920.0, -200.0, 1920.0, 1080.0),
+            ..plain(0.0)
+        };
+        let f = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(f.collapsed, rect(-1020.0, -194.0, 120.0, 28.0));
+        assert_eq!(f.push.y, -200.0);
+    }
+
+    #[test]
+    fn a_resting_virtual_island_takes_no_clicks() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(interactive_rect(&f, Presence::Collapsed), None);
+        assert_eq!(interactive_rect(&f, Presence::Expanded), Some(hold(&f)));
+    }
+
+    #[test]
+    fn bar_under_ignores_none_and_off_span_windows() {
+        let home = by_the_clock(false);
+        assert!(!bar_under(None, &home, 640.0));
+        assert!(bar_under(Some(rect(0.0, 0.0, 1280.0, 752.0)), &home, 640.0));
+        assert!(bar_under(
+            Some(rect(400.0, 7.0, 600.0, 400.0)),
+            &home,
+            640.0
+        ));
+        assert!(!bar_under(
+            Some(rect(400.0, 9.0, 600.0, 400.0)),
+            &home,
+            640.0
+        ));
+        assert!(!bar_under(Some(rect(0.0, 0.0, 600.0, 752.0)), &home, 640.0));
+    }
+
+    #[test]
+    fn fullscreen_front_window_counts_as_bar_under() {
+        let home = by_the_clock(false);
+        assert!(bar_under(Some(home.screen), &home, 640.0));
     }
 }
