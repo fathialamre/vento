@@ -31,7 +31,7 @@ msgstr ", "
 msgid "1. Drag this file a little."
 msgstr "1. Arrastra un poco este archivo."
 
-#: crates/vento/ui/rename.slint:1108
+#: crates/vento/ui/rename.slint:1052
 msgid "2 before 10"
 msgstr "2 antes que 10"
 
@@ -91,15 +91,15 @@ msgstr "Añadido"
 msgid "Address"
 msgstr "Dirección"
 
-#: crates/vento/ui/rename.slint:472
+#: crates/vento/ui/rename.slint:482
 msgid "Adds 001, 002… in the list's order"
 msgstr "Añade 001, 002… en el orden de la lista"
 
-#: crates/vento/ui/rename.slint:471
+#: crates/vento/ui/rename.slint:481
 msgid "Adds text to every name"
 msgstr "Añade texto a cada nombre"
 
-#: crates/vento/ui/rename.slint:915
+#: crates/vento/ui/rename.slint:859
 msgid "After name"
 msgstr "Después del nombre"
 
@@ -183,7 +183,7 @@ msgstr "Atrás"
 msgid "Back to kinds"
 msgstr "Volver a los tipos"
 
-#: crates/vento/ui/rename.slint:913
+#: crates/vento/ui/rename.slint:857
 msgid "Before name"
 msgstr "Antes del nombre"
 
@@ -195,7 +195,7 @@ msgstr "Lo más grande dentro"
 msgid "Bring back anything you copied earlier"
 msgstr "Recupera cualquier cosa que copiaste antes"
 
-#: crates/vento/ui/rename.slint:475
+#: crates/vento/ui/rename.slint:485
 msgid "Builds every name from parts"
 msgstr "Crea cada nombre a partir de partes"
 
@@ -259,11 +259,11 @@ msgstr "¿Cambiaste de idea? Haz clic en Deshacer en el aviso."
 msgid "Changes that touch all of Vento"
 msgstr "Cambios que afectan a todo Vento"
 
-#: crates/vento/ui/rename.slint:473
+#: crates/vento/ui/rename.slint:483
 msgid "Changes the letters of every name"
 msgstr "Cambia las letras de cada nombre"
 
-#: crates/vento/ui/rename.slint:474
+#: crates/vento/ui/rename.slint:484
 msgid "Changes the part after the last dot"
 msgstr "Cambia la parte tras el último punto"
 
@@ -623,7 +623,7 @@ msgstr "Oscuro"
 msgid "Date"
 msgstr "Fecha"
 
-#: crates/vento/ui/rename.slint:1114
+#: crates/vento/ui/rename.slint:1058
 msgid "Date modified"
 msgstr "Fecha de modificación"
 
@@ -639,7 +639,7 @@ msgstr "Diseño"
 msgid "Developer"
 msgstr "Desarrollo"
 
-#: crates/vento/ui/rename.slint:960
+#: crates/vento/ui/rename.slint:904
 msgid "Digits"
 msgstr "Dígitos"
 
@@ -787,11 +787,11 @@ msgstr "Archivo"
 msgid "Files"
 msgstr "Archivos"
 
-#: crates/vento/ui/rename.slint:869
+#: crates/vento/ui/rename.slint:812
 msgid "Find"
 msgstr "Buscar"
 
-#: crates/vento/ui/rename.slint:470
+#: crates/vento/ui/rename.slint:480
 msgid "Finds text in every name and replaces it"
 msgstr "Busca texto en cada nombre y lo reemplaza"
 
@@ -1027,7 +1027,7 @@ msgstr "MB"
 msgid "Mail"
 msgstr "Mail"
 
-#: crates/vento/ui/rename.slint:889
+#: crates/vento/ui/rename.slint:833
 msgid "Match case"
 msgstr "Coincidir mayúsculas"
 
@@ -1135,7 +1135,7 @@ msgstr "El nombre es demasiado largo"
 msgid "New"
 msgstr "Nuevo"
 
-#: crates/vento/ui/rename.slint:1040
+#: crates/vento/ui/rename.slint:984
 msgid "New extension"
 msgstr "Nueva extensión"
 
@@ -1151,7 +1151,7 @@ msgstr "Siguiente"
 msgid "No PDFs to open"
 msgstr "No hay PDF que abrir"
 
-#: crates/vento/ui/rename.slint:1053
+#: crates/vento/ui/rename.slint:997
 msgid "No extension"
 msgstr "Sin extensión"
 
@@ -1211,15 +1211,15 @@ msgstr "Nada que mover"
 msgid "Nothing to rename"
 msgstr "Nada que renombrar"
 
-#: crates/vento/ui/rename.slint:881
+#: crates/vento/ui/rename.slint:825
 msgid "Nothing: removes it"
 msgstr "Nada: lo quita"
 
-#: crates/vento/ui/rename.slint:806
+#: crates/vento/ui/rename.slint:814
 msgid "* for the whole name"
 msgstr "* para todo el nombre"
 
-#: crates/vento/ui/rename.slint:764
+#: crates/vento/ui/rename.slint:772
 msgid "Pick a tool, or a rule above, to set it here"
 msgstr "Elige una herramienta, o una regla de arriba, para ajustarla aquí"
 
@@ -1231,7 +1231,7 @@ msgstr "Número"
 msgid "Off"
 msgstr "Desactivado"
 
-#: crates/vento/ui/rename.slint:1115
+#: crates/vento/ui/rename.slint:1059
 msgid "Oldest first"
 msgstr "Más antiguos primero"
 
@@ -1243,7 +1243,7 @@ msgstr "Una vez al día, desde GitHub"
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr "Solo el ordenador sigue activo; la pantalla se atenúa y se bloquea como siempre"
 
-#: crates/vento/ui/rename.slint:1064
+#: crates/vento/ui/rename.slint:1008
 msgid "Only the name changes: the file is not converted."
 msgstr "Solo cambia el nombre: el archivo no se convierte."
 
@@ -1321,7 +1321,7 @@ msgstr "O mantén un momento sobre Mover: se abre un anillo con tus carpetas fij
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr "O agita el puntero rápido de un lado a otro mientras arrastras, si Agitar para abrir está activado."
 
-#: crates/vento/ui/rename.slint:634
+#: crates/vento/ui/rename.slint:632
 msgid "Order"
 msgstr "Orden"
 
@@ -1359,7 +1359,7 @@ msgstr "Pausar Vento"
 msgid "Petals"
 msgstr "Pétalos"
 
-#: crates/vento/ui/rename.slint:693
+#: crates/vento/ui/rename.slint:699
 msgid "Pick a tool to start"
 msgstr "Elige una herramienta para empezar"
 
@@ -1485,7 +1485,7 @@ msgstr "Quitar al arrastrar fuera"
 msgid "Remove from Pocket"
 msgstr "Quitar del Bolsillo"
 
-#: crates/vento/ui/rename.slint:289
+#: crates/vento/ui/rename.slint:297
 msgid "Remove {}"
 msgstr "Quitar {}"
 
@@ -1533,11 +1533,11 @@ msgstr "Reordena, gira y corta las páginas de un PDF"
 msgid "Replace"
 msgstr "Reemplazar"
 
-#: crates/vento/ui/rename.slint:879
+#: crates/vento/ui/rename.slint:823
 msgid "Replace with"
 msgstr "Reemplazar con"
 
-#: crates/vento/ui/rename.slint:1030
+#: crates/vento/ui/rename.slint:974
 msgid "Replace with…"
 msgstr "Reemplazar con…"
 
@@ -1565,7 +1565,7 @@ msgstr[1] "Restaurando {n} elementos…"
 msgid "Resume"
 msgstr "Reanudar"
 
-#: crates/vento/ui/rename.slint:1128
+#: crates/vento/ui/rename.slint:1072
 msgid "Reverse"
 msgstr "Invertir"
 
@@ -1577,7 +1577,7 @@ msgstr "Girar a la izquierda"
 msgid "Rotate right"
 msgstr "Girar a la derecha"
 
-#: crates/vento/ui/rename.slint:685
+#: crates/vento/ui/rename.slint:691
 msgid "Rules"
 msgstr "Reglas"
 
@@ -1659,7 +1659,7 @@ msgstr "Enviar con Mail"
 msgid "Send with Messages"
 msgstr "Enviar con Mensajes"
 
-#: crates/vento/ui/rename.slint:973
+#: crates/vento/ui/rename.slint:917
 msgid "Separator"
 msgstr "Separador"
 
@@ -1759,7 +1759,7 @@ msgstr "Omitir configuración"
 msgid "Smaller file"
 msgstr "Archivo más pequeño"
 
-#: crates/vento/ui/rename.slint:1122
+#: crates/vento/ui/rename.slint:1066
 msgid "Smallest first"
 msgstr "Más pequeños primero"
 
@@ -1885,7 +1885,7 @@ msgstr "No se pudo abrir la descarga"
 msgid "The download didn't match its checksum"
 msgstr "La descarga no coincide con su suma de verificación"
 
-#: crates/vento/ui/rename.slint:859
+#: crates/vento/ui/rename.slint:802
 msgid "The list and the numbers follow it"
 msgstr "La lista y los números lo siguen"
 
@@ -2205,7 +2205,7 @@ msgstr "Mientras funciona, aparece una tacita junto al icono de Vento."
 msgid "Windows reserves this name"
 msgstr "Windows reserva este nombre"
 
-#: crates/vento/ui/rename.slint:1031
+#: crates/vento/ui/rename.slint:975
 msgid "Without the dot"
 msgstr "Sin el punto"
 
@@ -2405,7 +2405,7 @@ msgstr "macOS usa este atajo"
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "movido a {copy}, pero el original no se pudo quitar del todo: {reason}"
 
-#: crates/vento/ui/rename.slint:914
+#: crates/vento/ui/rename.slint:858
 msgid "name"
 msgstr "nombre"
 

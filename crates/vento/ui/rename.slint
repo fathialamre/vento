@@ -280,29 +280,35 @@ component Chip inherits Rectangle {
             vertical-alignment: center;
         }
 
-        // ✕: removes the rule. Square, so its hover stays inside the chip's
-        // border with the same 4px gap on every side.
+        // ✕: removes the rule. A square centred in a full-height cell (the
+        // layout puts a fixed-height child at the top), so its hover stays
+        // inside the chip's border with the same 4px gap on every side.
         Rectangle {
             layout-order: Theme.rtl ? 0 : 2;
             width: 16px;
-            height: 16px;
-            border-radius: 4px;
-            background: remove.has-hover ? Theme.hover : transparent;
-            accessible-role: button;
-            accessible-label: @tr("Remove {}", root.chip.title);
-            accessible-action-default => { root.removed(); }
 
-            Image {
-                x: (parent.width - self.width) / 2;
+            Rectangle {
                 y: (parent.height - self.height) / 2;
-                width: 10px;
-                height: 10px;
-                source: @image-url("icons/x.svg");
-                colorize: root.tone;
-            }
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                background: remove.has-hover ? Theme.hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Remove {}", root.chip.title);
+                accessible-action-default => { root.removed(); }
 
-            remove := TouchArea {
-                clicked => { root.removed(); }
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 10px;
+                    height: 10px;
+                    source: @image-url("icons/x.svg");
+                    colorize: root.tone;
+                }
+
+                remove := TouchArea {
+                    clicked => { root.removed(); }
+                }
             }
         }
     }

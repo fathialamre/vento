@@ -31,7 +31,7 @@ msgstr ", "
 msgid "1. Drag this file a little."
 msgstr "1. Bu dosyayı biraz sürükleyin."
 
-#: crates/vento/ui/rename.slint:1108
+#: crates/vento/ui/rename.slint:1052
 msgid "2 before 10"
 msgstr "2, 10'dan önce"
 
@@ -91,15 +91,15 @@ msgstr "Eklenme"
 msgid "Address"
 msgstr "Adres"
 
-#: crates/vento/ui/rename.slint:472
+#: crates/vento/ui/rename.slint:482
 msgid "Adds 001, 002… in the list's order"
 msgstr "Listenin sırasıyla 001, 002… ekler"
 
-#: crates/vento/ui/rename.slint:471
+#: crates/vento/ui/rename.slint:481
 msgid "Adds text to every name"
 msgstr "Her ada metin ekler"
 
-#: crates/vento/ui/rename.slint:915
+#: crates/vento/ui/rename.slint:859
 msgid "After name"
 msgstr "Addan sonra"
 
@@ -183,7 +183,7 @@ msgstr "Geri"
 msgid "Back to kinds"
 msgstr "Türlere dön"
 
-#: crates/vento/ui/rename.slint:913
+#: crates/vento/ui/rename.slint:857
 msgid "Before name"
 msgstr "Addan önce"
 
@@ -195,7 +195,7 @@ msgstr "İçindeki en büyük"
 msgid "Bring back anything you copied earlier"
 msgstr "Daha önce kopyaladığınız her şeyi geri getirin"
 
-#: crates/vento/ui/rename.slint:475
+#: crates/vento/ui/rename.slint:485
 msgid "Builds every name from parts"
 msgstr "Her adı parçalardan oluşturur"
 
@@ -259,11 +259,11 @@ msgstr "Fikrinizi mi değiştirdiniz? Bildirimdeki Geri al'a tıklayın."
 msgid "Changes that touch all of Vento"
 msgstr "Vento'nun tamamını etkileyen değişiklikler"
 
-#: crates/vento/ui/rename.slint:473
+#: crates/vento/ui/rename.slint:483
 msgid "Changes the letters of every name"
 msgstr "Her adın harflerini değiştirir"
 
-#: crates/vento/ui/rename.slint:474
+#: crates/vento/ui/rename.slint:484
 msgid "Changes the part after the last dot"
 msgstr "Son noktadan sonraki kısmı değiştirir"
 
@@ -623,7 +623,7 @@ msgstr "Koyu"
 msgid "Date"
 msgstr "Tarih"
 
-#: crates/vento/ui/rename.slint:1114
+#: crates/vento/ui/rename.slint:1058
 msgid "Date modified"
 msgstr "Değiştirilme tarihi"
 
@@ -639,7 +639,7 @@ msgstr "Tasarımcı"
 msgid "Developer"
 msgstr "Geliştirici"
 
-#: crates/vento/ui/rename.slint:960
+#: crates/vento/ui/rename.slint:904
 msgid "Digits"
 msgstr "Basamak"
 
@@ -787,11 +787,11 @@ msgstr "Dosya"
 msgid "Files"
 msgstr "Dosyalar"
 
-#: crates/vento/ui/rename.slint:869
+#: crates/vento/ui/rename.slint:812
 msgid "Find"
 msgstr "Bul"
 
-#: crates/vento/ui/rename.slint:470
+#: crates/vento/ui/rename.slint:480
 msgid "Finds text in every name and replaces it"
 msgstr "Her adda metni bulur ve değiştirir"
 
@@ -1027,7 +1027,7 @@ msgstr "MB"
 msgid "Mail"
 msgstr "Mail"
 
-#: crates/vento/ui/rename.slint:889
+#: crates/vento/ui/rename.slint:833
 msgid "Match case"
 msgstr "Büyük/küçük harf eşleştir"
 
@@ -1135,7 +1135,7 @@ msgstr "Ad çok uzun"
 msgid "New"
 msgstr "Yeni"
 
-#: crates/vento/ui/rename.slint:1040
+#: crates/vento/ui/rename.slint:984
 msgid "New extension"
 msgstr "Yeni uzantı"
 
@@ -1151,7 +1151,7 @@ msgstr "İleri"
 msgid "No PDFs to open"
 msgstr "Açılacak PDF yok"
 
-#: crates/vento/ui/rename.slint:1053
+#: crates/vento/ui/rename.slint:997
 msgid "No extension"
 msgstr "Uzantı yok"
 
@@ -1211,15 +1211,15 @@ msgstr "Taşınacak bir şey yok"
 msgid "Nothing to rename"
 msgstr "Yeniden adlandırılacak bir şey yok"
 
-#: crates/vento/ui/rename.slint:881
+#: crates/vento/ui/rename.slint:825
 msgid "Nothing: removes it"
 msgstr "Hiçbir şey: metni siler"
 
-#: crates/vento/ui/rename.slint:806
+#: crates/vento/ui/rename.slint:814
 msgid "* for the whole name"
 msgstr "* adın tamamı için"
 
-#: crates/vento/ui/rename.slint:764
+#: crates/vento/ui/rename.slint:772
 msgid "Pick a tool, or a rule above, to set it here"
 msgstr "Burada ayarlamak için bir araç ya da yukarıdan bir kural seçin"
 
@@ -1231,7 +1231,7 @@ msgstr "Numara"
 msgid "Off"
 msgstr "Kapalı"
 
-#: crates/vento/ui/rename.slint:1115
+#: crates/vento/ui/rename.slint:1059
 msgid "Oldest first"
 msgstr "Önce en eski"
 
@@ -1243,7 +1243,7 @@ msgstr "Günde bir kez, GitHub'dan"
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr "Yalnızca bilgisayar uyanık kalır; ekran her zamanki gibi kararır ve kilitlenir"
 
-#: crates/vento/ui/rename.slint:1064
+#: crates/vento/ui/rename.slint:1008
 msgid "Only the name changes: the file is not converted."
 msgstr "Yalnızca ad değişir: dosya dönüştürülmez."
 
@@ -1321,7 +1321,7 @@ msgstr "Ya da Taşı'nın üzerinde biraz bekleyin: sabitlenmiş ve son klasörl
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr "Ya da Sallayarak aç açıksa, sürüklerken imleci hızla ileri geri sallayın."
 
-#: crates/vento/ui/rename.slint:634
+#: crates/vento/ui/rename.slint:632
 msgid "Order"
 msgstr "Sıralama"
 
@@ -1359,7 +1359,7 @@ msgstr "Vento'yu duraklat"
 msgid "Petals"
 msgstr "Taç yaprak"
 
-#: crates/vento/ui/rename.slint:693
+#: crates/vento/ui/rename.slint:699
 msgid "Pick a tool to start"
 msgstr "Başlamak için bir araç seçin"
 
@@ -1485,7 +1485,7 @@ msgstr "Dışarı sürükleyince kaldır"
 msgid "Remove from Pocket"
 msgstr "Cep'ten kaldır"
 
-#: crates/vento/ui/rename.slint:289
+#: crates/vento/ui/rename.slint:297
 msgid "Remove {}"
 msgstr "Kaldır: {}"
 
@@ -1533,11 +1533,11 @@ msgstr "Bir PDF'in sayfalarını yeniden sıralayın, döndürün ve bölün"
 msgid "Replace"
 msgstr "Değiştir"
 
-#: crates/vento/ui/rename.slint:879
+#: crates/vento/ui/rename.slint:823
 msgid "Replace with"
 msgstr "Şununla değiştir"
 
-#: crates/vento/ui/rename.slint:1030
+#: crates/vento/ui/rename.slint:974
 msgid "Replace with…"
 msgstr "Şununla değiştir…"
 
@@ -1565,7 +1565,7 @@ msgstr[1] "{n} öğe geri yükleniyor…"
 msgid "Resume"
 msgstr "Sürdür"
 
-#: crates/vento/ui/rename.slint:1128
+#: crates/vento/ui/rename.slint:1072
 msgid "Reverse"
 msgstr "Ters çevir"
 
@@ -1577,7 +1577,7 @@ msgstr "Sola döndür"
 msgid "Rotate right"
 msgstr "Sağa döndür"
 
-#: crates/vento/ui/rename.slint:685
+#: crates/vento/ui/rename.slint:691
 msgid "Rules"
 msgstr "Kurallar"
 
@@ -1659,7 +1659,7 @@ msgstr "Mail ile gönder"
 msgid "Send with Messages"
 msgstr "Mesajlar ile gönder"
 
-#: crates/vento/ui/rename.slint:973
+#: crates/vento/ui/rename.slint:917
 msgid "Separator"
 msgstr "Ayırıcı"
 
@@ -1759,7 +1759,7 @@ msgstr "Kurulumu atla"
 msgid "Smaller file"
 msgstr "Daha küçük dosya"
 
-#: crates/vento/ui/rename.slint:1122
+#: crates/vento/ui/rename.slint:1066
 msgid "Smallest first"
 msgstr "Önce en küçük"
 
@@ -1885,7 +1885,7 @@ msgstr "İndirilen dosya açılamadı"
 msgid "The download didn't match its checksum"
 msgstr "İndirilen dosya sağlama toplamıyla eşleşmedi"
 
-#: crates/vento/ui/rename.slint:859
+#: crates/vento/ui/rename.slint:802
 msgid "The list and the numbers follow it"
 msgstr "Liste ve numaralar bu sırayı izler"
 
@@ -2205,7 +2205,7 @@ msgstr "Çalışırken Vento simgesinin yanında küçük bir fincan görünür.
 msgid "Windows reserves this name"
 msgstr "Bu ad Windows için ayrılmış"
 
-#: crates/vento/ui/rename.slint:1031
+#: crates/vento/ui/rename.slint:975
 msgid "Without the dot"
 msgstr "Nokta olmadan"
 
@@ -2405,7 +2405,7 @@ msgstr "macOS bu kısayolu kullanıyor"
 msgid "moved to {copy}, but the original could not be fully removed: {reason}"
 msgstr "{copy} konumuna taşındı, ancak orijinal tamamen kaldırılamadı: {reason}"
 
-#: crates/vento/ui/rename.slint:914
+#: crates/vento/ui/rename.slint:858
 msgid "name"
 msgstr "ad"
 
