@@ -85,6 +85,56 @@ impl PocketView {
     pub const ALL: [Self; 2] = [Self::Kinds, Self::List];
 }
 
+/// Which island the screen shows: a drawn one that stands in for a notch, or
+/// the classic one that grows out of the real notch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IslandMode {
+    /// A drawn island at the top of the screen.
+    #[default]
+    Virtual,
+    /// The island that grows out of the notch.
+    Classic,
+}
+
+impl IslandMode {
+    /// Every mode, in the order the Settings window lists them.
+    pub const ALL: [Self; 2] = [Self::Virtual, Self::Classic];
+}
+
+/// Where the virtual island sits along the top edge of the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IslandPlace {
+    /// Against the left side.
+    Left,
+    /// In the middle.
+    #[default]
+    Centre,
+    /// Against the right side.
+    Right,
+}
+
+impl IslandPlace {
+    /// Every place, in the order the Settings window lists them.
+    pub const ALL: [Self; 3] = [Self::Left, Self::Centre, Self::Right];
+}
+
+/// Bounds, step, default and presets of [`Settings::island_glass`], how see-
+/// through the virtual island is, in percent.
+pub const GLASS_MIN: u32 = 10;
+pub const GLASS_MAX: u32 = 100;
+pub const GLASS_STEP: u32 = 5;
+pub const GLASS_DEFAULT: u32 = 55;
+pub const GLASS_PRESETS: [u32; 3] = [25, 55, 100];
+
+/// `v` kept between [`GLASS_MIN`] and [`GLASS_MAX`] and rounded to the
+/// nearest [`GLASS_STEP`].
+pub fn clamp_glass(v: u32) -> u32 {
+    let v = v.clamp(GLASS_MIN, GLASS_MAX);
+    (v + GLASS_STEP / 2) / GLASS_STEP * GLASS_STEP
+}
+
 /// User-configurable behaviour of the wheel.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -123,6 +173,13 @@ pub struct Settings {
     pub pocket_shortcut: String,
     /// Whether copies are recorded into the Clipboard history.
     pub clipboard_history: bool,
+    /// Which island is shown.
+    pub island_mode: IslandMode,
+    /// Where the virtual island sits along the top edge.
+    pub island_place: IslandPlace,
+    /// How see-through the virtual island is, in percent, from [`GLASS_MIN`]
+    /// to [`GLASS_MAX`] in steps of [`GLASS_STEP`].
+    pub island_glass: u32,
     /// Whether the island lists the screenshots taken in the last week.
     pub screenshots: bool,
     /// Whether a card with the picture shows when a screenshot is saved.
@@ -244,6 +301,9 @@ impl Default for Settings {
             language: "en".to_owned(),
             pocket_shortcut: default_pocket_shortcut(),
             clipboard_history: true,
+            island_mode: IslandMode::Virtual,
+            island_place: IslandPlace::Centre,
+            island_glass: GLASS_DEFAULT,
             screenshots: false,
             screenshot_card: true,
             screenshot_card_secs: DEFAULT_CARD_SECS,
@@ -285,6 +345,11 @@ struct RawSettings {
     language: String,
     pocket_shortcut: String,
     clipboard_history: bool,
+    /// `None` is a file written before the virtual island existed, which
+    /// keeps the classic one; a new install has no file and gets the default.
+    island_mode: Option<IslandMode>,
+    island_place: IslandPlace,
+    island_glass: u32,
     screenshots: bool,
     screenshot_card: bool,
     screenshot_card_secs: u32,
@@ -413,7 +478,10 @@ impl From<RawRename> for RenameMemory {
 
 impl Default for RawSettings {
     fn default() -> Self {
-        RawSettings::from(&Settings::default())
+        let mut raw = RawSettings::from(&Settings::default());
+        // A file without the key is told apart from a new install.
+        raw.island_mode = None;
+        raw
     }
 }
 
@@ -434,6 +502,9 @@ impl From<&Settings> for RawSettings {
             language: s.language.clone(),
             pocket_shortcut: s.pocket_shortcut.clone(),
             clipboard_history: s.clipboard_history,
+            island_mode: Some(s.island_mode),
+            island_place: s.island_place,
+            island_glass: s.island_glass,
             screenshots: s.screenshots,
             screenshot_card: s.screenshot_card,
             screenshot_card_secs: s.screenshot_card_secs,
@@ -540,6 +611,9 @@ impl From<RawSettings> for Settings {
             language: raw.language,
             pocket_shortcut: raw.pocket_shortcut,
             clipboard_history: raw.clipboard_history,
+            island_mode: raw.island_mode.unwrap_or(IslandMode::Classic),
+            island_place: raw.island_place,
+            island_glass: clamp_glass(raw.island_glass),
             screenshots: raw.screenshots,
             screenshot_card: raw.screenshot_card,
             screenshot_card_secs,
@@ -1188,6 +1262,56 @@ mod tests {
     }
 
     #[test]
+    fn a_new_install_gets_the_virtual_island() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = Settings::try_load(&dir.path().join("nope.toml")).unwrap();
+        assert_eq!(s.island_mode, IslandMode::Virtual);
+        assert_eq!(s.island_place, IslandPlace::Centre);
+        assert_eq!(s.island_glass, 55);
+    }
+
+    #[test]
+    fn an_existing_file_without_the_key_keeps_the_classic_island() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "pocket_view = \"list\"\n").unwrap();
+        assert_eq!(
+            Settings::try_load(&path).unwrap().island_mode,
+            IslandMode::Classic
+        );
+    }
+
+    #[test]
+    fn island_keys_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        let s = Settings {
+            island_mode: IslandMode::Virtual,
+            island_place: IslandPlace::Right,
+            island_glass: 25,
+            ..Settings::default()
+        };
+        s.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("island_mode = \"virtual\""));
+        assert!(text.contains("island_place = \"right\""));
+        assert!(text.contains("island_glass = 25"));
+        assert_eq!(Settings::try_load(&path).unwrap(), s);
+    }
+
+    #[test]
+    fn glass_is_clamped_and_stepped() {
+        assert_eq!(clamp_glass(0), 10);
+        assert_eq!(clamp_glass(101), 100);
+        assert_eq!(clamp_glass(57), 55);
+        assert_eq!(clamp_glass(58), 60);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "island_glass = 3\n").unwrap();
+        assert_eq!(Settings::try_load(&path).unwrap().island_glass, 10);
+    }
+
+    #[test]
     fn the_language_is_english_unless_saved_otherwise() {
         assert_eq!(Settings::default().language, "en");
         let dir = tempfile::tempdir().unwrap();
@@ -1485,9 +1609,13 @@ mod tests {
         std::fs::write(&p, "trigger = \"alt\"\n").unwrap();
         let s = Settings::load(&p);
         assert_eq!(s.trigger, Modifier::Alt);
+        // A file without `island_mode` keeps the classic island (see
+        // `an_existing_file_without_the_key_keeps_the_classic_island`).
+        assert_eq!(s.island_mode, IslandMode::Classic);
         assert_eq!(
             Settings {
                 trigger: Modifier::Ctrl,
+                island_mode: IslandMode::Virtual,
                 ..s
             },
             Settings::default()

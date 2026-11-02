@@ -113,6 +113,19 @@ pocket_keep_copies = false
 #   "list"  - every item, one row each
 pocket_view = "kinds"
 
+# Island: "virtual" (a drawn island at the top of the screen) or "classic" (the
+# island that grows out of the notch). A new install gets "virtual"; a settings
+# file written before this key existed keeps "classic" until you change it
+island_mode = "virtual"
+
+# Island: where the virtual island sits along the top edge: "left", "centre" or
+# "right"
+island_place = "centre"
+
+# Island: how see-through the virtual island is, in percent. Other values are
+# rounded to the nearest 5 and kept between 10 and 100
+island_glass = 55
+
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
 # (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
 pocket_shortcut = "ctrl+alt+p"
