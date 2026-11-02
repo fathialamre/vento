@@ -225,9 +225,10 @@ export component PopoverHead inherits HorizontalLayout {
     }
 }
 
-// A choice in a popover: a round check, its title and what it makes under
-// it, and room at the end for its own controls. Chosen, it takes the
-// accent.
+// A choice in a popover: a radio dot, its title and what it makes under
+// it, and room at the end for its own controls. Chosen, it takes a faint
+// tint of the accent and a light accent edge, so the colour marks the
+// choice without filling it.
 export component OptionRow inherits Rectangle {
     in property <string> title;
     in property <string> detail;
@@ -236,9 +237,9 @@ export component OptionRow inherits Rectangle {
 
     min-height: 46px;
     border-radius: 9px;
-    border-width: self.on ? 1.5px : 1px;
-    border-color: self.on ? Theme.accent : Theme.card-border;
-    background: self.on ? Theme.accent-soft : touch.has-hover ? Theme.surface : transparent;
+    border-width: 1px;
+    border-color: self.on ? Theme.accent.transparentize(0.5) : Theme.card-border;
+    background: self.on ? Theme.accent.transparentize(Theme.dark ? 0.9 : 0.95) : touch.has-hover ? Theme.surface : transparent;
     accessible-role: radio-button;
     accessible-checked: self.on;
     accessible-label: self.title;
@@ -259,20 +260,19 @@ export component OptionRow inherits Rectangle {
             alignment: center;
 
             Rectangle {
-                width: 18px;
-                height: 18px;
-                border-radius: 9px;
-                border-width: root.on ? 0px : 1.5px;
-                border-color: Theme.switch-off;
-                background: root.on ? Theme.accent : transparent;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border-width: 1.5px;
+                border-color: root.on ? Theme.accent : Theme.switch-off;
 
-                if root.on: Image {
+                if root.on: Rectangle {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    width: 12px;
-                    height: 12px;
-                    source: @image-url("icons/check.svg");
-                    colorize: white;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Theme.accent;
                 }
             }
         }
