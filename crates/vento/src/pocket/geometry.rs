@@ -265,6 +265,8 @@ pub(super) fn island_inputs(
         zone: f.zone,
         hold: hold(f),
         pinned_open,
+        rest_visible: false,
+        push: None,
     }
 }
 

@@ -10,6 +10,9 @@ pub const ZONE_MARGIN: f64 = 60.0;
 /// How long the cursor must rest on the collapsed island before it expands,
 /// so a pointer passing over the menu bar doesn't open it.
 pub const HOVER_DWELL: Duration = Duration::from_millis(150);
+/// How long the cursor must rest on the push rect at the screen's top edge
+/// before a virtual island opens.
+pub const PUSH_DWELL: Duration = Duration::from_millis(300);
 /// How long the expand conditions must stay false before the island leaves
 /// `Expanded`, so a cursor wobbling at the edge doesn't flicker it.
 pub const COLLAPSE_DELAY: Duration = Duration::from_millis(400);
@@ -39,6 +42,11 @@ pub struct IslandInputs {
     pub hold: Rect,
     /// The shortcut or the Pocket action asked for the island to stay open.
     pub pinned_open: bool,
+    /// The island rests `Collapsed` even with no items (the virtual island).
+    pub rest_visible: bool,
+    /// When `Some`, the island opens by resting the cursor in this rect for
+    /// [`PUSH_DWELL`], with or without items, and the `hover` dwell is off.
+    pub push: Option<Rect>,
 }
 
 /// Decides whether the island is hidden, collapsed or expanded.
@@ -49,6 +57,8 @@ pub struct IslandState {
     leaving_since: Option<Instant>,
     /// Since when the cursor has rested on the hover shape.
     hover_since: Option<Instant>,
+    /// Since when the cursor has rested on the push rect.
+    push_since: Option<Instant>,
 }
 
 impl Default for IslandState {
@@ -63,6 +73,7 @@ impl IslandState {
             presence: Presence::Hidden,
             leaving_since: None,
             hover_since: None,
+            push_since: None,
         }
     }
 
@@ -73,19 +84,32 @@ impl IslandState {
 
     /// Applies one round of inputs and returns the resulting presence.
     pub fn update(&mut self, i: &IslandInputs, now: Instant) -> Presence {
-        let dwelt = if i.has_items && contains(&i.hover, i.cursor) {
+        let dwelt = if i.push.is_some() {
+            self.hover_since = None;
+            false
+        } else if i.has_items && contains(&i.hover, i.cursor) {
             let since = *self.hover_since.get_or_insert(now);
             now.saturating_duration_since(since) >= HOVER_DWELL
         } else {
             self.hover_since = None;
             false
         };
+        let pushed = match i.push {
+            Some(r) if !i.dragging && contains(&r, i.cursor) => {
+                let since = *self.push_since.get_or_insert(now);
+                now.saturating_duration_since(since) >= PUSH_DWELL
+            }
+            _ => {
+                self.push_since = None;
+                false
+            }
+        };
         let dragged_in = i.dragging && contains(&i.zone, i.cursor);
         let held = self.presence == Presence::Expanded
-            && (i.dragging || i.has_items)
+            && (i.dragging || i.has_items || i.push.is_some())
             && contains(&i.hold, i.cursor);
-        let expand = i.pinned_open || dragged_in || dwelt || held;
-        let resting = resting(i.has_items);
+        let expand = i.pinned_open || dragged_in || dwelt || pushed || held;
+        let resting = resting(i.has_items || i.rest_visible);
 
         if expand {
             self.presence = Presence::Expanded;
@@ -102,11 +126,24 @@ impl IslandState {
         self.presence
     }
 
-    /// Drops straight to the resting presence (collapsed with items, hidden
-    /// without), with no collapse delay; for when vento is paused.
-    pub fn settle(&mut self, has_items: bool) -> Presence {
+    /// How far the current push has filled, `0.0..=1.0`; `0.0` when no push
+    /// is under way or once the island is expanded.
+    pub fn push_progress(&self, now: Instant) -> f32 {
+        match self.push_since {
+            Some(since) if self.presence != Presence::Expanded => {
+                let elapsed = now.saturating_duration_since(since);
+                (elapsed.as_secs_f32() / PUSH_DWELL.as_secs_f32()).clamp(0.0, 1.0)
+            }
+            _ => 0.0,
+        }
+    }
+
+    /// Drops straight to the resting presence (collapsed when `visible`,
+    /// hidden without), with no collapse delay; for when vento is paused.
+    /// Callers pass `has_items || rest_visible`.
+    pub fn settle(&mut self, visible: bool) -> Presence {
         *self = Self {
-            presence: resting(has_items),
+            presence: resting(visible),
             ..Self::new()
         };
         self.presence
@@ -164,6 +201,8 @@ mod tests {
             zone: ZONE,
             hold: HOLD,
             pinned_open,
+            rest_visible: false,
+            push: None,
         }
     }
 
@@ -349,5 +388,100 @@ mod tests {
             s.update(&inputs(false, false, OUTSIDE, true), t0),
             Presence::Expanded
         );
+    }
+
+    const EDGE: Rect = Rect {
+        x: 540.0,
+        y: 0.0,
+        w: 200.0,
+        h: 2.0,
+    };
+    const ON_EDGE: Point = Point { x: 640.0, y: 1.0 };
+
+    fn virt(has_items: bool, dragging: bool, cursor: Point) -> IslandInputs {
+        IslandInputs {
+            rest_visible: true,
+            push: Some(EDGE),
+            ..inputs(has_items, dragging, cursor, false)
+        }
+    }
+
+    #[test]
+    fn a_virtual_island_rests_collapsed_even_when_empty() {
+        let mut s = IslandState::new();
+        assert_eq!(
+            s.update(&virt(false, false, OUTSIDE), Instant::now()),
+            Presence::Collapsed
+        );
+        assert_eq!(s.settle(true), Presence::Collapsed);
+    }
+
+    #[test]
+    fn hovering_the_virtual_island_does_not_open_it() {
+        let t0 = Instant::now();
+        let mut s = IslandState::new();
+        for step in 0..20 {
+            assert_eq!(
+                s.update(&virt(true, false, INSIDE), ms(t0, 50 * step)),
+                Presence::Collapsed
+            );
+        }
+    }
+
+    #[test]
+    fn a_push_opens_after_the_dwell_with_or_without_items() {
+        for has_items in [false, true] {
+            let t0 = Instant::now();
+            let mut s = IslandState::new();
+            s.update(&virt(has_items, false, ON_EDGE), t0);
+            assert_eq!(
+                s.update(&virt(has_items, false, ON_EDGE), ms(t0, 299)),
+                Presence::Collapsed
+            );
+            assert!((s.push_progress(ms(t0, 150)) - 0.5).abs() < 0.01);
+            assert_eq!(
+                s.update(&virt(has_items, false, ON_EDGE), ms(t0, 300)),
+                Presence::Expanded
+            );
+            assert_eq!(s.push_progress(ms(t0, 300)), 0.0);
+        }
+    }
+
+    #[test]
+    fn passing_the_edge_restarts_the_push() {
+        let t0 = Instant::now();
+        let mut s = IslandState::new();
+        s.update(&virt(true, false, ON_EDGE), t0);
+        s.update(&virt(true, false, OUTSIDE), ms(t0, 200));
+        s.update(&virt(true, false, ON_EDGE), ms(t0, 250));
+        assert_eq!(
+            s.update(&virt(true, false, ON_EDGE), ms(t0, 549)),
+            Presence::Collapsed
+        );
+        assert_eq!(
+            s.update(&virt(true, false, ON_EDGE), ms(t0, 550)),
+            Presence::Expanded
+        );
+    }
+
+    #[test]
+    fn a_drag_at_the_edge_opens_at_once_not_by_push() {
+        let mut s = IslandState::new();
+        let at_edge_in_zone = Point { x: 600.0, y: 1.0 };
+        assert_eq!(
+            s.update(&virt(false, true, at_edge_in_zone), Instant::now()),
+            Presence::Expanded
+        );
+        assert_eq!(s.push_progress(Instant::now()), 0.0);
+    }
+
+    #[test]
+    fn an_empty_virtual_island_opened_by_push_stays_open_on_its_panel() {
+        let t0 = Instant::now();
+        let mut s = IslandState::new();
+        s.update(&virt(false, false, ON_EDGE), t0);
+        s.update(&virt(false, false, ON_EDGE), ms(t0, 300));
+        let panel = virt(false, false, Point { x: 400.0, y: 140.0 });
+        assert_eq!(s.update(&panel, ms(t0, 2000)), Presence::Expanded);
     }
 }
