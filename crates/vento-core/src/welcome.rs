@@ -289,7 +289,7 @@ mod tests {
     fn unavailable_actions_are_left_out() {
         assert!(!Preset::Designer.actions().contains(&ActionId::Pdf));
         assert!(!Preset::Designer.actions().contains(&ActionId::Share));
-        assert_eq!(Preset::Everything.actions().len(), 9);
+        assert_eq!(Preset::Everything.actions().len(), 10);
     }
 
     #[test]

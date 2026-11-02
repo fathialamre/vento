@@ -571,7 +571,10 @@ pub(crate) mod fake {
                 len: p.len() as u64,
                 is_dir: false,
             };
-            self.entries.lock().unwrap().insert(PathBuf::from(p), entry);
+            self.entries
+                .lock()
+                .unwrap()
+                .insert(slashed(Path::new(p)), entry);
         }
 
         /// Removes whatever is at `p`.
@@ -614,11 +617,11 @@ pub(crate) mod fake {
         }
 
         fn key(&self, p: &Path) -> String {
-            let s = p.to_string_lossy();
+            let s = slashed(p).to_string_lossy().into_owned();
             if self.insensitive {
                 s.to_lowercase()
             } else {
-                s.into_owned()
+                s
             }
         }
 
@@ -628,6 +631,12 @@ pub(crate) mod fake {
             let entries = self.entries.lock().unwrap();
             entries.keys().find(|k| self.key(k) == key).cloned()
         }
+    }
+
+    /// `p` with `/` for every separator: on Windows `Path::join` puts `\`
+    /// between a fake folder like "/t" and a temporary name.
+    fn slashed(p: &Path) -> PathBuf {
+        PathBuf::from(p.to_string_lossy().replace('\\', "/"))
     }
 
     fn fake_id(n: u64) -> FileId {
@@ -665,7 +674,7 @@ pub(crate) mod fake {
                 if let Some(dst) = dst {
                     entries.remove(&dst);
                 }
-                entries.insert(to.to_path_buf(), entry);
+                entries.insert(slashed(to), entry);
             }
             let appear = self.appear.lock().unwrap().clone();
             if let Some((after, p)) = appear
@@ -907,8 +916,12 @@ mod tests {
         assert_eq!(stuck.len(), 1);
         let (tmp, old) = &stuck[0];
         assert_eq!(old, &PathBuf::from("/t/a"));
-        assert!(tmp.to_string_lossy().starts_with("/t/.vento-rename-"));
-        assert!(tmp.to_string_lossy().ends_with("-0"));
+        assert_eq!(tmp.parent(), Some(Path::new("/t")));
+        let name = tmp.file_name().unwrap().to_string_lossy();
+        assert!(
+            name.starts_with(".vento-rename-") && name.ends_with("-0"),
+            "{name}"
+        );
         assert_eq!(disk.paths(), [tmp.clone(), "/t/b".into()].into());
     }
 
