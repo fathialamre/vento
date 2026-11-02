@@ -201,6 +201,12 @@ impl Platform for MacPlatform {
         screens::pocket_home()
     }
 
+    /// The first normal window, front to back, of another app: vento's own
+    /// windows and the menu bar, the Dock and panels sit at other layers.
+    fn front_window_frame(&self) -> Option<Rect> {
+        screens::front_window_frame()
+    }
+
     fn make_overlay(
         &self,
         window: raw_window_handle::RawWindowHandle,

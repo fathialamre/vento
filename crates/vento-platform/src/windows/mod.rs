@@ -227,6 +227,54 @@ fn is_vento(window: windows_sys::Win32::Foundation::HWND) -> bool {
     }
 }
 
+/// Whether a window of class `class` is the desktop or the taskbar's,
+/// which never count as an app's window in front.
+fn is_shell_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW"
+    )
+}
+
+/// Whether `window` is the desktop or a taskbar (see [`is_shell_class`]).
+/// Reads the class into a buffer on the stack.
+fn is_shell_window(window: windows_sys::Win32::Foundation::HWND) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+
+    // Class names are at most 256 characters; the shell's are short ASCII.
+    let mut wide = [0u16; 32];
+    // SAFETY: the buffer's length is passed with it.
+    let len = unsafe { GetClassNameW(window, wide.as_mut_ptr(), wide.len() as i32) };
+    let wide = &wide[..len.max(0) as usize];
+    let mut name = [0u8; 32];
+    for (b, &c) in name.iter_mut().zip(wide) {
+        // Past Latin-1 no shell class, and 0xFF fails the UTF-8 check.
+        *b = u8::try_from(c).unwrap_or(0xFF);
+    }
+    std::str::from_utf8(&name[..wide.len()]).is_ok_and(is_shell_class)
+}
+
+/// The outer frame of `window` as it is drawn, without the invisible
+/// borders Windows 10 and later add for resizing, in physical pixels.
+fn drawn_frame(
+    window: windows_sys::Win32::Foundation::HWND,
+) -> Option<windows_sys::Win32::Foundation::RECT> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
+
+    let mut frame = RECT::default();
+    // SAFETY: `frame` is a live local of the size passed.
+    let read = unsafe {
+        DwmGetWindowAttribute(
+            window,
+            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+            (&raw mut frame).cast(),
+            size_of::<RECT>() as u32,
+        )
+    };
+    (read == 0).then_some(frame)
+}
+
 /// Whether the key `vk` is down now.
 fn key_down(vk: VIRTUAL_KEY) -> bool {
     // SAFETY: plain call. The high bit is set while the key is down.
@@ -387,6 +435,18 @@ impl Platform for WindowsPlatform {
                 left,
             }),
         })
+    }
+
+    /// The foreground window, unless it is vento's, the desktop's or a
+    /// taskbar's; divided by its monitor's scale.
+    fn front_window_frame(&self) -> Option<Rect> {
+        // SAFETY: plain call.
+        let front = unsafe { GetForegroundWindow() };
+        if front.is_null() || is_vento(front) || is_shell_window(front) {
+            return None;
+        }
+        let frame = drawn_frame(front)?;
+        Some(screens::window_to_logical(front, &frame))
     }
 
     /// Off the taskbar and out of Alt+Tab; above the others it already is,
@@ -627,6 +687,19 @@ mod tests {
         let corner = home.tray_corner.expect("a corner by the clock");
         assert!(corner.work.w > 0.0 && corner.work.h > 0.0);
         assert!(corner.work.x >= home.screen.x && corner.work.y >= home.screen.y);
+    }
+
+    #[test]
+    fn shell_windows_are_not_front_windows() {
+        for class in [
+            "Shell_TrayWnd",
+            "Shell_SecondaryTrayWnd",
+            "Progman",
+            "WorkerW",
+        ] {
+            assert!(is_shell_class(class));
+        }
+        assert!(!is_shell_class("Chrome_WidgetWin_1"));
     }
 
     #[test]

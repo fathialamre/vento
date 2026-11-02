@@ -10,9 +10,10 @@
 use std::ptr;
 
 use vento_core::geometry::{Point, Rect};
-use windows_sys::Win32::Foundation::{LPARAM, POINT, RECT};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
+    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MonitorFromWindow,
 };
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows_sys::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
@@ -78,6 +79,26 @@ fn logical(r: &RECT, scale: f64) -> Rect {
     }
 }
 
+/// Physical pixels per logical point on `monitor`; 1 when unknown.
+fn scale_of(monitor: HMONITOR) -> f64 {
+    let (mut dpi_x, mut dpi_y) = (0, 0);
+    // SAFETY: a stale monitor handle only fails the call; the out-pointers
+    // are live locals.
+    if unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) } == 0 {
+        f64::from(dpi_x) / BASE_DPI
+    } else {
+        1.0
+    }
+}
+
+/// The physical rect `r` of a window in logical points, by the scale of
+/// the monitor holding most of the window.
+pub(super) fn window_to_logical(window: HWND, r: &RECT) -> Rect {
+    // SAFETY: plain call; a stale handle yields the nearest monitor too.
+    let monitor = unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST) };
+    logical(r, scale_of(monitor))
+}
+
 /// Every monitor, the primary first.
 pub(super) fn monitors() -> Vec<Monitor> {
     unsafe extern "system" fn each(
@@ -97,19 +118,10 @@ pub(super) fn monitors() -> Vec<Monitor> {
         if unsafe { GetMonitorInfoW(monitor, &mut info) } == 0 {
             return 1;
         }
-        let (mut dpi_x, mut dpi_y) = (0, 0);
-        // SAFETY: as above; the out-pointers are live locals.
-        let scale =
-            if unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) } == 0
-            {
-                f64::from(dpi_x) / BASE_DPI
-            } else {
-                1.0
-            };
         found.push(Monitor {
             frame: info.rcMonitor,
             work: info.rcWork,
-            scale,
+            scale: scale_of(monitor),
             primary: info.dwFlags & MONITORINFOF_PRIMARY != 0,
         });
         1

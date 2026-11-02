@@ -397,6 +397,27 @@ pub trait Platform {
     /// Where the Pocket island sits: the first notched screen, otherwise the
     /// primary one. Main thread only.
     fn pocket_home(&self) -> Option<IslandHome>;
+    /// The outer frame of the frontmost normal window of another app, in
+    /// logical, top-left-origin global coordinates (as [`Platform::screens`]
+    /// speaks). Never the frame of one of vento's own windows, the desktop
+    /// or a shell surface (taskbar, panel, dock): `None` when such a window
+    /// has the focus where only the focused one is known (Windows, X11), or
+    /// where unsupported. Asked a few times a second, so cheap. Main thread
+    /// only.
+    fn front_window_frame(&self) -> Option<Rect> {
+        None
+    }
+    /// Whether the island can be a virtual one here: placed anywhere along
+    /// the top edge and let clicks through while it rests.
+    fn virtual_island_supported(&self) -> bool {
+        true
+    }
+    /// Whether the desktop keeps room for the collapsed island in its top
+    /// bar (GNOME's, through the Vento extension); kept until called again.
+    /// Nothing happens where there is no such room. Main thread only.
+    fn reserve_island_slot(&self, on: bool) {
+        let _ = on;
+    }
     /// Float this window above the menu bar on every Space (including
     /// full-screen ones), out of the window cycle and without a shadow.
     /// Main thread only.

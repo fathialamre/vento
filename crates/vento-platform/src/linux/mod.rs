@@ -84,6 +84,9 @@ pub struct LinuxPlatform {
     awake: awake::Inhibitor,
     /// Runs when the Keep Awake cup is clicked.
     on_awake_indicator: RefCell<Option<instance::FrameHandler>>,
+    /// Whether this is a Wayland session, where vento's X11 windows cannot
+    /// place themselves on top without the extension.
+    wayland: bool,
 }
 
 impl Default for LinuxPlatform {
@@ -106,6 +109,7 @@ impl LinuxPlatform {
             on_reopen: RefCell::new(None),
             awake: awake::Inhibitor::default(),
             on_awake_indicator: RefCell::new(None),
+            wayland: is_wayland(std::env::var("XDG_SESSION_TYPE").ok().as_deref()),
         }
     }
 
@@ -132,6 +136,18 @@ fn session_bus() -> Result<gio::DBusConnection, gio::glib::Error> {
     }
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     Ok(BUS.get_or_init(|| bus).clone())
+}
+
+/// Whether `XDG_SESSION_TYPE` (`session`) says Wayland.
+fn is_wayland(session: Option<&str>) -> bool {
+    session == Some("wayland")
+}
+
+/// Whether the virtual island works: on X11 vento places its own windows;
+/// on Wayland only the extension can, and it shows it can by keeping room
+/// for the island in the top bar.
+fn virtual_island_supported(wayland: bool, slot_seen: bool) -> bool {
+    !wayland || slot_seen
 }
 
 /// How long [`Platform::write_clipboard`] waits for GNOME to see the copy.
@@ -274,6 +290,28 @@ impl Platform for LinuxPlatform {
             slot,
             tray_corner: None,
         })
+    }
+
+    /// The active X11 window, in logical pixels as the extension reports
+    /// the screens. On Wayland only X11 apps' windows are seen.
+    fn front_window_frame(&self) -> Option<Rect> {
+        let (frame, x11_width) = x11::front_window()?;
+        let scale = shell::scale_between(f64::from(x11_width), self.shell.screens_width());
+        Some(Rect {
+            x: frame.x / scale,
+            y: frame.y / scale,
+            w: frame.w / scale,
+            h: frame.h / scale,
+        })
+    }
+
+    fn virtual_island_supported(&self) -> bool {
+        virtual_island_supported(self.wayland, self.shell.island_slot_seen())
+    }
+
+    /// Blocks for two short calls to the extension.
+    fn reserve_island_slot(&self, on: bool) {
+        self.shell.reserve_island(on);
     }
 
     /// Override-redirect, which on X11 does all three: above everything,
@@ -451,6 +489,16 @@ mod tests {
             Some(dir.path().to_path_buf())
         );
         assert_eq!(p.resolve_file_reference(&dir.path().join("gone")), None);
+    }
+
+    #[test]
+    fn the_virtual_island_needs_x11_or_the_extension() {
+        assert!(is_wayland(Some("wayland")));
+        assert!(!is_wayland(Some("x11")));
+        assert!(!is_wayland(None));
+        assert!(virtual_island_supported(false, false));
+        assert!(virtual_island_supported(true, true));
+        assert!(!virtual_island_supported(true, false));
     }
 
     #[test]
