@@ -71,7 +71,7 @@ use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, 
 use clip::ClipController;
 use clip_view::{ClipView, view_index};
 use geometry::{
-    Frames, VirtualSpot, frames, hits, hover_event, interactive_rect, island_inputs,
+    Frames, NewsRects, VirtualSpot, frames, hits, hover_event, interactive_rects, island_inputs,
     virtual_frames, virtual_mid_x, window_frame,
 };
 use kinds::Kinds;
@@ -337,7 +337,7 @@ pub struct PocketController {
     input_by_shape: Cell<bool>,
     /// The input shape last set, in physical window pixels; `None` before
     /// the first.
-    input_shape: Cell<Option<Option<Rect>>>,
+    input_shape: RefCell<Option<Vec<Rect>>>,
     /// Ids of the selected items, toggled by clicking their tiles or rows.
     selected: RefCell<Vec<u64>>,
     /// Presses on the tiles, the rows, "Drag N" and "Drag all".
@@ -457,7 +457,7 @@ impl PocketController {
             hover_blocked: Cell::new(false),
             hittest: Cell::new(true),
             input_by_shape: Cell::new(true),
-            input_shape: Cell::new(None),
+            input_shape: RefCell::new(None),
             selected: RefCell::new(Vec::new()),
             latch: PressLatch::default(),
             pending: PendingTrash::default(),
@@ -914,7 +914,8 @@ impl PocketController {
         let Some(f) = self.island_frames() else {
             return;
         };
-        let over = hits(&f, self.island.borrow().presence(), at);
+        let news = self.news_rects(&f);
+        let over = hits(&f, self.island.borrow().presence(), news.as_ref(), at);
         for event in drag_end_events(&self.window_frame(&f), at, over) {
             self.dispatch(event);
         }
@@ -1325,10 +1326,13 @@ impl PocketController {
         if spot != self.laid_out.get() {
             self.apply_home(&home);
         }
-        // Only the virtual island shows the news. The pill's hover comes
-        // with its geometry.
-        let news = self.news.borrow_mut().tick(now, false);
-        self.show_news(news.filter(|_| spot.is_some()));
+        // Only the virtual island shows the news. The pointer on the pill
+        // holds a result, though only its button and chip take clicks.
+        let hovered = self
+            .news_rects(&self.frames_of(&home))
+            .is_some_and(|n| geometry::contains(&n.pill, sample.cursor));
+        let view = self.news.borrow_mut().tick(now, hovered);
+        self.show_news(view.filter(|_| spot.is_some()));
         // The virtual island lives on top even where the taskbar's clock
         // has a corner for the island.
         let corner = home.tray_corner.is_some() && spot.is_none();
@@ -1371,7 +1375,8 @@ impl PocketController {
                 after = self.island.borrow_mut().settle(f.virtual_island);
             }
         }
-        self.card_hover(after, hits(&f, after, sample.cursor), now);
+        let news = self.news_rects(&f);
+        self.card_hover(after, hits(&f, after, news.as_ref(), sample.cursor), now);
         // Opened by resting on it: with an empty Pocket, on the view the
         // wings show.
         if before != Presence::Expanded
@@ -1407,12 +1412,15 @@ impl PocketController {
             View::Screenshots => !self.latch.running(),
             View::Pocket => false,
         };
-        if dragging && hits(&f, after, sample.cursor) && headed_in {
+        if dragging && hits(&f, after, news.as_ref(), sample.cursor) && headed_in {
             self.set_view(View::Pocket);
         }
         // One over the Pocket list (not the list's own drag out) goes back
         // to the kinds, which say what a drop does.
-        if dragging && !self.latch.running() && hits(&f, after, sample.cursor) && self.list_shown()
+        if dragging
+            && !self.latch.running()
+            && hits(&f, after, news.as_ref(), sample.cursor)
+            && self.list_shown()
         {
             self.close_pocket_list();
         }
@@ -1436,7 +1444,7 @@ impl PocketController {
             }
         }
         if !self.shape_input(after) {
-            let inside = hits(&f, after, sample.cursor);
+            let inside = hits(&f, after, self.news_rects(&f).as_ref(), sample.cursor);
             if changed || inside != self.hittest.get() {
                 self.set_hittest(inside);
             }
@@ -1537,18 +1545,18 @@ impl PocketController {
         if !self.input_by_shape.get() {
             return false;
         }
-        let rect = self.input_rect(presence);
-        if self.input_shape.get() == Some(rect) {
+        let rects = self.input_rects(presence);
+        if self.input_shape.borrow().as_ref() == Some(&rects) {
             return true;
         }
         let result = match self.window.window().window_handle().window_handle() {
-            Ok(handle) => self.platform.set_input_rect(handle.as_raw(), rect),
+            Ok(handle) => self.platform.set_input_rects(handle.as_raw(), &rects),
             Err(e) => Err(PlatformError::Failed(e.to_string())),
         };
         match result {
             Ok(()) => {
-                debug!("pocket input shape {rect:?}");
-                self.input_shape.set(Some(rect));
+                debug!("pocket input shape {rects:?}");
+                *self.input_shape.borrow_mut() = Some(rects);
                 true
             }
             Err(PlatformError::Unsupported) => {
@@ -1562,19 +1570,23 @@ impl PocketController {
         }
     }
 
-    /// The window's shape for `presence`, in physical pixels from its
-    /// top-left corner; `None` when hidden or not placed yet.
-    fn input_rect(&self, presence: Presence) -> Option<Rect> {
-        let f = self.island_frames()?;
-        let r = interactive_rect(&f, presence)?;
+    /// Where the window takes the pointer for `presence`, in physical
+    /// pixels from its top-left corner; none when hidden or not placed yet.
+    fn input_rects(&self, presence: Presence) -> Vec<Rect> {
+        let Some(f) = self.island_frames() else {
+            return Vec::new();
+        };
         let window = self.window_frame(&f);
         let scale = self.window.window().scale_factor() as f64;
-        Some(Rect {
-            x: (r.x - window.x) * scale,
-            y: (r.y - window.y) * scale,
-            w: r.w * scale,
-            h: r.h * scale,
-        })
+        interactive_rects(&f, presence, self.news_rects(&f).as_ref())
+            .into_iter()
+            .map(|r| Rect {
+                x: (r.x - window.x) * scale,
+                y: (r.y - window.y) * scale,
+                w: r.w * scale,
+                h: r.h * scale,
+            })
+            .collect()
     }
 
     fn pinned_open(&self, now: Instant) -> bool {
@@ -2183,6 +2195,24 @@ impl PocketController {
             None => w.set_news_stage(0),
         }
         *self.news_view.borrow_mut() = view;
+    }
+
+    /// Where the news the window shows lies with `f`, as the window lays it
+    /// out; `None` while it shows none.
+    fn news_rects(&self, f: &Frames) -> Option<NewsRects> {
+        if !f.virtual_island || self.news_view.borrow().is_none() {
+            return None;
+        }
+        let w = &self.window;
+        let width = |l: f32| (l > 0.0).then_some(f64::from(l));
+        let chip_w = width(w.get_news_chip_w());
+        Some(geometry::news_rects(
+            f,
+            f64::from(w.get_news_pill_w()),
+            width(w.get_news_button_w()),
+            chip_w,
+            chip_w.map(|_| f64::from(w.get_news_chip_x())),
+        ))
     }
 
     /// The news pill's button: runs what it does once, outside the borrow

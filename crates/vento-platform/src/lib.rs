@@ -453,6 +453,27 @@ pub trait Platform {
         let _ = (window, rect);
         Err(PlatformError::Unsupported)
     }
+    /// Let this window take the pointer only inside `rects`, in physical
+    /// pixels from its top-left corner, or nowhere when there are none.
+    /// Where the platform takes one rectangle only, it takes the smallest
+    /// holding them all, through [`set_input_rect`](Self::set_input_rect).
+    /// Main thread only.
+    fn set_input_rects(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rects: &[Rect],
+    ) -> Result<(), PlatformError> {
+        let union = rects.iter().copied().reduce(|a, b| {
+            let (x, y) = (a.x.min(b.x), a.y.min(b.y));
+            Rect {
+                x,
+                y,
+                w: (a.x + a.w).max(b.x + b.w) - x,
+                h: (a.y + a.h).max(b.y + b.h) - y,
+            }
+        });
+        self.set_input_rect(window, union)
+    }
     /// The Finder icon of `path`, rendered at `px`×`px` points times the
     /// main screen's backing scale. `None` if `path` doesn't exist or the
     /// icon can't be rendered. Main thread only.

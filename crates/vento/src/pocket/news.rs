@@ -100,7 +100,13 @@ impl News {
         }
         let on = match stage {
             Stage::Work => self.jobs.get(&id)?.cancel.clone(),
-            Stage::Result => self.notices.get(&id)?.button.as_ref().map(|b| b.on.clone()),
+            Stage::Result => {
+                let n = self.notices.get(&id)?;
+                n.button.as_ref().map(|b| match &n.island_undo {
+                    Some(undo) if b.label == ButtonLabel::Undo => undo.clone(),
+                    _ => b.on.clone(),
+                })
+            }
         }?;
         self.pressed.insert(id);
         Some(on)
@@ -265,6 +271,20 @@ mod tests {
         assert!(news.press_button().is_none());
         assert_eq!(news.tick(t0, false).expect("still up").button_text, None);
         assert_eq!(news.tick(t0 + RESULT_HOLD, false), None);
+    }
+
+    #[test]
+    fn the_island_undoes_with_its_own_undo() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let (toast, island) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
+        let (t, i) = (toast.clone(), island.clone());
+        let n = Notice::done("Moved")
+            .with_undo(Some(Box::new(move || t.set(t.get() + 1))))
+            .with_island_undo(move || i.set(i.get() + 1));
+        news.post(n, t0);
+        news.tick(t0, false).expect("the result shows");
+        (news.press_button().expect("Undo"))();
+        assert_eq!((toast.get(), island.get()), (0, 1));
     }
 
     #[test]

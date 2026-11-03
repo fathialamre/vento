@@ -351,7 +351,15 @@ impl Platform for LinuxPlatform {
         window: raw_window_handle::RawWindowHandle,
         rect: Option<Rect>,
     ) -> Result<(), PlatformError> {
-        x11::set_input_rect(window, rect)
+        x11::set_input_rects(window, rect.as_slice())
+    }
+
+    fn set_input_rects(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rects: &[Rect],
+    ) -> Result<(), PlatformError> {
+        x11::set_input_rects(window, rects)
     }
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {

@@ -64,6 +64,13 @@ const PUSH_DEPTH: f64 = 2.0;
 /// count as a bar under the island.
 const BAR_TOLERANCE: f64 = 8.0;
 
+/// The news pill: its height, and its one button's and "+N" chip's, and
+/// how far the button sits in from the pill's right end.
+const NEWS_H: f64 = 34.0;
+const NEWS_BUTTON_H: f64 = 26.0;
+const NEWS_CHIP_H: f64 = 20.0;
+const NEWS_BUTTON_INSET: f64 = 5.0;
+
 /// A shape no pointer is ever in: it has a negative size.
 pub(super) const NOWHERE: Rect = Rect {
     x: 0.0,
@@ -418,13 +425,67 @@ pub(super) fn island_inputs(
     }
 }
 
+/// Where the news pill and what on it takes clicks lie, in logical
+/// top-left global coordinates. The pill itself takes none: clicks on its
+/// text fall through to what is below.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct NewsRects {
+    pub pill: Rect,
+    pub button: Option<Rect>,
+    pub chip: Option<Rect>,
+}
+
+/// The news pill `pill_w` wide, with its button `button_w` wide and its
+/// "+N" chip `chip_w` wide at `chip_x` from the pill's left (as the window
+/// lays them out; `None` for none). The pill is [`NEWS_H`] high with its
+/// top at the resting pill's, also while the island rests as the lip, and
+/// centred on the island; the button sits [`NEWS_BUTTON_INSET`] in from its
+/// right end. Both are centred in its height.
+pub(super) fn news_rects(
+    f: &Frames,
+    pill_w: f64,
+    button_w: Option<f64>,
+    chip_w: Option<f64>,
+    chip_x: Option<f64>,
+) -> NewsRects {
+    let mid = f.expanded.x + f.expanded.w / 2.0;
+    let pill = Rect {
+        x: mid - pill_w / 2.0,
+        y: f.expanded.y + f.top_h,
+        w: pill_w,
+        h: NEWS_H,
+    };
+    let button = button_w.map(|w| Rect {
+        x: pill.x + pill.w - NEWS_BUTTON_INSET - w,
+        y: pill.y + (NEWS_H - NEWS_BUTTON_H) / 2.0,
+        w,
+        h: NEWS_BUTTON_H,
+    });
+    let chip = chip_w.zip(chip_x).map(|(w, x)| Rect {
+        x: pill.x + x,
+        y: pill.y + (NEWS_H - NEWS_CHIP_H) / 2.0,
+        w,
+        h: NEWS_CHIP_H,
+    });
+    NewsRects { pill, button, chip }
+}
+
 /// Where the window should take the pointer in this presence; everywhere
-/// else, clicks fall through to what is below.
-pub(super) fn interactive_rect(f: &Frames, presence: Presence) -> Option<Rect> {
+/// else, clicks fall through to what is below. The resting virtual island
+/// takes none, except on the button and the chip of the news it shows.
+pub(super) fn interactive_rects(
+    f: &Frames,
+    presence: Presence,
+    news: Option<&NewsRects>,
+) -> Vec<Rect> {
     match presence {
-        Presence::Hidden => None,
-        Presence::Collapsed => (!f.corner && !f.virtual_island).then_some(f.collapsed),
-        Presence::Expanded => Some(hold(f)),
+        Presence::Hidden => Vec::new(),
+        Presence::Collapsed if f.virtual_island => news
+            .map(|n| n.button.into_iter().chain(n.chip).collect())
+            .unwrap_or_default(),
+        Presence::Collapsed if f.corner => Vec::new(),
+        Presence::Collapsed => vec![f.collapsed],
+        Presence::Expanded => vec![hold(f)],
     }
 }
 
@@ -433,9 +494,17 @@ pub(super) fn contains(r: &Rect, p: Point) -> bool {
     p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
 }
 
-/// Whether the window should take the pointer at `cursor`.
-pub(super) fn hits(f: &Frames, presence: Presence, cursor: Point) -> bool {
-    interactive_rect(f, presence).is_some_and(|r| contains(&r, cursor))
+/// Whether the window should take the pointer at `cursor`, with `news`
+/// showing.
+pub(super) fn hits(
+    f: &Frames,
+    presence: Presence,
+    news: Option<&NewsRects>,
+    cursor: Point,
+) -> bool {
+    interactive_rects(f, presence, news)
+        .iter()
+        .any(|r| contains(r, cursor))
 }
 
 /// The global point `p` in the coordinates of the window whose frame is
@@ -550,8 +619,8 @@ mod tests {
         assert_eq!(f.collapsed, rect(708.0, 740.0, 560.0, 60.0));
         // Collapsed, the window takes no clicks, even on the band.
         let low = Point { x: 900.0, y: 799.0 };
-        assert_eq!(interactive_rect(&f, Presence::Collapsed), None);
-        assert!(!hits(&f, Presence::Collapsed, low));
+        assert!(interactive_rects(&f, Presence::Collapsed, None).is_empty());
+        assert!(!hits(&f, Presence::Collapsed, None, low));
         let t0 = Instant::now();
         let at = |s: &mut IslandState, p: Point, dragging: bool, ms: u64| {
             let inputs = island_inputs(&f, true, dragging, p, false);
@@ -637,19 +706,22 @@ mod tests {
     #[test]
     fn only_the_drawn_shape_takes_the_pointer() {
         let f = frames(&notched(188.0, 38.0), TWO);
-        assert_eq!(interactive_rect(&f, Presence::Hidden), None);
-        assert_eq!(interactive_rect(&f, Presence::Collapsed), Some(f.collapsed));
+        assert!(interactive_rects(&f, Presence::Hidden, None).is_empty());
         assert_eq!(
-            interactive_rect(&f, Presence::Expanded),
-            Some(union(f.collapsed, f.expanded))
+            interactive_rects(&f, Presence::Collapsed, None),
+            vec![f.collapsed]
+        );
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, None),
+            vec![union(f.collapsed, f.expanded)]
         );
         let wing = Point { x: 630.0, y: 10.0 };
         // Inside the window, under the collapsed wings: where toolbars sit.
         let below = Point { x: 700.0, y: 100.0 };
-        assert!(hits(&f, Presence::Collapsed, wing));
-        assert!(!hits(&f, Presence::Collapsed, below));
-        assert!(hits(&f, Presence::Expanded, below));
-        assert!(!hits(&f, Presence::Hidden, wing));
+        assert!(hits(&f, Presence::Collapsed, None, wing));
+        assert!(!hits(&f, Presence::Collapsed, None, below));
+        assert!(hits(&f, Presence::Expanded, None, below));
+        assert!(!hits(&f, Presence::Hidden, None, wing));
     }
 
     #[test]
@@ -776,7 +848,7 @@ mod tests {
                 let now = t0 + Duration::from_millis(100 * k);
                 let presence = s.update(&island_inputs(&f, true, false, at, false), now);
                 assert_eq!(presence, Presence::Collapsed);
-                assert!(!hits(&f, presence, at), "{at:?} takes clicks");
+                assert!(!hits(&f, presence, None, at), "{at:?} takes clicks");
             }
         }
         // Resting on the wings opens it.
@@ -878,8 +950,98 @@ mod tests {
     #[test]
     fn a_resting_virtual_island_takes_no_clicks() {
         let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
-        assert_eq!(interactive_rect(&f, Presence::Collapsed), None);
-        assert_eq!(interactive_rect(&f, Presence::Expanded), Some(hold(&f)));
+        assert!(interactive_rects(&f, Presence::Collapsed, None).is_empty());
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, None),
+            vec![hold(&f)]
+        );
+    }
+
+    /// A news pill 300 wide with a 60-wide button and a 28-wide chip 200 in.
+    fn news_with(f: &Frames, button: bool, chip: bool) -> NewsRects {
+        news_rects(
+            f,
+            300.0,
+            button.then_some(60.0),
+            chip.then_some(28.0),
+            chip.then_some(200.0),
+        )
+    }
+
+    #[test]
+    fn only_the_button_and_chip_take_clicks() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        let news = news_with(&f, true, true);
+        // 34 high at the resting pill's top, the button 5 in from its right
+        // end and the chip where Slint put it, both centred in its height.
+        assert_eq!(news.pill, rect(490.0, 6.0, 300.0, 34.0));
+        assert_eq!(news.button, Some(rect(725.0, 10.0, 60.0, 26.0)));
+        assert_eq!(news.chip, Some(rect(690.0, 13.0, 28.0, 20.0)));
+        assert_eq!(
+            interactive_rects(&f, Presence::Collapsed, Some(&news)),
+            vec![news.button.unwrap(), news.chip.unwrap()]
+        );
+        // The pill's text lets clicks through to the tab bar below.
+        let text = Point { x: 550.0, y: 23.0 };
+        assert!(contains(&news.pill, text));
+        assert!(!hits(&f, Presence::Collapsed, Some(&news), text));
+        let button = Point { x: 750.0, y: 23.0 };
+        assert!(hits(&f, Presence::Collapsed, Some(&news), button));
+        let chip = Point { x: 700.0, y: 23.0 };
+        assert!(hits(&f, Presence::Collapsed, Some(&news), chip));
+        // Hidden, nothing does.
+        assert!(interactive_rects(&f, Presence::Hidden, Some(&news)).is_empty());
+    }
+
+    #[test]
+    fn a_news_pill_without_a_button_takes_no_clicks() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        let news = news_with(&f, false, false);
+        assert_eq!((news.button, news.chip), (None, None));
+        assert!(interactive_rects(&f, Presence::Collapsed, Some(&news)).is_empty());
+        let middle = Point { x: 640.0, y: 23.0 };
+        assert!(!hits(&f, Presence::Collapsed, Some(&news), middle));
+        // A chip alone takes its own clicks only.
+        let news = news_with(&f, false, true);
+        assert_eq!(
+            interactive_rects(&f, Presence::Collapsed, Some(&news)),
+            vec![news.chip.unwrap()]
+        );
+        // A chip's width without its x is no chip.
+        let news = news_rects(&f, 300.0, None, Some(28.0), None);
+        assert_eq!(news.chip, None);
+    }
+
+    #[test]
+    fn the_news_pill_is_centred_on_the_island() {
+        let home = plain(24.0);
+        for place in IslandPlace::ALL {
+            let mid = virtual_mid_x(&home, place);
+            for bar in [false, true] {
+                let f = virtual_frames(&home, spot(place, bar), TWO);
+                let news = news_with(&f, true, false);
+                // Under the menu bar by the gap, over the lip too.
+                assert_eq!(news.pill, rect(mid - 150.0, 28.0, 300.0, 34.0));
+            }
+        }
+    }
+
+    #[test]
+    fn an_open_island_still_takes_the_whole_hold() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        let news = news_with(&f, true, true);
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, Some(&news)),
+            vec![hold(&f)]
+        );
+        let text = Point { x: 550.0, y: 23.0 };
+        assert!(hits(&f, Presence::Expanded, Some(&news), text));
+        // Without news, as before.
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, None),
+            vec![hold(&f)]
+        );
+        assert!(interactive_rects(&f, Presence::Collapsed, None).is_empty());
     }
 
     #[test]

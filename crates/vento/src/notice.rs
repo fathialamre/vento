@@ -70,6 +70,10 @@ pub struct Notice {
     // Activity reads it, in a later step.
     #[allow(dead_code)]
     pub undo_serial: Option<u64>,
+    /// What the island's Undo runs instead of the button's own: the island
+    /// can hold a result while newer work happens, so it undoes only the
+    /// operation `undo_serial` names.
+    pub island_undo: Option<Rc<dyn Fn()>>,
 }
 
 impl Notice {
@@ -83,6 +87,7 @@ impl Notice {
             island_only: false,
             sticky: false,
             undo_serial: None,
+            island_undo: None,
         }
     }
 
@@ -140,6 +145,11 @@ impl Notice {
 
     pub fn with_undo_serial(mut self, serial: u64) -> Self {
         self.undo_serial = Some(serial);
+        self
+    }
+
+    pub fn with_island_undo(mut self, undo: impl Fn() + 'static) -> Self {
+        self.island_undo = Some(Rc::new(undo));
         self
     }
 

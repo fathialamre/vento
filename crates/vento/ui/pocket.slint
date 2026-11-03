@@ -2780,6 +2780,19 @@ export component PocketIsland inherits Window {
     in property <int> news-extra;
     in property <float> news-fraction: -1;
     in property <string> news-count;
+    // Where the news pill lies, for the clicks it takes: its width, its
+    // button's (0 for none), and its "+N" chip's (0 for none) and x from
+    // the pill's left. Estimated from the text until the pill is drawn: the
+    // mark and the text, then the chip, then the button 5 px in from the
+    // right end.
+    out property <length> news-button-w: root.news-button == "" ? 0px
+        : 24px + root.news-button.character-count * 7px;
+    out property <length> news-chip-w: root.news-extra == 0 ? 0px : 30px;
+    out property <length> news-pill-w: min(560px, max(120px, 36px
+        + max(root.news-text.character-count, root.news-sub.character-count) * 7px
+        + root.news-chip-w + 6px + root.news-button-w + 8px + 5px));
+    out property <length> news-chip-x: root.news-pill-w - 5px - root.news-button-w - 8px
+        - root.news-chip-w;
 
     // A tile, by its item's place in the Pocket: `moved` offsets are
     // measured from the press point.

@@ -299,13 +299,14 @@ fn pixel_rect(rect: &Rect) -> Rectangle {
     }
 }
 
-/// Sets the input shape of the window of `handle` to `rect`, or to nothing.
-pub(super) fn set_input_rect(
+/// Sets the input shape of the window of `handle` to `rects`, or to
+/// nothing when there are none.
+pub(super) fn set_input_rects(
     handle: RawWindowHandle,
-    rect: Option<Rect>,
+    rects: &[Rect],
 ) -> Result<(), PlatformError> {
     let window = window_id(handle)?;
-    let rects: Vec<Rectangle> = rect.iter().map(pixel_rect).collect();
+    let rects: Vec<Rectangle> = rects.iter().map(pixel_rect).collect();
     with_conn(|conn| {
         conn.shape_rectangles(
             shape::SO::SET,

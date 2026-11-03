@@ -993,8 +993,23 @@ impl Executor {
                 executor.undo_last();
             }
         });
-        let notice = undo_notice(action, text, on_undo, self.last_serial());
+        let serial = self.last_serial();
+        let mut notice = undo_notice(action, text, on_undo, serial);
+        if let Some(serial) = serial {
+            notice = notice.with_island_undo(self.undo_while_last(serial));
+        }
         self.toast.notify(notice, at);
+    }
+
+    /// What the island's Undo for the operation `serial` runs: it undoes
+    /// that operation only while it is still the last one.
+    fn undo_while_last(&self, serial: u64) -> impl Fn() + 'static {
+        let this = self.this.clone();
+        move || {
+            if let Some(executor) = this.upgrade() {
+                executor.undo_if_last(serial);
+            }
+        }
     }
 
     /// Offers the island a job of `action` that `text` describes, and toasts
@@ -1704,6 +1719,36 @@ mod tests {
         vento_core::i18n::with_language("ar", || {
             assert_eq!(classic(busy_notice()), shown("مشغول، العمل جارٍ", false));
         });
+    }
+
+    #[test]
+    fn the_islands_undo_of_an_older_operation_does_nothing() {
+        let platform: Rc<dyn Platform> = Rc::new(vento_platform::StubPlatform);
+        let executor = Executor::new(
+            platform.clone(),
+            Rc::new(RefCell::new(Settings::default())),
+            Toaster::new(platform.clone()),
+            Rc::new(RefCell::new(RecentDestinations::default())),
+            ProgressView::new(platform.clone()),
+            PasswordView::new(platform),
+        );
+        let at = Point { x: 0.0, y: 0.0 };
+        let op = || {
+            LastOp::Move(MoveRecord {
+                dest: p("/dest/Photos"),
+                moved: Vec::new(),
+            })
+        };
+        executor.remember_last(op(), at);
+        let older = executor.last_serial().expect("an operation to undo");
+        let undo = executor.undo_while_last(older);
+        // A newer operation came while the island held the older result.
+        executor.remember_last(op(), at);
+        let newer = executor.last_serial();
+        assert_ne!(newer, Some(older));
+        undo();
+        assert_eq!(executor.last_serial(), newer);
+        assert!(!executor.busy.get());
     }
 
     #[test]
