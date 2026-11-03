@@ -168,6 +168,13 @@ impl NewsBoard {
         }
     }
 
+    /// The results the board still holds, by id: those up now, and those
+    /// whose hold ended since the last post or change of hover. Whatever
+    /// tells of them must be kept while they are held.
+    pub fn held_results(&self) -> impl Iterator<Item = u64> + '_ {
+        self.results.iter().map(|r| r.id)
+    }
+
     /// Every post still remembered, newest first.
     pub fn log(&self) -> impl Iterator<Item = &LogEntry> {
         self.log.iter().rev()
@@ -382,6 +389,21 @@ mod tests {
         b.end_job(3);
         b.end_job(2);
         assert_eq!(b.current(t0 + secs(3)).map(|s| s.id), Some(1));
+    }
+
+    #[test]
+    fn a_sticky_result_is_held_however_much_is_posted_after_it() {
+        let t0 = Instant::now();
+        let mut b = NewsBoard::new();
+        b.post(1, Tone::Error, false, t0);
+        for id in 2..(LOG_MAX as u64 + 10) {
+            b.post(id, Tone::Done, false, t0 + secs(id));
+        }
+        assert!(b.log().all(|e| e.id != 1), "the log forgot it");
+        assert!(b.held_results().any(|id| id == 1));
+        // Once the others are gone it shows again.
+        let later = t0 + secs(LOG_MAX as u64 + 20);
+        assert_eq!(b.current(later).map(|s| s.id), Some(1));
     }
 
     #[test]

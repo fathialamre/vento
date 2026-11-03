@@ -64,10 +64,11 @@ pub(super) struct ActivityRowData {
 #[derive(Default)]
 pub(super) struct News {
     board: NewsBoard,
-    /// The posted notices the board's log still remembers, by post id.
-    notices: HashMap<u64, Notice>,
-    /// The running jobs, and when each began, by job id.
-    jobs: HashMap<u64, (JobNotice, Instant)>,
+    /// The posted notices the board's log still remembers or still holds
+    /// up, and when each was posted by the wall clock, by post id.
+    notices: HashMap<u64, (Notice, Timestamp)>,
+    /// The running jobs, and when each began by the wall clock, by job id.
+    jobs: HashMap<u64, (JobNotice, Timestamp)>,
     /// Notices and jobs whose button has been pressed: it is not offered
     /// again.
     pressed: HashSet<u64>,
@@ -78,10 +79,12 @@ pub(super) struct News {
 }
 
 impl News {
-    /// Posts `n` as a result, under an id of its own. The watcher's notice
-    /// of a copy is dropped within [`OWN_COPY_GRACE`] of one of vento's own
-    /// copies: it is that copy, seen again.
-    pub fn post(&mut self, n: Notice, now: Instant) {
+    /// Posts `n` as a result at `now` (`wall` by the wall clock, which
+    /// Activity reads: unlike `now`, it goes on while the computer sleeps),
+    /// under an id of its own. The watcher's notice of a copy is dropped
+    /// within [`OWN_COPY_GRACE`] of one of vento's own copies: it is that
+    /// copy, seen again.
+    pub fn post(&mut self, n: Notice, now: Instant, wall: Timestamp) {
         match n.copy {
             Some(CopySource::Own) => self.own_copy = Some(now),
             Some(CopySource::Watched)
@@ -95,18 +98,24 @@ impl News {
         }
         let id = next_job_id();
         self.board.post(id, n.tone, n.sticky, now);
-        self.notices.insert(id, n);
-        // The log forgets the oldest posts; their notices go with them.
-        let logged: HashSet<u64> = self.board.log().map(|e| e.id).collect();
-        self.notices.retain(|id, _| logged.contains(id));
+        self.notices.insert(id, (n, wall));
+        // The log forgets the oldest posts; their notices go with them,
+        // unless the board still holds them up.
+        let kept: HashSet<u64> = self
+            .board
+            .log()
+            .map(|e| e.id)
+            .chain(self.board.held_results())
+            .collect();
+        self.notices.retain(|id, _| kept.contains(id));
         self.pressed
-            .retain(|id| logged.contains(id) || self.jobs.contains_key(id));
+            .retain(|id| kept.contains(id) || self.jobs.contains_key(id));
     }
 
-    /// A job began.
-    pub fn start(&mut self, job: JobNotice, now: Instant) {
+    /// A job began at `now` (`wall` by the wall clock).
+    pub fn start(&mut self, job: JobNotice, now: Instant, wall: Timestamp) {
         self.board.start_job(job.id, now);
-        self.jobs.insert(job.id, (job, now));
+        self.jobs.insert(job.id, (job, wall));
     }
 
     /// The job `id` is over (or was never taken).
@@ -131,7 +140,7 @@ impl News {
             Stage::Result => self
                 .notices
                 .get(&shown.id)
-                .map(|n| result_view(shown.id, n, shown.extra, pressed)),
+                .map(|(n, _)| result_view(shown.id, n, shown.extra, pressed)),
         }
     }
 
@@ -145,7 +154,7 @@ impl News {
         let on = match stage {
             Stage::Work => self.jobs.get(&id)?.0.cancel.clone(),
             Stage::Result => {
-                let n = self.notices.get(&id)?;
+                let (n, _) = self.notices.get(&id)?;
                 n.button.as_ref().map(|b| match &n.island_undo {
                     Some(undo) if b.label == ButtonLabel::Undo => undo.clone(),
                     _ => b.on.clone(),
@@ -156,20 +165,16 @@ impl News {
         Some(on)
     }
 
-    /// Activity at `now`: the running jobs, newest first, then what was
-    /// posted since `today` began (none: everything), newest first; at most
-    /// [`ACTIVITY_ROWS`]. Posts from before today are forgotten. `last_serial`
-    /// is the executor's undo serial now, which the newest Undo must still
-    /// name to be offered.
+    /// Activity at `now` by the wall clock: the running jobs, newest first,
+    /// then what was posted since `today` began (none: everything), newest
+    /// first; at most [`ACTIVITY_ROWS`]. `last_serial` is the executor's
+    /// undo serial now, which the newest Undo must still name to be offered.
     pub fn activity(
-        &mut self,
-        now: Instant,
-        today: Option<Instant>,
+        &self,
+        now: Timestamp,
+        today: Option<Timestamp>,
         last_serial: Option<u64>,
     ) -> Vec<ActivityRowData> {
-        if let Some(today) = today {
-            self.forget_before(today);
-        }
         let live_undo = self.live_undo(last_serial);
         let mut jobs: Vec<_> = self.jobs.iter().collect();
         jobs.sort_by_key(|(id, (_, since))| std::cmp::Reverse((*since, **id)));
@@ -179,19 +184,22 @@ impl News {
             tone: Tone::Info,
             icon: job.icon,
             text: job.text.clone(),
-            age: age_text(now.saturating_duration_since(*since)),
+            age: age_text(now, *since),
             button: (job.cancel.is_some() && !self.pressed.contains(&id))
                 .then_some(ButtonLabel::Cancel),
         });
         let posts = self.board.log().filter_map(|e| {
-            let n = self.notices.get(&e.id)?;
+            let (n, at) = self.notices.get(&e.id)?;
+            if today.is_some_and(|today| *at < today) {
+                return None;
+            }
             Some(ActivityRowData {
                 id: e.id,
                 stage: Stage::Result,
                 tone: n.tone,
                 icon: n.icon,
                 text: n.text.clone(),
-                age: age_text(now.saturating_duration_since(e.at)),
+                age: age_text(now, *at),
                 button: (live_undo == Some(e.id)).then_some(ButtonLabel::Undo),
             })
         });
@@ -208,7 +216,7 @@ impl News {
         let on = match self.jobs.get(&id) {
             Some((job, _)) => job.cancel.clone(),
             None if self.live_undo(last_serial) == Some(id) => {
-                self.notices.get(&id)?.island_undo.clone()
+                self.notices.get(&id)?.0.island_undo.clone()
             }
             None => None,
         }?;
@@ -221,19 +229,10 @@ impl News {
     /// and its Undo has not been pressed.
     fn live_undo(&self, last_serial: Option<u64>) -> Option<u64> {
         let (id, n) = self.board.log().find_map(|e| {
-            let n = self.notices.get(&e.id)?;
+            let (n, _) = self.notices.get(&e.id)?;
             (n.undo_serial.is_some() && n.island_undo.is_some()).then_some((e.id, n))
         })?;
         (n.undo_serial == last_serial && !self.pressed.contains(&id)).then_some(id)
-    }
-
-    /// Forgets the posts from before `t`, and their notices.
-    fn forget_before(&mut self, t: Instant) {
-        self.board.forget_log_before(t);
-        let logged: HashSet<u64> = self.board.log().map(|e| e.id).collect();
-        self.notices.retain(|id, _| logged.contains(id));
-        self.pressed
-            .retain(|id| logged.contains(id) || self.jobs.contains_key(id));
     }
 }
 
@@ -247,10 +246,10 @@ pub(super) fn with_details(n: Notice, open: impl Fn() + 'static) -> Notice {
     }
 }
 
-/// How long ago, as Activity says it: "now" under a minute, then whole
-/// minutes ("2 min"), then whole hours ("1 h").
-fn age_text(ago: Duration) -> String {
-    let minutes = ago.as_secs() / 60;
+/// How long before `now` `at` was, as Activity says it: "now" under a
+/// minute, then whole minutes ("2 min"), then whole hours ("1 h").
+fn age_text(now: Timestamp, at: Timestamp) -> String {
+    let minutes = u64::try_from(now.duration_since(at).as_secs()).unwrap_or(0) / 60;
     match minutes {
         0 => tr("now"),
         1..60 => fill(&tr("{m} min"), &[("m", &minutes.to_string())]),
@@ -258,13 +257,11 @@ fn age_text(ago: Duration) -> String {
     }
 }
 
-/// When today began in `tz` (local midnight), as an [`Instant`] on the
-/// clock `now` is read from, `now_ts` being the same moment; `None` when
-/// that clock does not reach back so far.
-pub(super) fn today_start(now: Instant, now_ts: Timestamp, tz: &TimeZone) -> Option<Instant> {
-    let midnight = now_ts.to_zoned(tz.clone()).start_of_day().ok()?;
-    let since = Duration::try_from(now_ts.duration_since(midnight.timestamp())).ok()?;
-    now.checked_sub(since)
+/// When the day of `now` began in `tz`: local midnight (or the day's first
+/// moment, where a change of clocks skips midnight).
+pub(super) fn today_start(now: Timestamp, tz: &TimeZone) -> Option<Timestamp> {
+    let start = now.to_zoned(tz.clone()).start_of_day().ok()?;
+    Some(start.timestamp())
 }
 
 /// A job at work, `id` on the board: its text, the item it is on, and its
@@ -346,9 +343,14 @@ mod tests {
     use std::time::Duration;
 
     use vento_core::archive::Progress;
-    use vento_core::news::{RESULT_HOLD, WORK_DELAY};
+    use vento_core::news::{LOG_MAX, RESULT_HOLD, WORK_DELAY};
 
     use super::*;
+
+    /// A wall-clock time, for the tests that do not read it.
+    fn noon() -> Timestamp {
+        "2026-11-03T12:00:00Z".parse().unwrap()
+    }
 
     fn job(icon: ActionId, progress: Option<Arc<Progress>>) -> JobNotice {
         JobNotice {
@@ -366,7 +368,7 @@ mod tests {
         let progress = Progress::new();
         progress.start(200);
         progress.add_done(50);
-        news.start(job(ActionId::Archive, Some(progress)), t0);
+        news.start(job(ActionId::Archive, Some(progress)), t0, noon());
         let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
         assert_eq!(view.stage, Stage::Work);
         assert_eq!(view.icon, Some(ActionId::Archive));
@@ -380,7 +382,7 @@ mod tests {
         let progress = Progress::new();
         progress.start(5);
         progress.add_done(2);
-        news.start(job(ActionId::Convert, Some(progress)), t0);
+        news.start(job(ActionId::Convert, Some(progress)), t0, noon());
         let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
         assert_eq!(view.count_text, "3 of 5");
         assert_eq!(view.fraction, Some(0.4));
@@ -389,7 +391,7 @@ mod tests {
     #[test]
     fn a_move_shows_no_count() {
         let (t0, mut news) = (Instant::now(), News::default());
-        news.start(job(ActionId::Move, None), t0);
+        news.start(job(ActionId::Move, None), t0, noon());
         let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
         assert_eq!((view.fraction, view.count_text.as_str()), (None, ""));
         assert_eq!(view.text, "Working…");
@@ -401,7 +403,7 @@ mod tests {
         let (t0, mut news) = (Instant::now(), News::default());
         let j = job(ActionId::Move, None);
         let id = j.id;
-        news.start(j, t0);
+        news.start(j, t0, noon());
         assert!(news.tick(t0 + WORK_DELAY, false).is_some());
         news.end(id);
         assert_eq!(
@@ -418,7 +420,7 @@ mod tests {
         let n = Notice::done("Moved 3 items to Documents")
             .with_icon(ActionId::Move)
             .with_undo(Some(Box::new(move || counter.set(counter.get() + 1))));
-        news.post(n, t0);
+        news.post(n, t0, noon());
         let view = news.tick(t0, false).expect("the result shows");
         assert_eq!(view.stage, Stage::Result);
         assert_eq!(view.tone, Tone::Done);
@@ -440,7 +442,7 @@ mod tests {
         let n = Notice::done("Moved")
             .with_undo(Some(Box::new(move || t.set(t.get() + 1))))
             .with_island_undo(move || i.set(i.get() + 1));
-        news.post(n, t0);
+        news.post(n, t0, noon());
         news.tick(t0, false).expect("the result shows");
         (news.press_button().expect("Undo"))();
         assert_eq!((toast.get(), island.get()), (0, 1));
@@ -453,7 +455,7 @@ mod tests {
         let cancel = Arc::clone(&progress);
         let mut j = job(ActionId::Archive, Some(Arc::clone(&progress)));
         j.cancel = Some(Rc::new(move || cancel.cancel()));
-        news.start(j, t0);
+        news.start(j, t0, noon());
         let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
         assert_eq!(view.button_text.as_deref(), Some("Cancel"));
         (news.press_button().expect("Cancel"))();
@@ -466,7 +468,7 @@ mod tests {
         let n = Notice::done("Update ready")
             .with_button(ButtonLabel::Restart, || {})
             .sticky();
-        news.post(n, t0);
+        news.post(n, t0, noon());
         let later = t0 + RESULT_HOLD * 20;
         let view = news.tick(later, false).expect("still up, not seen yet");
         assert_eq!(view.text, "Update ready");
@@ -490,10 +492,11 @@ mod tests {
                 .with_sub("1 file ready to paste")
                 .with_copy(CopySource::Own),
             t0,
+            noon(),
         );
         // The watcher sees the same copy a moment later: it is not told
         // twice.
-        news.post(watched(), t0 + Duration::from_millis(200));
+        news.post(watched(), t0 + Duration::from_millis(200), noon());
         let view = news
             .tick(t0 + Duration::from_millis(200), false)
             .expect("up");
@@ -502,7 +505,7 @@ mod tests {
             ("1 file ready to paste", 0)
         );
         // A copy made later in another app is news again.
-        news.post(watched(), t0 + OWN_COPY_GRACE);
+        news.post(watched(), t0 + OWN_COPY_GRACE, noon());
         let view = news.tick(t0 + OWN_COPY_GRACE, false).expect("up");
         assert_eq!(view.sub, "report.pdf");
     }
@@ -511,16 +514,16 @@ mod tests {
     fn the_watcher_alone_is_told() {
         let (t0, mut news) = (Instant::now(), News::default());
         let n = Notice::done("Copied").with_copy(CopySource::Watched);
-        news.post(n, t0);
+        news.post(n, t0, noon());
         assert_eq!(news.tick(t0, false).expect("up").text, "Copied");
     }
 
     #[test]
     fn details_and_change_are_quiet_buttons() {
         let (t0, mut news) = (Instant::now(), News::default());
-        news.post(Notice::error("Couldn't move"), t0);
+        news.post(Notice::error("Couldn't move"), t0, noon());
         let quiet = |news: &mut News, label| {
-            news.post(Notice::info("x").with_button(label, || {}), t0);
+            news.post(Notice::info("x").with_button(label, || {}), t0, noon());
             news.tick(t0, false).expect("up").quiet_button
         };
         assert!(quiet(&mut news, ButtonLabel::Details));
@@ -537,7 +540,7 @@ mod tests {
         progress.add_done(420);
         let mut j = job(ActionId::Move, Some(progress));
         j.icon = None;
-        news.start(j, t0);
+        news.start(j, t0, noon());
         let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
         assert_eq!(view.icon, None);
         assert_eq!(view.count_text, "42%");
@@ -547,25 +550,47 @@ mod tests {
         Duration::from_secs(n)
     }
 
+    /// A wall-clock time, in UTC.
+    fn wall(s: &str) -> Timestamp {
+        s.parse().unwrap()
+    }
+
+    /// Today by the wall clock, for `now`, in UTC.
+    fn today(now: Timestamp) -> Option<Timestamp> {
+        today_start(now, &TimeZone::UTC)
+    }
+
     #[test]
     fn activity_lists_today_newest_first() {
         let (t0, mut news) = (Instant::now(), News::default());
-        news.post(Notice::done("Yesterday's"), t0);
+        news.post(
+            Notice::done("Yesterday's"),
+            t0,
+            wall("2026-11-02T21:00:00Z"),
+        );
+        // The computer slept the night through: its monotonic clock barely
+        // moved, the wall clock did.
         news.post(
             Notice::done("Moved 3 items").with_icon(ActionId::Move),
-            t0 + secs(10),
+            t0 + secs(60),
+            wall("2026-11-03T08:00:00Z"),
         );
-        news.post(Notice::error("Couldn't copy"), t0 + secs(3600));
+        news.post(
+            Notice::error("Couldn't copy"),
+            t0 + secs(120),
+            wall("2026-11-03T09:09:00Z"),
+        );
         let mut j = job(ActionId::Archive, None);
         j.text = "Archiving…".into();
         j.cancel = Some(Rc::new(|| {}));
-        news.start(j, t0 + secs(3690));
+        news.start(j, t0 + secs(130), wall("2026-11-03T09:10:00Z"));
         news.post(
             Notice::info("Awake for 1 h").with_button(ButtonLabel::AddHour, || {}),
-            t0 + secs(3695),
+            t0 + secs(135),
+            wall("2026-11-03T09:10:05Z"),
         );
-        // Today began 5 s after the first post.
-        let rows = news.activity(t0 + secs(3700), Some(t0 + secs(5)), None);
+        let now = wall("2026-11-03T09:10:10Z");
+        let rows = news.activity(now, today(now), None);
         let seen: Vec<_> = rows
             .iter()
             .map(|r| (r.stage, r.text.as_str(), r.age.as_str(), r.button))
@@ -583,18 +608,68 @@ mod tests {
         );
         assert_eq!(rows[2].tone, Tone::Error);
         assert_eq!(rows[3].icon, Some(ActionId::Move));
-        // Yesterday's is forgotten for good.
-        assert_eq!(news.board.log().count(), 3);
-        assert_eq!(news.notices.len(), 3);
+        // Yesterday's is left out, not forgotten: the log keeps it.
+        assert_eq!(news.board.log().count(), 4);
+    }
+
+    #[test]
+    fn a_result_up_since_yesterday_still_shows() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        news.post(
+            Notice::error("Couldn't move"),
+            t0,
+            wall("2026-11-02T23:50:00Z"),
+        );
+        news.start(
+            job(ActionId::Archive, None),
+            t0,
+            wall("2026-11-02T23:50:00Z"),
+        );
+        let now = wall("2026-11-03T00:10:00Z");
+        let rows = news.activity(now, today(now), None);
+        assert_eq!(rows.len(), 1, "only the job runs today: {rows:?}");
+        assert_eq!(rows[0].stage, Stage::Work);
+        // The pill still shows the error, waiting to be seen...
+        let later = t0 + secs(20 * 60);
+        let view = news.tick(later, false).expect("the error is still up");
+        assert_eq!(
+            (view.tone, view.text.as_str()),
+            (Tone::Error, "Couldn't move")
+        );
+        // ...and once seen it goes, and the work shows again.
+        assert!(news.tick(later, true).is_some());
+        let gone = later + secs(1) + RESULT_HOLD;
+        news.tick(later + secs(1), false);
+        assert_eq!(news.tick(gone, false).map(|v| v.stage), Some(Stage::Work));
+    }
+
+    #[test]
+    fn a_result_up_keeps_its_notice_past_the_log() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        news.post(Notice::error("Couldn't move"), t0, noon());
+        for i in 0..(LOG_MAX as u64 + 5) {
+            news.post(Notice::done(format!("{i}")), t0 + secs(i), noon());
+        }
+        assert!(
+            news.board
+                .log()
+                .all(|e| news.notices[&e.id].0.text != "Couldn't move")
+        );
+        // Once the others have gone, the error is told again.
+        let later = t0 + secs(LOG_MAX as u64 + 10) + RESULT_HOLD;
+        assert_eq!(
+            news.tick(later, false).map(|v| v.text),
+            Some("Couldn't move".to_owned())
+        );
     }
 
     #[test]
     fn activity_lists_six_at_most() {
         let (t0, mut news) = (Instant::now(), News::default());
         for i in 0..9 {
-            news.post(Notice::done(format!("{i}")), t0 + secs(i));
+            news.post(Notice::done(format!("{i}")), t0 + secs(i), noon());
         }
-        let rows = news.activity(t0 + secs(9), None, None);
+        let rows = news.activity(noon(), None, None);
         let texts: Vec<_> = rows.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(texts, ["8", "7", "6", "5", "4", "3"]);
     }
@@ -610,11 +685,11 @@ mod tests {
                 .with_undo_serial(serial)
                 .with_island_undo(move || undone.set(serial))
         };
-        news.post(undo(1), t0);
-        news.post(undo(2), t0 + secs(1));
-        news.post(Notice::done("Copied"), t0 + secs(2));
+        news.post(undo(1), t0, noon());
+        news.post(undo(2), t0 + secs(1), noon());
+        news.post(Notice::done("Copied"), t0 + secs(2), noon());
         let buttons = |news: &mut News, last: Option<u64>| -> Vec<Option<ButtonLabel>> {
-            news.activity(t0 + secs(3), None, last)
+            news.activity(noon(), None, last)
                 .iter()
                 .map(|r| r.button)
                 .collect()
@@ -629,7 +704,7 @@ mod tests {
         // An older one never comes back.
         assert_eq!(buttons(&mut news, Some(1)), [None, None, None]);
         // Pressed, it undoes its own operation, once.
-        let id = news.activity(t0 + secs(3), None, Some(2))[1].id;
+        let id = news.activity(noon(), None, Some(2))[1].id;
         assert!(news.press_row(id, Some(1)).is_none(), "no longer the last");
         (news.press_row(id, Some(2)).expect("Undo"))();
         assert_eq!(undone.get(), 2);
@@ -645,13 +720,13 @@ mod tests {
         let mut j = job(ActionId::Convert, Some(Arc::clone(&progress)));
         j.cancel = Some(Rc::new(move || cancel.cancel()));
         let id = j.id;
-        news.start(j, t0);
+        news.start(j, t0, noon());
         (news.press_row(id, None).expect("Cancel"))();
         assert!(progress.is_cancelled());
         // Pressed once, the pill offers it no more either.
         let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
         assert_eq!(view.button_text, None);
-        assert_eq!(news.activity(t0 + WORK_DELAY, None, None)[0].button, None);
+        assert_eq!(news.activity(noon(), None, None)[0].button, None);
     }
 
     #[test]
@@ -662,7 +737,11 @@ mod tests {
             let opened = opened.clone();
             move || opened.set(opened.get() + 1)
         };
-        news.post(with_details(Notice::error("Couldn't move"), open()), t0);
+        news.post(
+            with_details(Notice::error("Couldn't move"), open()),
+            t0,
+            noon(),
+        );
         let view = news.tick(t0, false).expect("the error shows");
         assert_eq!(view.button_text.as_deref(), Some("Details"));
         assert!(view.quiet_button);
@@ -679,30 +758,38 @@ mod tests {
 
     #[test]
     fn ages_read_now_minutes_and_hours() {
-        assert_eq!(age_text(secs(59)), "now");
-        assert_eq!(age_text(secs(60)), "1 min");
-        assert_eq!(age_text(secs(59 * 60 + 59)), "59 min");
-        assert_eq!(age_text(secs(3600)), "1 h");
-        assert_eq!(age_text(secs(5 * 3600 + 1800)), "5 h");
+        let now = wall("2026-11-03T12:00:00Z");
+        let age = |at| age_text(now, wall(at));
+        assert_eq!(age("2026-11-03T11:59:01Z"), "now");
+        assert_eq!(age("2026-11-03T11:59:00Z"), "1 min");
+        assert_eq!(age("2026-11-03T11:00:01Z"), "59 min");
+        assert_eq!(age("2026-11-03T11:00:00Z"), "1 h");
+        assert_eq!(age("2026-11-03T06:30:00Z"), "5 h");
+        // A clock set back reads as now.
+        assert_eq!(age("2026-11-03T12:05:00Z"), "now");
     }
 
     #[test]
     fn today_starts_at_local_midnight() {
-        let at = |s: &str| s.parse::<Timestamp>().unwrap();
-        let now = Instant::now() + secs(3 * 3600);
-        let start = today_start(now, at("2026-11-03T02:30:00Z"), &TimeZone::UTC);
-        assert_eq!(start, now.checked_sub(secs(2 * 3600 + 1800)));
+        let now = wall("2026-11-03T02:30:00Z");
+        assert_eq!(today(now), Some(wall("2026-11-03T00:00:00Z")));
         // In Tripoli (UTC+2) it is 04:30 then.
         let tripoli = TimeZone::fixed(jiff::tz::offset(2));
-        let start = today_start(now, at("2026-11-03T02:30:00Z"), &tripoli);
-        assert_eq!(start, now.checked_sub(secs(4 * 3600 + 1800)));
+        assert_eq!(
+            today_start(now, &tripoli),
+            Some(wall("2026-11-02T22:00:00Z"))
+        );
     }
 
     #[test]
     fn a_result_shows_over_work_and_counts_it() {
         let (t0, mut news) = (Instant::now(), News::default());
-        news.start(job(ActionId::Move, None), t0);
-        news.post(Notice::error("Couldn't copy: disk full"), t0 + WORK_DELAY);
+        news.start(job(ActionId::Move, None), t0, noon());
+        news.post(
+            Notice::error("Couldn't copy: disk full"),
+            t0 + WORK_DELAY,
+            noon(),
+        );
         let view = news.tick(t0 + WORK_DELAY, false).expect("the error shows");
         assert_eq!(
             (view.stage, view.tone, view.extra),

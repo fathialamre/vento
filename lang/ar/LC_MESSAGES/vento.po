@@ -2763,7 +2763,7 @@ msgstr "‏{app} لم يعد موجوداً"
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
-#: crates/vento/src/pocket/news.rs:328
+#: crates/vento/src/pocket/news.rs:325
 msgid "{current} of {total}"
 msgstr "‏{current} من {total}"
 
@@ -3087,7 +3087,7 @@ msgstr[3] "‏{} {n}"
 msgstr[4] "‏{} {n}"
 msgstr[5] "‏{} {n}"
 
-#: crates/vento/src/pocket/news.rs:335
+#: crates/vento/src/pocket/news.rs:332
 msgid "{}%"
 msgstr "‏{}%"
 

@@ -2635,7 +2635,7 @@ msgstr "{app} non c'è più"
 msgid "{app} is not installed"
 msgstr "{app} non è installata"
 
-#: crates/vento/src/pocket/news.rs:328
+#: crates/vento/src/pocket/news.rs:325
 msgid "{current} of {total}"
 msgstr "{current} di {total}"
 
@@ -2871,7 +2871,7 @@ msgid_plural "{} {n}"
 msgstr[0] "{} {n}"
 msgstr[1] "{} {n}"
 
-#: crates/vento/src/pocket/news.rs:335
+#: crates/vento/src/pocket/news.rs:332
 msgid "{}%"
 msgstr "{}%"
 

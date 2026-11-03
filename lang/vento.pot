@@ -2633,7 +2633,7 @@ msgstr ""
 msgid "{app} is not installed"
 msgstr ""
 
-#: crates/vento/src/pocket/news.rs:328
+#: crates/vento/src/pocket/news.rs:325
 msgid "{current} of {total}"
 msgstr ""
 
@@ -2869,7 +2869,7 @@ msgid_plural "{} {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/pocket/news.rs:335
+#: crates/vento/src/pocket/news.rs:332
 msgid "{}%"
 msgstr ""
 

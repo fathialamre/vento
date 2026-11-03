@@ -2402,13 +2402,14 @@ impl PocketController {
         self.show_activity(Vec::new());
     }
 
-    /// Activity's rows now: what the island took today, and the executor's
-    /// undo serial for its Undo.
+    /// Activity's rows now: what the island took today (since local
+    /// midnight, by the wall clock), and the executor's undo serial for its
+    /// Undo.
     fn activity_now(&self) -> Vec<ActivityRowData> {
-        let now = Instant::now();
-        let today = today_start(now, jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
+        let now = jiff::Timestamp::now();
+        let today = today_start(now, &jiff::tz::TimeZone::system());
         let last_serial = self.last_serial.borrow().as_ref().and_then(|f| f());
-        self.news.borrow_mut().activity(now, today, last_serial)
+        self.news.borrow().activity(now, today, last_serial)
     }
 
     /// Follows what changed in Activity while it is open: the ages, jobs
@@ -2495,7 +2496,9 @@ impl NoticeSink for PocketController {
                 c.open_activity();
             }
         });
-        self.news.borrow_mut().post(n, Instant::now());
+        self.news
+            .borrow_mut()
+            .post(n, Instant::now(), jiff::Timestamp::now());
         Ok(())
     }
 
@@ -2503,7 +2506,9 @@ impl NoticeSink for PocketController {
         if !self.takes_news() {
             return false;
         }
-        self.news.borrow_mut().start(job, Instant::now());
+        self.news
+            .borrow_mut()
+            .start(job, Instant::now(), jiff::Timestamp::now());
         true
     }
 
