@@ -385,6 +385,10 @@ pub struct Settings {
     /// Whether the island follows the system's Reduce motion: no shimmer, no
     /// shake, plain fades.
     pub island_reduce_motion: bool,
+    /// Whether the island on a notch shows jobs and their results in its wings.
+    /// Off, it behaves as it always did and notices go to classic toasts. The
+    /// virtual island ignores this.
+    pub island_jobs: bool,
     /// Whether the one-time hint about the virtual island has been shown (or
     /// was never needed: a new install starts on it).
     pub island_hint_shown: bool,
@@ -521,6 +525,7 @@ impl Default for Settings {
             island_shimmer_every: ShimmerEvery::Sometimes,
             island_shimmer_needs_items: true,
             island_reduce_motion: true,
+            island_jobs: true,
             island_hint_shown: false,
             screenshots: false,
             screenshot_card: true,
@@ -583,6 +588,7 @@ struct RawSettings {
     island_shimmer_every: ShimmerEvery,
     island_shimmer_needs_items: bool,
     island_reduce_motion: bool,
+    island_jobs: bool,
     island_hint_shown: bool,
     screenshots: bool,
     screenshot_card: bool,
@@ -748,6 +754,7 @@ impl From<&Settings> for RawSettings {
             island_shimmer_every: s.island_shimmer_every,
             island_shimmer_needs_items: s.island_shimmer_needs_items,
             island_reduce_motion: s.island_reduce_motion,
+            island_jobs: s.island_jobs,
             island_hint_shown: s.island_hint_shown,
             screenshots: s.screenshots,
             screenshot_card: s.screenshot_card,
@@ -867,6 +874,7 @@ impl From<RawSettings> for Settings {
             island_shimmer_every: raw.island_shimmer_every,
             island_shimmer_needs_items: raw.island_shimmer_needs_items,
             island_reduce_motion: raw.island_reduce_motion,
+            island_jobs: raw.island_jobs,
             island_hint_shown: raw.island_hint_shown,
             screenshots: raw.screenshots,
             screenshot_card: raw.screenshot_card,
@@ -1921,6 +1929,23 @@ mod tests {
         assert!(!back.island_shimmer_needs_items);
         assert!(!back.island_reduce_motion);
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn island_jobs_defaults_on_and_round_trips() {
+        assert!(Settings::default().island_jobs);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "island_place = \"left\"\n").unwrap();
+        assert!(Settings::try_load(&path).unwrap().island_jobs);
+        let s = Settings {
+            island_jobs: false,
+            ..Settings::default()
+        };
+        s.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("island_jobs = false"), "{text}");
+        assert!(!Settings::try_load(&path).unwrap().island_jobs);
     }
 
     #[test]

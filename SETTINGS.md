@@ -180,6 +180,12 @@ island_shimmer_needs_items = true
 # system, the island plays no shimmer and no shake, and uses plain fades
 island_reduce_motion = true
 
+# Island: show jobs in the island. On a Mac with a notch, and on GNOME, the
+# island beside the notch (or in the top bar) shows a job running, its result
+# and the news in its wings. With false the island stays as it was, and those
+# notices appear as classic toasts. The virtual island ignores this
+island_jobs = true
+
 # Island: whether the one-time toast about the virtual island has been shown.
 # Vento shows it once, on the classic island, where the virtual one can be
 # chosen, then sets this to true; a new install never sees it
