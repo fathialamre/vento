@@ -3227,12 +3227,15 @@ impl PocketController {
         }
         let w = &self.window;
         let width = |l: f32| (l > 0.0).then_some(f64::from(l));
-        let (button_w, button_x, chip_w, chip_x) = if f.notch_style {
+        // Each island reads only its own: a read works out what it shows.
+        let (button_w, button_x, chip_w, chip_x, pill_w, wing_w) = if f.notch_style {
             (
                 w.get_wing_button_w(),
                 w.get_wing_button_x(),
                 w.get_wing_chip_w(),
                 w.get_wing_chip_x(),
+                0.0,
+                w.get_news_wing_w(),
             )
         } else {
             (
@@ -3240,18 +3243,20 @@ impl PocketController {
                 w.get_news_button_x(),
                 w.get_news_chip_w(),
                 w.get_news_chip_x(),
+                w.get_news_pill_w(),
+                0.0,
             )
         };
         let button_w = width(button_w);
         let chip_w = width(chip_w);
         Some(geometry::news_rects(
             f,
-            f64::from(w.get_news_pill_w()),
+            f64::from(pill_w),
             button_w,
             button_w.map(|_| f64::from(button_x)),
             chip_w,
             chip_w.map(|_| f64::from(chip_x)),
-            f64::from(w.get_news_wing_w()),
+            f64::from(wing_w),
         ))
     }
 

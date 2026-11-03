@@ -581,16 +581,12 @@ pub(super) struct NewsRects {
 /// The notch island's collapsed shape widened for news: each wing
 /// `wing_w` wide (at least [`WING_W`], at most [`NOTCH_NEWS_MAX_W`] and
 /// half of what the window, the open island's width, leaves beside the
-/// notch), the notch in the middle. It stays centred on the notch and
-/// inside the screen less [`SCREEN_MARGIN`]; where the screen's end is too
-/// near, both sides shrink equally, but never below the collapsed shape.
+/// notch), the notch in the middle, as the window draws them: the window
+/// bounds them, centred on the notch.
 pub(super) fn notch_news_rect(f: &Frames, wing_w: f64) -> Rect {
     let mid = f.collapsed.x + f.collapsed.w / 2.0;
     let most = NOTCH_NEWS_MAX_W.min((f.expanded.w - f.notch_w) / 2.0);
-    let wanted = f.notch_w + 2.0 * wing_w.min(most).max(WING_W);
-    let room =
-        (mid - (f.screen.x + SCREEN_MARGIN)).min(f.screen.x + f.screen.w - SCREEN_MARGIN - mid);
-    let w = wanted.min(2.0 * room).max(f.collapsed.w);
+    let w = f.notch_w + 2.0 * wing_w.min(most).max(WING_W);
     Rect {
         x: mid - w / 2.0,
         y: f.collapsed.y,
@@ -1510,23 +1506,24 @@ mod tests {
     }
 
     #[test]
-    fn notch_news_rect_caps_and_stays_on_screen() {
+    fn notch_news_rect_caps_as_the_window_draws() {
         // A narrow notch: each wing at most NOTCH_NEWS_MAX_W.
         let f = frames(&notched(30.0, 37.0), TWO);
         assert!(f.expanded.w - f.notch_w > 2.0 * NOTCH_NEWS_MAX_W);
         let r = notch_news_rect(&f, 900.0);
         assert_eq!(r.w, f.notch_w + 2.0 * NOTCH_NEWS_MAX_W);
-        // A notch (or slot) near the end of the screen: the rect stays
-        // inside it less the margin, both sides shrinking equally.
+        // A slot near the end of the screen: the window, centred on it,
+        // bounds the wings as it draws them (the screen does not), so the
+        // clicks land where the button is drawn.
         let mut home = notched(180.0, 37.0);
         home.screen = rect(0.0, 0.0, 600.0, 400.0);
         home.slot = Some(rect(300.0, 0.0, 180.0 + 2.0 * WING_W, 37.0));
         let f = frames(&home, TWO);
         let r = notch_news_rect(&f, 900.0);
-        assert!(r.x >= SCREEN_MARGIN, "{r:?}");
-        assert!(r.x + r.w <= 600.0 - SCREEN_MARGIN, "{r:?}");
+        let most = NOTCH_NEWS_MAX_W.min((f.expanded.w - f.notch_w) / 2.0);
+        assert_eq!(r.w, f.notch_w + 2.0 * most, "{r:?}");
         assert_eq!(r.x + r.w / 2.0, f.collapsed.x + f.collapsed.w / 2.0);
-        assert!(r.w >= f.collapsed.w);
+        assert!(r.x >= f.expanded.x && r.x + r.w <= f.expanded.x + f.expanded.w);
     }
 
     #[test]
