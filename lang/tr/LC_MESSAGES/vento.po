@@ -7,7 +7,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: crates/vento/src/exec.rs:74
+#: crates/vento/src/exec.rs:75
 msgid " · "
 msgstr " · "
 
@@ -91,7 +91,7 @@ msgstr "Notlar'a ekle"
 msgid "Add to Pocket"
 msgstr "Cebe ekle"
 
-#: crates/vento/src/pocket/list_view.rs:378
+#: crates/vento/src/pocket/list_view.rs:379
 msgid "Added"
 msgstr "Eklenme"
 
@@ -119,7 +119,7 @@ msgstr "Açtıktan sonra macOS, Vento'yu yeniden açmanızı isteyebilir. Her Ve
 msgid "AirDrop"
 msgstr "AirDrop"
 
-#: crates/vento/src/pocket/list_view.rs:429
+#: crates/vento/src/pocket/list_view.rs:430
 msgid "All"
 msgstr "Tümü"
 
@@ -211,7 +211,7 @@ msgstr "Daha önce kopyaladığınız her şeyi geri getirin"
 msgid "Builds every name from parts"
 msgstr "Her adı parçalardan oluşturur"
 
-#: crates/vento/src/exec.rs:307
+#: crates/vento/src/exec.rs:332
 msgid "Busy — still working"
 msgstr "Meşgul — hâlâ çalışıyor"
 
@@ -251,7 +251,7 @@ msgstr "{folder} klasöründeki Vento değiştirilemiyor"
 msgid "Cancel"
 msgstr "Vazgeç"
 
-#: crates/vento/src/exec/archive.rs:27
+#: crates/vento/src/exec/archive.rs:28
 msgid "Cancelled"
 msgstr "İptal edildi"
 
@@ -383,7 +383,7 @@ msgstr "Sıkıştır"
 msgid "Compress files into an archive, or extract one"
 msgstr "Dosyaları bir arşive sıkıştırın ya da arşivden çıkarın"
 
-#: crates/vento/src/exec/archive.rs:43
+#: crates/vento/src/exec/archive.rs:44
 msgid "Compressed {n} item to {name}"
 msgid_plural "Compressed {n} items to {name}"
 msgstr[0] "{n} öğe sıkıştırıldı: {name}"
@@ -413,15 +413,15 @@ msgstr "Dönüştür"
 msgid "Convert to"
 msgstr "Dönüştür:"
 
-#: crates/vento/src/exec/convert.rs:80
+#: crates/vento/src/exec/convert.rs:95
 msgid "Converted {made} of {total} to {format}"
 msgstr "{total} öğeden {made} tanesi {format} biçimine dönüştürüldü"
 
-#: crates/vento/src/exec/convert.rs:66
+#: crates/vento/src/exec/convert.rs:81
 msgid "Converted {name} to {format}"
 msgstr "{name}, {format} biçimine dönüştürüldü"
 
-#: crates/vento/src/exec/convert.rs:70
+#: crates/vento/src/exec/convert.rs:85
 msgid "Converted {n} image to {format}"
 msgid_plural "Converted {n} images to {format}"
 msgstr[0] "{n} görüntü {format} biçimine dönüştürüldü"
@@ -435,15 +435,15 @@ msgstr "Dönüştürülüyor"
 msgid "Converting {name}…"
 msgstr "{name} dönüştürülüyor…"
 
-#: crates/vento/src/pocket/shots_view.rs:868
+#: crates/vento/src/exec.rs:364
 msgid "Copied"
 msgstr "Kopyalandı"
 
-#: crates/vento/src/pocket/shots_view.rs:923
+#: crates/vento/src/pocket/shots_view.rs:930
 msgid "Copied text"
 msgstr "Metin kopyalandı"
 
-#: crates/vento/src/exec.rs:117
+#: crates/vento/src/exec.rs:118
 msgid "Copied {n} item to {dest}"
 msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} öğe {dest} konumuna kopyalandı"
@@ -493,17 +493,17 @@ msgstr "Ekranın herhangi bir yerindeki metni kopyalayın"
 msgid "Copy to"
 msgstr "Şuraya kopyala"
 
-#: crates/vento/src/exec.rs:216
+#: crates/vento/src/exec.rs:217
 msgid "Copying {n} item…"
 msgid_plural "Copying {n} items…"
 msgstr[0] "{n} öğe kopyalanıyor…"
 msgstr[1] "{n} öğe kopyalanıyor…"
 
-#: crates/vento/src/exec.rs:239
+#: crates/vento/src/exec.rs:240
 msgid "Couldn't add to Pocket: {reason}"
 msgstr "Cebe eklenemedi: {reason}"
 
-#: crates/vento/src/exec.rs:245
+#: crates/vento/src/exec.rs:246
 msgid "Couldn't archive: {reason}"
 msgstr "Arşivlenemedi: {reason}"
 
@@ -511,59 +511,59 @@ msgstr "Arşivlenemedi: {reason}"
 msgid "Couldn't check for updates"
 msgstr "Güncellemeler denetlenemedi"
 
-#: crates/vento/src/exec/archive.rs:208
+#: crates/vento/src/exec/archive.rs:209
 msgid "Couldn't compress: {reason}"
 msgstr "Sıkıştırılamadı: {reason}"
 
-#: crates/vento/src/exec/convert.rs:39
+#: crates/vento/src/exec/convert.rs:54
 msgid "Couldn't convert {name}: {reason}"
 msgstr "{name} dönüştürülemedi: {reason}"
 
-#: crates/vento/src/exec/convert.rs:43
+#: crates/vento/src/exec/convert.rs:58
 msgid "Couldn't convert {n} image: {reason}"
 msgid_plural "Couldn't convert {n} images: {reason}"
 msgstr[0] "{n} görüntü dönüştürülemedi: {reason}"
 msgstr[1] "{n} görüntü dönüştürülemedi: {reason}"
 
-#: crates/vento/src/exec.rs:247
+#: crates/vento/src/exec.rs:248
 msgid "Couldn't convert: {reason}"
 msgstr "Dönüştürülemedi: {reason}"
 
-#: crates/vento/src/exec.rs:242
+#: crates/vento/src/exec.rs:243
 msgid "Couldn't copy the path: {reason}"
 msgstr "Yol kopyalanamadı: {reason}"
 
-#: crates/vento/src/exec.rs:244
+#: crates/vento/src/exec.rs:245
 msgid "Couldn't copy to the folder: {reason}"
 msgstr "Klasöre kopyalanamadı: {reason}"
 
-#: crates/vento/src/exec.rs:240
+#: crates/vento/src/exec.rs:241
 msgid "Couldn't copy: {reason}"
 msgstr "Kopyalanamadı: {reason}"
 
-#: crates/vento/src/exec/archive.rs:75
+#: crates/vento/src/exec/archive.rs:76
 msgid "Couldn't extract {name}: {reason}"
 msgstr "{name} çıkarılamadı: {reason}"
 
-#: crates/vento/src/exec/archive.rs:79
+#: crates/vento/src/exec/archive.rs:80
 msgid "Couldn't extract {n} archive: {reason}"
 msgid_plural "Couldn't extract {n} archives: {reason}"
 msgstr[0] "{n} arşiv çıkarılamadı: {reason}"
 msgstr[1] "{n} arşiv çıkarılamadı: {reason}"
 
-#: crates/vento/src/exec.rs:241
+#: crates/vento/src/exec.rs:242
 msgid "Couldn't move: {reason}"
 msgstr "Taşınamadı: {reason}"
 
-#: crates/vento/src/exec.rs:248
+#: crates/vento/src/exec.rs:249
 msgid "Couldn't open the PDF: {reason}"
 msgstr "PDF açılamadı: {reason}"
 
-#: crates/vento/src/exec.rs:243
+#: crates/vento/src/exec.rs:244
 msgid "Couldn't open the terminal: {reason}"
 msgstr "Terminal açılamadı: {reason}"
 
-#: crates/vento/src/pocket/mod.rs:136
+#: crates/vento/src/pocket/mod.rs:137
 msgid "Couldn't open: {reason}"
 msgstr "Açılamadı: {reason}"
 
@@ -575,15 +575,15 @@ msgstr "{name} geri alınamadı: {reason}. Hiçbir şey değişmedi."
 msgid "Couldn't put back {name}: {reason}. These items could not be put back:"
 msgstr "{name} geri alınamadı: {reason}. Şu öğeler geri alınamadı:"
 
-#: crates/vento/src/rename/mod.rs:177
+#: crates/vento/src/rename/mod.rs:183
 msgid "Couldn't read the items"
 msgstr "Öğeler okunamadı"
 
-#: crates/vento/src/pocket/shots_view.rs:914
+#: crates/vento/src/pocket/shots_view.rs:916
 msgid "Couldn't read the picture"
 msgstr "Resim okunamadı"
 
-#: crates/vento/src/screen_text.rs:47
+#: crates/vento/src/screen_text.rs:48
 msgid "Couldn't read the screen"
 msgstr "Ekran okunamadı"
 
@@ -595,7 +595,7 @@ msgstr "{name} yeniden adlandırılamadı: {reason}. Hiçbir şey değişmedi."
 msgid "Couldn't rename {name}: {reason}. These items could not be put back:"
 msgstr "{name} yeniden adlandırılamadı: {reason}. Şu öğeler geri alınamadı:"
 
-#: crates/vento/src/exec.rs:250
+#: crates/vento/src/exec.rs:251
 msgid "Couldn't rename: {reason}"
 msgstr "Yeniden adlandırılamadı: {reason}"
 
@@ -607,7 +607,7 @@ msgstr "Vento değiştirilemedi"
 msgid "Couldn't save settings: {error}"
 msgstr "Ayarlar kaydedilemedi: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2055
+#: crates/vento/src/pocket/mod.rs:2056
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Cep kaydedilemedi: {error}"
 
@@ -615,19 +615,19 @@ msgstr "Cep kaydedilemedi: {error}"
 msgid "Couldn't save the download"
 msgstr "İndirilen dosya kaydedilemedi"
 
-#: crates/vento/src/exec/pdf.rs:32
+#: crates/vento/src/exec/pdf.rs:33
 msgid "Couldn't save: {reason}"
 msgstr "Kaydedilemedi: {reason}"
 
-#: crates/vento/src/exec/share.rs:50
+#: crates/vento/src/exec/share.rs:51
 msgid "Couldn't share with {target}: {reason}"
 msgstr "{target} ile paylaşılamadı: {reason}"
 
-#: crates/vento/src/exec.rs:249
+#: crates/vento/src/exec.rs:250
 msgid "Couldn't share: {reason}"
 msgstr "Paylaşılamadı: {reason}"
 
-#: crates/vento/src/exec.rs:246
+#: crates/vento/src/exec.rs:247
 msgid "Couldn't show info: {reason}"
 msgstr "Bilgi gösterilemedi: {reason}"
 
@@ -781,15 +781,15 @@ msgstr "Uzantı"
 msgid "Extract"
 msgstr "Çıkar"
 
-#: crates/vento/src/exec/archive.rs:100
+#: crates/vento/src/exec/archive.rs:101
 msgid "Extracted {made} of {total}"
 msgstr "{total} arşivden {made} tanesi çıkarıldı"
 
-#: crates/vento/src/exec/archive.rs:91
+#: crates/vento/src/exec/archive.rs:92
 msgid "Extracted {name}"
 msgstr "{name} çıkarıldı"
 
-#: crates/vento/src/exec/archive.rs:92
+#: crates/vento/src/exec/archive.rs:93
 msgid "Extracted {n} archive"
 msgid_plural "Extracted {n} archives"
 msgstr[0] "{n} arşiv çıkarıldı"
@@ -879,7 +879,7 @@ msgstr "Cam"
 msgid "Hide files"
 msgstr "Dosyaları gizle"
 
-#: crates/vento/src/exec.rs:312
+#: crates/vento/src/exec.rs:342
 msgid "Hold on Convert to pick a format"
 msgstr "Biçim seçmek için Dönüştür'ün üzerinde bekleyin"
 
@@ -943,15 +943,15 @@ msgstr "Üst çubukta"
 msgid "Info"
 msgstr "Bilgi"
 
-#: crates/vento/src/info.rs:361
+#: crates/vento/src/info.rs:365
 msgid "Info: cannot count"
 msgstr "Bilgi: sayılamıyor"
 
-#: crates/vento/src/info.rs:144
+#: crates/vento/src/info.rs:146
 msgid "Info: item not found"
 msgstr "Bilgi: öğe bulunamadı"
 
-#: crates/vento/src/info.rs:142
+#: crates/vento/src/info.rs:144
 msgid "Info: items not found"
 msgstr "Bilgi: öğeler bulunamadı"
 
@@ -991,11 +991,11 @@ msgstr "Uygulamalar arasında gezinirken dosyaları elinizin altında tutun"
 msgid "Keeps the last 50 things you copy. Open it with {}."
 msgstr "Kopyaladığınız son 50 şeyi saklar. {} ile açın."
 
-#: crates/vento/src/exec/archive.rs:155
+#: crates/vento/src/exec/archive.rs:156
 msgid "Kept {name}: changed since it was made"
 msgstr "{name} silinmedi: oluşturulduktan sonra değişti"
 
-#: crates/vento/src/exec/archive.rs:162
+#: crates/vento/src/exec/archive.rs:163
 msgid "Kept {n} item: changed since it was made"
 msgid_plural "Kept {n} items: changed since they were made"
 msgstr[0] "{n} öğe silinmedi: oluşturulduktan sonra değişti"
@@ -1021,7 +1021,7 @@ msgstr "Yerleşim"
 msgid "Left"
 msgstr "Sol"
 
-#: crates/vento/src/exec/share.rs:40
+#: crates/vento/src/exec/share.rs:41
 msgid "Left out {n} item that no longer exists"
 msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] "Artık var olmayan {n} öğe dışarıda bırakıldı"
@@ -1139,37 +1139,37 @@ msgstr "Şuraya taşı"
 msgid "Move to Trash"
 msgstr "Çöp Sepeti'ne taşı"
 
-#: crates/vento/src/pocket/shots_view.rs:1166
+#: crates/vento/src/pocket/shots_view.rs:1173
 msgid "Moved to Trash"
 msgstr "Çöp Sepeti'ne taşındı"
 
-#: crates/vento/src/exec/archive.rs:139
+#: crates/vento/src/exec/archive.rs:140
 msgid "Moved {name} to the Trash"
 msgstr "{name} Çöp Sepeti'ne taşındı"
 
-#: crates/vento/src/exec/archive.rs:140
+#: crates/vento/src/exec/archive.rs:141
 msgid "Moved {n} item to the Trash"
 msgid_plural "Moved {n} items to the Trash"
 msgstr[0] "{n} öğe Çöp Sepeti'ne taşındı"
 msgstr[1] "{n} öğe Çöp Sepeti'ne taşındı"
 
-#: crates/vento/src/exec.rs:104
+#: crates/vento/src/exec.rs:105
 msgid "Moved {n} item to {dest}"
 msgid_plural "Moved {n} items to {dest}"
 msgstr[0] "{n} öğe {dest} konumuna taşındı"
 msgstr[1] "{n} öğe {dest} konumuna taşındı"
 
-#: crates/vento/src/exec.rs:226
+#: crates/vento/src/exec.rs:227
 msgid "Moving {name} to the Trash…"
 msgstr "{name} Çöp Sepeti'ne taşınıyor…"
 
-#: crates/vento/src/exec.rs:227
+#: crates/vento/src/exec.rs:228
 msgid "Moving {n} item to the Trash…"
 msgid_plural "Moving {n} items to the Trash…"
 msgstr[0] "{n} öğe Çöp Sepeti'ne taşınıyor…"
 msgstr[1] "{n} öğe Çöp Sepeti'ne taşınıyor…"
 
-#: crates/vento/src/exec.rs:215
+#: crates/vento/src/exec.rs:216
 msgid "Moving {n} item…"
 msgid_plural "Moving {n} items…"
 msgstr[0] "{n} öğe taşınıyor…"
@@ -1203,7 +1203,7 @@ msgstr "Yeni süre"
 msgid "Next"
 msgstr "İleri"
 
-#: crates/vento/src/exec/pdf.rs:74
+#: crates/vento/src/exec/pdf.rs:95
 msgid "No PDFs to open"
 msgstr "Açılacak PDF yok"
 
@@ -1219,7 +1219,7 @@ msgstr "Sabitlenmiş klasör yok"
 msgid "No recent folders"
 msgstr "Son kullanılan klasör yok"
 
-#: crates/vento/src/pocket/shots_view.rs:919
+#: crates/vento/src/pocket/shots_view.rs:924
 msgid "No text found"
 msgstr "Metin bulunamadı"
 
@@ -1235,11 +1235,11 @@ msgstr "Hiçbiri bulunamadı"
 msgid "Notes"
 msgstr "Notlar"
 
-#: crates/vento/src/exec/share.rs:29
+#: crates/vento/src/exec/share.rs:30
 msgid "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
 msgstr "Notlar bir klasörü dosyalarla birlikte alamaz. Klasörü tek başına bırakın ya da önce Arşivle ile sıkıştırın."
 
-#: crates/vento/src/exec.rs:137
+#: crates/vento/src/exec.rs:138
 msgid "Nothing left to remove"
 msgstr "Kaldırılacak bir şey kalmadı"
 
@@ -1251,19 +1251,19 @@ msgstr "Bu türden henüz bir şey yok"
 msgid "Nothing selected"
 msgstr "Hiçbir şey seçilmedi"
 
-#: crates/vento/src/exec/convert.rs:55
+#: crates/vento/src/exec/convert.rs:70
 msgid "Nothing to convert: already {format}"
 msgstr "Dönüştürülecek bir şey yok: zaten {format}"
 
-#: crates/vento/src/exec.rs:849
+#: crates/vento/src/exec.rs:941
 msgid "Nothing to copy"
 msgstr "Kopyalanacak bir şey yok"
 
-#: crates/vento/src/exec.rs:817
+#: crates/vento/src/exec.rs:908
 msgid "Nothing to move"
 msgstr "Taşınacak bir şey yok"
 
-#: crates/vento/src/rename/mod.rs:188
+#: crates/vento/src/rename/mod.rs:767
 msgid "Nothing to rename"
 msgstr "Yeniden adlandırılacak bir şey yok"
 
@@ -1347,7 +1347,7 @@ msgstr "Hoş geldin kurulumunu aç"
 msgid "Open the clipboard history"
 msgstr "Pano geçmişini aç"
 
-#: crates/vento/src/exec/pdf.rs:78
+#: crates/vento/src/exec/pdf.rs:99
 msgid "Opened {n} PDF; skipped {m}: {reason}"
 msgid_plural "Opened {n} PDFs; skipped {m}: {reason}"
 msgstr[0] "{n} PDF açıldı; {m} atlandı: {reason}"
@@ -1394,6 +1394,10 @@ msgstr[1] "Sayfa {pages}"
 #: crates/vento/ui/archive.slint:264
 msgid "Password"
 msgstr "Parola"
+
+#: crates/vento/src/exec.rs:378
+msgid "Path copied"
+msgstr "Yol kopyalandı"
 
 #: crates/vento/ui/quick.slint:515
 msgid "Pause"
@@ -1549,13 +1553,13 @@ msgstr "Cep'ten kaldır"
 msgid "Remove {}"
 msgstr "Kaldır: {}"
 
-#: crates/vento/src/exec.rs:139
+#: crates/vento/src/exec.rs:140
 msgid "Removed {n} copy"
 msgid_plural "Removed {n} copies"
 msgstr[0] "{n} kopya kaldırıldı"
 msgstr[1] "{n} kopya kaldırıldı"
 
-#: crates/vento/src/exec.rs:218
+#: crates/vento/src/exec.rs:219
 msgid "Removing {n} copy…"
 msgid_plural "Removing {n} copies…"
 msgstr[0] "{n} kopya kaldırılıyor…"
@@ -1581,7 +1585,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] "{n} öğe yeniden adlandırıldı"
 msgstr[1] "{n} öğe yeniden adlandırıldı"
 
-#: crates/vento/src/rename/mod.rs:781
+#: crates/vento/src/rename/mod.rs:794
 msgid "Renaming… {done} of {total}"
 msgstr "Yeniden adlandırılıyor… {done}/{total}"
 
@@ -1609,13 +1613,13 @@ msgstr "Yeniden başlat"
 msgid "Restarting to finish…"
 msgstr "Bitirmek için yeniden başlatılıyor…"
 
-#: crates/vento/src/exec.rs:193
+#: crates/vento/src/exec.rs:194
 msgid "Restored {n} item"
 msgid_plural "Restored {n} items"
 msgstr[0] "{n} öğe geri yüklendi"
 msgstr[1] "{n} öğe geri yüklendi"
 
-#: crates/vento/src/exec.rs:217
+#: crates/vento/src/exec.rs:218
 msgid "Restoring {n} item…"
 msgid_plural "Restoring {n} items…"
 msgstr[0] "{n} öğe geri yükleniyor…"
@@ -1667,17 +1671,17 @@ msgstr[1] "Görüntüleri kaydet"
 msgid "Save your changes as a new PDF?"
 msgstr "Değişiklikleriniz yeni bir PDF olarak kaydedilsin mi?"
 
-#: crates/vento/src/exec/pdf.rs:41
+#: crates/vento/src/exec/pdf.rs:42
 msgid "Saved {name}"
 msgstr "{name} kaydedildi"
 
-#: crates/vento/src/exec/pdf.rs:45
+#: crates/vento/src/exec/pdf.rs:46
 msgid "Saved {n} file in {folder}"
 msgid_plural "Saved {n} files in {folder}"
 msgstr[0] "{n} dosya {folder} klasörüne kaydedildi"
 msgstr[1] "{n} dosya {folder} klasörüne kaydedildi"
 
-#: crates/vento/src/exec/pdf.rs:55
+#: crates/vento/src/exec/pdf.rs:56
 msgid "Saved {n} image in {folder}"
 msgid_plural "Saved {n} images in {folder}"
 msgstr[0] "{n} görüntü {folder} klasörüne kaydedildi"
@@ -1787,15 +1791,15 @@ msgstr "Tümünü göster: {}"
 msgid "Show files"
 msgstr "Dosyaları göster"
 
-#: crates/vento/src/info.rs:47
+#: crates/vento/src/info.rs:49
 msgid "Show in Explorer"
 msgstr "Gezgin'de göster"
 
-#: crates/vento/src/info.rs:49
+#: crates/vento/src/info.rs:51
 msgid "Show in Files"
 msgstr "Dosyalar'da göster"
 
-#: crates/vento/src/info.rs:45
+#: crates/vento/src/info.rs:47
 msgid "Show in Finder"
 msgstr "Finder'da göster"
 
@@ -1901,7 +1905,7 @@ msgstr "Bu Mac'te şifrelenmeden saklanır. Parola yöneticilerinin özel olarak
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Bu bilgisayarda şifrelenmeden saklanır. Parola yöneticilerinin özel olarak işaretlediği kopyalar atlanır."
 
-#: crates/vento/src/main.rs:943
+#: crates/vento/src/main.rs:948
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ekrandan kopyala için Ekran Kaydı'nı yeniden açın"
 
@@ -1989,7 +1993,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Bu kısayol kullanılamaz"
 
-#: crates/vento/src/pocket/mod.rs:829
+#: crates/vento/src/pocket/mod.rs:830
 msgid "Those items are no longer there"
 msgstr "O öğeler artık orada değil"
 
@@ -2053,27 +2057,27 @@ msgstr "BÜYÜK HARF"
 msgid "Undo"
 msgstr "Geri al"
 
-#: crates/vento/src/exec.rs:290
+#: crates/vento/src/exec.rs:315
 msgid "Undo last PDF"
 msgstr "Son PDF'i geri al"
 
-#: crates/vento/src/exec.rs:288
+#: crates/vento/src/exec.rs:313
 msgid "Undo last archive"
 msgstr "Son arşivi geri al"
 
-#: crates/vento/src/exec.rs:289
+#: crates/vento/src/exec.rs:314
 msgid "Undo last convert"
 msgstr "Son dönüştürmeyi geri al"
 
-#: crates/vento/src/exec.rs:287
+#: crates/vento/src/exec.rs:312
 msgid "Undo last copy"
 msgstr "Son kopyalamayı geri al"
 
-#: crates/vento/src/exec.rs:292
+#: crates/vento/src/exec.rs:317
 msgid "Undo last move"
 msgstr "Son taşımayı geri al"
 
-#: crates/vento/src/exec.rs:291
+#: crates/vento/src/exec.rs:316
 msgid "Undo last rename"
 msgstr "Son yeniden adlandırmayı geri al"
 
@@ -2385,7 +2389,7 @@ msgstr "özel dosya taşınamaz: {path}"
 msgid "cannot remove from read-only folder {dir}"
 msgstr "salt okunur klasörden kaldırılamaz: {dir}"
 
-#: crates/vento/src/exec/pdf.rs:196
+#: crates/vento/src/exec/pdf.rs:217
 msgid "cannot start"
 msgstr "başlatılamıyor"
 
@@ -2393,7 +2397,7 @@ msgstr "başlatılamıyor"
 msgid "cannot start copying: {reason}"
 msgstr "kopyalama başlatılamıyor: {reason}"
 
-#: crates/vento/src/exec.rs:951
+#: crates/vento/src/exec.rs:1050
 msgid "cannot start: {reason}"
 msgstr "başlatılamıyor: {reason}"
 
@@ -2425,7 +2429,7 @@ msgstr "boş"
 msgid "i/o error: {reason}"
 msgstr "G/Ç hatası: {reason}"
 
-#: crates/vento/src/exec.rs:937
+#: crates/vento/src/exec.rs:1036
 msgid "internal error"
 msgstr "iç hata"
 
@@ -2437,7 +2441,7 @@ msgstr "kesildi"
 msgid "invalid shortcut \"{spec}\""
 msgstr "geçersiz kısayol \"{spec}\""
 
-#: crates/vento/src/exec/share.rs:33
+#: crates/vento/src/exec/share.rs:34
 msgid "it won't take these items"
 msgstr "bu öğeleri kabul etmiyor"
 
@@ -2445,17 +2449,17 @@ msgstr "bu öğeleri kabul etmiyor"
 msgid "kebab-case"
 msgstr "kebab-case"
 
-#: crates/vento/src/exec/archive.rs:159
+#: crates/vento/src/exec/archive.rs:160
 msgid "kept {name}: changed since it was made"
 msgstr "{name} silinmedi: oluşturulduktan sonra değişti"
 
-#: crates/vento/src/exec.rs:147
+#: crates/vento/src/exec.rs:148
 msgid "kept {n} changed"
 msgid_plural "kept {n} changed"
 msgstr[0] "değişen {n} öğe silinmedi"
 msgstr[1] "değişen {n} öğe silinmedi"
 
-#: crates/vento/src/exec/archive.rs:167
+#: crates/vento/src/exec/archive.rs:168
 msgid "kept {n} item: changed since it was made"
 msgid_plural "kept {n} items: changed since they were made"
 msgstr[0] "{n} öğe silinmedi: oluşturulduktan sonra değişti"
@@ -2505,7 +2509,7 @@ msgstr "kaydedilen öğe için boş ad yok"
 msgid "no free temporary name"
 msgstr "boş geçici ad yok"
 
-#: crates/vento/src/exec.rs:542
+#: crates/vento/src/exec.rs:623
 msgid "no images"
 msgstr "görüntü yok"
 
@@ -2529,7 +2533,7 @@ msgstr "yeterli disk alanı yok"
 msgid "not found"
 msgstr "bulunamadı"
 
-#: crates/vento/src/exec/share.rs:82
+#: crates/vento/src/exec/share.rs:99
 msgid "nothing to share"
 msgstr "paylaşılacak bir şey yok"
 
@@ -2655,15 +2659,15 @@ msgid_plural "{name} + {n} more"
 msgstr[0] "{name} + {n} tane daha"
 msgstr[1] "{name} + {n} tane daha"
 
-#: crates/vento/src/exec/pdf.rs:72
+#: crates/vento/src/exec/pdf.rs:93
 msgid "{name} is locked"
 msgstr "{name} kilitli"
 
-#: crates/vento/src/main.rs:987
+#: crates/vento/src/main.rs:992
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "{name} kısayolu kullanılamıyor: {reason}"
 
-#: crates/vento/src/pocket/list_view.rs:111
+#: crates/vento/src/pocket/list_view.rs:112
 msgid "{name} · {n} items"
 msgstr "{name} · {n} öğe"
 
@@ -2671,7 +2675,7 @@ msgstr "{name} · {n} öğe"
 msgid "{now} should be {old}"
 msgstr "{now} {old} olmalı"
 
-#: crates/vento/src/exec/convert.rs:90
+#: crates/vento/src/exec/convert.rs:105
 msgid "{n} already {format}"
 msgid_plural "{n} already {format}"
 msgstr[0] "{n} öğe zaten {format}"
@@ -2683,13 +2687,13 @@ msgid_plural "{n} bytes"
 msgstr[0] "{n} bayt"
 msgstr[1] "{n} bayt"
 
-#: crates/vento/src/exec.rs:57
+#: crates/vento/src/exec.rs:58
 msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] "{n} başarısız"
 msgstr[1] "{n} başarısız"
 
-#: crates/vento/src/exec/archive.rs:124
+#: crates/vento/src/exec/archive.rs:125
 msgid "{n} failed: {reason}"
 msgid_plural "{n} failed: {reason}"
 msgstr[0] "{n} başarısız: {reason}"
@@ -2700,6 +2704,12 @@ msgid "{n} file"
 msgid_plural "{n} files"
 msgstr[0] "{n} dosya"
 msgstr[1] "{n} dosya"
+
+#: crates/vento/src/exec.rs:366
+msgid "{n} file ready to paste"
+msgid_plural "{n} files ready to paste"
+msgstr[0] "{n} dosya yapıştırılmaya hazır"
+msgstr[1] "{n} dosya yapıştırılmaya hazır"
 
 #: crates/vento/src/pocket/clip.rs:963
 msgid "{n} files"
@@ -2723,19 +2733,19 @@ msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "{n} öğe o zamandan beri değişti ve olduğu gibi bırakıldı."
 msgstr[1] "{n} öğe o zamandan beri değişti ve olduğu gibi bırakıldı."
 
-#: crates/vento/src/exec.rs:151
+#: crates/vento/src/exec.rs:152
 msgid "{n} no longer there"
 msgid_plural "{n} no longer there"
 msgstr[0] "{n} öğe artık yok"
 msgstr[1] "{n} öğe artık yok"
 
-#: crates/vento/src/exec/convert.rs:99
+#: crates/vento/src/exec/convert.rs:114
 msgid "{n} not an image"
 msgid_plural "{n} not images"
 msgstr[0] "{n} öğe görüntü değil"
 msgstr[1] "{n} öğe görüntü değil"
 
-#: crates/vento/src/exec.rs:60
+#: crates/vento/src/exec.rs:61
 msgid "{n} original couldn't be removed"
 msgid_plural "{n} originals couldn't be removed"
 msgstr[0] "{n} orijinal kaldırılamadı"
@@ -2775,7 +2785,7 @@ msgid_plural "{n} selected · pages {pages}"
 msgstr[0] "{n} seçili · sayfa {pages}"
 msgstr[1] "{n} seçili · sayfa {pages}"
 
-#: crates/vento/src/exec/archive.rs:112
+#: crates/vento/src/exec/archive.rs:113
 msgid "{n} skipped"
 msgid_plural "{n} skipped"
 msgstr[0] "{n} atlandı"

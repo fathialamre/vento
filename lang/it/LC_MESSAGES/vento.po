@@ -7,7 +7,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: crates/vento/src/exec.rs:74
+#: crates/vento/src/exec.rs:75
 msgid " · "
 msgstr " · "
 
@@ -91,7 +91,7 @@ msgstr "Aggiungi a Note"
 msgid "Add to Pocket"
 msgstr "Aggiungi alla Tasca"
 
-#: crates/vento/src/pocket/list_view.rs:378
+#: crates/vento/src/pocket/list_view.rs:379
 msgid "Added"
 msgstr "Aggiunto"
 
@@ -119,7 +119,7 @@ msgstr "Dopo averlo attivato, macOS potrebbe chiederti di riaprire Vento. Dopo o
 msgid "AirDrop"
 msgstr "AirDrop"
 
-#: crates/vento/src/pocket/list_view.rs:429
+#: crates/vento/src/pocket/list_view.rs:430
 msgid "All"
 msgstr "Tutti"
 
@@ -211,7 +211,7 @@ msgstr "Recupera ciò che hai copiato in precedenza"
 msgid "Builds every name from parts"
 msgstr "Compone ogni nome da più parti"
 
-#: crates/vento/src/exec.rs:307
+#: crates/vento/src/exec.rs:332
 msgid "Busy — still working"
 msgstr "Occupato — ancora al lavoro"
 
@@ -251,7 +251,7 @@ msgstr "Impossibile sostituire Vento in {folder}"
 msgid "Cancel"
 msgstr "Annulla"
 
-#: crates/vento/src/exec/archive.rs:27
+#: crates/vento/src/exec/archive.rs:28
 msgid "Cancelled"
 msgstr "Annullato"
 
@@ -383,7 +383,7 @@ msgstr "Comprimi"
 msgid "Compress files into an archive, or extract one"
 msgstr "Comprimi file in un archivio, o estrai un archivio"
 
-#: crates/vento/src/exec/archive.rs:43
+#: crates/vento/src/exec/archive.rs:44
 msgid "Compressed {n} item to {name}"
 msgid_plural "Compressed {n} items to {name}"
 msgstr[0] "{n} elemento compresso in {name}"
@@ -413,15 +413,15 @@ msgstr "Converti"
 msgid "Convert to"
 msgstr "Converti in"
 
-#: crates/vento/src/exec/convert.rs:80
+#: crates/vento/src/exec/convert.rs:95
 msgid "Converted {made} of {total} to {format}"
 msgstr "Convertiti {made} su {total} in {format}"
 
-#: crates/vento/src/exec/convert.rs:66
+#: crates/vento/src/exec/convert.rs:81
 msgid "Converted {name} to {format}"
 msgstr "{name} convertito in {format}"
 
-#: crates/vento/src/exec/convert.rs:70
+#: crates/vento/src/exec/convert.rs:85
 msgid "Converted {n} image to {format}"
 msgid_plural "Converted {n} images to {format}"
 msgstr[0] "{n} immagine convertita in {format}"
@@ -435,15 +435,15 @@ msgstr "Conversione"
 msgid "Converting {name}…"
 msgstr "Conversione di {name}…"
 
-#: crates/vento/src/pocket/shots_view.rs:868
+#: crates/vento/src/exec.rs:364
 msgid "Copied"
 msgstr "Copiato"
 
-#: crates/vento/src/pocket/shots_view.rs:923
+#: crates/vento/src/pocket/shots_view.rs:930
 msgid "Copied text"
 msgstr "Testo copiato"
 
-#: crates/vento/src/exec.rs:117
+#: crates/vento/src/exec.rs:118
 msgid "Copied {n} item to {dest}"
 msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} elemento copiato in {dest}"
@@ -493,17 +493,17 @@ msgstr "Copia il testo da qualsiasi punto dello schermo"
 msgid "Copy to"
 msgstr "Copia in"
 
-#: crates/vento/src/exec.rs:216
+#: crates/vento/src/exec.rs:217
 msgid "Copying {n} item…"
 msgid_plural "Copying {n} items…"
 msgstr[0] "Copia di {n} elemento…"
 msgstr[1] "Copia di {n} elementi…"
 
-#: crates/vento/src/exec.rs:239
+#: crates/vento/src/exec.rs:240
 msgid "Couldn't add to Pocket: {reason}"
 msgstr "Impossibile aggiungere alla Tasca: {reason}"
 
-#: crates/vento/src/exec.rs:245
+#: crates/vento/src/exec.rs:246
 msgid "Couldn't archive: {reason}"
 msgstr "Impossibile archiviare: {reason}"
 
@@ -511,59 +511,59 @@ msgstr "Impossibile archiviare: {reason}"
 msgid "Couldn't check for updates"
 msgstr "Impossibile controllare gli aggiornamenti"
 
-#: crates/vento/src/exec/archive.rs:208
+#: crates/vento/src/exec/archive.rs:209
 msgid "Couldn't compress: {reason}"
 msgstr "Impossibile comprimere: {reason}"
 
-#: crates/vento/src/exec/convert.rs:39
+#: crates/vento/src/exec/convert.rs:54
 msgid "Couldn't convert {name}: {reason}"
 msgstr "Impossibile convertire {name}: {reason}"
 
-#: crates/vento/src/exec/convert.rs:43
+#: crates/vento/src/exec/convert.rs:58
 msgid "Couldn't convert {n} image: {reason}"
 msgid_plural "Couldn't convert {n} images: {reason}"
 msgstr[0] "Impossibile convertire {n} immagine: {reason}"
 msgstr[1] "Impossibile convertire {n} immagini: {reason}"
 
-#: crates/vento/src/exec.rs:247
+#: crates/vento/src/exec.rs:248
 msgid "Couldn't convert: {reason}"
 msgstr "Impossibile convertire: {reason}"
 
-#: crates/vento/src/exec.rs:242
+#: crates/vento/src/exec.rs:243
 msgid "Couldn't copy the path: {reason}"
 msgstr "Impossibile copiare il percorso: {reason}"
 
-#: crates/vento/src/exec.rs:244
+#: crates/vento/src/exec.rs:245
 msgid "Couldn't copy to the folder: {reason}"
 msgstr "Impossibile copiare nella cartella: {reason}"
 
-#: crates/vento/src/exec.rs:240
+#: crates/vento/src/exec.rs:241
 msgid "Couldn't copy: {reason}"
 msgstr "Impossibile copiare: {reason}"
 
-#: crates/vento/src/exec/archive.rs:75
+#: crates/vento/src/exec/archive.rs:76
 msgid "Couldn't extract {name}: {reason}"
 msgstr "Impossibile estrarre {name}: {reason}"
 
-#: crates/vento/src/exec/archive.rs:79
+#: crates/vento/src/exec/archive.rs:80
 msgid "Couldn't extract {n} archive: {reason}"
 msgid_plural "Couldn't extract {n} archives: {reason}"
 msgstr[0] "Impossibile estrarre {n} archivio: {reason}"
 msgstr[1] "Impossibile estrarre {n} archivi: {reason}"
 
-#: crates/vento/src/exec.rs:241
+#: crates/vento/src/exec.rs:242
 msgid "Couldn't move: {reason}"
 msgstr "Impossibile spostare: {reason}"
 
-#: crates/vento/src/exec.rs:248
+#: crates/vento/src/exec.rs:249
 msgid "Couldn't open the PDF: {reason}"
 msgstr "Impossibile aprire il PDF: {reason}"
 
-#: crates/vento/src/exec.rs:243
+#: crates/vento/src/exec.rs:244
 msgid "Couldn't open the terminal: {reason}"
 msgstr "Impossibile aprire il terminale: {reason}"
 
-#: crates/vento/src/pocket/mod.rs:136
+#: crates/vento/src/pocket/mod.rs:137
 msgid "Couldn't open: {reason}"
 msgstr "Impossibile aprire: {reason}"
 
@@ -575,15 +575,15 @@ msgstr "Impossibile ripristinare {name}: {reason}. Non è cambiato nulla."
 msgid "Couldn't put back {name}: {reason}. These items could not be put back:"
 msgstr "Impossibile ripristinare {name}: {reason}. Questi elementi non sono stati ripristinati:"
 
-#: crates/vento/src/rename/mod.rs:177
+#: crates/vento/src/rename/mod.rs:183
 msgid "Couldn't read the items"
 msgstr "Impossibile leggere gli elementi"
 
-#: crates/vento/src/pocket/shots_view.rs:914
+#: crates/vento/src/pocket/shots_view.rs:916
 msgid "Couldn't read the picture"
 msgstr "Impossibile leggere l'immagine"
 
-#: crates/vento/src/screen_text.rs:47
+#: crates/vento/src/screen_text.rs:48
 msgid "Couldn't read the screen"
 msgstr "Impossibile leggere lo schermo"
 
@@ -595,7 +595,7 @@ msgstr "Impossibile rinominare {name}: {reason}. Non è cambiato nulla."
 msgid "Couldn't rename {name}: {reason}. These items could not be put back:"
 msgstr "Impossibile rinominare {name}: {reason}. Questi elementi non sono stati ripristinati:"
 
-#: crates/vento/src/exec.rs:250
+#: crates/vento/src/exec.rs:251
 msgid "Couldn't rename: {reason}"
 msgstr "Impossibile rinominare: {reason}"
 
@@ -607,7 +607,7 @@ msgstr "Impossibile sostituire Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Impossibile salvare le impostazioni: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2055
+#: crates/vento/src/pocket/mod.rs:2056
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Impossibile salvare la Tasca: {error}"
 
@@ -615,19 +615,19 @@ msgstr "Impossibile salvare la Tasca: {error}"
 msgid "Couldn't save the download"
 msgstr "Impossibile salvare il download"
 
-#: crates/vento/src/exec/pdf.rs:32
+#: crates/vento/src/exec/pdf.rs:33
 msgid "Couldn't save: {reason}"
 msgstr "Impossibile salvare: {reason}"
 
-#: crates/vento/src/exec/share.rs:50
+#: crates/vento/src/exec/share.rs:51
 msgid "Couldn't share with {target}: {reason}"
 msgstr "Impossibile condividere con {target}: {reason}"
 
-#: crates/vento/src/exec.rs:249
+#: crates/vento/src/exec.rs:250
 msgid "Couldn't share: {reason}"
 msgstr "Impossibile condividere: {reason}"
 
-#: crates/vento/src/exec.rs:246
+#: crates/vento/src/exec.rs:247
 msgid "Couldn't show info: {reason}"
 msgstr "Impossibile mostrare le info: {reason}"
 
@@ -781,15 +781,15 @@ msgstr "Estensione"
 msgid "Extract"
 msgstr "Estrai"
 
-#: crates/vento/src/exec/archive.rs:100
+#: crates/vento/src/exec/archive.rs:101
 msgid "Extracted {made} of {total}"
 msgstr "Estratti {made} su {total}"
 
-#: crates/vento/src/exec/archive.rs:91
+#: crates/vento/src/exec/archive.rs:92
 msgid "Extracted {name}"
 msgstr "{name} estratto"
 
-#: crates/vento/src/exec/archive.rs:92
+#: crates/vento/src/exec/archive.rs:93
 msgid "Extracted {n} archive"
 msgid_plural "Extracted {n} archives"
 msgstr[0] "{n} archivio estratto"
@@ -879,7 +879,7 @@ msgstr "Vetro"
 msgid "Hide files"
 msgstr "Nascondi file"
 
-#: crates/vento/src/exec.rs:312
+#: crates/vento/src/exec.rs:342
 msgid "Hold on Convert to pick a format"
 msgstr "Soffermati su Converti per scegliere un formato"
 
@@ -943,15 +943,15 @@ msgstr "Nella barra superiore"
 msgid "Info"
 msgstr "Info"
 
-#: crates/vento/src/info.rs:361
+#: crates/vento/src/info.rs:365
 msgid "Info: cannot count"
 msgstr "Info: impossibile contare"
 
-#: crates/vento/src/info.rs:144
+#: crates/vento/src/info.rs:146
 msgid "Info: item not found"
 msgstr "Info: elemento non trovato"
 
-#: crates/vento/src/info.rs:142
+#: crates/vento/src/info.rs:144
 msgid "Info: items not found"
 msgstr "Info: elementi non trovati"
 
@@ -991,11 +991,11 @@ msgstr "Tieni i file a portata di mano mentre passi da un'app all'altra"
 msgid "Keeps the last 50 things you copy. Open it with {}."
 msgstr "Conserva le ultime 50 cose che copi. Aprila con {}."
 
-#: crates/vento/src/exec/archive.rs:155
+#: crates/vento/src/exec/archive.rs:156
 msgid "Kept {name}: changed since it was made"
 msgstr "{name} mantenuto: modificato dopo la creazione"
 
-#: crates/vento/src/exec/archive.rs:162
+#: crates/vento/src/exec/archive.rs:163
 msgid "Kept {n} item: changed since it was made"
 msgid_plural "Kept {n} items: changed since they were made"
 msgstr[0] "{n} elemento mantenuto: modificato dopo la creazione"
@@ -1021,7 +1021,7 @@ msgstr "Disposizione"
 msgid "Left"
 msgstr "Sinistra"
 
-#: crates/vento/src/exec/share.rs:40
+#: crates/vento/src/exec/share.rs:41
 msgid "Left out {n} item that no longer exists"
 msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] "Escluso {n} elemento che non esiste più"
@@ -1139,37 +1139,37 @@ msgstr "Sposta in"
 msgid "Move to Trash"
 msgstr "Sposta nel Cestino"
 
-#: crates/vento/src/pocket/shots_view.rs:1166
+#: crates/vento/src/pocket/shots_view.rs:1173
 msgid "Moved to Trash"
 msgstr "Spostato nel Cestino"
 
-#: crates/vento/src/exec/archive.rs:139
+#: crates/vento/src/exec/archive.rs:140
 msgid "Moved {name} to the Trash"
 msgstr "{name} spostato nel Cestino"
 
-#: crates/vento/src/exec/archive.rs:140
+#: crates/vento/src/exec/archive.rs:141
 msgid "Moved {n} item to the Trash"
 msgid_plural "Moved {n} items to the Trash"
 msgstr[0] "{n} elemento spostato nel Cestino"
 msgstr[1] "{n} elementi spostati nel Cestino"
 
-#: crates/vento/src/exec.rs:104
+#: crates/vento/src/exec.rs:105
 msgid "Moved {n} item to {dest}"
 msgid_plural "Moved {n} items to {dest}"
 msgstr[0] "{n} elemento spostato in {dest}"
 msgstr[1] "{n} elementi spostati in {dest}"
 
-#: crates/vento/src/exec.rs:226
+#: crates/vento/src/exec.rs:227
 msgid "Moving {name} to the Trash…"
 msgstr "Spostamento di {name} nel Cestino…"
 
-#: crates/vento/src/exec.rs:227
+#: crates/vento/src/exec.rs:228
 msgid "Moving {n} item to the Trash…"
 msgid_plural "Moving {n} items to the Trash…"
 msgstr[0] "Spostamento di {n} elemento nel Cestino…"
 msgstr[1] "Spostamento di {n} elementi nel Cestino…"
 
-#: crates/vento/src/exec.rs:215
+#: crates/vento/src/exec.rs:216
 msgid "Moving {n} item…"
 msgid_plural "Moving {n} items…"
 msgstr[0] "Spostamento di {n} elemento…"
@@ -1203,7 +1203,7 @@ msgstr "Nuovo orario"
 msgid "Next"
 msgstr "Avanti"
 
-#: crates/vento/src/exec/pdf.rs:74
+#: crates/vento/src/exec/pdf.rs:95
 msgid "No PDFs to open"
 msgstr "Nessun PDF da aprire"
 
@@ -1219,7 +1219,7 @@ msgstr "Nessuna cartella fissata"
 msgid "No recent folders"
 msgstr "Nessuna cartella recente"
 
-#: crates/vento/src/pocket/shots_view.rs:919
+#: crates/vento/src/pocket/shots_view.rs:924
 msgid "No text found"
 msgstr "Nessun testo trovato"
 
@@ -1235,11 +1235,11 @@ msgstr "Nessun risultato"
 msgid "Notes"
 msgstr "Note"
 
-#: crates/vento/src/exec/share.rs:29
+#: crates/vento/src/exec/share.rs:30
 msgid "Notes can't take a folder together with files. Drop the folder on its own, or zip it with Archive first."
 msgstr "Note non accetta una cartella insieme a dei file. Rilascia la cartella da sola, o prima comprimila con Archivia."
 
-#: crates/vento/src/exec.rs:137
+#: crates/vento/src/exec.rs:138
 msgid "Nothing left to remove"
 msgstr "Niente da rimuovere"
 
@@ -1251,19 +1251,19 @@ msgstr "Ancora niente di questo tipo"
 msgid "Nothing selected"
 msgstr "Nessuna selezione"
 
-#: crates/vento/src/exec/convert.rs:55
+#: crates/vento/src/exec/convert.rs:70
 msgid "Nothing to convert: already {format}"
 msgstr "Niente da convertire: già {format}"
 
-#: crates/vento/src/exec.rs:849
+#: crates/vento/src/exec.rs:941
 msgid "Nothing to copy"
 msgstr "Niente da copiare"
 
-#: crates/vento/src/exec.rs:817
+#: crates/vento/src/exec.rs:908
 msgid "Nothing to move"
 msgstr "Niente da spostare"
 
-#: crates/vento/src/rename/mod.rs:188
+#: crates/vento/src/rename/mod.rs:767
 msgid "Nothing to rename"
 msgstr "Niente da rinominare"
 
@@ -1347,7 +1347,7 @@ msgstr "Apri la configurazione iniziale"
 msgid "Open the clipboard history"
 msgstr "Apri la cronologia appunti"
 
-#: crates/vento/src/exec/pdf.rs:78
+#: crates/vento/src/exec/pdf.rs:99
 msgid "Opened {n} PDF; skipped {m}: {reason}"
 msgid_plural "Opened {n} PDFs; skipped {m}: {reason}"
 msgstr[0] "Aperto {n} PDF; saltati {m}: {reason}"
@@ -1394,6 +1394,10 @@ msgstr[1] "Pagine {pages}"
 #: crates/vento/ui/archive.slint:264
 msgid "Password"
 msgstr "Password"
+
+#: crates/vento/src/exec.rs:378
+msgid "Path copied"
+msgstr "Percorso copiato"
 
 #: crates/vento/ui/quick.slint:515
 msgid "Pause"
@@ -1549,13 +1553,13 @@ msgstr "Rimuovi dalla Tasca"
 msgid "Remove {}"
 msgstr "Rimuovi {}"
 
-#: crates/vento/src/exec.rs:139
+#: crates/vento/src/exec.rs:140
 msgid "Removed {n} copy"
 msgid_plural "Removed {n} copies"
 msgstr[0] "{n} copia rimossa"
 msgstr[1] "{n} copie rimosse"
 
-#: crates/vento/src/exec.rs:218
+#: crates/vento/src/exec.rs:219
 msgid "Removing {n} copy…"
 msgid_plural "Removing {n} copies…"
 msgstr[0] "Rimozione di {n} copia…"
@@ -1581,7 +1585,7 @@ msgid_plural "Renamed {n} items"
 msgstr[0] "{n} elemento rinominato"
 msgstr[1] "{n} elementi rinominati"
 
-#: crates/vento/src/rename/mod.rs:781
+#: crates/vento/src/rename/mod.rs:794
 msgid "Renaming… {done} of {total}"
 msgstr "Rinomina in corso… {done} di {total}"
 
@@ -1609,13 +1613,13 @@ msgstr "Riavvia"
 msgid "Restarting to finish…"
 msgstr "Riavvio per completare…"
 
-#: crates/vento/src/exec.rs:193
+#: crates/vento/src/exec.rs:194
 msgid "Restored {n} item"
 msgid_plural "Restored {n} items"
 msgstr[0] "{n} elemento ripristinato"
 msgstr[1] "{n} elementi ripristinati"
 
-#: crates/vento/src/exec.rs:217
+#: crates/vento/src/exec.rs:218
 msgid "Restoring {n} item…"
 msgid_plural "Restoring {n} items…"
 msgstr[0] "Ripristino di {n} elemento…"
@@ -1667,17 +1671,17 @@ msgstr[1] "Salva immagini"
 msgid "Save your changes as a new PDF?"
 msgstr "Salvare le modifiche come nuovo PDF?"
 
-#: crates/vento/src/exec/pdf.rs:41
+#: crates/vento/src/exec/pdf.rs:42
 msgid "Saved {name}"
 msgstr "{name} salvato"
 
-#: crates/vento/src/exec/pdf.rs:45
+#: crates/vento/src/exec/pdf.rs:46
 msgid "Saved {n} file in {folder}"
 msgid_plural "Saved {n} files in {folder}"
 msgstr[0] "{n} file salvato in {folder}"
 msgstr[1] "{n} file salvati in {folder}"
 
-#: crates/vento/src/exec/pdf.rs:55
+#: crates/vento/src/exec/pdf.rs:56
 msgid "Saved {n} image in {folder}"
 msgid_plural "Saved {n} images in {folder}"
 msgstr[0] "{n} immagine salvata in {folder}"
@@ -1787,15 +1791,15 @@ msgstr "Mostra tutto: {}"
 msgid "Show files"
 msgstr "Mostra file"
 
-#: crates/vento/src/info.rs:47
+#: crates/vento/src/info.rs:49
 msgid "Show in Explorer"
 msgstr "Mostra in Esplora file"
 
-#: crates/vento/src/info.rs:49
+#: crates/vento/src/info.rs:51
 msgid "Show in Files"
 msgstr "Mostra in File"
 
-#: crates/vento/src/info.rs:45
+#: crates/vento/src/info.rs:47
 msgid "Show in Finder"
 msgstr "Mostra nel Finder"
 
@@ -1901,7 +1905,7 @@ msgstr "Archiviate su questo Mac senza crittografia. Le copie che i gestori di p
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Archiviate su questo computer senza crittografia. Le copie che i gestori di password segnano come private vengono saltate."
 
-#: crates/vento/src/main.rs:943
+#: crates/vento/src/main.rs:948
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Riattiva Registrazione schermo per Copia dallo schermo"
 
@@ -1989,7 +1993,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Questa scorciatoia non è utilizzabile"
 
-#: crates/vento/src/pocket/mod.rs:829
+#: crates/vento/src/pocket/mod.rs:830
 msgid "Those items are no longer there"
 msgstr "Quegli elementi non ci sono più"
 
@@ -2053,27 +2057,27 @@ msgstr "MAIUSCOLO"
 msgid "Undo"
 msgstr "Annulla"
 
-#: crates/vento/src/exec.rs:290
+#: crates/vento/src/exec.rs:315
 msgid "Undo last PDF"
 msgstr "Annulla ultimo PDF"
 
-#: crates/vento/src/exec.rs:288
+#: crates/vento/src/exec.rs:313
 msgid "Undo last archive"
 msgstr "Annulla ultimo archivio"
 
-#: crates/vento/src/exec.rs:289
+#: crates/vento/src/exec.rs:314
 msgid "Undo last convert"
 msgstr "Annulla ultima conversione"
 
-#: crates/vento/src/exec.rs:287
+#: crates/vento/src/exec.rs:312
 msgid "Undo last copy"
 msgstr "Annulla ultima copia"
 
-#: crates/vento/src/exec.rs:292
+#: crates/vento/src/exec.rs:317
 msgid "Undo last move"
 msgstr "Annulla ultimo spostamento"
 
-#: crates/vento/src/exec.rs:291
+#: crates/vento/src/exec.rs:316
 msgid "Undo last rename"
 msgstr "Annulla ultima rinomina"
 
@@ -2385,7 +2389,7 @@ msgstr "impossibile spostare il file speciale {path}"
 msgid "cannot remove from read-only folder {dir}"
 msgstr "impossibile rimuovere dalla cartella di sola lettura {dir}"
 
-#: crates/vento/src/exec/pdf.rs:196
+#: crates/vento/src/exec/pdf.rs:217
 msgid "cannot start"
 msgstr "impossibile avviare"
 
@@ -2393,7 +2397,7 @@ msgstr "impossibile avviare"
 msgid "cannot start copying: {reason}"
 msgstr "impossibile avviare la copia: {reason}"
 
-#: crates/vento/src/exec.rs:951
+#: crates/vento/src/exec.rs:1050
 msgid "cannot start: {reason}"
 msgstr "impossibile avviare: {reason}"
 
@@ -2425,7 +2429,7 @@ msgstr "vuoto"
 msgid "i/o error: {reason}"
 msgstr "errore di I/O: {reason}"
 
-#: crates/vento/src/exec.rs:937
+#: crates/vento/src/exec.rs:1036
 msgid "internal error"
 msgstr "errore interno"
 
@@ -2437,7 +2441,7 @@ msgstr "interrotto"
 msgid "invalid shortcut \"{spec}\""
 msgstr "scorciatoia non valida \"{spec}\""
 
-#: crates/vento/src/exec/share.rs:33
+#: crates/vento/src/exec/share.rs:34
 msgid "it won't take these items"
 msgstr "non accetta questi elementi"
 
@@ -2445,17 +2449,17 @@ msgstr "non accetta questi elementi"
 msgid "kebab-case"
 msgstr "kebab-case"
 
-#: crates/vento/src/exec/archive.rs:159
+#: crates/vento/src/exec/archive.rs:160
 msgid "kept {name}: changed since it was made"
 msgstr "mantenuto {name}: modificato dopo la creazione"
 
-#: crates/vento/src/exec.rs:147
+#: crates/vento/src/exec.rs:148
 msgid "kept {n} changed"
 msgid_plural "kept {n} changed"
 msgstr[0] "mantenuto {n} modificato"
 msgstr[1] "mantenuti {n} modificati"
 
-#: crates/vento/src/exec/archive.rs:167
+#: crates/vento/src/exec/archive.rs:168
 msgid "kept {n} item: changed since it was made"
 msgid_plural "kept {n} items: changed since they were made"
 msgstr[0] "mantenuto {n} elemento: modificato dopo la creazione"
@@ -2505,7 +2509,7 @@ msgstr "nessun nome libero per l'elemento salvato"
 msgid "no free temporary name"
 msgstr "nessun nome temporaneo libero"
 
-#: crates/vento/src/exec.rs:542
+#: crates/vento/src/exec.rs:623
 msgid "no images"
 msgstr "nessuna immagine"
 
@@ -2529,7 +2533,7 @@ msgstr "spazio su disco insufficiente"
 msgid "not found"
 msgstr "non trovato"
 
-#: crates/vento/src/exec/share.rs:82
+#: crates/vento/src/exec/share.rs:99
 msgid "nothing to share"
 msgstr "niente da condividere"
 
@@ -2655,15 +2659,15 @@ msgid_plural "{name} + {n} more"
 msgstr[0] "{name} + {n} altro"
 msgstr[1] "{name} + altri {n}"
 
-#: crates/vento/src/exec/pdf.rs:72
+#: crates/vento/src/exec/pdf.rs:93
 msgid "{name} is locked"
 msgstr "{name} è bloccato"
 
-#: crates/vento/src/main.rs:987
+#: crates/vento/src/main.rs:992
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Scorciatoia {name} non disponibile: {reason}"
 
-#: crates/vento/src/pocket/list_view.rs:111
+#: crates/vento/src/pocket/list_view.rs:112
 msgid "{name} · {n} items"
 msgstr "{name} · {n} elementi"
 
@@ -2671,7 +2675,7 @@ msgstr "{name} · {n} elementi"
 msgid "{now} should be {old}"
 msgstr "{now} dovrebbe essere {old}"
 
-#: crates/vento/src/exec/convert.rs:90
+#: crates/vento/src/exec/convert.rs:105
 msgid "{n} already {format}"
 msgid_plural "{n} already {format}"
 msgstr[0] "{n} già {format}"
@@ -2683,13 +2687,13 @@ msgid_plural "{n} bytes"
 msgstr[0] "{n} byte"
 msgstr[1] "{n} byte"
 
-#: crates/vento/src/exec.rs:57
+#: crates/vento/src/exec.rs:58
 msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] "{n} non riuscito"
 msgstr[1] "{n} non riusciti"
 
-#: crates/vento/src/exec/archive.rs:124
+#: crates/vento/src/exec/archive.rs:125
 msgid "{n} failed: {reason}"
 msgid_plural "{n} failed: {reason}"
 msgstr[0] "{n} non riuscito: {reason}"
@@ -2700,6 +2704,12 @@ msgid "{n} file"
 msgid_plural "{n} files"
 msgstr[0] "{n} file"
 msgstr[1] "{n} file"
+
+#: crates/vento/src/exec.rs:366
+msgid "{n} file ready to paste"
+msgid_plural "{n} files ready to paste"
+msgstr[0] "{n} file pronto da incollare"
+msgstr[1] "{n} file pronti da incollare"
 
 #: crates/vento/src/pocket/clip.rs:963
 msgid "{n} files"
@@ -2723,19 +2733,19 @@ msgid_plural "{n} items changed since and were left as they are."
 msgstr[0] "{n} elemento è cambiato da allora ed è stato lasciato com'è."
 msgstr[1] "{n} elementi sono cambiati da allora e sono stati lasciati come sono."
 
-#: crates/vento/src/exec.rs:151
+#: crates/vento/src/exec.rs:152
 msgid "{n} no longer there"
 msgid_plural "{n} no longer there"
 msgstr[0] "{n} non c'è più"
 msgstr[1] "{n} non ci sono più"
 
-#: crates/vento/src/exec/convert.rs:99
+#: crates/vento/src/exec/convert.rs:114
 msgid "{n} not an image"
 msgid_plural "{n} not images"
 msgstr[0] "{n} non è un'immagine"
 msgstr[1] "{n} non sono immagini"
 
-#: crates/vento/src/exec.rs:60
+#: crates/vento/src/exec.rs:61
 msgid "{n} original couldn't be removed"
 msgid_plural "{n} originals couldn't be removed"
 msgstr[0] "{n} originale non rimosso"
@@ -2775,7 +2785,7 @@ msgid_plural "{n} selected · pages {pages}"
 msgstr[0] "{n} selezionata · pagina {pages}"
 msgstr[1] "{n} selezionate · pagine {pages}"
 
-#: crates/vento/src/exec/archive.rs:112
+#: crates/vento/src/exec/archive.rs:113
 msgid "{n} skipped"
 msgid_plural "{n} skipped"
 msgstr[0] "{n} saltato"
