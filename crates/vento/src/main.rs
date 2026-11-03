@@ -1102,7 +1102,8 @@ fn show_whats_new_on_start(whats_new: &whats_new_window::WhatsNewController, fre
 
 /// At start, tells someone on the classic island, where the virtual one can
 /// be chosen, about it: one toast, then `island_hint_shown` is saved so it
-/// never comes again. The toast waits for the save, so a settings file that
+/// never comes again. Nothing happens while the settings file is broken, as
+/// saving would write the defaults over it. The toast waits for the save, so a settings file that
 /// cannot be written does not bring it back at every start.
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn show_island_hint_once(
@@ -1113,7 +1114,8 @@ fn show_island_hint_once(
     let offered = platform
         .pocket_home()
         .is_some_and(|home| pocket::virtual_offered(&home, platform.virtual_island_supported()));
-    if !vento_core::settings::should_show_island_hint(&hub.current(), offered) {
+    let loaded = hub.load_error().is_none();
+    if !vento_core::settings::should_show_island_hint(&hub.current(), offered, loaded) {
         return;
     }
     if let Err(e) = hub.update(|s| s.island_hint_shown = true) {

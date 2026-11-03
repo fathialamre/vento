@@ -681,9 +681,10 @@ pub enum SettingsError {
 /// Whether the one-time hint about the virtual island is due: for someone on
 /// the classic island, where the virtual one is `offered`, who has not been
 /// told yet. A new install starts on the virtual island and is never told
-/// (see `welcome::first_settings`).
-pub fn should_show_island_hint(settings: &Settings, offered: bool) -> bool {
-    offered && settings.island_mode == IslandMode::Classic && !settings.island_hint_shown
+/// (see `welcome::first_settings`). Nothing is said while the settings file
+/// could not be `loaded`: the defaults in memory would be saved over it.
+pub fn should_show_island_hint(settings: &Settings, offered: bool, loaded: bool) -> bool {
+    loaded && offered && settings.island_mode == IslandMode::Classic && !settings.island_hint_shown
 }
 
 impl Settings {
@@ -1297,9 +1298,9 @@ mod tests {
         std::fs::write(&path, "pocket_view = \"list\"\n").unwrap();
         let s = Settings::try_load(&path).unwrap();
         assert!(!s.island_hint_shown);
-        assert!(should_show_island_hint(&s, true));
+        assert!(should_show_island_hint(&s, true, true));
         // Not where the virtual island is not offered.
-        assert!(!should_show_island_hint(&s, false));
+        assert!(!should_show_island_hint(&s, false, true));
         // Once shown, saved, and read back: never again.
         let told = Settings {
             island_hint_shown: true,
@@ -1308,26 +1309,33 @@ mod tests {
         told.save(&path).unwrap();
         let again = Settings::try_load(&path).unwrap();
         assert!(again.island_hint_shown);
-        assert!(!should_show_island_hint(&again, true));
+        assert!(!should_show_island_hint(&again, true, true));
+        // Not while the settings file is broken: it is left alone.
+        let (_dir, broken) = write_temp("island_glass = \n");
+        let loaded = Settings::try_load(&broken).is_ok();
+        assert!(!loaded);
+        let defaults = Settings::default();
+        assert!(should_show_island_hint(&defaults, true, true));
+        assert!(!should_show_island_hint(&defaults, true, loaded));
         // Whoever already chose the virtual island needs no hint.
         let virtual_island = Settings {
             island_mode: IslandMode::Virtual,
             ..Settings::default()
         };
-        assert!(!should_show_island_hint(&virtual_island, true));
+        assert!(!should_show_island_hint(&virtual_island, true, true));
     }
 
     #[test]
     fn new_installs_never_get_the_hint() {
         let s = crate::welcome::first_settings(&["en-US".into()]);
         assert!(s.island_hint_shown);
-        assert!(!should_show_island_hint(&s, true));
+        assert!(!should_show_island_hint(&s, true, true));
         // Even if they switch to the classic island later.
         let classic = Settings {
             island_mode: IslandMode::Classic,
             ..s
         };
-        assert!(!should_show_island_hint(&classic, true));
+        assert!(!should_show_island_hint(&classic, true, true));
     }
 
     #[test]
