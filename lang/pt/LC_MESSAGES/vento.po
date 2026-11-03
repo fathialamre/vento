@@ -23,6 +23,10 @@ msgstr "«{name}» está protegido"
 msgid "* for the whole name"
 msgstr "* para o nome inteiro"
 
+#: crates/vento/src/notice.rs:44
+msgid "+1 h"
+msgstr "+1 h"
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr "+{n} mais"
@@ -243,7 +247,7 @@ msgstr "Não pode terminar com ponto ou espaço"
 msgid "Can't replace Vento in {folder}"
 msgstr "Não é possível substituir o Vento em {folder}"
 
-#: crates/vento/ui/archive.slint:81
+#: crates/vento/src/notice.rs:38
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -266,6 +270,10 @@ msgstr "Maiúsculas"
 #: crates/vento/ui/settings_pages.slint:789
 msgid "Centre"
 msgstr "Centro"
+
+#: crates/vento/src/notice.rs:41
+msgid "Change"
+msgstr "Alterar"
 
 #: crates/vento/ui/settings_window.slint:294
 msgid "Changed your mind? Click Undo on the notice."
@@ -555,7 +563,7 @@ msgstr "Não foi possível abrir o PDF: {reason}"
 msgid "Couldn't open the terminal: {reason}"
 msgstr "Não foi possível abrir o terminal: {reason}"
 
-#: crates/vento/src/pocket/mod.rs:135
+#: crates/vento/src/pocket/mod.rs:136
 msgid "Couldn't open: {reason}"
 msgstr "Não foi possível abrir: {reason}"
 
@@ -599,7 +607,7 @@ msgstr "Não foi possível substituir o Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Não foi possível guardar as definições: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2054
+#: crates/vento/src/pocket/mod.rs:2055
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Não foi possível guardar o Bolso: {error}"
 
@@ -650,6 +658,10 @@ msgstr "Apagar"
 #: crates/vento-core/src/welcome.rs:91
 msgid "Designer"
 msgstr "Designer"
+
+#: crates/vento/src/notice.rs:39
+msgid "Details"
+msgstr "Detalhes"
 
 #: crates/vento-core/src/welcome.rs:90
 msgid "Developer"
@@ -842,6 +854,10 @@ msgstr "GPL-3.0-only. Os ícones da roda são do Tabler Icons 3.49.0, com licen�
 #: crates/vento/src/settings_window/mod.rs:203
 msgid "General"
 msgstr "Geral"
+
+#: crates/vento/src/notice.rs:42
+msgid "Get it"
+msgstr "Obter"
 
 #: crates/vento/ui/settings_pages.slint:837
 msgid "Ghost"
@@ -1279,7 +1295,7 @@ msgstr "Só o computador fica acordado; o ecrã escurece e bloqueia como habitua
 msgid "Only the name changes: the file is not converted."
 msgstr "Só o nome muda: o ficheiro não é convertido."
 
-#: crates/vento/src/pocket/menu.rs:132
+#: crates/vento/src/notice.rs:45
 msgid "Open"
 msgstr "Abrir"
 
@@ -1315,7 +1331,7 @@ msgstr "Abrir capturas de ecrã"
 msgid "Open settings file"
 msgstr "Abrir ficheiro de definições"
 
-#: crates/vento/src/main.rs:238
+#: crates/vento/src/main.rs:242
 msgid "Open the Pocket"
 msgstr "Abrir o Bolso"
 
@@ -1327,7 +1343,7 @@ msgstr "Abra o separador Capturas de ecrã na ilha para ver as capturas recentes
 msgid "Open the Welcome setup"
 msgstr "Abrir a configuração inicial"
 
-#: crates/vento/src/main.rs:242
+#: crates/vento/src/main.rs:246
 msgid "Open the clipboard history"
 msgstr "Abrir o histórico da área de transferência"
 
@@ -1585,7 +1601,7 @@ msgstr "Substituir por"
 msgid "Replace with…"
 msgstr "Substituir por…"
 
-#: crates/vento/ui/quick.slint:329
+#: crates/vento/src/notice.rs:43
 msgid "Restart"
 msgstr "Reiniciar"
 
@@ -1605,7 +1621,7 @@ msgid_plural "Restoring {n} items…"
 msgstr[0] "A repor {n} elemento…"
 msgstr[1] "A repor {n} elementos…"
 
-#: crates/vento/ui/quick.slint:515
+#: crates/vento/src/notice.rs:40
 msgid "Resume"
 msgstr "Retomar"
 
@@ -1885,7 +1901,7 @@ msgstr "Guardado neste Mac sem encriptação. As cópias que os gestores de pala
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Guardado neste computador sem encriptação. As cópias que os gestores de palavras-passe marcam como privadas são ignoradas."
 
-#: crates/vento/src/main.rs:939
+#: crates/vento/src/main.rs:943
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Volte a ativar a Gravação do ecrã para Copiar do ecrã"
 
@@ -1973,7 +1989,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Este atalho não pode ser usado"
 
-#: crates/vento/src/pocket/mod.rs:828
+#: crates/vento/src/pocket/mod.rs:829
 msgid "Those items are no longer there"
 msgstr "Esses elementos já não existem"
 
@@ -2033,7 +2049,7 @@ msgstr "Ative Mostrar capturas de ecrã na ilha."
 msgid "UPPERCASE"
 msgstr "MAIÚSCULAS"
 
-#: crates/vento/src/pdf/window/edit.rs:134
+#: crates/vento/src/notice.rs:37
 msgid "Undo"
 msgstr "Anular"
 
@@ -2373,7 +2389,7 @@ msgstr "não é possível remover da pasta só de leitura {dir}"
 msgid "cannot start"
 msgstr "não é possível iniciar"
 
-#: crates/vento/src/pocket/mod.rs:1743
+#: crates/vento/src/pocket/mod.rs:1744
 msgid "cannot start copying: {reason}"
 msgstr "não é possível começar a copiar: {reason}"
 
@@ -2643,7 +2659,7 @@ msgstr[1] "{name} + mais {n}"
 msgid "{name} is locked"
 msgstr "{name} está bloqueado"
 
-#: crates/vento/src/main.rs:983
+#: crates/vento/src/main.rs:987
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Atalho de {name} indisponível: {reason}"
 

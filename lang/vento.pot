@@ -21,6 +21,10 @@ msgstr ""
 msgid "* for the whole name"
 msgstr ""
 
+#: crates/vento/src/notice.rs:44
+msgid "+1 h"
+msgstr ""
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr ""
@@ -241,7 +245,7 @@ msgstr ""
 msgid "Can't replace Vento in {folder}"
 msgstr ""
 
-#: crates/vento/ui/archive.slint:81
+#: crates/vento/src/notice.rs:38
 msgid "Cancel"
 msgstr ""
 
@@ -263,6 +267,10 @@ msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:789
 msgid "Centre"
+msgstr ""
+
+#: crates/vento/src/notice.rs:41
+msgid "Change"
 msgstr ""
 
 #: crates/vento/ui/settings_window.slint:294
@@ -553,7 +561,7 @@ msgstr ""
 msgid "Couldn't open the terminal: {reason}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:135
+#: crates/vento/src/pocket/mod.rs:136
 msgid "Couldn't open: {reason}"
 msgstr ""
 
@@ -597,7 +605,7 @@ msgstr ""
 msgid "Couldn't save settings: {error}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:2054
+#: crates/vento/src/pocket/mod.rs:2055
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
@@ -647,6 +655,10 @@ msgstr ""
 
 #: crates/vento-core/src/welcome.rs:91
 msgid "Designer"
+msgstr ""
+
+#: crates/vento/src/notice.rs:39
+msgid "Details"
 msgstr ""
 
 #: crates/vento-core/src/welcome.rs:90
@@ -839,6 +851,10 @@ msgstr ""
 
 #: crates/vento/src/settings_window/mod.rs:203
 msgid "General"
+msgstr ""
+
+#: crates/vento/src/notice.rs:42
+msgid "Get it"
 msgstr ""
 
 #: crates/vento/ui/settings_pages.slint:837
@@ -1277,7 +1293,7 @@ msgstr ""
 msgid "Only the name changes: the file is not converted."
 msgstr ""
 
-#: crates/vento/src/pocket/menu.rs:132
+#: crates/vento/src/notice.rs:45
 msgid "Open"
 msgstr ""
 
@@ -1313,7 +1329,7 @@ msgstr ""
 msgid "Open settings file"
 msgstr ""
 
-#: crates/vento/src/main.rs:238
+#: crates/vento/src/main.rs:242
 msgid "Open the Pocket"
 msgstr ""
 
@@ -1325,7 +1341,7 @@ msgstr ""
 msgid "Open the Welcome setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:242
+#: crates/vento/src/main.rs:246
 msgid "Open the clipboard history"
 msgstr ""
 
@@ -1583,7 +1599,7 @@ msgstr ""
 msgid "Replace with…"
 msgstr ""
 
-#: crates/vento/ui/quick.slint:329
+#: crates/vento/src/notice.rs:43
 msgid "Restart"
 msgstr ""
 
@@ -1603,7 +1619,7 @@ msgid_plural "Restoring {n} items…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/quick.slint:515
+#: crates/vento/src/notice.rs:40
 msgid "Resume"
 msgstr ""
 
@@ -1883,7 +1899,7 @@ msgstr ""
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr ""
 
-#: crates/vento/src/main.rs:939
+#: crates/vento/src/main.rs:943
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr ""
 
@@ -1971,7 +1987,7 @@ msgstr ""
 msgid "This shortcut can't be used"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:828
+#: crates/vento/src/pocket/mod.rs:829
 msgid "Those items are no longer there"
 msgstr ""
 
@@ -2031,7 +2047,7 @@ msgstr ""
 msgid "UPPERCASE"
 msgstr ""
 
-#: crates/vento/src/pdf/window/edit.rs:134
+#: crates/vento/src/notice.rs:37
 msgid "Undo"
 msgstr ""
 
@@ -2371,7 +2387,7 @@ msgstr ""
 msgid "cannot start"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1743
+#: crates/vento/src/pocket/mod.rs:1744
 msgid "cannot start copying: {reason}"
 msgstr ""
 
@@ -2641,7 +2657,7 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:983
+#: crates/vento/src/main.rs:987
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 
