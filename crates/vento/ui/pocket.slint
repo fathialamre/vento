@@ -3802,6 +3802,10 @@ export component PocketIsland inherits Window {
     in property <bool> virtual-style;
     // It rests as the lip over the front window's bar instead of the pill.
     in property <bool> lip;
+    // Open, it has a grip in a strip on top, over its views: dragged, it
+    // moves the island along the top edge; double-clicked, it puts it back
+    // in the middle. The orb has none.
+    in property <bool> grip;
     // How opaque its resting forms are, 0.1 to 1 (the settings' Glass).
     in property <float> glass;
     // The shimmer the resting island plays now and then: its style (0 Off,
@@ -4043,6 +4047,10 @@ export component PocketIsland inherits Window {
     callback rest-button-clicked();
     // A button on Activity's row, by the row's place.
     callback activity-button-clicked(int);
+    // The grip is pressed or let go, or double-clicked.
+    callback grip-pressed();
+    callback grip-released();
+    callback grip-centre();
 
     width: root.panel-w;
     height: root.top-h + root.window-h;
@@ -4051,6 +4059,8 @@ export component PocketIsland inherits Window {
     property <length> wing: 44px;
     property <length> pad: 16px;
     property <length> bar-h: 44px;
+    // The strip the open virtual island keeps on top for its grip.
+    property <length> grip-h: root.grip ? 20px : 0px;
 
     // The circle rests as the round disc, and its news too; otherwise each
     // is stretched into a pill.
@@ -4280,12 +4290,13 @@ export component PocketIsland inherits Window {
         }
 
         // Expanded: fixed in window coordinates while the island grows around
-        // it, and as tall as the island below the menu bar, so the bottom bar
-        // moves with its edge as it grows or shrinks. In the corner by the
-        // clock it sits on the window's bottom edge, with the island's.
+        // it, and as tall as the island below the menu bar (and the grip's
+        // strip), so the bottom bar moves with its edge as it grows or
+        // shrinks. In the corner by the clock it sits on the window's bottom
+        // edge, with the island's.
         if root.expanded: Rectangle {
             x: (parent.width - root.width) / 2;
-            y: (root.corner-style ? root.height - root.panel-h : root.top-h) - parent.y;
+            y: (root.corner-style ? root.height - root.panel-h : root.top-h + root.grip-h) - parent.y;
             width: root.width;
             height: max(0px, parent.height - self.y);
 
@@ -4693,6 +4704,43 @@ export component PocketIsland inherits Window {
                             root.undo();
                         }
                     }
+                }
+            }
+        }
+
+        // The open virtual island's grip, centred in the strip on top, over
+        // the views.
+        if root.expanded && root.grip: Rectangle {
+            x: (parent.width - root.width) / 2;
+            y: root.top-h - parent.y;
+            width: root.width;
+            height: root.grip-h;
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 5px;
+                border-radius: 2.5px;
+                background: #ffffff.with-alpha(0.35);
+            }
+
+            TouchArea {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                mouse-cursor: self.pressed ? grabbing : grab;
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        root.grip-pressed();
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.grip-released();
+                    }
+                }
+                double-clicked => {
+                    root.grip-centre();
                 }
             }
         }

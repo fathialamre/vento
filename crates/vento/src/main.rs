@@ -242,6 +242,22 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
+    // The virtual island dragged by its grip (or put back in the middle)
+    // saves its screen and its place there.
+    {
+        let hub = Rc::downgrade(&hub);
+        pocket.on_place_dropped(Box::new(move |key, spot| {
+            let Some(hub) = hub.upgrade() else {
+                return;
+            };
+            if let Err(e) = hub.update(|s| {
+                s.island_screen = key.clone();
+                s.set_island_spot(key.as_deref(), spot);
+            }) {
+                log::warn!("cannot save the island's place: {e}");
+            }
+        }));
+    }
     {
         let pause = Rc::downgrade(&pause);
         pocket.set_on_resume(Box::new(move || {
@@ -963,6 +979,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 pocket.apply_pocket_settings(new);
                 if old.island_mode != new.island_mode
                     || old.island_place != new.island_place
+                    || old.island_place_free != new.island_place_free
+                    || old.island_place_each_screen != new.island_place_each_screen
+                    || old.island_screen != new.island_screen
+                    || old.island_places != new.island_places
                     || old.island_shape != new.island_shape
                     || old.island_glass != new.island_glass
                     || old.island_shimmer != new.island_shimmer

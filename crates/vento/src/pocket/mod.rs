@@ -77,8 +77,8 @@ use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, 
 use clip::ClipController;
 use clip_view::{ClipView, set_rows_in_place, view_index};
 use geometry::{
-    Frames, NewsRects, VirtualSpot, frames, hits, hover_event, interactive_rects, island_inputs,
-    virtual_frames, virtual_mid_x, window_frame,
+    Frames, NewsRects, VirtualSpot, drag_spot, frames, hits, home_at, hover_event,
+    interactive_rects, island_inputs, screen_key, virtual_frames, virtual_mid_x, window_frame,
 };
 use kinds::Kinds;
 use list_view::ListView;
@@ -257,6 +257,33 @@ fn virtual_spot_of(
     })
 }
 
+/// The middle of the island dragged by its grip: where it was at the press
+/// (`start_mid`), moved as far as the cursor has moved since (`press_x` to
+/// `cursor_x`, global x).
+fn drag_mid(start_mid: f64, press_x: f64, cursor_x: f64) -> f64 {
+    start_mid + (cursor_x - press_x)
+}
+
+/// Whether a drag of the grip under way (`dragging`) has ended: the left
+/// button is up at a sample, whether or not the window saw the release.
+fn drag_ended(dragging: bool, left_down: bool) -> bool {
+    dragging && !left_down
+}
+
+/// The island's home: for the virtual island, the notch-free home of the
+/// screen `key` names among `homes`; otherwise, or for a screen that is gone
+/// (or has a notch), `fallback`, the primary one.
+fn home_for(
+    mode: IslandMode,
+    homes: &[IslandHome],
+    key: Option<&str>,
+    fallback: Option<IslandHome>,
+) -> Option<IslandHome> {
+    key.filter(|_| mode == IslandMode::Virtual)
+        .and_then(|key| geometry::home_by_key(homes, key))
+        .or(fallback)
+}
+
 /// Whether the drop box is wanted: something is dragged (and not by the
 /// Pocket's own drag out) anywhere on the screen of the island in the
 /// corner by the clock, or near the virtual circle (`in_zone`, the drag in
@@ -404,6 +431,20 @@ type LastSerial = Box<dyn Fn() -> Option<u64>>;
 /// Learns whether the island is the virtual one.
 type OnVirtual = Box<dyn Fn(bool)>;
 
+/// Saves where the island was dragged: the key of its screen and its spot
+/// there.
+type OnPlaceDropped = Box<dyn Fn(Option<String>, IslandSpot)>;
+
+/// The open virtual island dragged by its grip: the cursor's global x at
+/// the press (or where it came onto another screen) and the island's middle
+/// then, and the home and spot it was dragged from.
+#[derive(Debug, Clone, Copy)]
+struct GripDrag {
+    press_x: f64,
+    start_mid: f64,
+    from: (IslandHome, IslandSpot),
+}
+
 /// Shows the Pocket as an island at the top of the screen: hidden while
 /// empty, collapsed while it holds items, expanded on hover or as a drag
 /// approaches.
@@ -501,9 +542,20 @@ pub struct PocketController {
     list: ListView,
     /// Brings the window down to the island's height once it has shrunk.
     shrink_timer: Timer,
-    /// The island's mode and its place on the top edge in the settings.
+    /// The island's mode in the settings, and the virtual island's spot on
+    /// the top edge of its screen: the screen's own in the settings, or
+    /// where it is dragged to.
     mode: Cell<IslandMode>,
-    place: Cell<IslandPlace>,
+    spot: Cell<IslandSpot>,
+    /// The drag of the open virtual island's grip under way.
+    drag: Cell<Option<GripDrag>>,
+    /// Every screen's home, as last read (on a rehome and as a drag starts).
+    homes: RefCell<Vec<IslandHome>>,
+    /// What saves the island's place once it is dropped.
+    on_place_dropped: RefCell<Option<OnPlaceDropped>>,
+    /// The island is saving its own place: the change that comes back from
+    /// the settings leaves it open.
+    saving_place: Cell<bool>,
     /// The virtual island's shape in the settings: the island, or the circle.
     shape: Cell<IslandShape>,
     /// What the window was last told of the circle: the news pill and the
@@ -571,21 +623,26 @@ impl PocketController {
         let kinds = Kinds::new(&window);
         let clip_view = ClipView::new(&window);
         let shots_view = ShotsView::new(&window);
-        let (pocket_view, mode, place, shape, glass) = {
+        let (pocket_view, mode, shape, glass) = {
             let s = settings.borrow();
-            (
-                s.pocket_view,
-                s.island_mode,
-                s.island_place,
-                s.island_shape,
-                s.island_glass,
-            )
+            (s.pocket_view, s.island_mode, s.island_shape, s.island_glass)
         };
         window.set_glass(glass_alpha(glass));
         let list = ListView::new(&window, pocket_view);
         let activity_model = Rc::new(VecModel::default());
         window.set_activity_rows(ModelRc::from(activity_model.clone()));
-        let home = platform.pocket_home();
+        let homes = platform.island_homes();
+        let (home, spot) = {
+            let s = settings.borrow();
+            let home = home_for(
+                mode,
+                &homes,
+                s.island_screen.as_deref(),
+                platform.pocket_home(),
+            );
+            let key = home.map(|h| screen_key(&h.screen));
+            (home, s.island_spot(key.as_deref()))
+        };
         let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
         let controller = Rc::new_cyclic(|this| Self {
             platform,
@@ -635,7 +692,11 @@ impl PocketController {
             list,
             shrink_timer: Timer::default(),
             mode: Cell::new(mode),
-            place: Cell::new(place),
+            spot: Cell::new(spot),
+            drag: Cell::new(None),
+            homes: RefCell::new(homes),
+            on_place_dropped: RefCell::new(None),
+            saving_place: Cell::new(false),
             shape: Cell::new(shape),
             news_round: Cell::new(false),
             rest_round: Cell::new(false),
@@ -712,6 +773,24 @@ impl PocketController {
         let w = &self.window;
         let this = self.this.clone();
         let with = move || this.upgrade();
+        let c = with.clone();
+        w.on_grip_pressed(move || {
+            if let Some(c) = c() {
+                c.grip_pressed();
+            }
+        });
+        let c = with.clone();
+        w.on_grip_released(move || {
+            if let Some(c) = c() {
+                c.grip_released();
+            }
+        });
+        let c = with.clone();
+        w.on_grip_centre(move || {
+            if let Some(c) = c() {
+                c.grip_centre();
+            }
+        });
         let c = with.clone();
         w.on_news_button_clicked(move || {
             if let Some(c) = c() {
@@ -1348,6 +1427,13 @@ impl PocketController {
         *self.on_virtual.borrow_mut() = Some(f);
     }
 
+    /// Sets what saves the virtual island's place once it is dropped after
+    /// a drag of its grip, or put back in the middle: the key of its screen
+    /// and its spot there.
+    pub fn on_place_dropped(&self, f: OnPlaceDropped) {
+        *self.on_place_dropped.borrow_mut() = Some(f);
+    }
+
     /// Keep Awake runs with `status` (the time it has left, empty for no
     /// end; `None` while it does not run), and ends soon: the virtual
     /// island's resting pill shows a cup and the time. `left` is how much of
@@ -1541,6 +1627,13 @@ impl PocketController {
             self.follow_resume(sample.cursor);
             return;
         }
+        // The grip held moves the island with the cursor; the button up
+        // drops it, whether or not the window saw the release.
+        if drag_ended(self.drag.get().is_some(), sample.left_down) {
+            self.end_drag();
+        } else {
+            self.follow_drag(sample.cursor);
+        }
         let now = Instant::now();
         if reduce_due(self.reduce_cache.get().0, now) {
             self.refresh_reduce_motion(now);
@@ -1728,7 +1821,10 @@ impl PocketController {
             }
         }
         if !self.shape_input(after) {
-            let inside = hits(&f, after, self.news_rects(&f).as_ref(), None, sample.cursor);
+            // A held grip keeps the pointer, even where the island lags
+            // behind it.
+            let inside = hits(&f, after, self.news_rects(&f).as_ref(), None, sample.cursor)
+                || self.drag.get().is_some();
             if changed || inside != self.hittest.get() {
                 self.set_hittest(inside);
             }
@@ -1771,7 +1867,7 @@ impl PocketController {
             return;
         }
         self.front_checked.set(Some(now));
-        let mid_x = virtual_mid_x(home, IslandSpot::Side(self.place.get()));
+        let mid_x = virtual_mid_x(home, self.spot.get());
         let rest_w = if self.circle_virtual(home) {
             geometry::CIRCLE_D
         } else {
@@ -1815,16 +1911,135 @@ impl PocketController {
         }
     }
 
-    /// Re-reads where the island lives and moves the window if that changed.
+    /// Re-reads where the island lives (the virtual island on the screen
+    /// in the settings, at its spot there) and moves the window if that
+    /// changed. A drag of the grip keeps the screen and the spot it has
+    /// taken.
     fn rehome(&self) {
-        let Some(home) = self.platform.pocket_home() else {
+        let homes = self.platform.island_homes();
+        let dragging = self.drag.get().is_some();
+        let key = if dragging {
+            self.home.get().map(|h| screen_key(&h.screen))
+        } else {
+            self.settings.borrow().island_screen.clone()
+        };
+        let home = home_for(
+            self.mode.get(),
+            &homes,
+            key.as_deref(),
+            self.platform.pocket_home(),
+        );
+        *self.homes.borrow_mut() = homes;
+        let Some(home) = home else {
             return;
         };
-        if self.home.get() != Some(home) {
-            debug!("pocket home is now {home:?}");
+        let spot_moved = !dragging && {
+            let key = screen_key(&home.screen);
+            let spot = self.settings.borrow().island_spot(Some(&key));
+            self.spot.replace(spot) != spot
+        };
+        if self.home.get() != Some(home) || spot_moved && self.virtual_spot(&home).is_some() {
+            debug!("pocket home is now {home:?}, {:?}", self.spot.get());
             self.home.set(Some(home));
             self.apply_home(&home);
         }
+    }
+
+    /// The grip of the open virtual island is pressed: a drag starts from
+    /// the cursor's global x (the window moves under the pointer, so not its
+    /// own) and the island's middle.
+    fn grip_pressed(&self) {
+        let Some(home) = self.home.get().filter(|h| self.virtual_spot(h).is_some()) else {
+            return;
+        };
+        *self.homes.borrow_mut() = self.platform.island_homes();
+        let spot = self.spot.get();
+        self.drag.set(Some(GripDrag {
+            press_x: self.platform.sample_input().cursor.x,
+            start_mid: virtual_mid_x(&home, spot),
+            from: (home, spot),
+        }));
+        debug!("pocket grip pressed at {spot:?}");
+    }
+
+    /// The grip is let go: the island stays where the cursor took it.
+    fn grip_released(&self) {
+        if self.drag.get().is_some() {
+            self.follow_drag(self.platform.sample_input().cursor);
+            self.end_drag();
+        }
+    }
+
+    /// The grip is double-clicked: the island goes back to the middle of
+    /// its screen, and stays there.
+    fn grip_centre(&self) {
+        self.drag.set(None);
+        let Some(home) = self.home.get().filter(|h| self.virtual_spot(h).is_some()) else {
+            return;
+        };
+        let spot = IslandSpot::Side(IslandPlace::Centre);
+        if self.spot.replace(spot) != spot {
+            self.apply_home(&home);
+        }
+        self.save_place(&home, spot);
+    }
+
+    /// Moves the dragged island with the cursor at `cursor`: along the top
+    /// edge, snapping to the left, the centre and the right, and onto the
+    /// screen without a notch the cursor comes onto, where the drag starts
+    /// again from the cursor.
+    fn follow_drag(&self, cursor: Point) {
+        let Some(mut drag) = self.drag.get() else {
+            return;
+        };
+        let Some(mut home) = self.home.get().filter(|h| self.virtual_spot(h).is_some()) else {
+            // No longer the virtual island: nothing to drag.
+            self.drag.set(None);
+            return;
+        };
+        let onto = {
+            let homes = self.homes.borrow();
+            home_at(&homes, cursor.x, cursor.y)
+                .map(|i| homes[i])
+                .filter(|h| screen_key(&h.screen) != screen_key(&home.screen))
+        };
+        if let Some(other) = onto {
+            debug!("pocket dragged onto {:?}", other.screen);
+            home = other;
+            self.home.set(Some(home));
+            drag.press_x = cursor.x;
+            drag.start_mid = cursor.x;
+            self.drag.set(Some(drag));
+        }
+        let (_, spot) = drag_spot(&home, drag_mid(drag.start_mid, drag.press_x, cursor.x));
+        if self.spot.replace(spot) != spot || onto.is_some() {
+            self.apply_home(&home);
+        }
+    }
+
+    /// Ends the drag of the grip, saving the screen and the spot the island
+    /// was dropped on when they changed.
+    fn end_drag(&self) {
+        let Some(drag) = self.drag.take() else {
+            return;
+        };
+        let Some(home) = self.home.get().filter(|h| self.virtual_spot(h).is_some()) else {
+            return;
+        };
+        let spot = self.spot.get();
+        debug!("pocket grip released at {spot:?}");
+        if drag.from != (home, spot) {
+            self.save_place(&home, spot);
+        }
+    }
+
+    /// Saves `spot` on `home`'s screen as where the island now lives.
+    fn save_place(&self, home: &IslandHome, spot: IslandSpot) {
+        self.saving_place.set(true);
+        if let Some(f) = self.on_place_dropped.borrow().as_ref() {
+            f(Some(screen_key(&home.screen)), spot);
+        }
+        self.saving_place.set(false);
     }
 
     /// Lets the window take the pointer only over the drawn shape.
@@ -1904,7 +2119,10 @@ impl PocketController {
         if self.pin_until.get().is_some_and(|until| now >= until) {
             self.pin_until.set(None);
         }
-        self.pinned.get() || self.pin_until.get().is_some() || self.card.holds_open(now)
+        self.pinned.get()
+            || self.pin_until.get().is_some()
+            || self.card.holds_open(now)
+            || self.drag.get().is_some()
     }
 
     /// Shows, hides, expands or collapses the window for a presence change.
@@ -1995,6 +2213,8 @@ impl PocketController {
         self.window.set_notch_w(f.notch_w as f32);
         self.window.set_top_h(f.top_h as f32);
         self.window.set_virtual_style(f.virtual_island);
+        // The open virtual island has its grip on top; the orb has none.
+        self.window.set_grip(f.virtual_island && !f.orb);
         // The circle, and the half-moon over a bar; never the other islands.
         self.window.set_circle_style(f.circle);
         self.window.set_lip(f.lip);
@@ -2257,10 +2477,11 @@ impl PocketController {
         }
     }
 
-    /// Follows the island's mode, place, shape and Glass in the settings: the
-    /// island moves, changes form or rests in sight at once. The desktop's
-    /// room in its top bar is kept only for an island that is not the
-    /// virtual one.
+    /// Follows the island's mode, screen, place, shape and Glass in the
+    /// settings: the island moves, changes form or rests in sight at once
+    /// (its own drop of a dragged place leaves it open). The desktop's room
+    /// in its top bar is kept only for an island that is not the virtual
+    /// one.
     /// An island that is not the virtual one before or after is left as it
     /// is.
     pub fn island_settings_changed(&self) {
@@ -2269,18 +2490,18 @@ impl PocketController {
         let glass = {
             let s = self.settings.borrow();
             self.mode.set(s.island_mode);
-            self.place.set(s.island_place);
             self.shape.set(s.island_shape);
             s.island_glass
         };
         self.window.set_glass(glass_alpha(glass));
         self.follow_reduce_setting();
+        // The screen and the spot there come with the home.
+        self.rehome();
         let now_virtual = is_virtual(self);
         if !was_virtual && !now_virtual {
             return;
         }
         self.keep_slot(!now_virtual);
-        self.rehome();
         let Some(home) = self.home.get() else {
             return;
         };
@@ -2291,7 +2512,7 @@ impl PocketController {
             self.check_front(&home, Instant::now());
         }
         self.apply_home(&home);
-        if self.warm.get() {
+        if self.warm.get() && !self.saving_place.get() {
             let after = self.settle_now();
             debug!("pocket island settings changed: {after:?}");
         }
@@ -2460,7 +2681,7 @@ impl PocketController {
             self.mode.get(),
             home,
             self.platform.virtual_island_supported(),
-            IslandSpot::Side(self.place.get()),
+            self.spot.get(),
             self.bar_under.get(),
             self.shape.get(),
         )
@@ -3054,6 +3275,104 @@ mod tests {
             slot: None,
             tray_corner: None,
         }
+    }
+
+    #[test]
+    fn drag_mid_follows_cursor() {
+        assert_eq!(drag_mid(720.0, 700.0, 760.0), 780.0);
+        assert_eq!(drag_mid(720.0, 700.0, 640.0), 660.0);
+        assert_eq!(drag_mid(720.0, 700.0, 700.0), 720.0);
+    }
+
+    #[test]
+    fn drag_ends_when_button_up() {
+        assert!(drag_ended(true, false));
+        assert!(!drag_ended(true, true));
+        assert!(!drag_ended(false, false));
+        assert!(!drag_ended(false, true));
+    }
+
+    /// The primary screen and a second one on its right, for the screen key
+    /// tests.
+    fn two_homes() -> [IslandHome; 2] {
+        let primary = plain_home();
+        let second = IslandHome {
+            screen: Rect {
+                x: 1440.0,
+                y: 0.0,
+                w: 1920.0,
+                h: 1080.0,
+            },
+            ..primary
+        };
+        [primary, second]
+    }
+
+    #[test]
+    fn classic_ignores_screen_key() {
+        let homes = two_homes();
+        assert_eq!(
+            home_for(
+                IslandMode::Classic,
+                &homes,
+                Some("1920x1080+1440+0"),
+                Some(homes[0])
+            ),
+            Some(homes[0])
+        );
+    }
+
+    #[test]
+    fn virtual_uses_screen_key() {
+        let homes = two_homes();
+        assert_eq!(
+            home_for(
+                IslandMode::Virtual,
+                &homes,
+                Some("1920x1080+1440+0"),
+                Some(homes[0])
+            ),
+            Some(homes[1])
+        );
+        // No key: the primary one.
+        assert_eq!(
+            home_for(IslandMode::Virtual, &homes, None, Some(homes[0])),
+            Some(homes[0])
+        );
+    }
+
+    #[test]
+    fn virtual_unknown_key_uses_fallback() {
+        let homes = two_homes();
+        assert_eq!(
+            home_for(
+                IslandMode::Virtual,
+                &homes,
+                Some("800x600+0+0"),
+                Some(homes[0])
+            ),
+            Some(homes[0])
+        );
+        // A screen with a notch keeps the notch island: never taken by key.
+        let notched = IslandHome {
+            notch: Some(Rect {
+                x: 2300.0,
+                y: 0.0,
+                w: 180.0,
+                h: 32.0,
+            }),
+            ..homes[1]
+        };
+        assert_eq!(
+            home_for(
+                IslandMode::Virtual,
+                &[homes[0], notched],
+                Some("1920x1080+1440+0"),
+                Some(homes[0])
+            ),
+            Some(homes[0])
+        );
+        assert_eq!(home_for(IslandMode::Virtual, &[], Some("x"), None), None);
     }
 
     #[test]

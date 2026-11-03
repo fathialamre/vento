@@ -249,10 +249,6 @@ pub(super) fn bar_bottom(home: &IslandHome) -> f64 {
 
 /// How close, in px, a dragged island's middle has to come to the left,
 /// centre or right place for it to snap there.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the drag in the controller takes it next")
-)]
 pub(super) const SNAP: f64 = 44.0;
 /// The strip on top of the open virtual island that holds its grip: the
 /// island is this much taller, and its views start this much lower.
@@ -293,10 +289,6 @@ pub(super) fn virtual_mid_x(home: &IslandHome, spot: IslandSpot) -> f64 {
 /// snapped to the nearest of the three places when it is within [`SNAP`] of
 /// one, else free at its fraction of the screen's width. Gives the middle
 /// the island takes and the spot to store.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the drag in the controller takes it next")
-)]
 pub(super) fn drag_spot(home: &IslandHome, mid: f64) -> (f64, IslandSpot) {
     let (left, centre, right) = mid_span(home);
     let mid = mid.clamp(left, right);
@@ -324,10 +316,6 @@ pub(super) fn drag_spot(home: &IslandHome, mid: f64) -> (f64, IslandSpot) {
 
 /// A screen's key in the settings: its frame as `{w}x{h}+{x}+{y}`, each
 /// value rounded to a whole number.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the drag in the controller takes it next")
-)]
 pub(super) fn screen_key(screen: &Rect) -> String {
     format!(
         "{}x{}+{}+{}",
@@ -339,23 +327,18 @@ pub(super) fn screen_key(screen: &Rect) -> String {
 }
 
 /// The index of the notch-free home whose screen holds the point, or `None`
-/// over a gap between screens or over a screen with a notch.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the drag in the controller takes it next")
-)]
+/// over a gap between screens or over a screen with a notch. A screen holds
+/// its left and top edges but not its right and bottom ones, so a point on
+/// the edge two screens share is on the right-hand (or lower) one.
 pub(super) fn home_at(homes: &[IslandHome], x: f64, y: f64) -> Option<usize> {
-    homes
-        .iter()
-        .position(|h| h.notch.is_none() && contains(&h.screen, Point { x, y }))
+    homes.iter().position(|h| {
+        let r = h.screen;
+        h.notch.is_none() && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+    })
 }
 
 /// The notch-free home whose screen's key is `key`, or `None` for a screen
 /// that is gone (or has a notch).
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the drag in the controller takes it next")
-)]
 pub(super) fn home_by_key(homes: &[IslandHome], key: &str) -> Option<IslandHome> {
     homes
         .iter()
@@ -1171,6 +1154,13 @@ mod tests {
                 (960.0, IslandSpot::Side(IslandPlace::Centre))
             );
         }
+        // Exactly 44 away still snaps.
+        for d in [-44.0, 44.0] {
+            assert_eq!(
+                drag_spot(&home, 960.0 + d),
+                (960.0, IslandSpot::Side(IslandPlace::Centre))
+            );
+        }
         for d in [-50.0, 50.0] {
             assert_eq!(
                 drag_spot(&home, 960.0 + d),
@@ -1253,6 +1243,24 @@ mod tests {
         assert_eq!(home_at(&homes, 500.0, 300.0), Some(0));
         assert_eq!(home_at(&homes, 1500.0, 300.0), None);
         assert_eq!(home_at(&homes, 1050.0, 300.0), None);
+    }
+
+    #[test]
+    fn home_at_shared_edge_is_the_right_hand_screen() {
+        let left = IslandHome {
+            screen: rect(0.0, 0.0, 1000.0, 600.0),
+            ..plain(0.0)
+        };
+        let right = IslandHome {
+            screen: rect(1000.0, 0.0, 1000.0, 600.0),
+            ..plain(0.0)
+        };
+        let homes = [left, right];
+        assert_eq!(home_at(&homes, 1000.0, 300.0), Some(1));
+        assert_eq!(home_at(&homes, 999.5, 300.0), Some(0));
+        // The far edges belong to no screen.
+        assert_eq!(home_at(&homes, 2000.0, 300.0), None);
+        assert_eq!(home_at(&homes, 500.0, 600.0), None);
     }
 
     #[test]
