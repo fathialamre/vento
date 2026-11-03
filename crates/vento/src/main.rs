@@ -232,7 +232,16 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
-    // The virtual island's paused pill resumes.
+    // The virtual island's paused pill resumes: while paused, the wheel's
+    // poll keeps sampling for it.
+    {
+        let wheel = Rc::downgrade(&controller);
+        pocket.set_on_virtual(Box::new(move |on| {
+            if let Some(wheel) = wheel.upgrade() {
+                wheel.set_island_virtual(on);
+            }
+        }));
+    }
     {
         let pause = Rc::downgrade(&pause);
         pocket.set_on_resume(Box::new(move || {

@@ -14,7 +14,7 @@ const DRAG_POLL: Duration = Duration::from_millis(8);
 /// to catch a drag starting, which then samples at [`DRAG_POLL`].
 const HELD_POLL: Duration = Duration::from_millis(50);
 /// Sampling interval with the button up.
-const IDLE_POLL: Duration = Duration::from_millis(100);
+pub const IDLE_POLL: Duration = Duration::from_millis(100);
 
 /// A keyboard modifier that can be configured as the wheel trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

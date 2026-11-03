@@ -289,6 +289,9 @@ pub(crate) fn to_image(icon: &RgbaImage) -> Option<Image> {
 /// Asks the executor for the serial of the operation Undo would undo now.
 type LastSerial = Box<dyn Fn() -> Option<u64>>;
 
+/// Learns whether the island is the virtual one.
+type OnVirtual = Box<dyn Fn(bool)>;
+
 /// Shows the Pocket as an island at the top of the screen: hidden while
 /// empty, collapsed while it holds items, expanded on hover or as a drag
 /// approaches.
@@ -407,6 +410,8 @@ pub struct PocketController {
     news_view: RefCell<Option<NewsView>>,
     /// What the paused pill's Resume runs: vento resumes.
     on_resume: RefCell<Option<Box<dyn Fn()>>>,
+    /// What learns whether the island is the virtual one, when that changes.
+    on_virtual: RefCell<Option<OnVirtual>>,
     /// The island is open on Activity, today's jobs and results, over the
     /// view.
     activity: Cell<bool>,
@@ -504,6 +509,7 @@ impl PocketController {
             news: RefCell::new(News::default()),
             news_view: RefCell::new(None),
             on_resume: RefCell::new(None),
+            on_virtual: RefCell::new(None),
             activity: Cell::new(false),
             activity_rows: RefCell::new(Vec::new()),
             activity_model,
@@ -1193,6 +1199,14 @@ impl PocketController {
         *self.on_resume.borrow_mut() = Some(f);
     }
 
+    /// Tells `f` whether the island is the virtual one, now and whenever
+    /// that changes: while paused, its pill's Resume needs the samples
+    /// (macOS and Windows have no input shape, so the pointer is followed).
+    pub fn set_on_virtual(&self, f: OnVirtual) {
+        f(self.laid_out.get().is_some());
+        *self.on_virtual.borrow_mut() = Some(f);
+    }
+
     /// Keep Awake runs with `status` (the time it has left, empty for no
     /// end; `None` while it does not run), and ends soon: the virtual
     /// island's resting pill shows a cup and the time.
@@ -1777,7 +1791,11 @@ impl PocketController {
     fn apply_home(&self, home: &IslandHome) {
         let spot = self.virtual_spot(home);
         self.keep_slot(spot.is_none());
-        self.laid_out.set(spot);
+        if self.laid_out.replace(spot).is_some() != spot.is_some()
+            && let Some(f) = self.on_virtual.borrow().as_ref()
+        {
+            f(spot.is_some());
+        }
         let f = self.frames_of(home);
         let panel_h = (f.expanded.h - f.top_h) as f32;
         self.window.set_panel_w(f.expanded.w as f32);
