@@ -5,7 +5,7 @@ use slint::LogicalPosition;
 use slint::platform::WindowEvent;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket_zone::{IslandInputs, Presence, ZONE_MARGIN};
-use vento_core::settings::{IslandPlace, IslandShape};
+use vento_core::settings::{IslandPlace, IslandShape, IslandSpot};
 use vento_platform::{IslandHome, TrayCorner};
 
 /// Width of each wing beside the notch.
@@ -118,7 +118,7 @@ pub(super) enum Panel {
 /// edge it sits, and whether the front window has a bar under it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct VirtualSpot {
-    pub(super) place: IslandPlace,
+    pub(super) place: IslandSpot,
     /// The front window's own bar lies along the island's place, so the
     /// island rests as a lip instead of a pill.
     pub(super) bar_under: bool,
@@ -247,23 +247,120 @@ pub(super) fn bar_bottom(home: &IslandHome) -> f64 {
     }
 }
 
-/// The x the virtual island is centred on: the screen's middle, or
-/// [`SIDE_KEEP`] in from its left or right end. On a screen too small to
-/// keep both corners free, every place is the middle.
-pub(super) fn virtual_mid_x(home: &IslandHome, place: IslandPlace) -> f64 {
+/// How close, in px, a dragged island's middle has to come to the left,
+/// centre or right place for it to snap there.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the drag in the controller takes it next")
+)]
+pub(super) const SNAP: f64 = 44.0;
+/// The strip on top of the open virtual island that holds its grip: the
+/// island is this much taller, and its views start this much lower.
+pub(super) const GRIP_H: f64 = 20.0;
+
+/// The x the virtual island's middle can take on `home`'s screen: the left
+/// place, the centre and the right place, [`SIDE_KEEP`] in from the
+/// screen's ends. On a screen too small to keep both corners free, all
+/// three are the middle.
+pub(super) fn mid_span(home: &IslandHome) -> (f64, f64, f64) {
     let screen = home.screen;
     let w = ISLAND_W.min(screen.w - 2.0 * SCREEN_MARGIN);
     let centre = screen.x + screen.w / 2.0;
     let left = screen.x + SIDE_KEEP + w / 2.0;
     let right = screen.x + screen.w - SIDE_KEEP - w / 2.0;
     if left > centre {
-        return centre;
+        return (centre, centre, centre);
     }
-    match place {
-        IslandPlace::Left => left,
-        IslandPlace::Centre => centre,
-        IslandPlace::Right => right,
+    (left, centre, right)
+}
+
+/// The x the virtual island is centred on: the place's own, or for a free
+/// spot its fraction of the screen's width, kept within the places' span.
+pub(super) fn virtual_mid_x(home: &IslandHome, spot: IslandSpot) -> f64 {
+    let (left, centre, right) = mid_span(home);
+    match spot {
+        IslandSpot::Side(IslandPlace::Left) => left,
+        IslandSpot::Side(IslandPlace::Centre) => centre,
+        IslandSpot::Side(IslandPlace::Right) => right,
+        IslandSpot::Free(pm) => {
+            let screen = home.screen;
+            (screen.x + f64::from(pm) / 1000.0 * screen.w).clamp(left, right)
+        }
     }
+}
+
+/// Where a dragged island's middle `mid` lands: within the places' span,
+/// snapped to the nearest of the three places when it is within [`SNAP`] of
+/// one, else free at its fraction of the screen's width. Gives the middle
+/// the island takes and the spot to store.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the drag in the controller takes it next")
+)]
+pub(super) fn drag_spot(home: &IslandHome, mid: f64) -> (f64, IslandSpot) {
+    let (left, centre, right) = mid_span(home);
+    let mid = mid.clamp(left, right);
+    // The centre first, so a screen whose places are all the middle gives it.
+    let mut near: Option<(f64, f64, IslandPlace)> = None;
+    for (at, place) in [
+        (centre, IslandPlace::Centre),
+        (left, IslandPlace::Left),
+        (right, IslandPlace::Right),
+    ] {
+        let d = (mid - at).abs();
+        if d <= SNAP && near.is_none_or(|(best, ..)| d < best) {
+            near = Some((d, at, place));
+        }
+    }
+    if let Some((_, at, place)) = near {
+        return (at, IslandSpot::Side(place));
+    }
+    let screen = home.screen;
+    let pm = ((mid - screen.x) / screen.w * 1000.0)
+        .round()
+        .clamp(0.0, 1000.0) as u16;
+    (mid, IslandSpot::Free(pm))
+}
+
+/// A screen's key in the settings: its frame as `{w}x{h}+{x}+{y}`, each
+/// value rounded to a whole number.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the drag in the controller takes it next")
+)]
+pub(super) fn screen_key(screen: &Rect) -> String {
+    format!(
+        "{}x{}+{}+{}",
+        screen.w.round() as i64,
+        screen.h.round() as i64,
+        screen.x.round() as i64,
+        screen.y.round() as i64
+    )
+}
+
+/// The index of the notch-free home whose screen holds the point, or `None`
+/// over a gap between screens or over a screen with a notch.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the drag in the controller takes it next")
+)]
+pub(super) fn home_at(homes: &[IslandHome], x: f64, y: f64) -> Option<usize> {
+    homes
+        .iter()
+        .position(|h| h.notch.is_none() && contains(&h.screen, Point { x, y }))
+}
+
+/// The notch-free home whose screen's key is `key`, or `None` for a screen
+/// that is gone (or has a notch).
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the drag in the controller takes it next")
+)]
+pub(super) fn home_by_key(homes: &[IslandHome], key: &str) -> Option<IslandHome> {
+    homes
+        .iter()
+        .find(|h| h.notch.is_none() && screen_key(&h.screen) == key)
+        .copied()
 }
 
 /// Whether the front window has a bar under the island: its frame's top is
@@ -332,7 +429,7 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
     } else {
         (
             ISLAND_W.min(screen.w - 2.0 * SCREEN_MARGIN),
-            gap + panel_h(panel),
+            gap + GRIP_H + panel_h(panel),
         )
     };
     Frames {
@@ -990,7 +1087,7 @@ mod tests {
 
     fn spot(place: IslandPlace, bar_under: bool) -> VirtualSpot {
         VirtualSpot {
-            place,
+            place: IslandSpot::Side(place),
             bar_under,
             shape: IslandShape::Island,
         }
@@ -1011,7 +1108,7 @@ mod tests {
         assert_eq!(f.push, rect(540.0, 0.0, 200.0, 2.0));
         assert_eq!(
             f.expanded,
-            rect(360.0, 0.0, 560.0, 6.0 + 8.0 + 2.0 * 92.0 + 44.0)
+            rect(360.0, 0.0, 560.0, 6.0 + 8.0 + 2.0 * 92.0 + 44.0 + GRIP_H)
         );
         assert_eq!(f.top_h, 6.0);
     }
@@ -1052,11 +1149,133 @@ mod tests {
     }
 
     #[test]
+    fn virtual_expanded_has_grip_strip() {
+        let home = plain(24.0);
+        let classic = frames(&home, TWO).expanded.h - frames(&home, TWO).top_h;
+        let f = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(f.expanded.h - f.top_h, classic + GRIP_H);
+        assert_eq!(f.expanded.y, 24.0);
+        // Only the virtual island: the classic frames keep their height.
+        assert_eq!(frames(&home, TWO).expanded.h, 24.0 + classic);
+    }
+
+    #[test]
+    fn drag_snaps_within_44() {
+        let home = IslandHome {
+            screen: rect(0.0, 0.0, 1920.0, 1080.0),
+            ..plain(0.0)
+        };
+        for d in [-40.0, 0.0, 40.0] {
+            assert_eq!(
+                drag_spot(&home, 960.0 + d),
+                (960.0, IslandSpot::Side(IslandPlace::Centre))
+            );
+        }
+        for d in [-50.0, 50.0] {
+            assert_eq!(
+                drag_spot(&home, 960.0 + d),
+                (
+                    960.0 + d,
+                    IslandSpot::Free(((960.0 + d) / 1920.0 * 1000.0_f64).round() as u16)
+                )
+            );
+        }
+        let (left, _, right) = mid_span(&home);
+        assert_eq!(
+            drag_spot(&home, left + 30.0),
+            (left, IslandSpot::Side(IslandPlace::Left))
+        );
+        assert_eq!(
+            drag_spot(&home, right - 30.0),
+            (right, IslandSpot::Side(IslandPlace::Right))
+        );
+    }
+
+    #[test]
+    fn drag_clamps_to_span() {
+        let home = by_the_clock(false);
+        let (left, _, right) = mid_span(&home);
+        assert_eq!(
+            drag_spot(&home, 5000.0),
+            (right, IslandSpot::Side(IslandPlace::Right))
+        );
+        assert_eq!(
+            drag_spot(&home, -300.0),
+            (left, IslandSpot::Side(IslandPlace::Left))
+        );
+        // On a screen too small for the corners, every drag is the centre.
+        let small = IslandHome {
+            screen: rect(0.0, 0.0, 900.0, 600.0),
+            ..plain(0.0)
+        };
+        assert_eq!(
+            drag_spot(&small, 100.0),
+            (450.0, IslandSpot::Side(IslandPlace::Centre))
+        );
+    }
+
+    #[test]
+    fn free_spot_clamped_to_span() {
+        let home = by_the_clock(false);
+        let (left, _, right) = mid_span(&home);
+        assert_eq!(virtual_mid_x(&home, IslandSpot::Free(990)), right);
+        assert_eq!(virtual_mid_x(&home, IslandSpot::Free(0)), left);
+        // Inside the span a free spot is that fraction of the screen's width.
+        assert_eq!(virtual_mid_x(&home, IslandSpot::Free(500)), 640.0);
+        let moved = IslandHome {
+            screen: rect(-1920.0, 0.0, 1920.0, 1080.0),
+            ..plain(0.0)
+        };
+        assert_eq!(virtual_mid_x(&moved, IslandSpot::Free(250)), -1440.0);
+    }
+
+    #[test]
+    fn unknown_key_falls_back_to_primary() {
+        let homes = [plain(24.0)];
+        assert_eq!(home_by_key(&homes, "800x600+0+0"), None);
+        assert_eq!(home_by_key(&homes, "1440x900+0+0"), Some(homes[0]));
+        let notch = [notched(188.0, 38.0)];
+        assert_eq!(home_by_key(&notch, "1512x982+0+0"), None);
+    }
+
+    #[test]
+    fn home_at_skips_notched_and_gaps() {
+        let first = IslandHome {
+            screen: rect(0.0, 0.0, 1000.0, 600.0),
+            ..plain(0.0)
+        };
+        let second = IslandHome {
+            screen: rect(1100.0, 0.0, 1000.0, 600.0),
+            notch: Some(rect(1500.0, 0.0, 200.0, 32.0)),
+            ..plain(0.0)
+        };
+        let homes = [first, second];
+        assert_eq!(home_at(&homes, 500.0, 300.0), Some(0));
+        assert_eq!(home_at(&homes, 1500.0, 300.0), None);
+        assert_eq!(home_at(&homes, 1050.0, 300.0), None);
+    }
+
+    #[test]
+    fn screen_key_rounds() {
+        assert_eq!(
+            screen_key(&rect(-1920.4, 0.0, 1920.0, 1080.0)),
+            "1920x1080+-1920+0"
+        );
+        assert_eq!(
+            screen_key(&rect(1440.6, -200.2, 2560.4, 1440.5)),
+            "2560x1441+1441+-200"
+        );
+    }
+
+    #[test]
     fn left_and_right_keep_the_corners_free() {
         let home = by_the_clock(false);
-        assert_eq!(virtual_mid_x(&home, IslandPlace::Left), 180.0 + 280.0);
         assert_eq!(
-            virtual_mid_x(&home, IslandPlace::Right),
+            virtual_mid_x(&home, IslandSpot::Side(IslandPlace::Left)),
+            180.0 + 280.0
+        );
+        assert_eq!(
+            virtual_mid_x(&home, IslandSpot::Side(IslandPlace::Right)),
             1280.0 - 180.0 - 280.0
         );
     }
@@ -1068,7 +1287,7 @@ mod tests {
             ..plain(0.0)
         };
         for p in IslandPlace::ALL {
-            assert_eq!(virtual_mid_x(&home, p), 450.0);
+            assert_eq!(virtual_mid_x(&home, IslandSpot::Side(p)), 450.0);
         }
         let f = virtual_frames(&home, spot(IslandPlace::Left, false), TWO);
         assert!(f.expanded.x >= 0.0 && f.expanded.x + f.expanded.w <= 900.0);
@@ -1212,7 +1431,7 @@ mod tests {
     fn the_news_pill_is_centred_on_the_island() {
         let home = plain(24.0);
         for place in IslandPlace::ALL {
-            let mid = virtual_mid_x(&home, place);
+            let mid = virtual_mid_x(&home, IslandSpot::Side(place));
             for bar in [false, true] {
                 let f = virtual_frames(&home, spot(place, bar), TWO);
                 let news = news_with(&f, true, false);

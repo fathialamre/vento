@@ -56,7 +56,8 @@ use vento_core::news::{Stage, Tone};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::{
-    IslandMode, IslandPlace, IslandShape, PocketView, Settings, ShimmerEvery, ShimmerStyle,
+    IslandMode, IslandPlace, IslandShape, IslandSpot, PocketView, Settings, ShimmerEvery,
+    ShimmerStyle,
 };
 use vento_core::shimmer::{AWAY_AFTER, MomentConditions, moment_allowed, motion_reduced};
 use vento_core::trigger::InputSample;
@@ -245,7 +246,7 @@ fn virtual_spot_of(
     mode: IslandMode,
     home: &IslandHome,
     supported: bool,
-    place: IslandPlace,
+    place: IslandSpot,
     bar_under: bool,
     shape: IslandShape,
 ) -> Option<VirtualSpot> {
@@ -1770,7 +1771,7 @@ impl PocketController {
             return;
         }
         self.front_checked.set(Some(now));
-        let mid_x = virtual_mid_x(home, self.place.get());
+        let mid_x = virtual_mid_x(home, IslandSpot::Side(self.place.get()));
         let rest_w = if self.circle_virtual(home) {
             geometry::CIRCLE_D
         } else {
@@ -2459,7 +2460,7 @@ impl PocketController {
             self.mode.get(),
             home,
             self.platform.virtual_island_supported(),
-            self.place.get(),
+            IslandSpot::Side(self.place.get()),
             self.bar_under.get(),
             self.shape.get(),
         )
@@ -3063,7 +3064,7 @@ mod tests {
                 IslandMode::Virtual,
                 &home,
                 true,
-                IslandPlace::Centre,
+                IslandSpot::Side(IslandPlace::Centre),
                 false,
                 shape,
             )
@@ -3080,7 +3081,7 @@ mod tests {
             IslandMode::Classic,
             &home,
             true,
-            IslandPlace::Centre,
+            IslandSpot::Side(IslandPlace::Centre),
             false,
             IslandShape::Circle,
         );
@@ -3091,7 +3092,7 @@ mod tests {
     fn drag_on_the_circle_shows_the_orb_and_ends_it() {
         let home = plain_home();
         let circle = VirtualSpot {
-            place: IslandPlace::Centre,
+            place: IslandSpot::Side(IslandPlace::Centre),
             bar_under: false,
             shape: IslandShape::Circle,
         };
@@ -3142,7 +3143,7 @@ mod tests {
         let home = plain_home();
         let panel = Panel::Kinds { groups: 1 };
         let spot = |shape, bar_under| VirtualSpot {
-            place: IslandPlace::Centre,
+            place: IslandSpot::Side(IslandPlace::Centre),
             bar_under,
             shape,
         };
@@ -3207,7 +3208,7 @@ mod tests {
     fn shimmer_only_on_the_resting_pill_or_circle() {
         let spot = |shape, bar_under| {
             Some(VirtualSpot {
-                place: IslandPlace::Centre,
+                place: IslandSpot::Side(IslandPlace::Centre),
                 bar_under,
                 shape,
             })
