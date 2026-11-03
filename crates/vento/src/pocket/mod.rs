@@ -55,7 +55,7 @@ use vento_core::i18n::{fill, tr, with_language};
 use vento_core::news::{Stage, Tone};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
-use vento_core::settings::{IslandMode, IslandPlace, PocketView, Settings};
+use vento_core::settings::{IslandMode, IslandPlace, IslandShape, PocketView, Settings};
 use vento_core::trigger::InputSample;
 use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
@@ -1609,7 +1609,12 @@ impl PocketController {
         }
         self.front_checked.set(Some(now));
         let mid_x = virtual_mid_x(home, self.place.get());
-        let under = geometry::bar_under(self.platform.front_window_frame(), home, mid_x);
+        let under = geometry::bar_under(
+            self.platform.front_window_frame(),
+            home,
+            mid_x,
+            geometry::PILL_W,
+        );
         if self.bar_under.replace(under) != under {
             debug!("pocket bar under the island: {under}");
         }
@@ -2280,6 +2285,7 @@ impl PocketController {
         virtual_active(self.mode.get(), home, supported).then(|| VirtualSpot {
             place: self.place.get(),
             bar_under: self.bar_under.get(),
+            shape: IslandShape::Island,
         })
     }
 

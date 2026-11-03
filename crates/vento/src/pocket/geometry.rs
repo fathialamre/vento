@@ -5,13 +5,13 @@ use slint::LogicalPosition;
 use slint::platform::WindowEvent;
 use vento_core::geometry::{Point, Rect};
 use vento_core::pocket_zone::{IslandInputs, Presence, ZONE_MARGIN};
-use vento_core::settings::IslandPlace;
+use vento_core::settings::{IslandPlace, IslandShape};
 use vento_platform::{IslandHome, TrayCorner};
 
 /// Width of each wing beside the notch.
 const WING_W: f64 = 44.0;
 /// The collapsed pill on screens without a notch.
-const PILL_W: f64 = 120.0;
+pub(super) const PILL_W: f64 = 120.0;
 const PILL_H: f64 = 28.0;
 /// Gap between the menu bar and the pill.
 const PILL_GAP: f64 = 4.0;
@@ -56,6 +56,13 @@ const VIRTUAL_GAP_UNDER_BAR: f64 = 4.0;
 /// The lip the virtual island rests as over a bar of the front window.
 const LIP_W: f64 = 84.0;
 const LIP_H: f64 = 6.0;
+/// The circle shape: its resting disc's diameter.
+pub(super) const CIRCLE_D: f64 = 34.0;
+/// The circle shape over a window's bar: the half-moon hanging from the bar.
+const HALF_MOON_W: f64 = 36.0;
+const HALF_MOON_H: f64 = 18.0;
+/// The circle shape while something is dragged: the drop orb's diameter.
+const ORB_D: f64 = 62.0;
 /// How far the push zone reaches past the pill on each side, and how deep
 /// it is: a thin strip along the screen's top edge.
 const PUSH_PAD: f64 = 40.0;
@@ -115,6 +122,9 @@ pub(super) struct VirtualSpot {
     /// The front window's own bar lies along the island's place, so the
     /// island rests as a lip instead of a pill.
     pub(super) bar_under: bool,
+    /// The shape it rests in: the pill with its lip, or the circle with its
+    /// half-moon.
+    pub(super) shape: IslandShape,
 }
 
 /// The island's rects for one home, in logical top-left global coordinates.
@@ -128,6 +138,11 @@ pub(super) struct Frames {
     pub(super) virtual_island: bool,
     /// Its resting form is the lip rather than the pill.
     pub(super) lip: bool,
+    /// Its resting shape is the circle (or, over a bar, the half-moon)
+    /// rather than the pill (or the lip).
+    pub(super) circle: bool,
+    /// The window is the drop orb: the circle while something is dragged.
+    pub(super) orb: bool,
     /// Where pushing the pointer against the top edge opens it; [`NOWHERE`]
     /// outside the virtual island.
     pub(super) push: Rect,
@@ -210,6 +225,8 @@ pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
         corner: false,
         virtual_island: false,
         lip: false,
+        circle: false,
+        orb: false,
         push: NOWHERE,
         notch_style,
         notch_w,
@@ -252,25 +269,28 @@ pub(super) fn virtual_mid_x(home: &IslandHome, place: IslandPlace) -> f64 {
 /// Whether the front window has a bar under the island: its frame's top is
 /// within [`BAR_TOLERANCE`] of the bar's bottom or of the screen's top (a
 /// fullscreen video, game or slide show under a menu bar, GNOME's top bar or
-/// a top taskbar) and it spans the pill's x range around `mid_x`.
-pub(super) fn bar_under(front: Option<Rect>, home: &IslandHome, mid_x: f64) -> bool {
+/// a top taskbar) and it spans the resting shape's x range around `mid_x`,
+/// `rest_w` wide ([`PILL_W`] for the pill, [`CIRCLE_D`] for the circle).
+pub(super) fn bar_under(front: Option<Rect>, home: &IslandHome, mid_x: f64, rest_w: f64) -> bool {
     front.is_some_and(|f| {
         ((f.y - bar_bottom(home)).abs() <= BAR_TOLERANCE
             || (f.y - home.screen.y).abs() <= BAR_TOLERANCE)
-            && f.x <= mid_x - PILL_W / 2.0
-            && f.x + f.w >= mid_x + PILL_W / 2.0
+            && f.x <= mid_x - rest_w / 2.0
+            && f.x + f.w >= mid_x + rest_w / 2.0
     })
 }
 
 /// The virtual island: the pill [`VIRTUAL_GAP`] under the screen's top
 /// (less under a top bar), or the lip hanging from the bar's lower edge
-/// over a window's bar. It is centred on `spot.place`; expanded, it is
-/// [`ISLAND_W`] wide as in every mode. Like the notch island, its window
-/// starts at the bar's edge, with the gap as its top height, so the lip and
-/// the pill both lie in it. Pushing against
-/// the top edge near the pill opens it, so the push zone is a thin strip
-/// along the screen's top, and the zone for a drag is the pill and the lip
-/// grown by [`ZONE_MARGIN`] on the left, right and bottom.
+/// over a window's bar. As the circle, the disc [`CIRCLE_D`] across takes the
+/// pill's place and the half-moon the lip's. It is centred on `spot.place`;
+/// expanded, it is [`ISLAND_W`] wide as in every mode, except the circle
+/// with something dragged, where it is the [`ORB_D`] orb. Like the notch
+/// island, its window starts at the bar's edge, with the gap as its top
+/// height, so the lip and the pill both lie in it. Pushing against the top
+/// edge near the resting shape opens it, so the push zone is a thin strip
+/// along the screen's top, and the zone for a drag is the resting shape and
+/// its lip grown by [`ZONE_MARGIN`] on the left, right and bottom.
 pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel) -> Frames {
     let screen = home.screen;
     let bar = bar_bottom(home);
@@ -280,17 +300,23 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
     } else {
         VIRTUAL_GAP_UNDER_BAR
     };
+    let circle = spot.shape == IslandShape::Circle;
+    let (rest_w, rest_h, lip_w, lip_h) = if circle {
+        (CIRCLE_D, CIRCLE_D, HALF_MOON_W, HALF_MOON_H)
+    } else {
+        (PILL_W, PILL_H, LIP_W, LIP_H)
+    };
     let pill = Rect {
-        x: mid - PILL_W / 2.0,
+        x: mid - rest_w / 2.0,
         y: bar + gap,
-        w: PILL_W,
-        h: PILL_H,
+        w: rest_w,
+        h: rest_h,
     };
     let lip = Rect {
-        x: mid - LIP_W / 2.0,
+        x: mid - lip_w / 2.0,
         y: bar,
-        w: LIP_W,
-        h: LIP_H,
+        w: lip_w,
+        h: lip_h,
     };
     let collapsed = if spot.bar_under { lip } else { pill };
     let rest = union(pill, lip);
@@ -300,15 +326,25 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
         w: rest.w + 2.0 * ZONE_MARGIN,
         h: rest.h + ZONE_MARGIN,
     };
-    let w = ISLAND_W.min(screen.w - 2.0 * SCREEN_MARGIN);
+    let orb = circle && panel == Panel::Drop;
+    let (w, h) = if orb {
+        (ORB_D, gap + ORB_D)
+    } else {
+        (
+            ISLAND_W.min(screen.w - 2.0 * SCREEN_MARGIN),
+            gap + panel_h(panel),
+        )
+    };
     Frames {
         corner: false,
         virtual_island: true,
         lip: spot.bar_under,
+        circle,
+        orb,
         push: Rect {
             x: pill.x - PUSH_PAD,
             y: screen.y,
-            w: PILL_W + 2.0 * PUSH_PAD,
+            w: rest_w + 2.0 * PUSH_PAD,
             h: PUSH_DEPTH,
         },
         notch_style: false,
@@ -320,7 +356,7 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
             x: mid - w / 2.0,
             y: bar,
             w,
-            h: gap + panel_h(panel),
+            h,
         },
     }
 }
@@ -347,6 +383,8 @@ fn corner_frames(screen: Rect, corner: TrayCorner, panel: Panel) -> Frames {
         corner: true,
         virtual_island: false,
         lip: false,
+        circle: false,
+        orb: false,
         push: NOWHERE,
         notch_style: false,
         notch_w: 0.0,
@@ -412,8 +450,12 @@ pub(super) fn union(a: Rect, b: Rect) -> Rect {
 }
 
 /// What keeps an expanded island open: the panel and the collapsed shape
-/// (so moving onto the cells keeps it open).
+/// (so moving onto the cells keeps it open). The drop orb is only itself, so
+/// that it never takes the pointer over the strip the full island covers.
 pub(super) fn hold(f: &Frames) -> Rect {
+    if f.orb {
+        return f.expanded;
+    }
     union(f.collapsed, f.expanded)
 }
 
@@ -490,9 +532,10 @@ pub(super) fn news_rects(
 /// button `button_w` wide at `button_x` from the pill's left (as the window
 /// lays it out), centred in the pill's height. The pill is centred on the
 /// island with its top where the news pill's is. `None` where no pill rests:
-/// over the lip, and on the other islands.
+/// over the lip, and on the other islands; and with no button (`button_w` is
+/// 0 or less), as on the round circle.
 pub(super) fn resume_rect(f: &Frames, pill_w: f64, button_w: f64, button_x: f64) -> Option<Rect> {
-    if !f.virtual_island || f.lip {
+    if !f.virtual_island || f.lip || button_w <= 0.0 {
         return None;
     }
     let mid = f.expanded.x + f.expanded.w / 2.0;
@@ -502,6 +545,30 @@ pub(super) fn resume_rect(f: &Frames, pill_w: f64, button_w: f64, button_x: f64)
         w: button_w,
         h: RESUME_H,
     })
+}
+
+/// The resting shape, `rest_w` wide ([`PILL_W`] or [`CIRCLE_D`]), centred on
+/// the island with its top where the news pill's is, [`CIRCLE_D`] high as
+/// the circle and [`PILL_H`] as the pill. `None` over the lip or the
+/// half-moon, and outside the virtual island.
+#[allow(dead_code)] // The window uses it once the shape is wired in.
+pub(super) fn rest_rect(f: &Frames, rest_w: f64) -> Option<Rect> {
+    if !f.virtual_island || f.lip {
+        return None;
+    }
+    let mid = f.expanded.x + f.expanded.w / 2.0;
+    Some(Rect {
+        x: mid - rest_w / 2.0,
+        y: f.expanded.y + f.top_h,
+        w: rest_w,
+        h: if f.circle { CIRCLE_D } else { PILL_H },
+    })
+}
+
+/// Whether the island rests collapsed with the pointer on its resting shape.
+#[allow(dead_code)] // The window uses it once the shape is wired in.
+pub(super) fn rest_hovered(f: &Frames, presence: Presence, rest_w: f64, cursor: Point) -> bool {
+    presence == Presence::Collapsed && rest_rect(f, rest_w).is_some_and(|r| contains(&r, cursor))
 }
 
 /// Where the window should take the pointer in this presence; everywhere
@@ -924,7 +991,18 @@ mod tests {
     }
 
     fn spot(place: IslandPlace, bar_under: bool) -> VirtualSpot {
-        VirtualSpot { place, bar_under }
+        VirtualSpot {
+            place,
+            bar_under,
+            shape: IslandShape::Island,
+        }
+    }
+
+    fn circle_spot(bar_under: bool) -> VirtualSpot {
+        VirtualSpot {
+            shape: IslandShape::Circle,
+            ..spot(IslandPlace::Centre, bar_under)
+        }
     }
 
     #[test]
@@ -1207,51 +1285,70 @@ mod tests {
     #[test]
     fn bar_under_ignores_none_and_off_span_windows() {
         let home = by_the_clock(false);
-        assert!(!bar_under(None, &home, 640.0));
-        assert!(bar_under(Some(rect(0.0, 0.0, 1280.0, 752.0)), &home, 640.0));
+        assert!(!bar_under(None, &home, 640.0, PILL_W));
+        assert!(bar_under(
+            Some(rect(0.0, 0.0, 1280.0, 752.0)),
+            &home,
+            640.0,
+            PILL_W
+        ));
         assert!(bar_under(
             Some(rect(400.0, 7.0, 600.0, 400.0)),
             &home,
-            640.0
+            640.0,
+            PILL_W
         ));
         assert!(!bar_under(
             Some(rect(400.0, 9.0, 600.0, 400.0)),
             &home,
-            640.0
+            640.0,
+            PILL_W
         ));
-        assert!(!bar_under(Some(rect(0.0, 0.0, 600.0, 752.0)), &home, 640.0));
+        assert!(!bar_under(
+            Some(rect(0.0, 0.0, 600.0, 752.0)),
+            &home,
+            640.0,
+            PILL_W
+        ));
     }
 
     #[test]
     fn fullscreen_front_window_counts_as_bar_under() {
         let home = by_the_clock(false);
-        assert!(bar_under(Some(home.screen), &home, 640.0));
+        assert!(bar_under(Some(home.screen), &home, 640.0, PILL_W));
     }
 
     #[test]
     fn fullscreen_under_a_top_bar_counts_as_bar_under() {
         // A Mac menu bar: fullscreen video, a game or slides.
         let home = plain(24.0);
-        assert!(bar_under(Some(home.screen), &home, 720.0));
+        assert!(bar_under(Some(home.screen), &home, 720.0, PILL_W));
         // GNOME's 32-px top bar.
         let home = plain(32.0);
-        assert!(bar_under(Some(home.screen), &home, 720.0));
+        assert!(bar_under(Some(home.screen), &home, 720.0, PILL_W));
         // A normal window starting at the bar's bottom still counts.
         let home = plain(24.0);
         assert!(bar_under(
             Some(rect(200.0, 24.0, 1000.0, 600.0)),
             &home,
-            720.0
+            720.0,
+            PILL_W
         ));
         // Between the screen's top and the bar's bottom, past the tolerance
         // of both, it does not.
         assert!(!bar_under(
             Some(rect(200.0, 12.0, 1000.0, 600.0)),
             &home,
-            720.0
+            720.0,
+            PILL_W
         ));
         // A fullscreen window off the pill's span does not either.
-        assert!(!bar_under(Some(rect(0.0, 0.0, 600.0, 900.0)), &home, 720.0));
+        assert!(!bar_under(
+            Some(rect(0.0, 0.0, 600.0, 900.0)),
+            &home,
+            720.0,
+            PILL_W
+        ));
     }
 
     #[test]
@@ -1278,5 +1375,115 @@ mod tests {
         let home = plain(0.2);
         let f = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO);
         assert_eq!(f.collapsed.y, 0.2 + 6.0);
+    }
+
+    #[test]
+    fn circle_rests_34_under_the_top() {
+        let f = virtual_frames(&plain(0.0), circle_spot(false), TWO);
+        assert!(f.virtual_island && f.circle && !f.lip && !f.orb);
+        assert_eq!(f.collapsed, rect(720.0 - 17.0, 6.0, 34.0, 34.0));
+        assert_eq!(f.top_h, 6.0);
+    }
+
+    #[test]
+    fn circle_over_a_bar_is_the_half_moon() {
+        let f = virtual_frames(&plain(0.0), circle_spot(true), TWO);
+        assert!(f.lip && f.circle);
+        assert_eq!(f.collapsed, rect(720.0 - 18.0, 0.0, 36.0, 18.0));
+    }
+
+    #[test]
+    fn circle_push_zone_is_its_span_plus_40() {
+        let f = virtual_frames(&plain(0.0), circle_spot(false), TWO);
+        assert_eq!(f.push, rect(720.0 - 17.0 - 40.0, 0.0, 34.0 + 80.0, 2.0));
+    }
+
+    #[test]
+    fn circle_zone_covers_circle_and_half_moon() {
+        let home = plain(24.0);
+        let f = virtual_frames(&home, circle_spot(false), TWO);
+        let moon = virtual_frames(&home, circle_spot(true), TWO).collapsed;
+        let both = union(f.collapsed, moon);
+        assert_eq!(
+            f.zone,
+            rect(
+                both.x - ZONE_MARGIN,
+                both.y,
+                both.w + 2.0 * ZONE_MARGIN,
+                both.h + ZONE_MARGIN
+            )
+        );
+        assert_eq!(f.zone, virtual_frames(&home, circle_spot(true), TWO).zone);
+    }
+
+    #[test]
+    fn circle_drop_is_the_orb() {
+        let home = plain(0.0);
+        let f = virtual_frames(&home, circle_spot(false), Panel::Drop);
+        assert!(f.orb && f.circle);
+        assert_eq!(f.expanded, rect(720.0 - 31.0, 0.0, 62.0, 6.0 + 62.0));
+        // The orb alone takes the pointer, never the 560-wide strip.
+        assert_eq!(hold(&f), f.expanded);
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, None, None),
+            vec![f.expanded]
+        );
+        // Over a bar too, and no other view is the orb.
+        assert!(virtual_frames(&home, circle_spot(true), Panel::Drop).orb);
+        let list = virtual_frames(&home, circle_spot(false), Panel::List);
+        assert!(!list.orb && list.expanded.w == 560.0);
+        // The pill keeps today's full-width drop island.
+        let pill = virtual_frames(&home, spot(IslandPlace::Centre, false), Panel::Drop);
+        assert!(!pill.orb && !pill.circle);
+        assert_eq!(pill.expanded.w, 560.0);
+        assert_eq!(hold(&pill), union(pill.collapsed, pill.expanded));
+    }
+
+    #[test]
+    fn bar_under_uses_the_rest_width() {
+        let home = plain(0.0);
+        let front = Some(rect(700.0, 0.0, 40.0, 400.0));
+        assert!(bar_under(front, &home, 720.0, CIRCLE_D));
+        assert!(!bar_under(front, &home, 720.0, PILL_W));
+    }
+
+    #[test]
+    fn paused_round_circle_takes_no_click() {
+        let f = virtual_frames(&plain(0.0), circle_spot(false), TWO);
+        // The round circle shows no button, so there is no Resume rect.
+        assert_eq!(resume_rect(&f, 34.0, 0.0, 0.0), None);
+        assert!(interactive_rects(&f, Presence::Collapsed, None, None).is_empty());
+        // Stretched, the circle shows its Resume button.
+        let resume = resume_rect(&f, 160.0, 60.0, 97.0).expect("a Resume");
+        let rects = interactive_rects(&f, Presence::Collapsed, None, Some(resume));
+        assert_eq!(rects, vec![resume]);
+    }
+
+    #[test]
+    fn rest_rect_is_the_resting_shape_under_the_top() {
+        let home = plain(24.0);
+        let f = virtual_frames(&home, circle_spot(false), TWO);
+        assert_eq!(rest_rect(&f, CIRCLE_D), Some(f.collapsed));
+        let p = virtual_frames(&home, spot(IslandPlace::Centre, false), TWO);
+        assert_eq!(rest_rect(&p, PILL_W), Some(p.collapsed));
+        // Nothing over the lip or the half-moon, nor outside the virtual island.
+        let moon = virtual_frames(&home, circle_spot(true), TWO);
+        assert_eq!(rest_rect(&moon, CIRCLE_D), None);
+        assert_eq!(rest_rect(&frames(&home, TWO), PILL_W), None);
+    }
+
+    #[test]
+    fn rest_hovered_only_collapsed_and_not_half_moon() {
+        let home = plain(0.0);
+        let f = virtual_frames(&home, circle_spot(false), TWO);
+        let on = Point { x: 720.0, y: 20.0 };
+        assert!(rest_hovered(&f, Presence::Collapsed, CIRCLE_D, on));
+        assert!(!rest_hovered(&f, Presence::Expanded, CIRCLE_D, on));
+        assert!(!rest_hovered(&f, Presence::Hidden, CIRCLE_D, on));
+        let off = Point { x: 760.0, y: 20.0 };
+        assert!(!rest_hovered(&f, Presence::Collapsed, CIRCLE_D, off));
+        let moon = virtual_frames(&home, circle_spot(true), TWO);
+        let on_moon = Point { x: 720.0, y: 5.0 };
+        assert!(!rest_hovered(&moon, Presence::Collapsed, CIRCLE_D, on_moon));
     }
 }
