@@ -51,7 +51,7 @@ use vento_platform::{IslandHome, Platform, TerminalApp};
 use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
 use crate::panel::{UpdateView, set_rows, update_view};
-use crate::pocket::{Access, display_name, to_image, virtual_offered};
+use crate::pocket::{Access, display_name, island_screen_key, to_image, virtual_offered};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
 use crate::wheel::action_icon;
@@ -756,8 +756,9 @@ impl SettingsWindowController {
             if let (Some(controller), Some(place)) = (this.upgrade(), choice(&IslandPlace::ALL, i))
             {
                 // The screen the island is on now, or the global place.
+                let screens = IslandScreens::of(&*controller.platform);
                 controller.apply(|s| {
-                    let screen = s.island_screen.clone();
+                    let screen = screens.key(s);
                     s.set_island_spot(screen.as_deref(), IslandSpot::Side(place));
                 });
             }
@@ -1327,9 +1328,9 @@ impl SettingsWindowController {
     /// by where it sits there; GNOME's top bar room counts once the
     /// extension has kept it, as the virtual island gives it back.
     fn show_island(&self, window: &SettingsWindow, settings: &Settings) {
-        let home = self.platform.pocket_home();
-        let supported = self.platform.virtual_island_supported();
-        window.set_island_offered(home.is_some_and(|h| virtual_offered(&h, supported)));
+        let screens = IslandScreens::of(&*self.platform);
+        let home = screens.primary;
+        window.set_island_offered(home.is_some_and(|h| virtual_offered(&h, screens.supported)));
         if let Some(home) = home {
             let gnome_slot = home.slot.is_some() || self.platform.island_slot_seen();
             window.set_classic_label(classic_label(&home, gnome_slot).into());
@@ -1338,7 +1339,7 @@ impl SettingsWindowController {
         window.set_island_shape(choice_index(&IslandShape::ALL, settings.island_shape));
         // A free spot has no segment chosen.
         window.set_island_place(
-            match settings.island_spot(settings.island_screen.as_deref()) {
+            match settings.island_spot(screens.key(settings).as_deref()) {
                 IslandSpot::Side(place) => choice_index(&IslandPlace::ALL, place),
                 IslandSpot::Free(_) => -1,
             },
@@ -1920,6 +1921,37 @@ fn awake_start_index(settings: &Settings) -> i32 {
         .map_or(0, |i| i32::try_from(i + 1).unwrap_or(0))
 }
 
+/// The island's homes as the platform has them: every screen's, the
+/// primary one, and whether the virtual island can be placed.
+struct IslandScreens {
+    homes: Vec<IslandHome>,
+    primary: Option<IslandHome>,
+    supported: bool,
+}
+
+impl IslandScreens {
+    fn of(platform: &dyn Platform) -> Self {
+        Self {
+            homes: platform.island_homes(),
+            primary: platform.pocket_home(),
+            supported: platform.virtual_island_supported(),
+        }
+    }
+
+    /// The key of the screen the island is on with `settings`, found as
+    /// the island finds it: the screen whose place the Place row shows and
+    /// sets. A screen in the settings that is gone gives the primary's.
+    fn key(&self, settings: &Settings) -> Option<String> {
+        island_screen_key(
+            settings.island_mode,
+            &self.homes,
+            settings.island_screen.as_deref(),
+            self.primary,
+            self.supported,
+        )
+    }
+}
+
 /// What the Island menu calls the island that is not the virtual one, by
 /// where it sits at `home`: by the taskbar's clock (Windows), in the top
 /// bar where GNOME's keeps room for it (`gnome_slot`), or else a pill at
@@ -2147,6 +2179,7 @@ fn apply_shortcut(
 mod tests {
     use super::*;
     use vento_core::i18n::with_language;
+    use vento_core::settings::ScreenPlace;
     use vento_platform::TrayCorner;
 
     #[test]
@@ -2400,6 +2433,57 @@ mod tests {
             slot: None,
             tray_corner: None,
         }
+    }
+
+    #[test]
+    fn place_row_follows_the_screen_the_island_is_on() {
+        let primary = plain_home();
+        let second = IslandHome {
+            screen: Rect {
+                x: 1280.0,
+                ..primary.screen
+            },
+            ..primary
+        };
+        let screens = IslandScreens {
+            homes: vec![primary, second],
+            primary: Some(primary),
+            supported: true,
+        };
+        let mut s = Settings {
+            island_mode: IslandMode::Virtual,
+            island_screen: Some("1280x800+1280+0".to_owned()),
+            ..Settings::default()
+        };
+        assert_eq!(screens.key(&s).as_deref(), Some("1280x800+1280+0"));
+        // The screen in the settings is gone: the island is on the primary,
+        // and the row sets the primary's place; the gone screen's is kept.
+        s.island_screen = Some("1920x1080+2560+0".to_owned());
+        s.island_places.insert(
+            "1920x1080+2560+0".to_owned(),
+            ScreenPlace {
+                place: IslandPlace::Right,
+                free: None,
+            },
+        );
+        let key = screens.key(&s);
+        assert_eq!(key.as_deref(), Some("1280x800+0+0"));
+        s.set_island_spot(key.as_deref(), IslandSpot::Side(IslandPlace::Left));
+        assert_eq!(
+            s.island_spot(Some("1280x800+0+0")),
+            IslandSpot::Side(IslandPlace::Left)
+        );
+        assert_eq!(
+            s.island_spot(Some("1920x1080+2560+0")),
+            IslandSpot::Side(IslandPlace::Right)
+        );
+        // Where the virtual island is not offered, the primary's.
+        let unsupported = IslandScreens {
+            supported: false,
+            ..screens
+        };
+        s.island_screen = Some("1280x800+1280+0".to_owned());
+        assert_eq!(unsupported.key(&s).as_deref(), Some("1280x800+0+0"));
     }
 
     #[test]

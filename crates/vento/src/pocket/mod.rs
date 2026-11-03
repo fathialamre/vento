@@ -303,6 +303,19 @@ fn home_for(
         .or(fallback)
 }
 
+/// The key of the screen the island is on, as [`home_for`] finds its home
+/// (`key` the screen in the settings, `fallback` the primary home): the
+/// screen whose place the settings read and write. `None` with no home.
+pub(crate) fn island_screen_key(
+    mode: IslandMode,
+    homes: &[IslandHome],
+    key: Option<&str>,
+    fallback: Option<IslandHome>,
+    supported: bool,
+) -> Option<String> {
+    home_for(mode, homes, key, fallback, supported).map(|h| screen_key(&h.screen))
+}
+
 /// Whether the drop box is wanted: something is dragged (and not by the
 /// Pocket's own drag out) anywhere on the screen of the island in the
 /// corner by the clock, or near the virtual circle (`in_zone`, the drag in
@@ -3516,6 +3529,33 @@ mod tests {
                 false
             ),
             Some(homes[0])
+        );
+    }
+
+    #[test]
+    fn island_screen_key_is_the_screen_it_is_on() {
+        let homes = two_homes();
+        let key = |mode, stored| island_screen_key(mode, &homes, stored, Some(homes[0]), true);
+        assert_eq!(
+            key(IslandMode::Virtual, Some("1920x1080+1440+0")).as_deref(),
+            Some("1920x1080+1440+0")
+        );
+        // A screen that is gone: the primary's, where the island now is.
+        assert_eq!(
+            key(IslandMode::Virtual, Some("800x600+0+0")).as_deref(),
+            Some("1440x900+0+0")
+        );
+        assert_eq!(
+            key(IslandMode::Virtual, None).as_deref(),
+            Some("1440x900+0+0")
+        );
+        assert_eq!(
+            key(IslandMode::Classic, Some("1920x1080+1440+0")).as_deref(),
+            Some("1440x900+0+0")
+        );
+        assert_eq!(
+            island_screen_key(IslandMode::Virtual, &[], None, None, true),
+            None
         );
     }
 
