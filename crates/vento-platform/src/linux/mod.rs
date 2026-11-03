@@ -30,6 +30,7 @@ mod heif;
 mod icons;
 pub(crate) mod image_io;
 mod instance;
+mod motion;
 mod portal;
 pub(crate) mod screen_text;
 mod shell;
@@ -310,6 +311,16 @@ impl Platform for LinuxPlatform {
 
     fn virtual_island_supported(&self) -> bool {
         virtual_island_supported(self.wayland)
+    }
+
+    /// Blocks for up to half a second if `gsettings` is slow.
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    /// Blocks for up to half a second if `gsettings` is slow.
+    fn quiet_time(&self) -> bool {
+        motion::quiet_time()
     }
 
     /// Blocks for two short calls to the extension.

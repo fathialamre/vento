@@ -15,6 +15,7 @@ use vento_core::screen_text::{Selection, TextBox};
 use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
+mod motion;
 mod screenshot_dir;
 mod stub;
 mod watch;
@@ -411,6 +412,22 @@ pub trait Platform {
     /// the top edge and let clicks through while it rests.
     fn virtual_island_supported(&self) -> bool {
         true
+    }
+    /// Whether the system asks for less motion (Reduce motion, animations
+    /// off). Main thread only.
+    fn reduce_motion(&self) -> bool {
+        false
+    }
+    /// Whether the system holds notifications back (Do Not Disturb, a
+    /// presentation, a full-screen game); false where it cannot be known.
+    /// Main thread only.
+    fn quiet_time(&self) -> bool {
+        false
+    }
+    /// Whether the system is saving power (Low Power Mode, Battery Saver).
+    /// Main thread only.
+    fn power_saving(&self) -> bool {
+        false
     }
     /// Whether the desktop keeps room for the collapsed island in its top
     /// bar (GNOME's, through the Vento extension); kept until called again.

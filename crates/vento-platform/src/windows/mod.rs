@@ -41,6 +41,7 @@ mod heif;
 pub(crate) mod image_io;
 mod instance;
 mod menu;
+mod motion;
 mod overlay;
 mod screens;
 mod shell;
@@ -447,6 +448,18 @@ impl Platform for WindowsPlatform {
         }
         let frame = drawn_frame(front)?;
         Some(screens::window_to_logical(front, &frame))
+    }
+
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    fn quiet_time(&self) -> bool {
+        motion::quiet_time()
+    }
+
+    fn power_saving(&self) -> bool {
+        motion::power_saving()
     }
 
     /// Off the taskbar and out of Alt+Tab; above the others it already is,

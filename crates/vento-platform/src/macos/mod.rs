@@ -31,6 +31,7 @@ mod image_io;
 mod info;
 mod input;
 mod menu;
+mod motion;
 mod notify;
 mod overlay;
 mod patch;
@@ -205,6 +206,14 @@ impl Platform for MacPlatform {
     /// windows and the menu bar, the Dock and panels sit at other layers.
     fn front_window_frame(&self) -> Option<Rect> {
         screens::front_window_frame()
+    }
+
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    fn power_saving(&self) -> bool {
+        motion::power_saving()
     }
 
     fn make_overlay(
