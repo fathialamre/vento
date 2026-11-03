@@ -124,6 +124,11 @@ island_mode = "virtual"
 # "right" ("center" is read as "centre")
 island_place = "centre"
 
+# Island: the virtual island's shape: "island" (a pill) or "circle" (a disc
+# that stretches into a pill only to say something). Any other value is read
+# as "island"
+island_shape = "island"
+
 # Island: how solid the virtual island is while resting, in percent (100 =
 # solid). Other values are rounded to the nearest 5 and kept between 10 and 100
 island_glass = 55
