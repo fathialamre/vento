@@ -313,12 +313,10 @@ impl Platform for LinuxPlatform {
         virtual_island_supported(self.wayland)
     }
 
-    /// Blocks for up to half a second if `gsettings` is slow.
     fn reduce_motion(&self) -> bool {
         motion::reduce_motion()
     }
 
-    /// Blocks for up to half a second if `gsettings` is slow.
     fn quiet_time(&self) -> bool {
         motion::quiet_time()
     }
