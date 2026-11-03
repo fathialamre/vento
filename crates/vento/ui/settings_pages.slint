@@ -374,7 +374,7 @@ component ShapePicker inherits HorizontalLayout {
     callback chosen(int);
 
     spacing: 8px;
-    alignment: start;
+    alignment: Theme.rtl ? end : start;
     accessible-role: radio-group;
     accessible-label: @tr("Shape");
 
