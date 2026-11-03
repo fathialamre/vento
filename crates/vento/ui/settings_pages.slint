@@ -1130,8 +1130,11 @@ export component IslandPage inherits VerticalLayout {
     in property <bool> virtual;
     // What the other island is called there: where it sits today.
     in property <string> classic-label;
-    // Where the virtual island sits: 0 Left, 1 Centre, 2 Right.
+    // Where the virtual island sits: 0 Left, 1 Centre, 2 Right, -1 a free
+    // spot between them. Left is always the physical left.
     in property <int> place;
+    // Whether each screen keeps its own place.
+    in property <bool> each-screen;
     // How it looks while resting: 0 Island, 1 Circle.
     in property <int> shape;
     // How solid it is while resting, in percent (100 = solid).
@@ -1152,6 +1155,7 @@ export component IslandPage inherits VerticalLayout {
     callback mode-chosen(int);
     callback shape-chosen(int);
     callback place-chosen(int);
+    callback each-screen-toggled(bool);
     callback glass-changed(int);
     callback shimmer-chosen(int);
     callback shimmer-every-chosen(int);
@@ -1191,13 +1195,31 @@ export component IslandPage inherits VerticalLayout {
 
             SettingRow {
                 label: @tr("Place");
-                description: @tr("Along the top edge; the corners stay free");
+                description: @tr("Along the top edge, or drag the open island's top bar");
 
+                // The control puts its first item at the start of the line,
+                // so in right-to-left the items run Right to Left and each
+                // button still sits on the side it names.
                 Segmented {
                     width: 210px;
-                    items: [@tr("Left"), @tr("Centre"), @tr("Right")];
-                    current: root.place;
-                    chosen(i) => { root.place-chosen(i); }
+                    items: Theme.rtl
+                        ? [@tr("Right"), @tr("Centre"), @tr("Left")]
+                        : [@tr("Left"), @tr("Centre"), @tr("Right")];
+                    current: root.place < 0 ? -1 : (Theme.rtl ? 2 - root.place : root.place);
+                    chosen(i) => { root.place-chosen(Theme.rtl ? 2 - i : i); }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("A place for each screen");
+                description: @tr("The island remembers where it sits on every screen");
+
+                Switch {
+                    label: @tr("A place for each screen");
+                    on: root.each-screen;
+                    toggled(on) => { root.each-screen-toggled(on); }
                 }
             }
 

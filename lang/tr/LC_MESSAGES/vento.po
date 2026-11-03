@@ -61,7 +61,11 @@ msgstr "3. Çarktaki herhangi bir eylemin üzerinde bırakın."
 msgid "; "
 msgstr "; "
 
-#: crates/vento/ui/settings_pages.slint:1256
+#: crates/vento/ui/settings_pages.slint:1216
+msgid "A place for each screen"
+msgstr "Her ekran için bir yer"
+
+#: crates/vento/ui/settings_pages.slint:1295
 msgid "A small moment of light while the island rests"
 msgstr "Ada dinlenirken ara sıra küçük bir ışıltı"
 
@@ -69,11 +73,11 @@ msgstr "Ada dinlenirken ara sıra küçük bir ışıltı"
 msgid "A wheel of quick actions that opens under the file you are dragging."
 msgstr "Sürüklediğiniz dosyanın altında açılan hızlı eylem çarkı."
 
-#: crates/vento/src/settings_window/mod.rs:216
+#: crates/vento/src/settings_window/mod.rs:217
 msgid "About"
 msgstr "Hakkında"
 
-#: crates/vento/ui/settings_pages.slint:769
+#: crates/vento/ui/settings_pages.slint:785
 msgid "Actions"
 msgstr "Eylemler"
 
@@ -85,7 +89,7 @@ msgstr "Ekle"
 msgid "Add PDF"
 msgstr "PDF ekle"
 
-#: crates/vento/ui/settings_pages.slint:935
+#: crates/vento/ui/settings_pages.slint:951
 msgid "Add folder"
 msgstr "Klasör ekle"
 
@@ -133,15 +137,15 @@ msgstr "AirDrop"
 msgid "All"
 msgstr "Tümü"
 
-#: crates/vento/ui/settings_pages.slint:1177
-msgid "Along the top edge; the corners stay free"
-msgstr "Üst kenar boyunca; köşeler boş kalır"
+#: crates/vento/ui/settings_pages.slint:1198
+msgid "Along the top edge, or drag the open island's top bar"
+msgstr "Üst kenar boyunca ya da açık adanın üst çubuğunu sürükleyin"
 
 #: crates/vento-core/src/rename/labels.rs:87
 msgid "Already in this folder"
 msgstr "Bu klasörde zaten var"
 
-#: crates/vento/ui/settings_pages.slint:1070
+#: crates/vento/ui/settings_pages.slint:1086
 msgid "An item leaves the Pocket once you drop it somewhere"
 msgstr "Bir öğe, bir yere bıraktığınızda Cep'ten çıkar"
 
@@ -169,11 +173,11 @@ msgstr "Kesimlerimde"
 msgid "Audio"
 msgstr "Ses"
 
-#: crates/vento/src/settings_window/mod.rs:1768
+#: crates/vento/src/settings_window/mod.rs:1789
 msgid "Automatic (system language)"
 msgstr "Otomatik (sistem dili)"
 
-#: crates/vento/src/main.rs:446
+#: crates/vento/src/main.rs:462
 msgid "Awake ends in 5 min"
 msgstr "Uyanık Tut 5 dk içinde bitiyor"
 
@@ -233,7 +237,7 @@ msgstr "Meşgul — hâlâ çalışıyor"
 msgid "By kind"
 msgstr "Türe göre"
 
-#: crates/vento/src/settings_window/mod.rs:1908
+#: crates/vento/src/settings_window/mod.rs:1929
 msgid "By the clock"
 msgstr "Saatin yanında"
 
@@ -273,7 +277,7 @@ msgstr "İptal edildi"
 msgid "Cannot keep the computer awake"
 msgstr "Bilgisayar uyanık tutulamıyor"
 
-#: crates/vento/ui/settings_pages.slint:1616
+#: crates/vento/ui/settings_pages.slint:1655
 msgid "Card stays for"
 msgstr "Kartın kalma süresi"
 
@@ -281,7 +285,7 @@ msgstr "Kartın kalma süresi"
 msgid "Case"
 msgstr "Harfler"
 
-#: crates/vento/ui/settings_pages.slint:1181
+#: crates/vento/ui/settings_pages.slint:1206
 msgid "Centre"
 msgstr "Orta"
 
@@ -289,7 +293,7 @@ msgstr "Orta"
 msgid "Change"
 msgstr "Değiştir"
 
-#: crates/vento/ui/settings_window.slint:310
+#: crates/vento/ui/settings_window.slint:315
 msgid "Changed your mind? Click Undo on the notice."
 msgstr "Fikrinizi mi değiştirdiniz? Bildirimdeki Geri al'a tıklayın."
 
@@ -305,31 +309,31 @@ msgstr "Her adın harflerini değiştirir"
 msgid "Changes the part after the last dot"
 msgstr "Son noktadan sonraki kısmı değiştirir"
 
-#: crates/vento/ui/settings_pages.slint:2021
+#: crates/vento/ui/settings_pages.slint:2060
 msgid "Check for updates automatically"
 msgstr "Güncellemeleri otomatik denetle"
 
-#: crates/vento/ui/settings_pages.slint:1912
+#: crates/vento/ui/settings_pages.slint:1951
 msgid "Check for updates now"
 msgstr "Güncellemeleri şimdi denetle"
 
-#: crates/vento/ui/settings_pages.slint:1911
+#: crates/vento/ui/settings_pages.slint:1950
 msgid "Check now"
 msgstr "Şimdi denetle"
 
-#: crates/vento/src/settings_window/mod.rs:136
+#: crates/vento/src/settings_window/mod.rs:137
 msgid "Checked today at {time}"
 msgstr "Son denetim: bugün {time}"
 
-#: crates/vento/src/settings_window/mod.rs:140
+#: crates/vento/src/settings_window/mod.rs:141
 msgid "Checked {date}"
 msgstr "Son denetim: {date}"
 
-#: crates/vento/src/settings_window/mod.rs:115
+#: crates/vento/src/settings_window/mod.rs:116
 msgid "Checking for updates…"
 msgstr "Güncellemeler denetleniyor…"
 
-#: crates/vento/ui/settings_pages.slint:1917
+#: crates/vento/ui/settings_pages.slint:1956
 msgid "Checking…"
 msgstr "Denetleniyor…"
 
@@ -353,15 +357,15 @@ msgstr "Daire"
 msgid "Clear"
 msgstr "Temizle"
 
-#: crates/vento/ui/settings_pages.slint:1373
+#: crates/vento/ui/settings_pages.slint:1412
 msgid "Clear history"
 msgstr "Geçmişi temizle"
 
-#: crates/vento/ui/settings_pages.slint:1377
+#: crates/vento/ui/settings_pages.slint:1416
 msgid "Clear…"
 msgstr "Temizle…"
 
-#: crates/vento/ui/settings_window.slint:324
+#: crates/vento/ui/settings_window.slint:329
 msgid "Click a copy to put it back on the clipboard, then paste it anywhere."
 msgstr "Bir kopyayı panoya geri koymak için tıklayın, sonra istediğiniz yere yapıştırın."
 
@@ -369,7 +373,7 @@ msgstr "Bir kopyayı panoya geri koymak için tıklayın, sonra istediğiniz yer
 msgid "Click between pages to add or remove a cut · {pieces}"
 msgstr "Kesim eklemek ya da kaldırmak için sayfaların arasına tıklayın · {pieces}"
 
-#: crates/vento/ui/settings_window.slint:345
+#: crates/vento/ui/settings_window.slint:350
 msgid "Click the Vento icon, then the Keep Awake tile, to start or stop it."
 msgstr "Vento simgesine, sonra Uyanık Tut kutucuğuna tıklayarak başlatın ya da durdurun."
 
@@ -381,7 +385,7 @@ msgstr "Pano"
 msgid "Clipboard history"
 msgstr "Pano geçmişi"
 
-#: crates/vento/ui/settings_pages.slint:1354
+#: crates/vento/ui/settings_pages.slint:1393
 msgid "Clipboard shortcut"
 msgstr "Pano kısayolu"
 
@@ -389,7 +393,7 @@ msgstr "Pano kısayolu"
 msgid "Close preview"
 msgstr "Önizlemeyi kapat"
 
-#: crates/vento/ui/settings_pages.slint:1449
+#: crates/vento/ui/settings_pages.slint:1488
 msgid "Colours of the Quick panel and this window"
 msgstr "Hızlı panelin ve bu pencerenin renkleri"
 
@@ -471,7 +475,7 @@ msgstr[1] "{n} öğe {dest} konumuna kopyalandı"
 msgid "Copy"
 msgstr "Kopyala"
 
-#: crates/vento/ui/settings_window.slint:322
+#: crates/vento/ui/settings_window.slint:327
 msgid "Copy as usual: Vento remembers what you copy."
 msgstr "Her zamanki gibi kopyalayın: Vento kopyaladıklarınızı hatırlar."
 
@@ -483,11 +487,11 @@ msgstr "Ekrandan kopyala"
 msgid "Copy from screen needs Screen Recording"
 msgstr "Ekrandan kopyala için Ekran Kaydı izni gerekir"
 
-#: crates/vento/ui/settings_pages.slint:1551
+#: crates/vento/ui/settings_pages.slint:1590
 msgid "Copy from screen shortcut"
 msgstr "Ekrandan kopyala kısayolu"
 
-#: crates/vento/src/settings_window/mod.rs:1753
+#: crates/vento/src/settings_window/mod.rs:1774
 msgid "Copy from screen uses this shortcut"
 msgstr "Ekrandan kopyala bu kısayolu kullanıyor"
 
@@ -525,7 +529,7 @@ msgstr "Cebe eklenemedi: {reason}"
 msgid "Couldn't archive: {reason}"
 msgstr "Arşivlenemedi: {reason}"
 
-#: crates/vento/src/settings_window/mod.rs:117
+#: crates/vento/src/settings_window/mod.rs:118
 msgid "Couldn't check for updates"
 msgstr "Güncellemeler denetlenemedi"
 
@@ -581,7 +585,7 @@ msgstr "PDF açılamadı: {reason}"
 msgid "Couldn't open the terminal: {reason}"
 msgstr "Terminal açılamadı: {reason}"
 
-#: crates/vento/src/pocket/mod.rs:142
+#: crates/vento/src/pocket/mod.rs:155
 msgid "Couldn't open: {reason}"
 msgstr "Açılamadı: {reason}"
 
@@ -621,11 +625,11 @@ msgstr "Yeniden adlandırılamadı: {reason}"
 msgid "Couldn't replace Vento"
 msgstr "Vento değiştirilemedi"
 
-#: crates/vento/src/settings_window/mod.rs:1734
+#: crates/vento/src/settings_window/mod.rs:1755
 msgid "Couldn't save settings: {error}"
 msgstr "Ayarlar kaydedilemedi: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2354
+#: crates/vento/src/pocket/mod.rs:2726
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Cep kaydedilemedi: {error}"
 
@@ -689,7 +693,7 @@ msgstr "Geliştirici"
 msgid "Digits"
 msgstr "Basamak"
 
-#: crates/vento/ui/settings_pages.slint:1546
+#: crates/vento/ui/settings_pages.slint:1585
 msgid "Dims the screen so you can pick the text to copy"
 msgstr "Kopyalanacak metni seçebilmeniz için ekranı karartır"
 
@@ -705,7 +709,7 @@ msgstr "Belgeler"
 msgid "Done"
 msgstr "Bitti"
 
-#: crates/vento/src/main.rs:656
+#: crates/vento/src/main.rs:672
 msgid "Downloading {v}…"
 msgstr "{v} indiriliyor…"
 
@@ -713,21 +717,21 @@ msgstr "{v} indiriliyor…"
 msgid "Drag a file, press {key}"
 msgstr "Bir dosya sürükleyin, {key} tuşuna basın"
 
-#: crates/vento/ui/settings_window.slint:330
+#: crates/vento/ui/settings_window.slint:335
 msgid "Drag a rectangle over the text you want and let go."
 msgstr "İstediğiniz metnin üzerinde bir dikdörtgen çizip bırakın."
 
-#: crates/vento/ui/settings_window.slint:302
+#: crates/vento/ui/settings_window.slint:307
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Eylemin yerini değiştirmek için satırı tutamağından sürükleyin."
 
-#: crates/vento/ui/pocket.slint:4397
+#: crates/vento/ui/pocket.slint:4668
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "{n} öğenin tümünü sürükle"
 msgstr[1] "{n} öğenin tümünü sürükle"
 
-#: crates/vento/ui/settings_window.slint:317
+#: crates/vento/ui/settings_window.slint:322
 msgid "Drag items from the island into any folder or app. Removing one never deletes your file."
 msgstr "Öğeleri adadan herhangi bir klasöre ya da uygulamaya sürükleyin. Birini kaldırmak dosyanızı asla silmez."
 
@@ -735,7 +739,7 @@ msgstr "Öğeleri adadan herhangi bir klasöre ya da uygulamaya sürükleyin. Bi
 msgid "Drag the picture anywhere, or keep it for later."
 msgstr "Resmi istediğiniz yere sürükleyin ya da sonrası için saklayın."
 
-#: crates/vento/ui/settings_pages.slint:770
+#: crates/vento/ui/settings_pages.slint:786
 msgid "Drag to reorder"
 msgstr "Sıralamak için sürükleyin"
 
@@ -745,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "{n} öğeyi sürükle"
 msgstr[1] "{n} öğeyi sürükle"
 
-#: crates/vento/ui/pocket.slint:4167
+#: crates/vento/ui/pocket.slint:4438
 msgid "Drop to add"
 msgstr "Eklemek için bırakın"
 
@@ -757,7 +761,7 @@ msgstr "Daha önce"
 msgid "Earlier this week"
 msgstr "Bu hafta"
 
-#: crates/vento/ui/settings_pages.slint:567
+#: crates/vento/ui/settings_pages.slint:580
 msgid "Edge run"
 msgstr "Kenar"
 
@@ -861,7 +865,7 @@ msgstr "Klasörler"
 msgid "Folders you use often"
 msgstr "Sık kullandığınız klasörler"
 
-#: crates/vento/ui/settings_pages.slint:1298
+#: crates/vento/ui/settings_pages.slint:1337
 msgid "Follow Reduce motion"
 msgstr "Hareketi Azalt'ı izle"
 
@@ -873,11 +877,11 @@ msgstr "Biçim"
 msgid "GB"
 msgstr "GB"
 
-#: crates/vento/ui/settings_pages.slint:2085
+#: crates/vento/ui/settings_pages.slint:2124
 msgid "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed."
 msgstr "GPL-3.0-only. Çark simgeleri Tabler Icons 3.49.0'dan alınmıştır, MIT lisanslıdır."
 
-#: crates/vento/src/settings_window/mod.rs:206
+#: crates/vento/src/settings_window/mod.rs:207
 msgid "General"
 msgstr "Genel"
 
@@ -885,7 +889,7 @@ msgstr "Genel"
 msgid "Get it"
 msgstr "Edin"
 
-#: crates/vento/ui/settings_pages.slint:1229
+#: crates/vento/ui/settings_pages.slint:1268
 msgid "Ghost"
 msgstr "Hayalet"
 
@@ -897,11 +901,11 @@ msgstr "GitHub yanıtı: {code}"
 msgid "GitHub's answer couldn't be read"
 msgstr "GitHub'ın yanıtı okunamadı"
 
-#: crates/vento/ui/settings_pages.slint:1190
+#: crates/vento/ui/settings_pages.slint:1229
 msgid "Glass"
 msgstr "Cam"
 
-#: crates/vento/ui/settings_pages.slint:567
+#: crates/vento/ui/settings_pages.slint:580
 msgid "Halo"
 msgstr "Hale"
 
@@ -913,43 +917,43 @@ msgstr "Dosyaları gizle"
 msgid "Hold on Convert to pick a format"
 msgstr "Biçim seçmek için Dönüştür'ün üzerinde bekleyin"
 
-#: crates/vento/ui/settings_pages.slint:1015
+#: crates/vento/ui/settings_pages.slint:1031
 msgid "Hold on Move"
 msgstr "Taşı'da bekleme"
 
-#: crates/vento/ui/settings_window.slint:303
+#: crates/vento/ui/settings_window.slint:308
 msgid "Hold on Move, Copy to or Convert for a moment to open a ring of choices."
 msgstr "Seçenek halkası açmak için Taşı, Şuraya kopyala ya da Dönüştür'ün üzerinde biraz bekleyin."
 
-#: crates/vento/ui/settings_pages.slint:760
+#: crates/vento/ui/settings_pages.slint:776
 msgid "Honeycomb"
 msgstr "Petek"
 
-#: crates/vento/ui/controls.slint:1064
+#: crates/vento/ui/controls.slint:1066
 msgid "Hour"
 msgstr "Saat"
 
-#: crates/vento/ui/settings_pages.slint:1522
+#: crates/vento/ui/settings_pages.slint:1561
 msgid "How Copy path writes the path"
 msgstr "Yolu kopyala'nın yolu nasıl yazacağı"
 
-#: crates/vento/ui/settings_pages.slint:1016
+#: crates/vento/ui/settings_pages.slint:1032
 msgid "How long to rest on Move, Copy to or Convert before its ring opens"
 msgstr "Halkanın açılması için Taşı, Şuraya kopyala ya da Dönüştür'ün üzerinde ne kadar bekleneceği"
 
-#: crates/vento/ui/settings_pages.slint:1272
+#: crates/vento/ui/settings_pages.slint:1311
 msgid "How often"
 msgstr "Sıklık"
 
-#: crates/vento/ui/settings_pages.slint:1191
+#: crates/vento/ui/settings_pages.slint:1230
 msgid "How solid the island is while resting"
 msgstr "Ada boştayken ne kadar opak görünür"
 
-#: crates/vento/ui/settings_pages.slint:756
+#: crates/vento/ui/settings_pages.slint:772
 msgid "How the actions sit around the pointer"
 msgstr "Eylemlerin imlecin çevresindeki dizilişi"
 
-#: crates/vento/ui/settings_pages.slint:1163
+#: crates/vento/ui/settings_pages.slint:1184
 msgid "How the island looks while resting"
 msgstr "Ada dururken nasıl görünür"
 
@@ -973,7 +977,7 @@ msgstr "Görüntüler"
 msgid "Improved"
 msgstr "İyileştirildi"
 
-#: crates/vento/src/settings_window/mod.rs:1910
+#: crates/vento/src/settings_window/mod.rs:1931
 msgid "In the top bar"
 msgstr "Üst çubukta"
 
@@ -997,11 +1001,11 @@ msgstr "Bilgi: öğeler bulunamadı"
 msgid "Inside a folder that's also being renamed"
 msgstr "Aynı zamanda yeniden adlandırılan bir klasörün içinde"
 
-#: crates/vento/src/settings_window/mod.rs:211
+#: crates/vento/src/settings_window/mod.rs:212
 msgid "Island"
 msgstr "Ada"
 
-#: crates/vento/ui/settings_pages.slint:1096
+#: crates/vento/ui/settings_pages.slint:1112
 msgid "Its items by kind, or as a list; the bar under it switches between the two"
 msgstr "Öğeleri türe göre ya da liste olarak; alttaki çubuk ikisi arasında geçiş yapar"
 
@@ -1017,7 +1021,7 @@ msgstr "Uyanık Tut"
 msgid "Keep Vento up to date"
 msgstr "Vento'yu güncel tutun"
 
-#: crates/vento/ui/settings_pages.slint:1082
+#: crates/vento/ui/settings_pages.slint:1098
 msgid "Keep a copy"
 msgstr "Kopyasını sakla"
 
@@ -1051,11 +1055,11 @@ msgstr "Türler"
 msgid "Language"
 msgstr "Dil"
 
-#: crates/vento/ui/settings_pages.slint:755
+#: crates/vento/ui/settings_pages.slint:771
 msgid "Layout"
 msgstr "Yerleşim"
 
-#: crates/vento/ui/settings_pages.slint:1181
+#: crates/vento/ui/settings_pages.slint:1206
 msgid "Left"
 msgstr "Sol"
 
@@ -1065,27 +1069,27 @@ msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] "Artık var olmayan {n} öğe dışarıda bırakıldı"
 msgstr[1] "Artık var olmayan {n} öğe dışarıda bırakıldı"
 
-#: crates/vento/ui/controls.slint:643
+#: crates/vento/ui/controls.slint:645
 msgid "Less {}"
 msgstr "Azalt: {}"
 
-#: crates/vento/ui/settings_window.slint:308
+#: crates/vento/ui/settings_window.slint:313
 msgid "Let go on Move in the wheel and pick a folder."
 msgstr "Çarkta Taşı'nın üzerinde bırakıp bir klasör seçin."
 
-#: crates/vento/ui/settings_window.slint:315
+#: crates/vento/ui/settings_window.slint:320
 msgid "Let go on Pocket in the wheel: the file waits in the island at the top of the screen."
 msgstr "Çarkta Cep'in üzerinde bırakın: dosya, ekranın üstündeki adada bekler."
 
-#: crates/vento/ui/settings_window.slint:296
+#: crates/vento/ui/settings_window.slint:301
 msgid "Let go on an action in the wheel, or anywhere else to drop the file as usual."
 msgstr "Çarktaki bir eylemin üzerinde bırakın ya da dosyayı her zamanki gibi bırakmak için başka bir yerde."
 
-#: crates/vento/ui/settings_pages.slint:1808
+#: crates/vento/ui/settings_pages.slint:1847
 msgid "Let the screen turn off"
 msgstr "Ekranın kapanmasına izin ver"
 
-#: crates/vento/ui/settings_pages.slint:2070
+#: crates/vento/ui/settings_pages.slint:2109
 msgid "Licenses"
 msgstr "Lisanslar"
 
@@ -1093,7 +1097,7 @@ msgstr "Lisanslar"
 msgid "Light"
 msgstr "Açık"
 
-#: crates/vento/ui/settings_pages.slint:1434
+#: crates/vento/ui/settings_pages.slint:1473
 msgid "Light, dark, or as your system is set"
 msgstr "Açık, koyu ya da sistem ayarınıza göre"
 
@@ -1105,11 +1109,11 @@ msgstr "Bağlantı"
 msgid "Links"
 msgstr "Bağlantılar"
 
-#: crates/vento/ui/settings_pages.slint:567
+#: crates/vento/ui/settings_pages.slint:580
 msgid "Liquid"
 msgstr "Sıvı"
 
-#: crates/vento/ui/settings_pages.slint:1101
+#: crates/vento/ui/settings_pages.slint:1117
 msgid "List"
 msgstr "Liste"
 
@@ -1133,7 +1137,7 @@ msgstr "Büyük/küçük harf eşleştir"
 msgid "Messages"
 msgstr "Mesajlar"
 
-#: crates/vento/ui/controls.slint:1080
+#: crates/vento/ui/controls.slint:1082
 msgid "Minute"
 msgstr "Dakika"
 
@@ -1153,7 +1157,7 @@ msgstr "Daha çok sayfa"
 msgid "More ways to share"
 msgstr "Diğer paylaşma yolları"
 
-#: crates/vento/ui/controls.slint:663
+#: crates/vento/ui/controls.slint:665
 msgid "More {}"
 msgstr "Artır: {}"
 
@@ -1237,11 +1241,11 @@ msgstr "Yeni"
 msgid "New extension"
 msgstr "Yeni uzantı"
 
-#: crates/vento/ui/settings_pages.slint:1768
+#: crates/vento/ui/settings_pages.slint:1807
 msgid "New time"
 msgstr "Yeni süre"
 
-#: crates/vento/src/main.rs:1142
+#: crates/vento/src/main.rs:1162
 msgid "New: try the Virtual island in Settings › Island"
 msgstr "Yeni: Sanal adayı Ayarlar › Ada bölümünde deneyin"
 
@@ -1257,15 +1261,15 @@ msgstr "Açılacak PDF yok"
 msgid "No extension"
 msgstr "Uzantı yok"
 
-#: crates/vento/ui/settings_pages.slint:949
+#: crates/vento/ui/settings_pages.slint:965
 msgid "No pinned folders"
 msgstr "Sabitlenmiş klasör yok"
 
-#: crates/vento/ui/settings_pages.slint:978
+#: crates/vento/ui/settings_pages.slint:994
 msgid "No recent folders"
 msgstr "Son kullanılan klasör yok"
 
-#: crates/vento/ui/settings_pages.slint:1299
+#: crates/vento/ui/settings_pages.slint:1338
 msgid "No shimmer, no shake, plain fades when the system asks for less motion"
 msgstr "Sistem daha az hareket istediğinde parıltı ve sallanma yok, sade geçişler"
 
@@ -1273,15 +1277,15 @@ msgstr "Sistem daha az hareket istediğinde parıltı ve sallanma yok, sade geç
 msgid "No text found"
 msgstr "Metin bulunamadı"
 
-#: crates/vento/ui/settings_pages.slint:1721
+#: crates/vento/ui/settings_pages.slint:1760
 msgid "No times"
 msgstr "Süre yok"
 
-#: crates/vento/ui/controls.slint:376
+#: crates/vento/ui/controls.slint:378
 msgid "None found"
 msgstr "Hiçbiri bulunamadı"
 
-#: crates/vento/ui/settings_pages.slint:1312
+#: crates/vento/ui/settings_pages.slint:1351
 msgid "Not available on this screen"
 msgstr "Bu ekranda kullanılamaz"
 
@@ -1333,7 +1337,7 @@ msgstr "Numara"
 msgid "Off"
 msgstr "Kapalı"
 
-#: crates/vento/ui/settings_pages.slint:1276
+#: crates/vento/ui/settings_pages.slint:1315
 msgid "Often"
 msgstr "Sık sık"
 
@@ -1341,11 +1345,11 @@ msgstr "Sık sık"
 msgid "Oldest first"
 msgstr "Önce en eski"
 
-#: crates/vento/ui/settings_pages.slint:2022
+#: crates/vento/ui/settings_pages.slint:2061
 msgid "Once a day, from GitHub"
 msgstr "Günde bir kez, GitHub'dan"
 
-#: crates/vento/ui/settings_pages.slint:1809
+#: crates/vento/ui/settings_pages.slint:1848
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr "Yalnızca bilgisayar uyanık kalır; ekran her zamanki gibi kararır ve kilitlenir"
 
@@ -1353,7 +1357,7 @@ msgstr "Yalnızca bilgisayar uyanık kalır; ekran her zamanki gibi kararır ve 
 msgid "Only the name changes: the file is not converted."
 msgstr "Yalnızca ad değişir: dosya dönüştürülmez."
 
-#: crates/vento/ui/settings_pages.slint:1285
+#: crates/vento/ui/settings_pages.slint:1324
 msgid "Only while the Pocket holds items"
 msgstr "Yalnızca Cep'te öğe varken"
 
@@ -1361,7 +1365,7 @@ msgstr "Yalnızca Cep'te öğe varken"
 msgid "Open"
 msgstr "Aç"
 
-#: crates/vento/ui/settings_pages.slint:1660
+#: crates/vento/ui/settings_pages.slint:1699
 msgid "Open Privacy & Security"
 msgstr "Gizlilik ve Güvenlik'i aç"
 
@@ -1393,19 +1397,19 @@ msgstr "Ekran görüntülerini aç"
 msgid "Open settings file"
 msgstr "Ayarlar dosyasını aç"
 
-#: crates/vento/src/main.rs:268
+#: crates/vento/src/main.rs:284
 msgid "Open the Pocket"
 msgstr "Cep'i aç"
 
-#: crates/vento/ui/settings_window.slint:340
+#: crates/vento/ui/settings_window.slint:345
 msgid "Open the Screenshots tab in the island to see your recent screenshots."
 msgstr "Son ekran görüntülerinizi görmek için adada Ekran görüntüleri sekmesini açın."
 
-#: crates/vento/ui/settings_pages.slint:2062
+#: crates/vento/ui/settings_pages.slint:2101
 msgid "Open the Welcome setup"
 msgstr "Hoş geldin kurulumunu aç"
 
-#: crates/vento/src/main.rs:272
+#: crates/vento/src/main.rs:288
 msgid "Open the clipboard history"
 msgstr "Pano geçmişini aç"
 
@@ -1415,19 +1419,19 @@ msgid_plural "Opened {n} PDFs; skipped {m}: {reason}"
 msgstr[0] "{n} PDF açıldı; {m} atlandı: {reason}"
 msgstr[1] "{n} PDF açıldı; {m} atlandı: {reason}"
 
-#: crates/vento/ui/settings_pages.slint:1348
+#: crates/vento/ui/settings_pages.slint:1387
 msgid "Opens the clipboard history"
 msgstr "Pano geçmişini açar"
 
-#: crates/vento/ui/settings_pages.slint:1047
+#: crates/vento/ui/settings_pages.slint:1063
 msgid "Opens the island on the Pocket"
 msgstr "Adayı Cep'te açar"
 
-#: crates/vento/ui/settings_window.slint:309
+#: crates/vento/ui/settings_window.slint:314
 msgid "Or hold on Move for a moment: a ring of your pinned and recent folders opens. Let go on one."
 msgstr "Ya da Taşı'nın üzerinde biraz bekleyin: sabitlenmiş ve son klasörlerinizin halkası açılır. Birinin üzerinde bırakın."
 
-#: crates/vento/ui/settings_window.slint:295
+#: crates/vento/ui/settings_window.slint:300
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr "Ya da Sallayarak aç açıksa, sürüklerken imleci hızla ileri geri sallayın."
 
@@ -1469,7 +1473,7 @@ msgstr "Duraklat"
 msgid "Pause Vento"
 msgstr "Vento'yu duraklat"
 
-#: crates/vento/ui/settings_pages.slint:760
+#: crates/vento/ui/settings_pages.slint:776
 msgid "Petals"
 msgstr "Taç yaprak"
 
@@ -1481,7 +1485,7 @@ msgstr "Başlamak için bir araç seçin"
 msgid "Pick a tool, or a rule above, to set it here"
 msgstr "Burada ayarlamak için bir araç ya da yukarıdan bir kural seçin"
 
-#: crates/vento/ui/settings_window.slint:346
+#: crates/vento/ui/settings_window.slint:351
 msgid "Pick how long under the tile, or leave it on until you stop it."
 msgstr "Süreyi kutucuğun altından seçin ya da siz durdurana kadar açık bırakın."
 
@@ -1493,7 +1497,7 @@ msgstr "Sabitle"
 msgid "Pin a copy to keep it here"
 msgstr "Burada tutmak için bir kopyayı sabitleyin"
 
-#: crates/vento/ui/settings_pages.slint:1003
+#: crates/vento/ui/settings_pages.slint:1019
 msgid "Pin {}"
 msgstr "Sabitle: {}"
 
@@ -1501,7 +1505,7 @@ msgstr "Sabitle: {}"
 msgid "Pinned"
 msgstr "Sabitlenmiş"
 
-#: crates/vento/ui/settings_pages.slint:1374
+#: crates/vento/ui/settings_pages.slint:1413
 msgid "Pinned copies stay"
 msgstr "Sabitlenmiş kopyalar kalır"
 
@@ -1509,7 +1513,7 @@ msgstr "Sabitlenmiş kopyalar kalır"
 msgid "Pinned folders sit on the ring of Move and Copy to."
 msgstr "Sabitlenmiş klasörler Taşı ve Şuraya kopyala halkasında yer alır."
 
-#: crates/vento/ui/settings_pages.slint:1176
+#: crates/vento/ui/settings_pages.slint:1197
 msgid "Place"
 msgstr "Konum"
 
@@ -1517,11 +1521,11 @@ msgstr "Konum"
 msgid "Place cuts"
 msgstr "Kesimleri yerleştir"
 
-#: crates/vento/ui/settings_pages.slint:1527
+#: crates/vento/ui/settings_pages.slint:1566
 msgid "Plain"
 msgstr "Düz"
 
-#: crates/vento/src/settings_window/mod.rs:1912
+#: crates/vento/src/settings_window/mod.rs:1933
 msgid "Plain pill"
 msgstr "Sade kapsül"
 
@@ -1529,31 +1533,31 @@ msgstr "Sade kapsül"
 msgid "Pocket"
 msgstr "Cep"
 
-#: crates/vento/ui/pocket.slint:4136
+#: crates/vento/ui/pocket.slint:4407
 msgid "Pocket cleared"
 msgstr "Cep temizlendi"
 
-#: crates/vento/ui/settings_pages.slint:1052
+#: crates/vento/ui/settings_pages.slint:1068
 msgid "Pocket shortcut"
 msgstr "Cep kısayolu"
 
-#: crates/vento/ui/controls.slint:806
+#: crates/vento/ui/controls.slint:808
 msgid "Press a shortcut…"
 msgstr "Bir kısayola basın…"
 
-#: crates/vento/ui/settings_pages.slint:1479
+#: crates/vento/ui/settings_pages.slint:1518
 msgid "Press it while dragging a file to open the wheel"
 msgstr "Çarkı açmak için dosya sürüklerken basın"
 
-#: crates/vento/ui/settings_window.slint:323
+#: crates/vento/ui/settings_window.slint:328
 msgid "Press {} to open the history."
 msgstr "Geçmişi açmak için {} tuşlarına basın."
 
-#: crates/vento/ui/settings_window.slint:316
+#: crates/vento/ui/settings_window.slint:321
 msgid "Press {} to open the island at any time, and drop more files on it."
 msgstr "Adayı istediğiniz an açmak için {} tuşlarına basın ve üzerine daha fazla dosya bırakın."
 
-#: crates/vento/ui/settings_window.slint:329
+#: crates/vento/ui/settings_window.slint:334
 msgid "Press {}: the screen dims."
 msgstr "{} tuşlarına basın: ekran kararır."
 
@@ -1587,7 +1591,7 @@ msgstr "Çık"
 msgid "Quit Vento"
 msgstr "Vento'dan çık"
 
-#: crates/vento/ui/settings_pages.slint:1276
+#: crates/vento/ui/settings_pages.slint:1315
 msgid "Rarely"
 msgstr "Nadiren"
 
@@ -1595,11 +1599,11 @@ msgstr "Nadiren"
 msgid "Ready to restart"
 msgstr "Yeniden başlatmaya hazır"
 
-#: crates/vento/ui/settings_pages.slint:962
+#: crates/vento/ui/settings_pages.slint:978
 msgid "Recent"
 msgstr "Son"
 
-#: crates/vento/ui/settings_pages.slint:1335
+#: crates/vento/ui/settings_pages.slint:1374
 msgid "Remember what you copy"
 msgstr "Kopyaladıklarını hatırla"
 
@@ -1607,7 +1611,7 @@ msgstr "Kopyaladıklarını hatırla"
 msgid "Remove"
 msgstr "Kaldır"
 
-#: crates/vento/ui/settings_pages.slint:1069
+#: crates/vento/ui/settings_pages.slint:1085
 msgid "Remove after drag-out"
 msgstr "Dışarı sürükleyince kaldır"
 
@@ -1699,7 +1703,7 @@ msgstr "Sürdür"
 msgid "Reverse"
 msgstr "Ters çevir"
 
-#: crates/vento/ui/settings_pages.slint:1181
+#: crates/vento/ui/settings_pages.slint:1206
 msgid "Right"
 msgstr "Sağ"
 
@@ -1761,7 +1765,7 @@ msgstr "Ekran"
 msgid "Screenshot saved"
 msgstr "Ekran görüntüsü kaydedildi"
 
-#: crates/vento/src/settings_window/mod.rs:214
+#: crates/vento/src/settings_window/mod.rs:215
 msgid "Screenshots"
 msgstr "Ekran görüntüleri"
 
@@ -1797,7 +1801,7 @@ msgstr "Mesajlar ile gönder"
 msgid "Separator"
 msgstr "Ayırıcı"
 
-#: crates/vento/ui/settings_pages.slint:2058
+#: crates/vento/ui/settings_pages.slint:2097
 msgid "Set up Vento again"
 msgstr "Vento'yu yeniden kur"
 
@@ -1805,7 +1809,7 @@ msgstr "Vento'yu yeniden kur"
 msgid "Settings"
 msgstr "Ayarlar"
 
-#: crates/vento/ui/settings_pages.slint:2046
+#: crates/vento/ui/settings_pages.slint:2085
 msgid "Settings file"
 msgstr "Ayarlar dosyası"
 
@@ -1817,11 +1821,11 @@ msgstr "Ayarlar…"
 msgid "Several folders"
 msgstr "Birkaç klasör"
 
-#: crates/vento/ui/settings_pages.slint:1494
+#: crates/vento/ui/settings_pages.slint:1533
 msgid "Shake the pointer while dragging to open the wheel"
 msgstr "Çarkı açmak için sürüklerken imleci sallayın"
 
-#: crates/vento/ui/settings_pages.slint:1493
+#: crates/vento/ui/settings_pages.slint:1532
 msgid "Shake to open"
 msgstr "Sallayarak aç"
 
@@ -1841,19 +1845,19 @@ msgstr "AirDrop ile paylaş"
 msgid "Share…"
 msgstr "Paylaş…"
 
-#: crates/vento/ui/settings_pages.slint:1527
+#: crates/vento/ui/settings_pages.slint:1566
 msgid "Shell-quoted"
 msgstr "Kabuk için tırnaklı"
 
-#: crates/vento/ui/settings_pages.slint:576
+#: crates/vento/ui/settings_pages.slint:589
 msgid "Shimmer"
 msgstr "Parıltı"
 
-#: crates/vento/ui/settings_pages.slint:1046
+#: crates/vento/ui/settings_pages.slint:1062
 msgid "Shortcut"
 msgstr "Kısayol"
 
-#: crates/vento/ui/settings_pages.slint:1602
+#: crates/vento/ui/settings_pages.slint:1641
 msgid "Show a card when a screenshot is saved"
 msgstr "Ekran görüntüsü kaydedilince kart göster"
 
@@ -1877,11 +1881,11 @@ msgstr "Dosyalar'da göster"
 msgid "Show in Finder"
 msgstr "Finder'da göster"
 
-#: crates/vento/ui/settings_pages.slint:1590
+#: crates/vento/ui/settings_pages.slint:1629
 msgid "Show screenshots in the island"
 msgstr "Ekran görüntülerini adada göster"
 
-#: crates/vento/ui/settings_pages.slint:1705
+#: crates/vento/ui/settings_pages.slint:1744
 msgid "Shown under the Keep Awake tile, with Until stopped and Until…"
 msgstr "Uyanık Tut kutucuğunun altında, Durdurana dek ve Şu saate dek… ile birlikte gösterilir"
 
@@ -1897,7 +1901,7 @@ msgstr "Boyut"
 msgid "Skip setup"
 msgstr "Kurulumu atla"
 
-#: crates/vento/src/main.rs:456
+#: crates/vento/src/main.rs:472
 msgid "Sleep allowed again"
 msgstr "Uykuya yeniden izin verildi"
 
@@ -1909,7 +1913,7 @@ msgstr "Daha küçük dosya"
 msgid "Smallest first"
 msgstr "Önce en küçük"
 
-#: crates/vento/ui/settings_pages.slint:1245
+#: crates/vento/ui/settings_pages.slint:1284
 msgid "Solid"
 msgstr "Opak"
 
@@ -1925,11 +1929,11 @@ msgstr "Klasörde bir şey değişti. Listeyi kontrol edip yeniden deneyin."
 msgid "Something changed since the rename. Nothing was put back."
 msgstr "Yeniden adlandırmadan bu yana bir şey değişti. Hiçbir şey geri alınmadı."
 
-#: crates/vento/ui/settings_pages.slint:1276
+#: crates/vento/ui/settings_pages.slint:1315
 msgid "Sometimes"
 msgstr "Bazen"
 
-#: crates/vento/ui/settings_pages.slint:567
+#: crates/vento/ui/settings_pages.slint:580
 msgid "Sparkle"
 msgstr "Kıvılcım"
 
@@ -1951,7 +1955,7 @@ msgstr "Böl: {name}"
 msgid "Split…"
 msgstr "Böl…"
 
-#: crates/vento/ui/controls.slint:1092
+#: crates/vento/ui/controls.slint:1094
 msgid "Start"
 msgstr "Başlat"
 
@@ -1959,11 +1963,11 @@ msgstr "Başlat"
 msgid "Start Keep Awake"
 msgstr "Uyanık Tut'u başlat"
 
-#: crates/vento/ui/settings_window.slint:294
+#: crates/vento/ui/settings_window.slint:299
 msgid "Start dragging a file, then press {} while still dragging."
 msgstr "Bir dosyayı sürüklemeye başlayın, sonra hâlâ sürüklerken {} tuşlarına basın."
 
-#: crates/vento/ui/controls.slint:1053
+#: crates/vento/ui/controls.slint:1055
 msgid "Stay awake until"
 msgstr "Şu saate dek uyanık kal"
 
@@ -1971,7 +1975,7 @@ msgstr "Şu saate dek uyanık kal"
 msgid "Still on {running}. {reason}"
 msgstr "Hâlâ {running} sürümü kullanılıyor. {reason}"
 
-#: crates/vento/ui/controls.slint:1023
+#: crates/vento/ui/controls.slint:1025
 msgid "Stop"
 msgstr "Durdur"
 
@@ -1991,15 +1995,15 @@ msgstr "Bu Mac'te şifrelenmeden saklanır. Parola yöneticilerinin özel olarak
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Bu bilgisayarda şifrelenmeden saklanır. Parola yöneticilerinin özel olarak işaretlediği kopyalar atlanır."
 
-#: crates/vento/ui/settings_pages.slint:567
+#: crates/vento/ui/settings_pages.slint:580
 msgid "Sweep"
 msgstr "Süpürme"
 
-#: crates/vento/src/main.rs:1105
+#: crates/vento/src/main.rs:1125
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ekrandan kopyala için Ekran Kaydı'nı yeniden açın"
 
-#: crates/vento/ui/settings_window.slint:301
+#: crates/vento/ui/settings_window.slint:306
 msgid "Switch an action on to show it on the wheel, or off to hide it."
 msgstr "Bir eylemi çarkta göstermek için açın, gizlemek için kapatın."
 
@@ -2011,11 +2015,11 @@ msgstr "Sistem"
 msgid "TB"
 msgstr "TB"
 
-#: crates/vento/ui/settings_window.slint:338
+#: crates/vento/ui/settings_window.slint:343
 msgid "Take a screenshot as usual, with {}."
 msgstr "Her zamanki gibi {} ile ekran görüntüsü alın."
 
-#: crates/vento/ui/settings_window.slint:339
+#: crates/vento/ui/settings_window.slint:344
 msgid "Take a screenshot with your system's screenshot key."
 msgstr "Sisteminizin ekran görüntüsü tuşuyla ekran görüntüsü alın."
 
@@ -2031,11 +2035,11 @@ msgstr "Terminal"
 msgid "Text"
 msgstr "Metin"
 
-#: crates/vento/src/settings_window/mod.rs:1752
+#: crates/vento/src/settings_window/mod.rs:1773
 msgid "The Clipboard uses this shortcut"
 msgstr "Pano bu kısayolu kullanıyor"
 
-#: crates/vento/src/settings_window/mod.rs:1751
+#: crates/vento/src/settings_window/mod.rs:1772
 msgid "The Pocket uses this shortcut"
 msgstr "Cep bu kısayolu kullanıyor"
 
@@ -2046,6 +2050,10 @@ msgstr "İndirilen dosya açılamadı"
 #: crates/vento/src/updater/mod.rs:177
 msgid "The download didn't match its checksum"
 msgstr "İndirilen dosya sağlama toplamıyla eşleşmedi"
+
+#: crates/vento/ui/settings_pages.slint:1217
+msgid "The island remembers where it sits on every screen"
+msgstr "Ada her ekrandaki yerini hatırlar"
 
 #: crates/vento/ui/rename.slint:802
 msgid "The list and the numbers follow it"
@@ -2063,11 +2071,11 @@ msgstr "Orijinal olduğu gibi kalır."
 msgid "The short setup on the first launch"
 msgstr "İlk açılıştaki kısa kurulum"
 
-#: crates/vento/ui/settings_window.slint:331
+#: crates/vento/ui/settings_window.slint:336
 msgid "The text is on your clipboard, ready to paste. Esc cancels."
 msgstr "Metin panonuzda, yapıştırmaya hazır. Esc iptal eder."
 
-#: crates/vento/ui/settings_pages.slint:1793
+#: crates/vento/ui/settings_pages.slint:1832
 msgid "The tile starts"
 msgstr "Kutucuğun başlattığı"
 
@@ -2075,19 +2083,19 @@ msgstr "Kutucuğun başlattığı"
 msgid "The update address isn't secure"
 msgstr "Güncelleme adresi güvenli değil"
 
-#: crates/vento/ui/settings_pages.slint:608
+#: crates/vento/ui/settings_pages.slint:624
 msgid "Theme"
 msgstr "Tema"
 
-#: crates/vento/src/settings_window/mod.rs:1750
+#: crates/vento/src/settings_window/mod.rs:1771
 msgid "This shortcut can't be used"
 msgstr "Bu kısayol kullanılamaz"
 
-#: crates/vento/src/pocket/mod.rs:978
+#: crates/vento/src/pocket/mod.rs:1146
 msgid "Those items are no longer there"
 msgstr "O öğeler artık orada değil"
 
-#: crates/vento/ui/settings_pages.slint:1704
+#: crates/vento/ui/settings_pages.slint:1743
 msgid "Times in the panel"
 msgstr "Paneldeki süreler"
 
@@ -2115,7 +2123,7 @@ msgstr "Aynı anda yeniden adlandırmak için çok fazla öğe (en fazla 5.000)"
 msgid "Trash"
 msgstr "Çöp Sepeti"
 
-#: crates/vento/ui/settings_pages.slint:1478
+#: crates/vento/ui/settings_pages.slint:1517
 msgid "Trigger"
 msgstr "Tetik"
 
@@ -2135,7 +2143,7 @@ msgstr "Beni dene.txt"
 msgid "Turn images into another format"
 msgstr "Görüntüleri başka bir biçime dönüştürün"
 
-#: crates/vento/ui/settings_window.slint:336
+#: crates/vento/ui/settings_window.slint:341
 msgid "Turn on Show screenshots in the island."
 msgstr "Ekran görüntülerini adada göster'i açın."
 
@@ -2183,23 +2191,23 @@ msgstr "Bilinmeyen {tag}"
 msgid "Unpin"
 msgstr "Sabitlemeyi kaldır"
 
-#: crates/vento/ui/settings_pages.slint:896
+#: crates/vento/ui/settings_pages.slint:912
 msgid "Unpin {}"
 msgstr "Sabitlemeyi kaldır: {}"
 
-#: crates/vento/src/settings_window/mod.rs:1356
+#: crates/vento/src/settings_window/mod.rs:1377
 msgid "Until stopped"
 msgstr "Durdurana dek"
 
-#: crates/vento/ui/controls.slint:1007
+#: crates/vento/ui/controls.slint:1009
 msgid "Until…"
 msgstr "Şu saate dek…"
 
-#: crates/vento/ui/settings_pages.slint:1780
+#: crates/vento/ui/settings_pages.slint:1819
 msgid "Up to 6 times"
 msgstr "En çok 6 süre"
 
-#: crates/vento/ui/settings_pages.slint:935
+#: crates/vento/ui/settings_pages.slint:951
 msgid "Up to 7 folders"
 msgstr "En çok 7 klasör"
 
@@ -2207,7 +2215,7 @@ msgstr "En çok 7 klasör"
 msgid "Update"
 msgstr "Güncelle"
 
-#: crates/vento/src/main.rs:682
+#: crates/vento/src/main.rs:698
 msgid "Update ready"
 msgstr "Güncelleme hazır"
 
@@ -2219,11 +2227,11 @@ msgstr "{v} sürümünden güncellendi"
 msgid "Updates"
 msgstr "Güncellemeler"
 
-#: crates/vento/src/settings_window/mod.rs:1748
+#: crates/vento/src/settings_window/mod.rs:1769
 msgid "Use a modifier with a letter or digit"
 msgstr "Bir harf ya da rakamla birlikte bir değiştirici tuş kullanın"
 
-#: crates/vento/ui/settings_pages.slint:1709
+#: crates/vento/ui/settings_pages.slint:1748
 msgid "Use the usual times"
 msgstr "Varsayılan süreleri kullan"
 
@@ -2247,7 +2255,7 @@ msgstr "Vento arşiv ilerlemesi"
 msgid "Vento as a whole"
 msgstr "Vento'nun tamamı"
 
-#: crates/vento/ui/settings_pages.slint:1652
+#: crates/vento/ui/settings_pages.slint:1691
 msgid "Vento can't read this folder."
 msgstr "Vento bu klasörü okuyamıyor."
 
@@ -2271,7 +2279,7 @@ msgstr "Vento duraklatıldı"
 msgid "Vento is paused, so the wheel won't open."
 msgstr "Vento duraklatıldığı için çark açılmayacak."
 
-#: crates/vento/ui/settings_pages.slint:1083
+#: crates/vento/ui/settings_pages.slint:1099
 msgid "Vento keeps its own copy of each file, not only a link to it"
 msgstr "Vento her dosyanın yalnızca bağlantısını değil, kendi kopyasını saklar"
 
@@ -2295,7 +2303,7 @@ msgstr "Vento buradaydı."
 msgid "Vento will be back in a second"
 msgstr "Vento birazdan geri dönecek"
 
-#: crates/vento/src/main.rs:637
+#: crates/vento/src/main.rs:653
 msgid "Vento {version} is out"
 msgstr "Vento {version} çıktı"
 
@@ -2311,7 +2319,7 @@ msgstr "Vento {v} kullanılabilir"
 msgid "Vento {v} is downloaded"
 msgstr "Vento {v} indirildi"
 
-#: crates/vento/ui/settings_pages.slint:1997
+#: crates/vento/ui/settings_pages.slint:2036
 msgid "Version {}"
 msgstr "Sürüm {}"
 
@@ -2319,19 +2327,19 @@ msgstr "Sürüm {}"
 msgid "Video"
 msgstr "Video"
 
-#: crates/vento/ui/settings_pages.slint:2037
+#: crates/vento/ui/settings_pages.slint:2076
 msgid "View"
 msgstr "Göster"
 
-#: crates/vento/ui/settings_pages.slint:2074
+#: crates/vento/ui/settings_pages.slint:2113
 msgid "View licenses"
 msgstr "Lisansları göster"
 
-#: crates/vento/ui/settings_pages.slint:2038
+#: crates/vento/ui/settings_pages.slint:2077
 msgid "View what's new"
 msgstr "Yenilikleri göster"
 
-#: crates/vento/ui/settings_pages.slint:1152
+#: crates/vento/ui/settings_pages.slint:1173
 msgid "Virtual island"
 msgstr "Sanal ada"
 
@@ -2343,7 +2351,7 @@ msgstr "Hoş geldin kurulumu"
 msgid "Welcome to Vento"
 msgstr "Vento'ya hoş geldiniz"
 
-#: crates/vento/ui/settings_pages.slint:1794
+#: crates/vento/ui/settings_pages.slint:1833
 msgid "What a click on the Keep Awake tile, or Start Keep Awake in the menu, starts"
 msgstr "Uyanık Tut kutucuğuna tıklamanın ya da menüdeki Uyanık Tut'u başlat'ın başlattığı süre"
 
@@ -2355,7 +2363,7 @@ msgstr "En çok ne yapıyorsunuz?"
 msgid "What's new in Vento"
 msgstr "Vento'daki yenilikler"
 
-#: crates/vento/ui/settings_pages.slint:2034
+#: crates/vento/ui/settings_pages.slint:2073
 msgid "What's new in {}"
 msgstr "{} sürümündeki yenilikler"
 
@@ -2363,7 +2371,7 @@ msgstr "{} sürümündeki yenilikler"
 msgid "Wheel"
 msgstr "Çark"
 
-#: crates/vento/ui/settings_pages.slint:1095
+#: crates/vento/ui/settings_pages.slint:1111
 msgid "When the Pocket opens, show"
 msgstr "Cep açılınca göster:"
 
@@ -2371,15 +2379,15 @@ msgstr "Cep açılınca göster:"
 msgid "Where"
 msgstr "Konum"
 
-#: crates/vento/ui/settings_pages.slint:1147
+#: crates/vento/ui/settings_pages.slint:1168
 msgid "Where the Pocket, Clipboard and Screenshots live on this screen"
 msgstr "Cep, Pano ve Ekran görüntülerinin bu ekrandaki yeri"
 
-#: crates/vento/ui/settings_pages.slint:1507
+#: crates/vento/ui/settings_pages.slint:1546
 msgid "Where the Terminal action opens"
 msgstr "Terminal eyleminin açıldığı yer"
 
-#: crates/vento/ui/settings_window.slint:347
+#: crates/vento/ui/settings_window.slint:352
 msgid "While it runs, a small cup shows beside the Vento icon."
 msgstr "Çalışırken Vento simgesinin yanında küçük bir fincan görünür."
 
@@ -2423,7 +2431,7 @@ msgstr "Her şey hazır"
 msgid "You're offline"
 msgstr "Çevrim dışısınız"
 
-#: crates/vento/src/settings_window/mod.rs:112
+#: crates/vento/src/settings_window/mod.rs:113
 msgid "You're up to date"
 msgstr "Güncelsiniz"
 
@@ -2439,11 +2447,11 @@ msgstr "Mac'iniz her zamanki enerji ayarlarını izliyor"
 msgid "Your computer follows its usual energy settings"
 msgstr "Bilgisayarınız her zamanki enerji ayarlarını izliyor"
 
-#: crates/vento/src/settings_window/mod.rs:1726
+#: crates/vento/src/settings_window/mod.rs:1747
 msgid "Your settings file can't be read ({error}); changing a setting here will replace it"
 msgstr "Ayarlar dosyanız okunamıyor ({error}); burada bir ayarı değiştirmek dosyanın yerine yenisini yazar"
 
-#: crates/vento/src/settings_window/mod.rs:1710
+#: crates/vento/src/settings_window/mod.rs:1731
 msgid "Your settings file has an error on line {line}: {message}; changing a setting here will replace it"
 msgstr "Ayarlar dosyanızın {line}. satırında hata var: {message}; burada bir ayarı değiştirmek dosyanın yerine yenisini yazar"
 
@@ -2495,7 +2503,7 @@ msgstr "salt okunur klasörden kaldırılamaz: {dir}"
 msgid "cannot start"
 msgstr "başlatılamıyor"
 
-#: crates/vento/src/pocket/mod.rs:2036
+#: crates/vento/src/pocket/mod.rs:2402
 msgid "cannot start copying: {reason}"
 msgstr "kopyalama başlatılamıyor: {reason}"
 
@@ -2539,7 +2547,7 @@ msgstr "iç hata"
 msgid "interrupted"
 msgstr "kesildi"
 
-#: crates/vento-core/src/settings.rs:989
+#: crates/vento-core/src/settings.rs:1129
 msgid "invalid shortcut \"{spec}\""
 msgstr "geçersiz kısayol \"{spec}\""
 
@@ -2575,11 +2583,11 @@ msgstr "kilitli"
 msgid "lowercase"
 msgstr "küçük harf"
 
-#: crates/vento/ui/settings_pages.slint:1672
+#: crates/vento/ui/settings_pages.slint:1711
 msgid "macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options."
 msgstr "macOS, kayan küçük resim açıkken ekran görüntüsünü yaklaşık 5 saniye geç kaydeder. Kartı hemen almak için Ekran Görüntüsü uygulamasında (⇧⌘5) Seçenekler → Kayan Küçük Resmi Göster'i kapatın."
 
-#: crates/vento/src/settings_window/mod.rs:1749
+#: crates/vento/src/settings_window/mod.rs:1770
 msgid "macOS uses this shortcut"
 msgstr "macOS bu kısayolu kullanıyor"
 
@@ -2747,7 +2755,7 @@ msgstr "{h} sa {m} dk"
 msgid "{items} · {changes}"
 msgstr "{items} · {changes}"
 
-#: crates/vento/src/settings_window/mod.rs:1741
+#: crates/vento/src/settings_window/mod.rs:1762
 msgid "{ms} ms"
 msgstr "{ms} ms"
 
@@ -2769,7 +2777,7 @@ msgstr[1] "{name} + {n} tane daha"
 msgid "{name} is locked"
 msgstr "{name} kilitli"
 
-#: crates/vento/src/main.rs:1180
+#: crates/vento/src/main.rs:1200
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "{name} kısayolu kullanılamıyor: {reason}"
 
@@ -2881,7 +2889,7 @@ msgid_plural "{n} problems"
 msgstr[0] "{n} sorun"
 msgstr[1] "{n} sorun"
 
-#: crates/vento/src/settings_window/mod.rs:1940
+#: crates/vento/src/settings_window/mod.rs:1961
 msgid "{n} s"
 msgstr "{n} sn"
 

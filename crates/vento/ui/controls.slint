@@ -284,7 +284,8 @@ export component Switch inherits Rectangle {
 }
 
 // A row-height segmented control: a rounded track with the chosen item
-// raised on a pill. The first item is at the start of the line.
+// raised on a pill. The first item is at the start of the line. A `current`
+// of -1 chooses none: no pill is raised.
 export component Segmented inherits Rectangle {
     in property <[string]> items;
     in property <int> current;
@@ -304,6 +305,7 @@ export component Segmented inherits Rectangle {
     accessible-role: radio-group;
 
     Rectangle {
+        visible: root.current >= 0;
         x: root.pad + root.slot(root.current) * root.item-w;
         y: root.pad;
         width: root.item-w;

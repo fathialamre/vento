@@ -96,12 +96,14 @@ export component SettingsWindow inherits Window {
     // The Island page: whether the virtual island can be chosen here;
     // whether it is, what the other island is called, and the
     // virtual one's shape (0 Island, 1 Circle), place (0 Left, 1 Centre,
-    // 2 Right) and Glass in percent.
+    // 2 Right, -1 a free spot), whether each screen keeps its own place and
+    // Glass in percent.
     in property <bool> island-offered;
     in property <bool> island-virtual;
     in property <string> classic-label;
     in property <int> island-shape;
     in property <int> island-place;
+    in property <bool> island-each-screen;
     in property <int> island-glass;
     // The virtual island's shimmer: its style and how often (as the
     // settings list them), whether it waits for items in the Pocket,
@@ -213,6 +215,7 @@ export component SettingsWindow inherits Window {
     callback island-mode-chosen(int);
     callback island-shape-chosen(int);
     callback island-place-chosen(int);
+    callback island-each-screen-toggled(bool);
     callback island-glass-changed(int);
     callback island-shimmer-chosen(int);
     callback island-shimmer-every-chosen(int);
@@ -501,6 +504,7 @@ export component SettingsWindow inherits Window {
                                 classic-label: root.classic-label;
                                 shape: root.island-shape;
                                 place: root.island-place;
+                                each-screen: root.island-each-screen;
                                 glass: root.island-glass;
                                 shimmer: root.island-shimmer;
                                 shimmer-every: root.island-shimmer-every;
@@ -511,6 +515,7 @@ export component SettingsWindow inherits Window {
                                 mode-chosen(i) => { root.island-mode-chosen(i); }
                                 shape-chosen(i) => { root.island-shape-chosen(i); }
                                 place-chosen(i) => { root.island-place-chosen(i); }
+                                each-screen-toggled(on) => { root.island-each-screen-toggled(on); }
                                 glass-changed(v) => { root.island-glass-changed(v); }
                                 shimmer-chosen(i) => { root.island-shimmer-chosen(i); }
                                 shimmer-every-chosen(i) => { root.island-shimmer-every-chosen(i); }

@@ -37,7 +37,7 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, IslandShape,
+    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, IslandShape, IslandSpot,
     MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView, Settings,
     SettingsError, ShimmerEvery, ShimmerStyle, ThemeName, clamp_glass, is_reserved_shortcut,
     move_row, parse_shortcut,
@@ -755,7 +755,17 @@ impl SettingsWindowController {
         window.on_island_place_chosen(move |i| {
             if let (Some(controller), Some(place)) = (this.upgrade(), choice(&IslandPlace::ALL, i))
             {
-                controller.apply(|s| s.island_place = place);
+                // The screen the island is on now, or the global place.
+                controller.apply(|s| {
+                    let screen = s.island_screen.clone();
+                    s.set_island_spot(screen.as_deref(), IslandSpot::Side(place));
+                });
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_each_screen_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_place_each_screen = on);
             }
         });
         let this = self.this.clone();
@@ -1326,7 +1336,14 @@ impl SettingsWindowController {
         }
         window.set_island_virtual(settings.island_mode == IslandMode::Virtual);
         window.set_island_shape(choice_index(&IslandShape::ALL, settings.island_shape));
-        window.set_island_place(choice_index(&IslandPlace::ALL, settings.island_place));
+        // A free spot has no segment chosen.
+        window.set_island_place(
+            match settings.island_spot(settings.island_screen.as_deref()) {
+                IslandSpot::Side(place) => choice_index(&IslandPlace::ALL, place),
+                IslandSpot::Free(_) => -1,
+            },
+        );
+        window.set_island_each_screen(settings.island_place_each_screen);
         window.set_island_glass(i32::try_from(settings.island_glass).unwrap_or(0));
         window.set_island_shimmer(choice_index(&ShimmerStyle::ALL, settings.island_shimmer));
         window.set_island_shimmer_every(choice_index(
