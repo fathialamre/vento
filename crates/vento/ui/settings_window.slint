@@ -115,6 +115,9 @@ export component SettingsWindow inherits Window {
     in property <bool> island-shimmer-needs-items;
     in property <bool> island-follow-reduce;
     in property <bool> island-reduce-motion;
+    // Whether the island here is notch-style, and whether it shows jobs.
+    in property <bool> island-notch;
+    in property <bool> island-jobs;
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
@@ -221,6 +224,7 @@ export component SettingsWindow inherits Window {
     callback island-shimmer-every-chosen(int);
     callback island-shimmer-needs-items-toggled(bool);
     callback island-follow-reduce-toggled(bool);
+    callback island-jobs-toggled(bool);
     callback action-toggled(int, bool);
     // A row of the Wheel page's list dragged from one place to another.
     callback action-moved(int, int);
@@ -512,6 +516,8 @@ export component SettingsWindow inherits Window {
                                 follow-reduce: root.island-follow-reduce;
                                 reduce-motion: root.island-reduce-motion;
                                 circle: root.island-shape == 1;
+                                notch: root.island-notch;
+                                jobs: root.island-jobs;
                                 mode-chosen(i) => { root.island-mode-chosen(i); }
                                 shape-chosen(i) => { root.island-shape-chosen(i); }
                                 place-chosen(i) => { root.island-place-chosen(i); }
@@ -521,6 +527,7 @@ export component SettingsWindow inherits Window {
                                 shimmer-every-chosen(i) => { root.island-shimmer-every-chosen(i); }
                                 shimmer-needs-items-toggled(on) => { root.island-shimmer-needs-items-toggled(on); }
                                 follow-reduce-toggled(on) => { root.island-follow-reduce-toggled(on); }
+                                jobs-toggled(on) => { root.island-jobs-toggled(on); }
                             }
                             if root.page-id == 5: ClipboardPage {
                                 history: root.clip-history;

@@ -1121,6 +1121,79 @@ export component PocketPage inherits VerticalLayout {
     }
 }
 
+// The shimmer's rows: its style with previews, how often it plays and
+// whether it waits for items in the Pocket. The virtual island and the
+// island on a notch share them.
+component ShimmerRows inherits VerticalLayout {
+    in property <int> shimmer;
+    in property <int> shimmer-every;
+    in property <bool> shimmer-needs-items;
+    // Whether the previews draw the circle, and whether they stay still.
+    in property <bool> circle;
+    in property <bool> reduce-motion;
+    callback shimmer-chosen(int);
+    callback shimmer-every-chosen(int);
+    callback shimmer-needs-items-toggled(bool);
+
+    SettingRow {
+        label: @tr("Shimmer");
+        description: @tr("A small moment of light while the island rests");
+    }
+
+    RowBody {
+        ShimmerPicker {
+            current: root.shimmer;
+            circle: root.circle;
+            reduce-motion: root.reduce-motion;
+            chosen(i) => { root.shimmer-chosen(i); }
+        }
+    }
+
+    if root.shimmer != 0: VerticalLayout {
+        RowSeparator { }
+
+        SettingRow {
+            label: @tr("How often");
+
+            Segmented {
+                width: 210px;
+                items: [@tr("Rarely"), @tr("Sometimes"), @tr("Often")];
+                current: root.shimmer-every;
+                chosen(i) => { root.shimmer-every-chosen(i); }
+            }
+        }
+
+        RowSeparator { }
+
+        SettingRow {
+            label: @tr("Only while the Pocket holds items");
+
+            Switch {
+                label: @tr("Only while the Pocket holds items");
+                on: root.shimmer-needs-items;
+                toggled(on) => { root.shimmer-needs-items-toggled(on); }
+            }
+        }
+    }
+}
+
+// Whether the island follows the system's Reduce motion.
+component FollowReduceRow inherits VerticalLayout {
+    in property <bool> on;
+    callback toggled(bool);
+
+    SettingRow {
+        label: @tr("Follow Reduce motion");
+        description: @tr("No shimmer, no shake, plain fades when the system asks for less motion");
+
+        Switch {
+            label: @tr("Follow Reduce motion");
+            on: root.on;
+            toggled(on) => { root.toggled(on); }
+        }
+    }
+}
+
 // The island: which one the screen shows and, for the virtual island, its
 // place and Glass. Where the virtual island can't be chosen, a line says so.
 export component IslandPage inherits VerticalLayout {
@@ -1151,6 +1224,10 @@ export component IslandPage inherits VerticalLayout {
     // is the circle (the previews draw it).
     in property <bool> reduce-motion;
     in property <bool> circle;
+    // Whether the island here is notch-style (a Mac notch or GNOME's top
+    // bar room), and whether it shows jobs.
+    in property <bool> notch;
+    in property <bool> jobs;
     // 0 the virtual island, 1 the other one.
     callback mode-chosen(int);
     callback shape-chosen(int);
@@ -1161,6 +1238,7 @@ export component IslandPage inherits VerticalLayout {
     callback shimmer-every-chosen(int);
     callback shimmer-needs-items-toggled(bool);
     callback follow-reduce-toggled(bool);
+    callback jobs-toggled(bool);
 
     if root.offered: VerticalLayout {
         SettingRow {
@@ -1290,63 +1368,71 @@ export component IslandPage inherits VerticalLayout {
 
             RowSeparator { }
 
-            SettingRow {
-                label: @tr("Shimmer");
-                description: @tr("A small moment of light while the island rests");
-            }
-
-            RowBody {
-                ShimmerPicker {
-                    current: root.shimmer;
-                    circle: root.circle;
-                    reduce-motion: root.reduce-motion;
-                    chosen(i) => { root.shimmer-chosen(i); }
-                }
-            }
-
-            if root.shimmer != 0: VerticalLayout {
-                RowSeparator { }
-
-                SettingRow {
-                    label: @tr("How often");
-
-                    Segmented {
-                        width: 210px;
-                        items: [@tr("Rarely"), @tr("Sometimes"), @tr("Often")];
-                        current: root.shimmer-every;
-                        chosen(i) => { root.shimmer-every-chosen(i); }
-                    }
-                }
-
-                RowSeparator { }
-
-                SettingRow {
-                    label: @tr("Only while the Pocket holds items");
-
-                    Switch {
-                        label: @tr("Only while the Pocket holds items");
-                        on: root.shimmer-needs-items;
-                        toggled(on) => { root.shimmer-needs-items-toggled(on); }
-                    }
-                }
+            ShimmerRows {
+                shimmer: root.shimmer;
+                shimmer-every: root.shimmer-every;
+                shimmer-needs-items: root.shimmer-needs-items;
+                circle: root.circle;
+                reduce-motion: root.reduce-motion;
+                shimmer-chosen(i) => { root.shimmer-chosen(i); }
+                shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+                shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
             }
 
             RowSeparator { }
 
-            SettingRow {
-                label: @tr("Follow Reduce motion");
-                description: @tr("No shimmer, no shake, plain fades when the system asks for less motion");
-
-                Switch {
-                    label: @tr("Follow Reduce motion");
-                    on: root.follow-reduce;
-                    toggled(on) => { root.follow-reduce-toggled(on); }
-                }
+            FollowReduceRow {
+                on: root.follow-reduce;
+                toggled(on) => { root.follow-reduce-toggled(on); }
             }
         }
     }
 
-    if !root.offered: SettingRow {
+    // On a notch the virtual island isn't offered, but the island there
+    // shows jobs and plays the shimmer on its wings, so those rows stay.
+    if !root.offered && root.notch: VerticalLayout {
+        SettingRow {
+            label: @tr("Show jobs in the island");
+            description: @tr("Progress, results and errors appear in the island instead of separate windows");
+
+            Switch {
+                label: @tr("Show jobs in the island");
+                on: root.jobs;
+                toggled(on) => { root.jobs-toggled(on); }
+            }
+        }
+
+        if root.jobs: VerticalLayout {
+            RowSeparator { }
+
+            ShimmerRows {
+                shimmer: root.shimmer;
+                shimmer-every: root.shimmer-every;
+                shimmer-needs-items: root.shimmer-needs-items;
+                circle: false;
+                reduce-motion: root.reduce-motion;
+                shimmer-chosen(i) => { root.shimmer-chosen(i); }
+                shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+                shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+            }
+        }
+
+        RowSeparator { }
+
+        FollowReduceRow {
+            on: root.follow-reduce;
+            toggled(on) => { root.follow-reduce-toggled(on); }
+        }
+
+        RowSeparator { }
+
+        SettingRow {
+            label: @tr("Virtual island");
+            description: @tr("Not available on this screen");
+        }
+    }
+
+    if !root.offered && !root.notch: SettingRow {
         label: @tr("Virtual island");
         description: @tr("Not available on this screen");
     }

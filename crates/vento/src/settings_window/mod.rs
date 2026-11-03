@@ -803,6 +803,12 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
+        window.on_island_jobs_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_jobs = on);
+            }
+        });
+        let this = self.this.clone();
         window.on_shake_to_open_toggled(move |on| {
             if let Some(controller) = this.upgrade() {
                 controller.apply(|s| s.shake_to_open = on);
@@ -1331,6 +1337,8 @@ impl SettingsWindowController {
         let screens = IslandScreens::of(&*self.platform);
         let home = screens.primary;
         window.set_island_offered(home.is_some_and(|h| virtual_offered(&h, screens.supported)));
+        window.set_island_notch(home.is_some_and(|h| h.notch.is_some() || h.slot.is_some()));
+        window.set_island_jobs(settings.island_jobs);
         if let Some(home) = home {
             let gnome_slot = home.slot.is_some() || self.platform.island_slot_seen();
             window.set_classic_label(classic_label(&home, gnome_slot).into());
