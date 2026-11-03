@@ -324,20 +324,22 @@ fn primary_button() -> VIRTUAL_KEY {
     }
 }
 
-/// Where the cursor is, in logical global coordinates; `None` when Windows
-/// can't say.
-fn cursor_point() -> Option<Point> {
+/// Where the cursor is, in physical pixels; `None` when Windows can't say.
+fn cursor_pos() -> Option<POINT> {
     let mut cursor = POINT::default();
     // SAFETY: `cursor` is a live local.
-    (unsafe { GetCursorPos(&mut cursor) } != 0)
-        .then(|| screens::to_logical(&screens::monitors(), cursor))
+    (unsafe { GetCursorPos(&mut cursor) } != 0).then_some(cursor)
 }
 
 impl Platform for WindowsPlatform {
     fn prepare_app(&self) {}
 
     fn cursor(&self) -> Option<(f64, f64)> {
-        cursor_point().map(|p| (p.x, p.y))
+        // Asks only the monitor under the cursor: read at every frame of a
+        // drag.
+        cursor_pos()
+            .map(screens::point_to_logical)
+            .map(|p| (p.x, p.y))
     }
 
     fn sample_input(&self) -> InputSample {
@@ -354,7 +356,9 @@ impl Platform for WindowsPlatform {
         {
             (handler.0)();
         }
-        let cursor = cursor_point().unwrap_or(Point { x: 0.0, y: 0.0 });
+        let cursor = cursor_pos().map_or(Point { x: 0.0, y: 0.0 }, |p| {
+            screens::to_logical(&screens::monitors(), p)
+        });
         let dragging = drag::active();
         InputSample {
             left_down: key_down(primary_button()),

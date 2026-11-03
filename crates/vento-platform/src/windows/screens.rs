@@ -13,7 +13,7 @@ use vento_core::geometry::{Point, Rect};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-    MonitorFromWindow,
+    MonitorFromPoint, MonitorFromWindow,
 };
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows_sys::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
@@ -149,6 +149,18 @@ pub(super) fn monitor_at(monitors: &[Monitor], x: i32, y: i32) -> Option<&Monito
 /// The physical point `p` in logical points, by its monitor's scale.
 pub(super) fn to_logical(monitors: &[Monitor], p: POINT) -> Point {
     let scale = monitor_at(monitors, p.x, p.y).map_or(1.0, |m| m.scale);
+    Point {
+        x: f64::from(p.x) / scale,
+        y: f64::from(p.y) / scale,
+    }
+}
+
+/// The physical point `p` in logical points, by the scale of the monitor
+/// holding it (or the nearest one): one monitor asked, none listed, cheap
+/// enough for every frame of a drag.
+pub(super) fn point_to_logical(p: POINT) -> Point {
+    // SAFETY: plain call; the nearest monitor is always found.
+    let scale = scale_of(unsafe { MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST) });
     Point {
         x: f64::from(p.x) / scale,
         y: f64::from(p.y) / scale,
