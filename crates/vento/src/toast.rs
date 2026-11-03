@@ -14,6 +14,7 @@ use vento_platform::Platform;
 
 use crate::appearance;
 use crate::lazy_window::LazyWindow;
+use crate::notice::{ButtonLabel, JobNotice, Notice, NoticeSink};
 use crate::ui::Toast;
 
 /// Toast window width in logical pixels (matches `toast.slint`).
@@ -62,10 +63,43 @@ fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     v.min(hi).max(lo)
 }
 
+/// Where a toast ends up; the real one is the [`Toaster`]'s window, and the
+/// tests record what would be shown.
+trait Present {
+    fn present(&self, text: &str, undo: Option<Box<dyn Fn()>>, at: Point);
+}
+
+/// Offers `n` to `sink`, and shows the classic toast for it when the sink is
+/// gone or declines. A notice that is for the island only is dropped then;
+/// the toast has its text alone (never the `sub`) and an Undo only for an
+/// Undo button.
+fn route(sink: Option<Rc<dyn NoticeSink>>, view: &dyn Present, n: Notice, at: Point) {
+    let n = match sink {
+        Some(sink) => match sink.notice(n) {
+            Ok(()) => return,
+            Err(n) => n,
+        },
+        None => n,
+    };
+    if n.island_only {
+        return;
+    }
+    let undo = n
+        .button
+        .filter(|b| b.label == ButtonLabel::Undo)
+        .map(|b| -> Box<dyn Fn()> {
+            let on = b.on;
+            Box::new(move || on())
+        });
+    view.present(&n.text, undo, at);
+}
+
 /// Shows short-lived messages in a single reused window.
 pub struct Toaster {
     this: Weak<Toaster>,
     platform: Rc<dyn Platform>,
+    /// Where notices go first; none, or one that declines, leaves them toasts.
+    sink: RefCell<Option<Weak<dyn NoticeSink>>>,
     window: LazyWindow<Toast>,
     timer: Timer,
     undo: RefCell<Option<Box<dyn Fn()>>>,
@@ -80,6 +114,7 @@ impl Toaster {
         let toaster = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             platform,
+            sink: RefCell::new(None),
             window: LazyWindow::new(),
             timer: Timer::default(),
             undo: RefCell::new(None),
@@ -120,25 +155,45 @@ impl Toaster {
         })
     }
 
+    /// Sets where notices and jobs go first (the virtual island).
+    pub fn set_sink(&self, sink: Weak<dyn NoticeSink>) {
+        *self.sink.borrow_mut() = Some(sink);
+    }
+
+    /// The sink, while it is there.
+    fn sink(&self) -> Option<Rc<dyn NoticeSink>> {
+        self.sink.borrow().as_ref().and_then(Weak::upgrade)
+    }
+
     /// Shows `text` 24 px under `at`, replacing any toast already up and
     /// restarting the 5 s timer. With `undo`, the toast has an Undo button
     /// that runs it once and closes the toast.
     pub fn show(&self, text: &str, undo: Option<Box<dyn Fn()>>, at: Point) {
-        let window = self.window();
-        window.set_message(text.into());
-        window.set_can_undo(undo.is_some());
-        *self.undo.borrow_mut() = undo;
-        // A new window shows once it has its native window, so that it can
-        // be made non-key as it shows.
-        let this = self.this.clone();
-        self.window.when_native(move || {
-            if let Some(toaster) = this.upgrade() {
-                toaster.show_at(at);
-            }
-        });
+        self.notify(Notice::info(text).with_undo(undo), at);
     }
 
-    /// Shows the toast as set up by [`Toaster::show`] and starts its timer.
+    /// Shows `n` in the island, or as a toast under `at` when the island
+    /// does not take it.
+    pub fn notify(&self, n: Notice, at: Point) {
+        route(self.sink(), self, n, at);
+    }
+
+    /// Offers a job to the island; `false` leaves it to its progress window.
+    // The jobs call it in a later step.
+    #[allow(dead_code)]
+    pub fn job_started(&self, job: JobNotice) -> bool {
+        self.sink().is_some_and(|sink| sink.job_started(job))
+    }
+
+    /// Tells the island that job `id` is over.
+    #[allow(dead_code)]
+    pub fn job_ended(&self, id: u64) {
+        if let Some(sink) = self.sink() {
+            sink.job_ended(id);
+        }
+    }
+
+    /// Shows the toast as set up by [`Present::present`] and starts its timer.
     fn show_at(&self, at: Point) {
         let Some(window) = self.window.get() else {
             return;
@@ -205,9 +260,157 @@ impl Toaster {
     }
 }
 
+impl Present for Toaster {
+    fn present(&self, text: &str, undo: Option<Box<dyn Fn()>>, at: Point) {
+        let window = self.window();
+        window.set_message(text.into());
+        window.set_can_undo(undo.is_some());
+        *self.undo.borrow_mut() = undo;
+        // A new window shows once it has its native window, so that it can
+        // be made non-key as it shows.
+        let this = self.this.clone();
+        self.window.when_native(move || {
+            if let Some(toaster) = this.upgrade() {
+                toaster.show_at(at);
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use vento_core::news::Tone;
+
     use super::*;
+
+    /// What the toast would show, recorded instead of shown.
+    #[derive(Default)]
+    struct Recorder {
+        shown: RefCell<Vec<(String, bool)>>,
+    }
+
+    impl Present for Recorder {
+        fn present(&self, text: &str, undo: Option<Box<dyn Fn()>>, _at: Point) {
+            self.shown
+                .borrow_mut()
+                .push((text.to_owned(), undo.is_some()));
+        }
+    }
+
+    /// A sink that takes every notice, or none.
+    struct FakeSink {
+        takes: bool,
+        taken: RefCell<Vec<String>>,
+    }
+
+    impl FakeSink {
+        fn new(takes: bool) -> Rc<Self> {
+            Rc::new(Self {
+                takes,
+                taken: RefCell::default(),
+            })
+        }
+    }
+
+    impl NoticeSink for FakeSink {
+        fn notice(&self, n: Notice) -> Result<(), Notice> {
+            if self.takes {
+                self.taken.borrow_mut().push(n.text);
+                Ok(())
+            } else {
+                Err(n)
+            }
+        }
+
+        fn job_started(&self, _job: JobNotice) -> bool {
+            self.takes
+        }
+
+        fn job_ended(&self, _id: u64) {}
+    }
+
+    fn sink_of(sink: &Rc<FakeSink>) -> Option<Rc<dyn NoticeSink>> {
+        let sink: Rc<dyn NoticeSink> = sink.clone();
+        Some(sink)
+    }
+
+    #[test]
+    fn a_declining_sink_falls_back_to_the_toast() {
+        let (view, sink) = (Recorder::default(), FakeSink::new(false));
+        let n = Notice::done("Moved 3 files")
+            .with_sub("to Documents")
+            .with_undo(Some(Box::new(|| {})));
+        route(sink_of(&sink), &view, n, at(0.0, 0.0));
+        assert_eq!(*view.shown.borrow(), [("Moved 3 files".to_owned(), true)]);
+    }
+
+    #[test]
+    fn only_an_undo_button_becomes_the_toasts_undo() {
+        let (view, sink) = (Recorder::default(), FakeSink::new(false));
+        let n = Notice::info("Copied").with_button(ButtonLabel::Open, || {});
+        route(sink_of(&sink), &view, n, at(0.0, 0.0));
+        assert_eq!(*view.shown.borrow(), [("Copied".to_owned(), false)]);
+    }
+
+    #[test]
+    fn the_toasts_undo_runs_the_buttons_action() {
+        struct Runner(RefCell<Option<Box<dyn Fn()>>>);
+        impl Present for Runner {
+            fn present(&self, _text: &str, undo: Option<Box<dyn Fn()>>, _at: Point) {
+                *self.0.borrow_mut() = undo;
+            }
+        }
+        let (view, ran) = (Runner(RefCell::default()), Rc::new(Cell::new(0)));
+        let counter = ran.clone();
+        let n = Notice::info("x").with_undo(Some(Box::new(move || counter.set(counter.get() + 1))));
+        route(None, &view, n, at(0.0, 0.0));
+        (view.0.borrow().as_ref().expect("an undo"))();
+        assert_eq!(ran.get(), 1);
+    }
+
+    #[test]
+    fn an_island_only_notice_never_toasts() {
+        let (view, sink) = (Recorder::default(), FakeSink::new(false));
+        route(
+            sink_of(&sink),
+            &view,
+            Notice::info("Copied").island_only(),
+            at(0.0, 0.0),
+        );
+        route(
+            None,
+            &view,
+            Notice::info("Copied").island_only(),
+            at(0.0, 0.0),
+        );
+        assert!(view.shown.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_taking_sink_shows_no_toast() {
+        let (view, sink) = (Recorder::default(), FakeSink::new(true));
+        route(sink_of(&sink), &view, Notice::done("Moved"), at(0.0, 0.0));
+        assert!(view.shown.borrow().is_empty());
+        assert_eq!(*sink.taken.borrow(), ["Moved"]);
+    }
+
+    #[test]
+    fn show_is_an_info_notice_with_its_undo() {
+        let (view, sink) = (Recorder::default(), FakeSink::new(false));
+        // What `show(text, undo, at)` sends to the router.
+        let n = Notice::info("Renamed").with_undo(Some(Box::new(|| {})));
+        assert_eq!(n.tone, Tone::Info);
+        assert!(!n.sticky && !n.island_only);
+        route(sink_of(&sink), &view, n, at(0.0, 0.0));
+        assert_eq!(*view.shown.borrow(), [("Renamed".to_owned(), true)]);
+    }
+
+    #[test]
+    fn without_a_sink_the_toast_is_as_before() {
+        let view = Recorder::default();
+        route(None, &view, Notice::error("Could not move"), at(0.0, 0.0));
+        assert_eq!(*view.shown.borrow(), [("Could not move".to_owned(), false)]);
+    }
 
     fn screen(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }

@@ -58,6 +58,7 @@ use vento_platform::{
 };
 
 use crate::appearance;
+use crate::notice::{JobNotice, Notice, NoticeSink};
 use crate::toast::Toaster;
 use crate::ui::PocketIsland;
 
@@ -2102,6 +2103,20 @@ impl PocketController {
             warn!("cannot hide the pocket: {e}");
         }
     }
+}
+
+/// Declines everything for now: notices and jobs stay a toast and a progress
+/// window.
+impl NoticeSink for PocketController {
+    fn notice(&self, n: Notice) -> Result<(), Notice> {
+        Err(n)
+    }
+
+    fn job_started(&self, _job: JobNotice) -> bool {
+        false
+    }
+
+    fn job_ended(&self, _id: u64) {}
 }
 
 #[cfg(test)]
