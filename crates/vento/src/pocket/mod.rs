@@ -269,6 +269,17 @@ fn rest_round(paused: bool, awake: bool, hovered: bool) -> bool {
     !(hovered && (paused || awake))
 }
 
+/// Whether the news pill rests round next, given `last`. Off the circle it
+/// never does. With news shown it follows [`news::circle_round`]; with none
+/// it keeps `last`, so the pill fades out in the form it had.
+fn news_round_next(last: bool, circle: bool, view: Option<&NewsView>, hovered: bool) -> bool {
+    match (circle, view) {
+        (false, _) => false,
+        (true, Some(v)) => news::circle_round(v, hovered),
+        (true, None) => last,
+    }
+}
+
 /// The Pocket's count on the circle's badge: nothing for none, the number up
 /// to 99, then "99+".
 fn badge_text(count: usize) -> String {
@@ -1904,6 +1915,8 @@ impl PocketController {
         self.window.set_notch_w(f.notch_w as f32);
         self.window.set_top_h(f.top_h as f32);
         self.window.set_virtual_style(f.virtual_island);
+        // The circle, and the half-moon over a bar; never the other islands.
+        self.window.set_circle_style(f.circle);
         self.window.set_lip(f.lip);
         // A push under way ends with the virtual island.
         if !f.virtual_island && self.window.get_push_progress() != 0.0 {
@@ -2409,13 +2422,12 @@ impl PocketController {
     /// disc, only when that changes. Only the circle stretches; `hovered` is
     /// the pointer on the news pill.
     fn show_news_round(&self, home: &IslandHome, hovered: bool) {
-        let circle = self.circle_virtual(home);
-        let round = circle
-            && self
-                .news_view
-                .borrow()
-                .as_ref()
-                .is_some_and(|v| news::circle_round(v, hovered));
+        let round = news_round_next(
+            self.news_round.get(),
+            self.circle_virtual(home),
+            self.news_view.borrow().as_ref(),
+            hovered,
+        );
         if self.news_round.replace(round) != round {
             self.window.set_news_round(round);
         }
@@ -2909,5 +2921,52 @@ mod tests {
         assert!(!drop_box_wanted(false, true, true, true));
         assert!(!drop_box_wanted(false, false, true, false));
         assert!(!virtual_frames(&home, circle, panel(false)).orb);
+    }
+
+    #[test]
+    fn circle_style_follows_the_layout() {
+        let home = plain_home();
+        let panel = Panel::Kinds { groups: 1 };
+        let spot = |shape, bar_under| VirtualSpot {
+            place: IslandPlace::Centre,
+            bar_under,
+            shape,
+        };
+        // The circle and the half-moon over a bar are circle-styled; the
+        // pill and the other islands are not.
+        assert!(virtual_frames(&home, spot(IslandShape::Circle, false), panel).circle);
+        assert!(virtual_frames(&home, spot(IslandShape::Circle, true), panel).circle);
+        assert!(!virtual_frames(&home, spot(IslandShape::Island, false), panel).circle);
+        assert!(!frames(&home, panel).circle);
+    }
+
+    #[test]
+    fn news_round_holds_through_the_fade() {
+        let view = |tone, button: Option<&str>| NewsView {
+            stage: Stage::Result,
+            tone,
+            icon: None,
+            text: String::new(),
+            sub: String::new(),
+            id: 1,
+            button_text: button.map(Into::into),
+            quiet_button: false,
+            extra: 0,
+            fraction: None,
+            count_text: String::new(),
+            short_count: String::new(),
+        };
+        let stretched = view(Tone::Done, Some("Undo"));
+        let error = view(Tone::Error, Some("Details"));
+        // Shown, it follows the rule.
+        assert!(!news_round_next(true, true, Some(&stretched), false));
+        assert!(news_round_next(false, true, Some(&error), false));
+        assert!(!news_round_next(true, true, Some(&error), true));
+        // Gone, it keeps the form it had while it fades.
+        assert!(!news_round_next(false, true, None, false));
+        assert!(news_round_next(true, true, None, false));
+        // Off the circle it is never round.
+        assert!(!news_round_next(true, false, None, false));
+        assert!(!news_round_next(true, false, Some(&error), false));
     }
 }
