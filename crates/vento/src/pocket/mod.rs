@@ -439,6 +439,21 @@ fn notch_news_on(target: NewsTarget, news_up: bool, expanded: bool) -> bool {
     target == NewsTarget::Notch && news_up && !expanded
 }
 
+/// Whether the island opening while a result shows opens on Activity: only
+/// the virtual island (`virtual_island`), pushed open. The notch island
+/// opens on a rest, which is no ask for Activity.
+fn opening_opens_activity(virtual_island: bool, result_up: bool) -> bool {
+    virtual_island && result_up
+}
+
+/// Whether resting the pointer on the collapsed island opens it: not while
+/// the notch island shows news on its wings (`notch_news_up`), where a rest
+/// holds a result and leaves its button to click; not after giving way to
+/// the Quick panel until the pointer leaves (`hover_blocked`).
+fn dwell_opens(notch_news_up: bool, hover_blocked: bool) -> bool {
+    !notch_news_up && !hover_blocked
+}
+
 /// Whether the island rests in its form, where a shimmer may play: the
 /// virtual island as [`virtual_resting`] says, whatever the switch; or the
 /// notch island (`notch_style`) in sight and collapsed, as it takes news
@@ -1839,7 +1854,7 @@ impl PocketController {
         // jobs in the island on. The pointer on the pill (the widened wings)
         // holds a result, though on the virtual one only its button and chip
         // take clicks; on the open island it is on the panel, not the news.
-        let target = self.news_home(&home);
+        let target = self.news_home(&home, now);
         let hovered = geometry::news_hovered(
             self.island.borrow().presence(),
             self.news_rects(&self.frames_of(&home)).as_ref(),
@@ -1884,7 +1899,8 @@ impl PocketController {
         let before = self.island.borrow().presence();
         let has_items = self.has_content();
         // The notch island with news up shows, even with an empty Pocket
-        // (which still doesn't open on a rest).
+        // (which still doesn't open on a rest); a rest on its news holds it
+        // rather than opening the island.
         let news_up = self.news_view.borrow().is_some();
         let pinned = self.pinned_open(now);
         // The Pocket's own drag out leaves the island by the clock open only
@@ -1898,7 +1914,8 @@ impl PocketController {
         }
         let mut inputs = island_inputs(&f, has_items, drag_in, sample.cursor, pinned);
         inputs.rest_visible |= shows_window(has_items, news_up, f.notch_style);
-        if self.hover_blocked.get() {
+        let notch_news_up = target == NewsTarget::Notch && news_up;
+        if !dwell_opens(notch_news_up, self.hover_blocked.get()) {
             inputs.hover = geometry::NOWHERE;
         }
         let mut after = self.island.borrow_mut().update(&inputs, now);
@@ -1922,8 +1939,8 @@ impl PocketController {
             now,
         );
         // Opened by resting on it (by a push, on the virtual island): with
-        // an empty Pocket, on the view the wings show. A push while a result
-        // shows opens Activity instead.
+        // an empty Pocket, on the view the wings show. A push on the virtual
+        // island while a result shows opens Activity instead.
         if before != Presence::Expanded
             && after == Presence::Expanded
             && !dragging
@@ -1935,7 +1952,7 @@ impl PocketController {
                 .borrow()
                 .as_ref()
                 .is_some_and(|v| v.stage == Stage::Result);
-            if result_up {
+            if opening_opens_activity(f.virtual_island, result_up) {
                 self.open_activity();
             }
             let last = self.shown_view();
@@ -3086,12 +3103,17 @@ impl PocketController {
     /// Which island at `home` shows the news it holds: as [`news_target`]
     /// says, with the notch island keeping what it took after Show jobs in
     /// the island goes off ([`notch_keeps`]).
-    fn news_home(&self, home: &IslandHome) -> NewsTarget {
-        let keeps = notch_keeps(
-            self.jobs_on.get(),
-            self.news.borrow().has_jobs(),
-            self.news_view.borrow().is_some(),
-        );
+    /// News it shows, or holds to show at `now` but has yet to (posted
+    /// since the last sample), counts as taken.
+    fn news_home(&self, home: &IslandHome, now: Instant) -> NewsTarget {
+        let keeps = {
+            let news = self.news.borrow();
+            notch_keeps(
+                self.jobs_on.get(),
+                news.has_jobs(),
+                self.news_view.borrow().is_some() || news.has_pending(now),
+            )
+        };
         news_target(
             self.virtual_spot(home).is_some(),
             self.frames_of(home).notch_style,
@@ -3242,7 +3264,7 @@ impl PocketController {
             && self
                 .home
                 .get()
-                .is_some_and(|home| self.news_home(&home) != NewsTarget::None);
+                .is_some_and(|home| self.news_home(&home, Instant::now()) != NewsTarget::None);
         if !shows_news {
             return;
         }
@@ -4000,6 +4022,27 @@ mod tests {
         assert!(notch_keeps(false, false, true));
         // Off with nothing taken: nothing shows.
         assert!(!notch_keeps(false, false, false));
+    }
+
+    #[test]
+    fn activity_opens_only_from_a_push() {
+        // The virtual island pushed open while a result shows opens on
+        // Activity.
+        assert!(opening_opens_activity(true, true));
+        assert!(!opening_opens_activity(true, false));
+        // The notch island opens on a rest: never on Activity.
+        assert!(!opening_opens_activity(false, true));
+        assert!(!opening_opens_activity(false, false));
+    }
+
+    #[test]
+    fn notch_news_holds_off_the_dwell() {
+        assert!(dwell_opens(false, false));
+        // News on the wings: a rest holds it rather than opening the island.
+        assert!(!dwell_opens(true, false));
+        // After giving way to the Quick panel, as before.
+        assert!(!dwell_opens(false, true));
+        assert!(!dwell_opens(true, true));
     }
 
     #[test]

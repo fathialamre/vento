@@ -132,6 +132,12 @@ impl News {
         !self.jobs.is_empty()
     }
 
+    /// Whether the board has news to show at `now`: a result still up, or a
+    /// job past its work delay, whether or not a tick has shown it yet.
+    pub fn has_pending(&self, now: Instant) -> bool {
+        self.board.current(now).is_some()
+    }
+
     /// What the island shows at `now`, with the pointer on the pill or not.
     pub fn tick(&mut self, now: Instant, hovered: bool) -> Option<NewsView> {
         self.board.set_hover(hovered, now);
@@ -389,6 +395,23 @@ mod tests {
             progress,
             cancel: None,
         }
+    }
+
+    #[test]
+    fn posted_news_is_pending_until_it_ends() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        assert!(!news.has_pending(t0));
+        // Posted and not yet ticked: the board would show it.
+        news.post(Notice::done("Moved"), t0, noon());
+        assert!(news.has_pending(t0));
+        assert!(!news.has_pending(t0 + RESULT_HOLD));
+        // A job is pending once it would show, after the work delay.
+        let j = job(ActionId::Archive, None);
+        let id = j.id;
+        news.start(j, t0 + RESULT_HOLD, noon());
+        assert!(news.has_pending(t0 + RESULT_HOLD + WORK_DELAY));
+        news.end(id);
+        assert!(!news.has_pending(t0 + RESULT_HOLD + WORK_DELAY));
     }
 
     #[test]
