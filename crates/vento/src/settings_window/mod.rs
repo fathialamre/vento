@@ -160,6 +160,7 @@ pub enum Page {
     Wheel,
     Move,
     Pocket,
+    Island,
     Clipboard,
     CopyFromScreen,
     Screenshots,
@@ -188,6 +189,7 @@ impl Page {
             Self::Wheel => "wheel",
             Self::Move => "move",
             Self::Pocket => "pocket",
+            Self::Island => "island",
             Self::Clipboard => "clipboard",
             Self::CopyFromScreen => "copy_from_screen",
             Self::Screenshots => "screenshots",
@@ -205,6 +207,7 @@ impl Page {
             // The wheel's action "Move" is a verb: "نقل"; the page is "النقل".
             Self::Move => trc("page", "Move"),
             Self::Pocket => tr("Pocket"),
+            Self::Island => tr("Island"),
             Self::Clipboard => tr("Clipboard"),
             Self::CopyFromScreen => tr("Copy from screen"),
             Self::Screenshots => tr("Screenshots"),
@@ -222,6 +225,7 @@ impl Page {
             Self::Wheel => panel.get_wheel(),
             Self::Move => icons.get_move(),
             Self::Pocket => icons.get_pocket(),
+            Self::Island => panel.get_island(),
             Self::Clipboard => icons.get_clipboard(),
             Self::CopyFromScreen => panel.get_scan_text(),
             Self::Screenshots => icons.get_photo(),
@@ -240,6 +244,7 @@ pub fn pages(screen_text_supported: bool) -> Vec<Page> {
         Wheel,
         Move,
         Pocket,
+        Island,
         Clipboard,
         CopyFromScreen,
         Screenshots,
@@ -1272,7 +1277,7 @@ impl SettingsWindowController {
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
     }
 
-    /// Shows the Pocket page's Island rows, offered where the virtual
+    /// Shows the Island page's rows, offered where the virtual
     /// island can be chosen at the island's home. The other island is named
     /// by where it sits there; GNOME's top bar room counts once the
     /// extension has kept it, as the virtual island gives it back.
@@ -2742,6 +2747,7 @@ mod tests {
                     "العجلة",
                     "النقل",
                     "الجيب",
+                    "الجزيرة",
                     "الحافظة",
                     "النسخ من الشاشة",
                     "لقطات الشاشة",
@@ -2769,6 +2775,7 @@ mod tests {
                 Wheel,
                 Move,
                 Pocket,
+                Island,
                 Clipboard,
                 CopyFromScreen,
                 Screenshots,
@@ -2778,7 +2785,7 @@ mod tests {
         );
         assert!(!pages(false).contains(&CopyFromScreen));
         assert!(pages(false).contains(&Screenshots));
-        assert_eq!(pages(false).len(), 8);
+        assert_eq!(pages(false).len(), 9);
     }
 
     #[test]
@@ -2797,14 +2804,15 @@ mod tests {
         use Page::*;
         let all = pages(true);
         let ids: Vec<i32> = all.iter().map(|p| p.id()).collect();
-        assert_eq!(ids, (0..9).collect::<Vec<_>>());
+        assert_eq!(ids, (0..10).collect::<Vec<_>>());
         assert_eq!(General.id(), 0);
-        assert_eq!(CopyFromScreen.id(), 5);
-        assert_eq!(Screenshots.id(), 6);
-        assert_eq!(About.id(), 8);
+        assert_eq!(Island.id(), 4);
+        assert_eq!(CopyFromScreen.id(), 6);
+        assert_eq!(Screenshots.id(), 7);
+        assert_eq!(About.id(), 9);
         // A page left out does not shift the ids of the others.
         let ids: Vec<i32> = pages(false).iter().map(|p| p.id()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7, 8]);
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 5, 7, 8, 9]);
     }
 
     #[test]

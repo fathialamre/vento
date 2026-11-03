@@ -4,12 +4,13 @@
 
 import { LineText, Theme } from "theme.slint";
 import { Panel, RowSeparator, ScrollBar } from "controls.slint";
-import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
+import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, IslandPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, ScreenshotsPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
 // One row of the sidebar. `id` names the page whatever its label says:
-// 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Clipboard, 5 Copy from screen,
-// 6 Screenshots, 7 Keep Awake, 8 About (the order of `Page` in `settings_window/mod.rs`).
+// 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Island, 5 Clipboard, 6 Copy from
+// screen, 7 Screenshots, 8 Keep Awake, 9 About (the order of `Page` in
+// `settings_window/mod.rs`).
 export struct PageItem { icon: image, label: string, id: int }
 
 // A sidebar row: the page's icon and name, in the accent on its faint tint
@@ -92,8 +93,8 @@ export component SettingsWindow inherits Window {
     in property <int> wheel-layout;
     // What the Pocket view opens on: 0 its kinds, 1 the list.
     in property <int> pocket-view;
-    // The Pocket page's Island rows: shown where the virtual island can be
-    // chosen; whether it is, what the other island is called, and the
+    // The Island page: whether the virtual island can be chosen here;
+    // whether it is, what the other island is called, and the
     // virtual one's place (0 Left, 1 Centre, 2 Right) and Glass in percent.
     in property <bool> island-offered;
     in property <bool> island-virtual;
@@ -301,21 +302,21 @@ export component SettingsWindow inherits Window {
                 @tr("Drag items from the island into any folder or app. Removing one never deletes your file."),
             ];
         }
-        if id == 4 {
+        if id == 5 {
             return [
                 @tr("Copy as usual: Vento remembers what you copy."),
                 @tr("Press {} to open the history.", root.clip-shortcut),
                 @tr("Click a copy to put it back on the clipboard, then paste it anywhere."),
             ];
         }
-        if id == 5 {
+        if id == 6 {
             return [
                 @tr("Press {}: the screen dims.", root.screen-shortcut),
                 @tr("Drag a rectangle over the text you want and let go."),
                 @tr("The text is on your clipboard, ready to paste. Esc cancels."),
             ];
         }
-        if id == 6 {
+        if id == 7 {
             return [
                 @tr("Turn on Show screenshots in the island."),
                 root.shots-macos
@@ -324,7 +325,7 @@ export component SettingsWindow inherits Window {
                 @tr("Open the Screenshots tab in the island to see your recent screenshots."),
             ];
         }
-        if id == 7 {
+        if id == 8 {
             return [
                 @tr("Click the Vento icon, then the Keep Awake tile, to start or stop it."),
                 @tr("Pick how long under the tile, or leave it on until you stop it."),
@@ -471,21 +472,23 @@ export component SettingsWindow inherits Window {
                                 remove-after-drop: root.remove-after-drop;
                                 keep-copies: root.keep-copies;
                                 pocket-view: root.pocket-view;
-                                island-offered: root.island-offered;
-                                island-virtual: root.island-virtual;
-                                classic-label: root.classic-label;
-                                island-place: root.island-place;
-                                island-glass: root.island-glass;
                                 recording-started => { root.shortcut-recording-started(); }
                                 recording-cancelled => { root.stop-recording(); }
                                 remove-after-drop-toggled(on) => { root.remove-after-drop-toggled(on); }
                                 keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
                                 pocket-view-chosen(i) => { root.pocket-view-chosen(i); }
-                                island-mode-chosen(i) => { root.island-mode-chosen(i); }
-                                island-place-chosen(i) => { root.island-place-chosen(i); }
-                                island-glass-changed(v) => { root.island-glass-changed(v); }
                             }
-                            if root.page-id == 4: ClipboardPage {
+                            if root.page-id == 4: IslandPage {
+                                offered: root.island-offered;
+                                virtual: root.island-virtual;
+                                classic-label: root.classic-label;
+                                place: root.island-place;
+                                glass: root.island-glass;
+                                mode-chosen(i) => { root.island-mode-chosen(i); }
+                                place-chosen(i) => { root.island-place-chosen(i); }
+                                glass-changed(v) => { root.island-glass-changed(v); }
+                            }
+                            if root.page-id == 5: ClipboardPage {
                                 history: root.clip-history;
                                 shortcut: root.clip-shortcut;
                                 shortcut-error <=> root.clip-shortcut-error;
@@ -495,14 +498,14 @@ export component SettingsWindow inherits Window {
                                 recording-cancelled => { root.stop-recording(); }
                                 history-cleared => { root.clip-history-cleared(); }
                             }
-                            if root.page-id == 5 && root.screen-text-supported: CopyFromScreenPage {
+                            if root.page-id == 6 && root.screen-text-supported: CopyFromScreenPage {
                                 shortcut: root.screen-shortcut;
                                 shortcut-error <=> root.screen-shortcut-error;
                                 recording <=> root.screen-shortcut-recording;
                                 recording-started => { root.screen-shortcut-recording-started(); }
                                 recording-cancelled => { root.stop-recording(); }
                             }
-                            if root.page-id == 6: ScreenshotsPage {
+                            if root.page-id == 7: ScreenshotsPage {
                                 on: root.shots-on;
                                 card-on: root.shot-card-on;
                                 card-secs: root.shot-card-secs;
@@ -518,7 +521,7 @@ export component SettingsWindow inherits Window {
                                 show-folder => { root.shots-show-folder(); }
                                 open-privacy => { root.shots-open-privacy(); }
                             }
-                            if root.page-id == 7: KeepAwakePage {
+                            if root.page-id == 8: KeepAwakePage {
                                 screen-off: root.awake-screen-off;
                                 times: root.awake-times;
                                 times-full: root.awake-times-full;
@@ -536,7 +539,7 @@ export component SettingsWindow inherits Window {
                                 time-added => { root.awake-time-added(); }
                                 start-chosen(i) => { root.awake-start-chosen(i); }
                             }
-                            if root.page-id == 8: AboutPage {
+                            if root.page-id == 9: AboutPage {
                                 version: root.version;
                                 updates-supported: root.updates-supported;
                                 update-kind: root.update-kind;

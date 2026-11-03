@@ -21,7 +21,7 @@ msgstr ""
 msgid "* for the whole name"
 msgstr ""
 
-#: crates/vento/src/notice.rs:43
+#: crates/vento/src/notice.rs:48
 msgid "+1 h"
 msgstr ""
 
@@ -63,7 +63,7 @@ msgstr ""
 msgid "A wheel of quick actions that opens under the file you are dragging."
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:212
+#: crates/vento/src/settings_window/mod.rs:215
 msgid "About"
 msgstr ""
 
@@ -127,7 +127,7 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:785
+#: crates/vento/ui/settings_pages.slint:852
 msgid "Along the top edge; the corners stay free"
 msgstr ""
 
@@ -135,7 +135,7 @@ msgstr ""
 msgid "Already in this folder"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:889
+#: crates/vento/ui/settings_pages.slint:777
 msgid "An item leaves the Pocket once you drop it somewhere"
 msgstr ""
 
@@ -163,11 +163,11 @@ msgstr ""
 msgid "Audio"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1720
+#: crates/vento/src/settings_window/mod.rs:1725
 msgid "Automatic (system language)"
 msgstr ""
 
-#: crates/vento/src/main.rs:436
+#: crates/vento/src/main.rs:445
 msgid "Awake ends in 5 min"
 msgstr ""
 
@@ -227,7 +227,7 @@ msgstr ""
 msgid "By kind"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1860
+#: crates/vento/src/settings_window/mod.rs:1865
 msgid "By the clock"
 msgstr ""
 
@@ -255,7 +255,7 @@ msgstr ""
 msgid "Can't replace Vento in {folder}"
 msgstr ""
 
-#: crates/vento/src/notice.rs:37
+#: crates/vento/src/notice.rs:42
 msgid "Cancel"
 msgstr ""
 
@@ -267,7 +267,7 @@ msgstr ""
 msgid "Cannot keep the computer awake"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1227
+#: crates/vento/ui/settings_pages.slint:1235
 msgid "Card stays for"
 msgstr ""
 
@@ -275,15 +275,15 @@ msgstr ""
 msgid "Case"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:789
+#: crates/vento/ui/settings_pages.slint:856
 msgid "Centre"
 msgstr ""
 
-#: crates/vento/src/notice.rs:40
+#: crates/vento/src/notice.rs:45
 msgid "Change"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:294
+#: crates/vento/ui/settings_window.slint:295
 msgid "Changed your mind? Click Undo on the notice."
 msgstr ""
 
@@ -299,15 +299,15 @@ msgstr ""
 msgid "Changes the part after the last dot"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1632
+#: crates/vento/ui/settings_pages.slint:1640
 msgid "Check for updates automatically"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1523
+#: crates/vento/ui/settings_pages.slint:1531
 msgid "Check for updates now"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1522
+#: crates/vento/ui/settings_pages.slint:1530
 msgid "Check now"
 msgstr ""
 
@@ -323,7 +323,7 @@ msgstr ""
 msgid "Checking for updates…"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1528
+#: crates/vento/ui/settings_pages.slint:1536
 msgid "Checking…"
 msgstr ""
 
@@ -343,15 +343,15 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:984
+#: crates/vento/ui/settings_pages.slint:992
 msgid "Clear history"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:988
+#: crates/vento/ui/settings_pages.slint:996
 msgid "Clear…"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:308
+#: crates/vento/ui/settings_window.slint:309
 msgid "Click a copy to put it back on the clipboard, then paste it anywhere."
 msgstr ""
 
@@ -359,7 +359,7 @@ msgstr ""
 msgid "Click between pages to add or remove a cut · {pieces}"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:329
+#: crates/vento/ui/settings_window.slint:330
 msgid "Click the Vento icon, then the Keep Awake tile, to start or stop it."
 msgstr ""
 
@@ -371,7 +371,7 @@ msgstr ""
 msgid "Clipboard history"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:965
+#: crates/vento/ui/settings_pages.slint:973
 msgid "Clipboard shortcut"
 msgstr ""
 
@@ -379,7 +379,7 @@ msgstr ""
 msgid "Close preview"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1060
+#: crates/vento/ui/settings_pages.slint:1068
 msgid "Colours of the Quick panel and this window"
 msgstr ""
 
@@ -461,7 +461,7 @@ msgstr[1] ""
 msgid "Copy"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:306
+#: crates/vento/ui/settings_window.slint:307
 msgid "Copy as usual: Vento remembers what you copy."
 msgstr ""
 
@@ -473,11 +473,11 @@ msgstr ""
 msgid "Copy from screen needs Screen Recording"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1162
+#: crates/vento/ui/settings_pages.slint:1170
 msgid "Copy from screen shortcut"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1705
+#: crates/vento/src/settings_window/mod.rs:1710
 msgid "Copy from screen uses this shortcut"
 msgstr ""
 
@@ -611,11 +611,11 @@ msgstr ""
 msgid "Couldn't replace Vento"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1686
+#: crates/vento/src/settings_window/mod.rs:1691
 msgid "Couldn't save settings: {error}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:2228
+#: crates/vento/src/pocket/mod.rs:2249
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
@@ -667,7 +667,7 @@ msgstr ""
 msgid "Designer"
 msgstr ""
 
-#: crates/vento/src/notice.rs:38
+#: crates/vento/src/notice.rs:43
 msgid "Details"
 msgstr ""
 
@@ -679,7 +679,7 @@ msgstr ""
 msgid "Digits"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1157
+#: crates/vento/ui/settings_pages.slint:1165
 msgid "Dims the screen so you can pick the text to copy"
 msgstr ""
 
@@ -695,7 +695,7 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
-#: crates/vento/src/main.rs:646
+#: crates/vento/src/main.rs:655
 msgid "Downloading {v}…"
 msgstr ""
 
@@ -703,11 +703,11 @@ msgstr ""
 msgid "Drag a file, press {key}"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:314
+#: crates/vento/ui/settings_window.slint:315
 msgid "Drag a rectangle over the text you want and let go."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:286
+#: crates/vento/ui/settings_window.slint:287
 msgid "Drag a row by its grip to change where the action sits."
 msgstr ""
 
@@ -717,7 +717,7 @@ msgid_plural "Drag all {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/settings_window.slint:301
+#: crates/vento/ui/settings_window.slint:302
 msgid "Drag items from the island into any folder or app. Removing one never deletes your file."
 msgstr ""
 
@@ -855,19 +855,19 @@ msgstr ""
 msgid "GB"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1696
+#: crates/vento/ui/settings_pages.slint:1704
 msgid "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed."
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:203
+#: crates/vento/src/settings_window/mod.rs:205
 msgid "General"
 msgstr ""
 
-#: crates/vento/src/notice.rs:41
+#: crates/vento/src/notice.rs:46
 msgid "Get it"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:837
+#: crates/vento/ui/settings_pages.slint:904
 msgid "Ghost"
 msgstr ""
 
@@ -879,7 +879,7 @@ msgstr ""
 msgid "GitHub's answer couldn't be read"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:798
+#: crates/vento/ui/settings_pages.slint:865
 msgid "Glass"
 msgstr ""
 
@@ -895,7 +895,7 @@ msgstr ""
 msgid "Hold on Move"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:287
+#: crates/vento/ui/settings_window.slint:288
 msgid "Hold on Move, Copy to or Convert for a moment to open a ring of choices."
 msgstr ""
 
@@ -903,11 +903,11 @@ msgstr ""
 msgid "Honeycomb"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:1062
+#: crates/vento/ui/controls.slint:1064
 msgid "Hour"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1133
+#: crates/vento/ui/settings_pages.slint:1141
 msgid "How Copy path writes the path"
 msgstr ""
 
@@ -915,7 +915,7 @@ msgstr ""
 msgid "How long to rest on Move, Copy to or Convert before its ring opens"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:799
+#: crates/vento/ui/settings_pages.slint:866
 msgid "How solid the island is while resting"
 msgstr ""
 
@@ -943,7 +943,7 @@ msgstr ""
 msgid "Improved"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1862
+#: crates/vento/src/settings_window/mod.rs:1867
 msgid "In the top bar"
 msgstr ""
 
@@ -967,11 +967,11 @@ msgstr ""
 msgid "Inside a folder that's also being renamed"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:768
+#: crates/vento/src/settings_window/mod.rs:210
 msgid "Island"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:915
+#: crates/vento/ui/settings_pages.slint:803
 msgid "Its items by kind, or as a list; the bar under it switches between the two"
 msgstr ""
 
@@ -987,7 +987,7 @@ msgstr ""
 msgid "Keep Vento up to date"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:901
+#: crates/vento/ui/settings_pages.slint:789
 msgid "Keep a copy"
 msgstr ""
 
@@ -1025,7 +1025,7 @@ msgstr ""
 msgid "Layout"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:789
+#: crates/vento/ui/settings_pages.slint:856
 msgid "Left"
 msgstr ""
 
@@ -1035,27 +1035,27 @@ msgid_plural "Left out {n} items that no longer exist"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/controls.slint:641
+#: crates/vento/ui/controls.slint:643
 msgid "Less {}"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:292
+#: crates/vento/ui/settings_window.slint:293
 msgid "Let go on Move in the wheel and pick a folder."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:299
+#: crates/vento/ui/settings_window.slint:300
 msgid "Let go on Pocket in the wheel: the file waits in the island at the top of the screen."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:280
+#: crates/vento/ui/settings_window.slint:281
 msgid "Let go on an action in the wheel, or anywhere else to drop the file as usual."
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1419
+#: crates/vento/ui/settings_pages.slint:1427
 msgid "Let the screen turn off"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1681
+#: crates/vento/ui/settings_pages.slint:1689
 msgid "Licenses"
 msgstr ""
 
@@ -1063,7 +1063,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1045
+#: crates/vento/ui/settings_pages.slint:1053
 msgid "Light, dark, or as your system is set"
 msgstr ""
 
@@ -1075,7 +1075,7 @@ msgstr ""
 msgid "Links"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:920
+#: crates/vento/ui/settings_pages.slint:808
 msgid "List"
 msgstr ""
 
@@ -1099,7 +1099,7 @@ msgstr ""
 msgid "Messages"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:1078
+#: crates/vento/ui/controls.slint:1080
 msgid "Minute"
 msgstr ""
 
@@ -1119,7 +1119,7 @@ msgstr ""
 msgid "More ways to share"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:661
+#: crates/vento/ui/controls.slint:663
 msgid "More {}"
 msgstr ""
 
@@ -1203,12 +1203,12 @@ msgstr ""
 msgid "New extension"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1379
+#: crates/vento/ui/settings_pages.slint:1387
 msgid "New time"
 msgstr ""
 
-#: crates/vento/src/main.rs:1124
-msgid "New: try the Virtual island in Settings › Pocket"
+#: crates/vento/src/main.rs:1136
+msgid "New: try the Virtual island in Settings › Island"
 msgstr ""
 
 #: crates/vento/ui/welcome.slint:1192
@@ -1235,12 +1235,16 @@ msgstr ""
 msgid "No text found"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1332
+#: crates/vento/ui/settings_pages.slint:1340
 msgid "No times"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:374
+#: crates/vento/ui/controls.slint:376
 msgid "None found"
+msgstr ""
+
+#: crates/vento/ui/settings_pages.slint:931
+msgid "Not available on this screen"
 msgstr ""
 
 #: crates/vento-core/src/share.rs:54
@@ -1295,11 +1299,11 @@ msgstr ""
 msgid "Oldest first"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1633
+#: crates/vento/ui/settings_pages.slint:1641
 msgid "Once a day, from GitHub"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1420
+#: crates/vento/ui/settings_pages.slint:1428
 msgid "Only the computer stays awake; the screen dims and locks as usual"
 msgstr ""
 
@@ -1307,11 +1311,11 @@ msgstr ""
 msgid "Only the name changes: the file is not converted."
 msgstr ""
 
-#: crates/vento/src/notice.rs:44
+#: crates/vento/src/notice.rs:49
 msgid "Open"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1271
+#: crates/vento/ui/settings_pages.slint:1279
 msgid "Open Privacy & Security"
 msgstr ""
 
@@ -1343,19 +1347,19 @@ msgstr ""
 msgid "Open settings file"
 msgstr ""
 
-#: crates/vento/src/main.rs:259
+#: crates/vento/src/main.rs:268
 msgid "Open the Pocket"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:324
+#: crates/vento/ui/settings_window.slint:325
 msgid "Open the Screenshots tab in the island to see your recent screenshots."
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1673
+#: crates/vento/ui/settings_pages.slint:1681
 msgid "Open the Welcome setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:263
+#: crates/vento/src/main.rs:272
 msgid "Open the clipboard history"
 msgstr ""
 
@@ -1365,19 +1369,19 @@ msgid_plural "Opened {n} PDFs; skipped {m}: {reason}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/settings_pages.slint:959
+#: crates/vento/ui/settings_pages.slint:967
 msgid "Opens the clipboard history"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:866
+#: crates/vento/ui/settings_pages.slint:754
 msgid "Opens the island on the Pocket"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:293
+#: crates/vento/ui/settings_window.slint:294
 msgid "Or hold on Move for a moment: a ring of your pinned and recent folders opens. Let go on one."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:279
+#: crates/vento/ui/settings_window.slint:280
 msgid "Or shake the pointer quickly back and forth while dragging, if Shake to open is on."
 msgstr ""
 
@@ -1431,7 +1435,7 @@ msgstr ""
 msgid "Pick a tool, or a rule above, to set it here"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:330
+#: crates/vento/ui/settings_window.slint:331
 msgid "Pick how long under the tile, or leave it on until you stop it."
 msgstr ""
 
@@ -1451,7 +1455,7 @@ msgstr ""
 msgid "Pinned"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:985
+#: crates/vento/ui/settings_pages.slint:993
 msgid "Pinned copies stay"
 msgstr ""
 
@@ -1459,7 +1463,7 @@ msgstr ""
 msgid "Pinned folders sit on the ring of Move and Copy to."
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:784
+#: crates/vento/ui/settings_pages.slint:851
 msgid "Place"
 msgstr ""
 
@@ -1467,11 +1471,11 @@ msgstr ""
 msgid "Place cuts"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1138
+#: crates/vento/ui/settings_pages.slint:1146
 msgid "Plain"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1864
+#: crates/vento/src/settings_window/mod.rs:1869
 msgid "Plain pill"
 msgstr ""
 
@@ -1483,27 +1487,27 @@ msgstr ""
 msgid "Pocket cleared"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:871
+#: crates/vento/ui/settings_pages.slint:759
 msgid "Pocket shortcut"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:804
+#: crates/vento/ui/controls.slint:806
 msgid "Press a shortcut…"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1090
+#: crates/vento/ui/settings_pages.slint:1098
 msgid "Press it while dragging a file to open the wheel"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:307
+#: crates/vento/ui/settings_window.slint:308
 msgid "Press {} to open the history."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:300
+#: crates/vento/ui/settings_window.slint:301
 msgid "Press {} to open the island at any time, and drop more files on it."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:313
+#: crates/vento/ui/settings_window.slint:314
 msgid "Press {}: the screen dims."
 msgstr ""
 
@@ -1545,7 +1549,7 @@ msgstr ""
 msgid "Recent"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:946
+#: crates/vento/ui/settings_pages.slint:954
 msgid "Remember what you copy"
 msgstr ""
 
@@ -1553,7 +1557,7 @@ msgstr ""
 msgid "Remove"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:888
+#: crates/vento/ui/settings_pages.slint:776
 msgid "Remove after drag-out"
 msgstr ""
 
@@ -1617,7 +1621,7 @@ msgstr ""
 msgid "Replace with…"
 msgstr ""
 
-#: crates/vento/src/notice.rs:42
+#: crates/vento/src/notice.rs:47
 msgid "Restart"
 msgstr ""
 
@@ -1637,7 +1641,7 @@ msgid_plural "Restoring {n} items…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/notice.rs:39
+#: crates/vento/src/notice.rs:44
 msgid "Resume"
 msgstr ""
 
@@ -1645,7 +1649,7 @@ msgstr ""
 msgid "Reverse"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:789
+#: crates/vento/ui/settings_pages.slint:856
 msgid "Right"
 msgstr ""
 
@@ -1707,7 +1711,7 @@ msgstr ""
 msgid "Screenshot saved"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:210
+#: crates/vento/src/settings_window/mod.rs:213
 msgid "Screenshots"
 msgstr ""
 
@@ -1743,7 +1747,7 @@ msgstr ""
 msgid "Separator"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1669
+#: crates/vento/ui/settings_pages.slint:1677
 msgid "Set up Vento again"
 msgstr ""
 
@@ -1751,7 +1755,7 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1657
+#: crates/vento/ui/settings_pages.slint:1665
 msgid "Settings file"
 msgstr ""
 
@@ -1763,11 +1767,11 @@ msgstr ""
 msgid "Several folders"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1105
+#: crates/vento/ui/settings_pages.slint:1113
 msgid "Shake the pointer while dragging to open the wheel"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1104
+#: crates/vento/ui/settings_pages.slint:1112
 msgid "Shake to open"
 msgstr ""
 
@@ -1783,15 +1787,15 @@ msgstr ""
 msgid "Share…"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1138
+#: crates/vento/ui/settings_pages.slint:1146
 msgid "Shell-quoted"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:865
+#: crates/vento/ui/settings_pages.slint:753
 msgid "Shortcut"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1213
+#: crates/vento/ui/settings_pages.slint:1221
 msgid "Show a card when a screenshot is saved"
 msgstr ""
 
@@ -1815,11 +1819,11 @@ msgstr ""
 msgid "Show in Finder"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1201
+#: crates/vento/ui/settings_pages.slint:1209
 msgid "Show screenshots in the island"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1316
+#: crates/vento/ui/settings_pages.slint:1324
 msgid "Shown under the Keep Awake tile, with Until stopped and Until…"
 msgstr ""
 
@@ -1835,7 +1839,7 @@ msgstr ""
 msgid "Skip setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:446
+#: crates/vento/src/main.rs:455
 msgid "Sleep allowed again"
 msgstr ""
 
@@ -1847,7 +1851,7 @@ msgstr ""
 msgid "Smallest first"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:853
+#: crates/vento/ui/settings_pages.slint:920
 msgid "Solid"
 msgstr ""
 
@@ -1881,7 +1885,7 @@ msgstr ""
 msgid "Split…"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:1090
+#: crates/vento/ui/controls.slint:1092
 msgid "Start"
 msgstr ""
 
@@ -1889,11 +1893,11 @@ msgstr ""
 msgid "Start Keep Awake"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:278
+#: crates/vento/ui/settings_window.slint:279
 msgid "Start dragging a file, then press {} while still dragging."
 msgstr ""
 
-#: crates/vento/ui/controls.slint:1051
+#: crates/vento/ui/controls.slint:1053
 msgid "Stay awake until"
 msgstr ""
 
@@ -1901,7 +1905,7 @@ msgstr ""
 msgid "Still on {running}. {reason}"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:1021
+#: crates/vento/ui/controls.slint:1023
 msgid "Stop"
 msgstr ""
 
@@ -1921,11 +1925,11 @@ msgstr ""
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr ""
 
-#: crates/vento/src/main.rs:1090
+#: crates/vento/src/main.rs:1099
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:285
+#: crates/vento/ui/settings_window.slint:286
 msgid "Switch an action on to show it on the wheel, or off to hide it."
 msgstr ""
 
@@ -1937,11 +1941,11 @@ msgstr ""
 msgid "TB"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:322
+#: crates/vento/ui/settings_window.slint:323
 msgid "Take a screenshot as usual, with {}."
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:323
+#: crates/vento/ui/settings_window.slint:324
 msgid "Take a screenshot with your system's screenshot key."
 msgstr ""
 
@@ -1957,11 +1961,11 @@ msgstr ""
 msgid "Text"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1704
+#: crates/vento/src/settings_window/mod.rs:1709
 msgid "The Clipboard uses this shortcut"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1703
+#: crates/vento/src/settings_window/mod.rs:1708
 msgid "The Pocket uses this shortcut"
 msgstr ""
 
@@ -1989,11 +1993,11 @@ msgstr ""
 msgid "The short setup on the first launch"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:315
+#: crates/vento/ui/settings_window.slint:316
 msgid "The text is on your clipboard, ready to paste. Esc cancels."
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1404
+#: crates/vento/ui/settings_pages.slint:1412
 msgid "The tile starts"
 msgstr ""
 
@@ -2005,15 +2009,15 @@ msgstr ""
 msgid "Theme"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1702
+#: crates/vento/src/settings_window/mod.rs:1707
 msgid "This shortcut can't be used"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:895
+#: crates/vento/src/pocket/mod.rs:901
 msgid "Those items are no longer there"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1315
+#: crates/vento/ui/settings_pages.slint:1323
 msgid "Times in the panel"
 msgstr ""
 
@@ -2041,7 +2045,7 @@ msgstr ""
 msgid "Trash"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1089
+#: crates/vento/ui/settings_pages.slint:1097
 msgid "Trigger"
 msgstr ""
 
@@ -2061,7 +2065,7 @@ msgstr ""
 msgid "Turn images into another format"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:320
+#: crates/vento/ui/settings_window.slint:321
 msgid "Turn on Show screenshots in the island."
 msgstr ""
 
@@ -2069,7 +2073,7 @@ msgstr ""
 msgid "UPPERCASE"
 msgstr ""
 
-#: crates/vento/src/notice.rs:36
+#: crates/vento/src/notice.rs:41
 msgid "Undo"
 msgstr ""
 
@@ -2113,15 +2117,15 @@ msgstr ""
 msgid "Unpin {}"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1308
+#: crates/vento/src/settings_window/mod.rs:1313
 msgid "Until stopped"
 msgstr ""
 
-#: crates/vento/ui/controls.slint:1005
+#: crates/vento/ui/controls.slint:1007
 msgid "Until…"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1391
+#: crates/vento/ui/settings_pages.slint:1399
 msgid "Up to 6 times"
 msgstr ""
 
@@ -2133,7 +2137,7 @@ msgstr ""
 msgid "Update"
 msgstr ""
 
-#: crates/vento/src/main.rs:672
+#: crates/vento/src/main.rs:681
 msgid "Update ready"
 msgstr ""
 
@@ -2145,11 +2149,11 @@ msgstr ""
 msgid "Updates"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1700
+#: crates/vento/src/settings_window/mod.rs:1705
 msgid "Use a modifier with a letter or digit"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1320
+#: crates/vento/ui/settings_pages.slint:1328
 msgid "Use the usual times"
 msgstr ""
 
@@ -2157,7 +2161,7 @@ msgstr ""
 msgid "Vento Screen Recording"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:66
+#: crates/vento/ui/settings_window.slint:67
 msgid "Vento Settings"
 msgstr ""
 
@@ -2173,7 +2177,7 @@ msgstr ""
 msgid "Vento as a whole"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1263
+#: crates/vento/ui/settings_pages.slint:1271
 msgid "Vento can't read this folder."
 msgstr ""
 
@@ -2197,7 +2201,7 @@ msgstr ""
 msgid "Vento is paused, so the wheel won't open."
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:902
+#: crates/vento/ui/settings_pages.slint:790
 msgid "Vento keeps its own copy of each file, not only a link to it"
 msgstr ""
 
@@ -2221,7 +2225,7 @@ msgstr ""
 msgid "Vento will be back in a second"
 msgstr ""
 
-#: crates/vento/src/main.rs:627
+#: crates/vento/src/main.rs:636
 msgid "Vento {version} is out"
 msgstr ""
 
@@ -2237,7 +2241,7 @@ msgstr ""
 msgid "Vento {v} is downloaded"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1608
+#: crates/vento/ui/settings_pages.slint:1616
 msgid "Version {}"
 msgstr ""
 
@@ -2245,19 +2249,19 @@ msgstr ""
 msgid "Video"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1648
+#: crates/vento/ui/settings_pages.slint:1656
 msgid "View"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1685
+#: crates/vento/ui/settings_pages.slint:1693
 msgid "View licenses"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1649
+#: crates/vento/ui/settings_pages.slint:1657
 msgid "View what's new"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:774
+#: crates/vento/ui/settings_pages.slint:841
 msgid "Virtual island"
 msgstr ""
 
@@ -2269,7 +2273,7 @@ msgstr ""
 msgid "Welcome to Vento"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1405
+#: crates/vento/ui/settings_pages.slint:1413
 msgid "What a click on the Keep Awake tile, or Start Keep Awake in the menu, starts"
 msgstr ""
 
@@ -2281,7 +2285,7 @@ msgstr ""
 msgid "What's new in Vento"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1645
+#: crates/vento/ui/settings_pages.slint:1653
 msgid "What's new in {}"
 msgstr ""
 
@@ -2289,7 +2293,7 @@ msgstr ""
 msgid "Wheel"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:914
+#: crates/vento/ui/settings_pages.slint:802
 msgid "When the Pocket opens, show"
 msgstr ""
 
@@ -2297,15 +2301,15 @@ msgstr ""
 msgid "Where"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:769
+#: crates/vento/ui/settings_pages.slint:836
 msgid "Where the Pocket, Clipboard and Screenshots live on this screen"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1118
+#: crates/vento/ui/settings_pages.slint:1126
 msgid "Where the Terminal action opens"
 msgstr ""
 
-#: crates/vento/ui/settings_window.slint:331
+#: crates/vento/ui/settings_window.slint:332
 msgid "While it runs, a small cup shows beside the Vento icon."
 msgstr ""
 
@@ -2365,11 +2369,11 @@ msgstr ""
 msgid "Your computer follows its usual energy settings"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1678
+#: crates/vento/src/settings_window/mod.rs:1683
 msgid "Your settings file can't be read ({error}); changing a setting here will replace it"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1662
+#: crates/vento/src/settings_window/mod.rs:1667
 msgid "Your settings file has an error on line {line}: {message}; changing a setting here will replace it"
 msgstr ""
 
@@ -2421,7 +2425,7 @@ msgstr ""
 msgid "cannot start"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1913
+#: crates/vento/src/pocket/mod.rs:1934
 msgid "cannot start copying: {reason}"
 msgstr ""
 
@@ -2465,7 +2469,7 @@ msgstr ""
 msgid "interrupted"
 msgstr ""
 
-#: crates/vento-core/src/settings.rs:855
+#: crates/vento-core/src/settings.rs:856
 msgid "invalid shortcut \"{spec}\""
 msgstr ""
 
@@ -2501,11 +2505,11 @@ msgstr ""
 msgid "lowercase"
 msgstr ""
 
-#: crates/vento/ui/settings_pages.slint:1283
+#: crates/vento/ui/settings_pages.slint:1291
 msgid "macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options."
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1701
+#: crates/vento/src/settings_window/mod.rs:1706
 msgid "macOS uses this shortcut"
 msgstr ""
 
@@ -2673,7 +2677,7 @@ msgstr ""
 msgid "{items} · {changes}"
 msgstr ""
 
-#: crates/vento/src/settings_window/mod.rs:1693
+#: crates/vento/src/settings_window/mod.rs:1698
 msgid "{ms} ms"
 msgstr ""
 
@@ -2695,7 +2699,7 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:1162
+#: crates/vento/src/main.rs:1174
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 
@@ -2807,7 +2811,7 @@ msgid_plural "{n} problems"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/settings_window/mod.rs:1892
+#: crates/vento/src/settings_window/mod.rs:1897
 msgid "{n} s"
 msgstr ""
 

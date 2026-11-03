@@ -1134,7 +1134,7 @@ fn show_island_hint_once(
     }
     toaster.notify(
         notice::Notice::info(vento_core::i18n::tr(
-            "New: try the Virtual island in Settings › Pocket",
+            "New: try the Virtual island in Settings › Island",
         )),
         platform.sample_input().cursor,
     );
