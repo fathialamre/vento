@@ -27,6 +27,7 @@ mod geometry;
 mod kinds;
 mod list_view;
 mod menu;
+mod news;
 pub(crate) mod out;
 mod owned;
 mod shots;
@@ -50,6 +51,7 @@ use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
 use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{fill, tr, with_language};
+use vento_core::news::{Stage, Tone};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::{IslandMode, IslandPlace, PocketView, Settings};
@@ -61,7 +63,7 @@ use vento_platform::{
 use crate::appearance;
 use crate::notice::{JobNotice, Notice, NoticeSink};
 use crate::toast::Toaster;
-use crate::ui::PocketIsland;
+use crate::ui::{Icons, PocketIsland};
 
 #[cfg(target_os = "linux")]
 use crate::drag;
@@ -75,6 +77,7 @@ use geometry::{
 use kinds::Kinds;
 use list_view::ListView;
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
+use news::{News, NewsView};
 use out::{
     Press, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
@@ -135,7 +138,10 @@ fn toast_late_open_error(error: PlatformError) {
         if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
             let reason = error.to_string();
             let text = fill(&tr("Couldn't open: {reason}"), &[("reason", &reason)]);
-            c.toast.notify(Notice::error(text), c.toast_at());
+            c.toast.notify(
+                Notice::error(text).with_icon(ActionId::Pocket),
+                c.toast_at(),
+            );
         }
     });
     if let Err(e) = delivered {
@@ -390,6 +396,10 @@ pub struct PocketController {
     /// Whether the desktop was last told to keep room for the island in
     /// its top bar, which it does until told otherwise.
     slot_kept: Cell<bool>,
+    /// The notices and jobs the virtual island took.
+    news: RefCell<News>,
+    /// The news last given to the window; `None` while it shows none.
+    news_view: RefCell<Option<NewsView>>,
     this: Weak<Self>,
 }
 
@@ -474,6 +484,8 @@ impl PocketController {
             front_checked: Cell::new(None),
             laid_out: Cell::new(None),
             slot_kept: Cell::new(true),
+            news: RefCell::new(News::default()),
+            news_view: RefCell::new(None),
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -531,6 +543,12 @@ impl PocketController {
         let w = &self.window;
         let this = self.this.clone();
         let with = move || this.upgrade();
+        let c = with.clone();
+        w.on_news_button_clicked(move || {
+            if let Some(c) = c() {
+                c.news_button_clicked();
+            }
+        });
         let c = with.clone();
         w.on_item_pressed(move |i| {
             if let (Some(c), Ok(i)) = (c(), u32::try_from(i)) {
@@ -808,7 +826,10 @@ impl PocketController {
                 MenuFailure::Copy => tr("Couldn't copy: {reason}"),
             };
             let text = fill(&template, &[("reason", &e.to_string())]);
-            self.toast.notify(Notice::error(text), self.toast_at());
+            self.toast.notify(
+                Notice::error(text).with_icon(ActionId::Pocket),
+                self.toast_at(),
+            );
         }
     }
 
@@ -1101,6 +1122,8 @@ impl PocketController {
             return;
         }
         self.close_card();
+        // Paused, the island shows no news (and takes none) until unpaused.
+        self.show_news(None);
         let after = self.settle_now();
         debug!("pocket paused: {after:?}");
     }
@@ -1302,6 +1325,10 @@ impl PocketController {
         if spot != self.laid_out.get() {
             self.apply_home(&home);
         }
+        // Only the virtual island shows the news. The pill's hover comes
+        // with its geometry.
+        let news = self.news.borrow_mut().tick(now, false);
+        self.show_news(news.filter(|_| spot.is_some()));
         // The virtual island lives on top even where the taskbar's clock
         // has a corner for the island.
         let corner = home.tray_corner.is_some() && spot.is_none();
@@ -2109,20 +2136,88 @@ impl PocketController {
             warn!("cannot hide the pocket: {e}");
         }
     }
+
+    /// Whether the island takes notices and jobs now: it is the virtual one,
+    /// ready and not paused (each sample shows the news then).
+    fn takes_news(&self) -> bool {
+        self.warm.get()
+            && !self.paused.get()
+            && self
+                .home
+                .get()
+                .is_some_and(|home| self.virtual_spot(&home).is_some())
+    }
+
+    /// Gives `view` to the window, only when it differs from the last.
+    fn show_news(&self, view: Option<NewsView>) {
+        if *self.news_view.borrow() == view {
+            return;
+        }
+        let w = &self.window;
+        match &view {
+            Some(v) => {
+                w.set_news_stage(match v.stage {
+                    Stage::Work => 1,
+                    Stage::Result => 2,
+                });
+                w.set_news_tone(match v.tone {
+                    Tone::Done => 0,
+                    Tone::Info => 1,
+                    Tone::Error => 2,
+                    Tone::Busy => 3,
+                });
+                let icons = w.global::<Icons>();
+                w.set_news_icon(
+                    v.icon
+                        .map(|a| crate::wheel::action_icon(&icons, a))
+                        .unwrap_or_default(),
+                );
+                w.set_news_text(v.text.as_str().into());
+                w.set_news_sub(v.sub.as_str().into());
+                w.set_news_button(v.button_text.as_deref().unwrap_or_default().into());
+                w.set_news_extra(i32::try_from(v.extra).unwrap_or(i32::MAX));
+                w.set_news_fraction(v.fraction.unwrap_or(-1.0));
+                w.set_news_count(v.count_text.as_str().into());
+            }
+            // The rest stays, for the pill to fade out with.
+            None => w.set_news_stage(0),
+        }
+        *self.news_view.borrow_mut() = view;
+    }
+
+    /// The news pill's button: runs what it does once, outside the borrow
+    /// (an Undo posts news of its own).
+    fn news_button_clicked(&self) {
+        let on = self.news.borrow_mut().press_button();
+        if let Some(on) = on {
+            on();
+        }
+    }
 }
 
-/// Declines everything for now: notices and jobs stay a toast and a progress
-/// window.
+/// The virtual island takes every notice and job; the other modes, and the
+/// island before it is ready or while paused, leave them toasts and progress
+/// windows.
 impl NoticeSink for PocketController {
     fn notice(&self, n: Notice) -> Result<(), Notice> {
-        Err(n)
+        if !self.takes_news() {
+            return Err(n);
+        }
+        self.news.borrow_mut().post(n, Instant::now());
+        Ok(())
     }
 
-    fn job_started(&self, _job: JobNotice) -> bool {
-        false
+    fn job_started(&self, job: JobNotice) -> bool {
+        if !self.takes_news() {
+            return false;
+        }
+        self.news.borrow_mut().start(job, Instant::now());
+        true
     }
 
-    fn job_ended(&self, _id: u64) {}
+    fn job_ended(&self, id: u64) {
+        self.news.borrow_mut().end(id);
+    }
 }
 
 #[cfg(test)]

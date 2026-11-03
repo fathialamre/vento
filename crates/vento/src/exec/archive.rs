@@ -21,7 +21,7 @@ use vento_platform::{quarantine_of, set_quarantine};
 
 use super::{Executor, LastOp, display_name, in_english, on_main, only_name};
 use crate::archive_ui::Verb;
-use crate::notice::Notice;
+use crate::notice::{Notice, next_job_id};
 
 /// Toast for a job the user cancelled.
 pub(super) fn cancelled_text() -> String {
@@ -243,18 +243,19 @@ fn archive_done_notice(done: &ArchiveDone, text: String) -> Notice {
 }
 
 /// The worker's half of Archive: decides between compressing and
-/// extracting, has the progress window follow the job, and runs it.
-fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> ArchiveDone {
+/// extracting, has the island or the progress window follow the job (`job`),
+/// and runs it.
+fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, job: u64, at: Point) -> ArchiveDone {
     match plan(paths) {
         Plan::Compress { dir, name } => {
-            show_progress(progress, Verb::Compressing, at);
+            show_progress(progress, Verb::Compressing, job, at);
             ArchiveDone::Compressed {
                 count: paths.len(),
                 result: compress(paths, &dir, &name, progress),
             }
         }
         Plan::Extract(archives) => {
-            show_progress(progress, Verb::Extracting, at);
+            show_progress(progress, Verb::Extracting, job, at);
             let mark = copy_quarantine();
             let mut ask = |archive: &Path, why| request_password(archive, why, progress, at);
             ArchiveDone::Extracted(extract_batch(&archives, progress, &mark, &mut ask))
@@ -262,10 +263,11 @@ fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> Archiv
     }
 }
 
-/// Has the main thread's progress window follow `progress`.
-pub(super) fn show_progress(progress: &Arc<Progress>, verb: Verb, at: Point) {
+/// Has the island follow `progress` as the job `job`, or, where it does not
+/// take it, the main thread's progress window.
+pub(super) fn show_progress(progress: &Arc<Progress>, verb: Verb, job: u64, at: Point) {
     let progress = Arc::clone(progress);
-    if let Err(e) = on_main(move |executor| executor.progress.track(progress, verb, at)) {
+    if let Err(e) = on_main(move |executor| executor.follow_progress(progress, verb, job, at)) {
         warn!("cannot show the progress: {e}");
     }
 }
@@ -323,21 +325,25 @@ impl Executor {
         }
         let progress = Progress::new();
         let cancel = Some(Arc::clone(&progress));
+        let job = next_job_id();
         self.spawn_file_job(
             ActionId::Archive,
-            move || archive_job(&paths, &progress, at),
+            move || archive_job(&paths, &progress, job, at),
             move |executor, done| executor.archive_finished(done, at),
             cancel,
+            Some(job),
             at,
         );
     }
 
     /// Opens the password window for the archive called `name` in place of
-    /// the progress window, which comes back once the window is answered.
+    /// the progress window, which comes back once the window is answered
+    /// (the island's work stays up meanwhile).
     /// `answer` gets the password, or `None`; it is dropped unanswered (also
     /// `None` to the worker) when the job is already cancelled. Nothing
     /// can cancel the job while the window is open except
-    /// [`Executor::shutdown`], which closes the window itself, with `None`.
+    /// [`Executor::shutdown`] and the island's Cancel, which close the window
+    /// themselves, with `None`.
     fn prompt_password(
         &self,
         name: &str,
@@ -359,6 +365,7 @@ impl Executor {
             Box::new(move |password| {
                 if let Some(executor) = this.upgrade()
                     && !progress.is_cancelled()
+                    && !executor.progress_in_island.get()
                 {
                     executor.progress.track(progress, Verb::Extracting, at);
                 }

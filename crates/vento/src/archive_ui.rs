@@ -13,6 +13,7 @@ use raw_window_handle::HasWindowHandle;
 #[cfg(windows)]
 use slint::winit_030::WinitWindowAccessor;
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, Timer, TimerMode};
+use vento_core::actions::ActionId;
 use vento_core::archive::{Progress, Zeroizing};
 use vento_core::geometry::Point;
 use vento_core::i18n::{fill, tr};
@@ -49,6 +50,14 @@ pub enum Verb {
 }
 
 impl Verb {
+    /// The action whose job this is.
+    pub(crate) fn action(self) -> ActionId {
+        match self {
+            Verb::Compressing | Verb::Extracting => ActionId::Archive,
+            Verb::Converting => ActionId::Convert,
+        }
+    }
+
     /// The verb alone, for before the first item is known.
     fn name(self) -> String {
         match self {
@@ -61,7 +70,7 @@ impl Verb {
 
 /// The progress window's line: `Extracting Photos.zip…`, or just
 /// `Extracting…` before the first item is known.
-fn progress_title(verb: Verb, current: &str) -> String {
+pub(crate) fn progress_title(verb: Verb, current: &str) -> String {
     if current.is_empty() {
         return format!("{}…", verb.name());
     }

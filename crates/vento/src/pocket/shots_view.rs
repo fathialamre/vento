@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use jiff::tz::TimeZone;
 use log::{debug, info, warn};
 use slint::{ComponentHandle, Image, ModelRc, Timer, VecModel};
+use vento_core::actions::ActionId;
 use vento_core::clip::{ClipRep, ClipSnapshot, TYPE_FILE_URL, TYPE_PNG, path_to_file_url};
 use vento_core::destinations::display_path;
 use vento_core::i18n::{fill, tr, trc, with_language};
@@ -616,7 +617,10 @@ impl PocketController {
                         &tr("Couldn't open: {reason}"),
                         &[("reason", &e.to_string())],
                     );
-                    c.toast.notify(Notice::error(text), c.toast_at());
+                    c.toast.notify(
+                        Notice::error(text).with_icon(ActionId::Pocket),
+                        c.toast_at(),
+                    );
                 }
             }
         });
@@ -856,7 +860,10 @@ impl PocketController {
                         &tr("Couldn't copy: {reason}"),
                         &[("reason", &vento_core::i18n::errors::io_reason(&e))],
                     );
-                    self.toast.notify(Notice::error(text), self.toast_at());
+                    self.toast.notify(
+                        Notice::error(text).with_icon(ActionId::Pocket),
+                        self.toast_at(),
+                    );
                     return;
                 }
             }
@@ -883,7 +890,10 @@ impl PocketController {
             &tr("Couldn't copy: {reason}"),
             &[("reason", &e.to_string())],
         );
-        self.toast.notify(Notice::error(text), self.toast_at());
+        self.toast.notify(
+            Notice::error(text).with_icon(ActionId::Pocket),
+            self.toast_at(),
+        );
     }
 
     /// Copy text: reads the text in the picture on a worker thread with
@@ -913,7 +923,7 @@ impl PocketController {
                     with_language("en", || e.to_string())
                 );
                 self.toast.notify(
-                    Notice::error(tr("Couldn't read the picture")),
+                    Notice::error(tr("Couldn't read the picture")).with_icon(ActionId::Pocket),
                     self.toast_at(),
                 );
                 return;

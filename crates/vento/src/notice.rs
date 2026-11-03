@@ -14,7 +14,7 @@ use vento_core::i18n::tr;
 use vento_core::news::Tone;
 
 /// The one button a notice can carry.
-// The island sink builds the other buttons and shows the labels, in a later step.
+// The notices with the other buttons come in later steps.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonLabel {
@@ -31,7 +31,6 @@ pub enum ButtonLabel {
 
 impl ButtonLabel {
     /// The label in the language in use.
-    #[allow(dead_code)]
     pub fn text(self) -> String {
         match self {
             Self::Undo => tr("Undo"),
@@ -54,8 +53,6 @@ pub struct NoticeButton {
 }
 
 /// One message: what happened, how it reads, and what can be done about it.
-// The island sink reads the tone and whether it sticks, in a later step.
-#[allow(dead_code)]
 pub struct Notice {
     pub tone: Tone,
     /// The action it is about, for the mark; none shows the tone's own.
@@ -70,6 +67,8 @@ pub struct Notice {
     /// Stays until it has been hovered.
     pub sticky: bool,
     /// The executor's undo serial this notice offers to undo, if any.
+    // Activity reads it, in a later step.
+    #[allow(dead_code)]
     pub undo_serial: Option<u64>,
 }
 
@@ -157,8 +156,6 @@ impl Notice {
 }
 
 /// A job that runs for a while, for the island to show as work.
-// The jobs and the island sink come in later steps.
-#[allow(dead_code)]
 pub struct JobNotice {
     /// From [`next_job_id`]; ends with [`NoticeSink::job_ended`].
     pub id: u64,
@@ -198,7 +195,6 @@ pub(crate) fn middle_cut(s: &str, max_chars: usize) -> String {
 }
 
 /// A job id no other job has had in this run.
-#[allow(dead_code)]
 pub fn next_job_id() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)

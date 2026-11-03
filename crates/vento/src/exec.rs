@@ -25,8 +25,8 @@ use vento_core::rename::RenameRecord;
 use vento_core::settings::Settings;
 use vento_platform::Platform;
 
-use crate::archive_ui::{PasswordView, ProgressView};
-use crate::notice::{Notice, middle_cut};
+use crate::archive_ui::{PasswordView, ProgressView, Verb, progress_title};
+use crate::notice::{JobNotice, Notice, middle_cut, next_job_id};
 use crate::toast::Toaster;
 use crate::wheel::WheelDrop;
 
@@ -347,15 +347,31 @@ fn hold_for_format_notice() -> Notice {
     Notice::info(hold_for_format_text()).with_icon(ActionId::Convert)
 }
 
-/// The notice for a move, copy or undo under way: `text` says what.
+/// The notice for a move, copy or undo under way, where the island does not
+/// show it as a job: `text` says what.
 fn working_notice(action: ActionId, text: String) -> Notice {
-    Notice::busy(text).with_icon(action)
+    Notice::info(text).with_icon(action)
 }
 
 /// The notice for a result of `action` with no Undo: an undo's result, or
 /// a job that made nothing to undo.
 fn result_notice(action: ActionId, text: String) -> Notice {
     Notice::done(text).with_icon(action)
+}
+
+/// The notice for `text`, a result of `action` that `on_undo` undoes;
+/// `serial` names the operation it undoes.
+fn undo_notice(
+    action: ActionId,
+    text: String,
+    on_undo: Box<dyn Fn()>,
+    serial: Option<u64>,
+) -> Notice {
+    let notice = result_notice(action, text).with_undo(Some(on_undo));
+    match serial {
+        Some(serial) => notice.with_undo_serial(serial),
+        None => notice,
+    }
 }
 
 /// The notice that Copy put `n` files on the clipboard. The classic toast
@@ -510,6 +526,9 @@ pub struct Executor {
     running: RefCell<Option<RunningJob>>,
     /// Follows a running Archive or Convert job.
     progress: Rc<ProgressView>,
+    /// The island, not the progress window, follows the running Archive or
+    /// Convert job.
+    progress_in_island: Cell<bool>,
     /// Asks for the passwords an Archive job needs.
     password: Rc<PasswordView>,
     /// Told which undo is available whenever that changes.
@@ -546,6 +565,7 @@ impl Executor {
             busy: Cell::new(false),
             running: RefCell::new(None),
             progress,
+            progress_in_island: Cell::new(false),
             password,
             on_undo_changed: RefCell::new(Vec::new()),
             pdf_done: RefCell::new(None),
@@ -686,11 +706,9 @@ impl Executor {
     }
 
     fn undo_move(&self, record: MoveRecord, at: Point) {
-        self.toast.notify(
-            working_notice(
-                ActionId::Move,
-                working_text(Working::Restoring, record.moved.len()),
-            ),
+        let job = self.announce_job(
+            ActionId::Move,
+            working_text(Working::Restoring, record.moved.len()),
             at,
         );
         self.spawn_file_job(
@@ -701,6 +719,7 @@ impl Executor {
             },
             move |executor, (record, outcome)| executor.undo_finished(&record, outcome, at),
             None,
+            Some(job),
             at,
         );
     }
@@ -752,7 +771,7 @@ impl Executor {
             let text = working_text(Working::Removing, record.copies.len());
             (text, ActionId::CopyTo)
         };
-        self.toast.notify(working_notice(action, text), at);
+        let job = self.announce_job(action, text, at);
         self.spawn_file_job(
             action,
             move || {
@@ -768,6 +787,7 @@ impl Executor {
             },
             move |executor, checked| executor.copy_undo_finished(checked, kind, at),
             None,
+            Some(job),
             at,
         );
     }
@@ -858,27 +878,23 @@ impl Executor {
             return;
         }
         if action == ActionId::CopyTo {
-            self.toast.notify(
-                working_notice(action, working_text(Working::Copying, paths.len())),
-                at,
-            );
+            let job = self.announce_job(action, working_text(Working::Copying, paths.len()), at);
             self.spawn_file_job(
                 action,
                 move || copy_items(&paths, &dest),
                 move |executor, outcome| executor.copy_finished(outcome, at),
                 None,
+                Some(job),
                 at,
             );
         } else {
-            self.toast.notify(
-                working_notice(action, working_text(Working::Moving, paths.len())),
-                at,
-            );
+            let job = self.announce_job(action, working_text(Working::Moving, paths.len()), at);
             self.spawn_file_job(
                 action,
                 move || move_items(&paths, &dest),
                 move |executor, outcome| executor.move_finished(outcome, at),
                 None,
+                Some(job),
                 at,
             );
         }
@@ -977,11 +993,50 @@ impl Executor {
                 executor.undo_last();
             }
         });
-        let mut notice = result_notice(action, text).with_undo(Some(on_undo));
-        if let Some(serial) = self.last_serial() {
-            notice = notice.with_undo_serial(serial);
-        }
+        let notice = undo_notice(action, text, on_undo, self.last_serial());
         self.toast.notify(notice, at);
+    }
+
+    /// Offers the island a job of `action` that `text` describes, and toasts
+    /// `text` where the island does not take it. Returns the job's id, which
+    /// [`spawn_file_job`](Self::spawn_file_job) ends.
+    fn announce_job(&self, action: ActionId, text: String, at: Point) -> u64 {
+        let id = next_job_id();
+        let job = JobNotice {
+            id,
+            icon: action,
+            text: text.clone(),
+            progress: None,
+            cancel: None,
+        };
+        if !self.toast.job_started(job) {
+            self.toast.notify(working_notice(action, text), at);
+        }
+        id
+    }
+
+    /// Has the island follow `progress`, the Archive or Convert job `job`
+    /// doing `verb`, with its Cancel; where the island does not take it, the
+    /// progress window does, 24 px under `at`. The island's Cancel cancels as
+    /// quitting does: it also closes the password window, if open.
+    fn follow_progress(&self, progress: Arc<Progress>, verb: Verb, job: u64, at: Point) {
+        let (cancel, this) = (Arc::clone(&progress), self.this.clone());
+        let taken = self.toast.job_started(JobNotice {
+            id: job,
+            icon: verb.action(),
+            text: progress_title(verb, ""),
+            progress: Some(Arc::clone(&progress)),
+            cancel: Some(Rc::new(move || {
+                cancel.cancel();
+                if let Some(executor) = this.upgrade() {
+                    executor.password.dismiss();
+                }
+            })),
+        });
+        self.progress_in_island.set(taken);
+        if !taken {
+            self.progress.track(progress, verb, at);
+        }
     }
 
     /// The serial of the operation Undo would undo now, if any.
@@ -1008,15 +1063,16 @@ impl Executor {
 
     /// Runs `job` on a worker thread, then `done` with its result on the main
     /// thread. Marks the executor busy until `done` runs, and closes the
-    /// progress window (if the job used it) first, also after a panic.
-    /// `cancel` is the job's progress, when it can be cancelled; quitting
-    /// cancels it.
+    /// progress window (if the job used it) and ends the island's job `id`
+    /// (if it has one) first, also after a panic. `cancel` is the job's
+    /// progress, when it can be cancelled; quitting cancels it.
     fn spawn_file_job<T: Send + 'static>(
         &self,
         action: ActionId,
         job: impl FnOnce() -> T + Send + 'static,
         done: impl FnOnce(&Executor, T) + Send + 'static,
         cancel: Option<Arc<Progress>>,
+        id: Option<u64>,
         at: Point,
     ) {
         self.busy.set(true);
@@ -1028,6 +1084,10 @@ impl Executor {
                     executor.busy.set(false);
                     executor.running.take();
                     executor.progress.close();
+                    executor.progress_in_island.set(false);
+                    if let Some(id) = id {
+                        executor.toast.job_ended(id);
+                    }
                     match result {
                         Ok(value) => done(executor, value),
                         Err(_) => executor.toast_error_as(
@@ -1046,6 +1106,9 @@ impl Executor {
             Ok(worker) => *self.running.borrow_mut() = Some(RunningJob { worker, cancel }),
             Err(e) => {
                 self.busy.set(false);
+                if let Some(id) = id {
+                    self.toast.job_ended(id);
+                }
                 let reason = fill(&tr("cannot start: {reason}"), &[("reason", &io_reason(&e))]);
                 let logged = in_english(|| {
                     fill(&tr("cannot start: {reason}"), &[("reason", &io_reason(&e))])
@@ -1570,53 +1633,88 @@ mod tests {
         drop(release);
     }
 
-    /// What the classic toast shows for a notice: its text and whether it has
-    /// an Undo.
-    fn classic(n: &Notice) -> (String, bool) {
-        let undo = n
-            .button
-            .as_ref()
-            .is_some_and(|b| b.label == crate::notice::ButtonLabel::Undo);
-        (n.text.clone(), undo)
+    /// What the classic toast shows for `n`, through the router with an
+    /// island that declines it: its text and whether it has an Undo.
+    fn classic(n: Notice) -> Option<(String, bool)> {
+        crate::toast::classic_toast(n)
+    }
+
+    fn shown(text: &str, undo: bool) -> Option<(String, bool)> {
+        Some((text.to_owned(), undo))
     }
 
     #[test]
     fn classic_fallback_matches_legacy_toasts() {
+        assert_eq!(classic(busy_notice()), shown("Busy — still working", false));
         assert_eq!(
-            classic(&busy_notice()),
-            ("Busy — still working".into(), false)
+            classic(hold_for_format_notice()),
+            shown("Hold on Convert to pick a format", false)
         );
         assert_eq!(
-            classic(&hold_for_format_notice()),
-            ("Hold on Convert to pick a format".into(), false)
-        );
-        assert_eq!(
-            classic(&working_notice(
+            classic(working_notice(
                 ActionId::Move,
                 working_text(Working::Moving, 2)
             )),
-            ("Moving 2 items…".into(), false)
+            shown("Moving 2 items…", false)
         );
         assert_eq!(
-            classic(&result_notice(
+            classic(result_notice(
                 ActionId::Move,
                 undo_toast_text(&outcome(2, vec![]))
             )),
-            ("Restored 2 items".into(), false)
+            shown("Restored 2 items", false)
         );
         assert_eq!(
-            classic(&action_error_notice(
-                ActionId::Terminal,
-                "no folder to open"
-            )),
-            (
-                "Couldn't open the terminal: no folder to open".into(),
-                false
-            )
+            classic(action_error_notice(ActionId::Terminal, "no folder to open")),
+            shown("Couldn't open the terminal: no folder to open", false)
         );
+        // A result with its Undo, whether or not it names the operation.
+        let undo = || -> Box<dyn Fn()> { Box::new(|| {}) };
+        assert_eq!(
+            classic(undo_notice(
+                ActionId::Move,
+                move_toast_text(&outcome(2, vec![])),
+                undo(),
+                Some(4)
+            )),
+            shown("Moved 2 items to Photos", true)
+        );
+        assert_eq!(
+            classic(undo_notice(
+                ActionId::CopyTo,
+                "Copied 1 item to Photos".into(),
+                undo(),
+                None
+            )),
+            shown("Copied 1 item to Photos", true)
+        );
+        // A button that is not an Undo stays in the island.
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+        assert_eq!(
+            classic(crate::shortcut_unavailable_notice(
+                "Pocket",
+                "in use",
+                || {}
+            )),
+            shown("Pocket shortcut unavailable: in use", false)
+        );
+        // Notices for the island only make no toast.
+        assert_eq!(classic(files_copied_notice(2)), None);
+        assert_eq!(classic(path_copied_notice("/a")), None);
         vento_core::i18n::with_language("ar", || {
-            assert_eq!(classic(&busy_notice()).0, "مشغول، العمل جارٍ");
+            assert_eq!(classic(busy_notice()), shown("مشغول، العمل جارٍ", false));
         });
+    }
+
+    #[test]
+    fn an_undo_notice_names_the_operation_it_undoes() {
+        let n = undo_notice(ActionId::Move, "Moved".into(), Box::new(|| {}), Some(7));
+        assert_eq!((n.tone, n.icon), (Tone::Done, Some(ActionId::Move)));
+        assert_eq!(n.undo_serial, Some(7));
+        assert_eq!(
+            n.button.as_ref().map(|b| b.label),
+            Some(crate::notice::ButtonLabel::Undo)
+        );
     }
 
     #[test]
@@ -1629,13 +1727,13 @@ mod tests {
     }
 
     #[test]
-    fn busy_is_a_busy_notice() {
+    fn busy_is_a_busy_notice_and_working_is_info() {
         let n = busy_notice();
         assert_eq!(n.tone, Tone::Busy);
         assert_eq!(n.text, "Busy — still working");
         assert!(!n.sticky && n.button.is_none());
         let n = working_notice(ActionId::CopyTo, working_text(Working::Copying, 1));
-        assert_eq!((n.tone, n.icon), (Tone::Busy, Some(ActionId::CopyTo)));
+        assert_eq!((n.tone, n.icon), (Tone::Info, Some(ActionId::CopyTo)));
     }
 
     #[test]

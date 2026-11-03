@@ -2763,6 +2763,23 @@ export component PocketIsland inherits Window {
     in property <bool> card;
     in property <image> card-picture;
     in property <string> card-meta;
+    // The virtual island's news (not drawn yet): what shows (0 none, 1 a
+    // job at work, 2 a result), how it reads (0 done, 1 info, 2 error,
+    // 3 busy), the action's icon (empty for the tone's own mark), the
+    // sentence and its detail, the one button's label (empty for none), how
+    // many other things are going on (the "+N" chip), how much of the job is
+    // done (0 to 1; below 0 when it cannot say) and its count ("25%", "3 of
+    // 5"). With nothing shown, the rest keeps the last news, to fade out
+    // with.
+    in property <int> news-stage;
+    in property <int> news-tone;
+    in property <image> news-icon;
+    in property <string> news-text;
+    in property <string> news-sub;
+    in property <string> news-button;
+    in property <int> news-extra;
+    in property <float> news-fraction: -1;
+    in property <string> news-count;
 
     // A tile, by its item's place in the Pocket: `moved` offsets are
     // measured from the press point.
@@ -2840,6 +2857,9 @@ export component PocketIsland inherits Window {
     callback card-copy-text();
     callback card-pocket();
     callback card-trash();
+    // The news pill's one button, and its "+N" chip.
+    callback news-button-clicked();
+    callback news-chip-clicked();
 
     width: root.panel-w;
     height: root.top-h + root.window-h;

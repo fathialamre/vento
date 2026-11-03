@@ -204,6 +204,7 @@ impl Executor {
             move || pdf_work(&job, &sources, &pages, &progress),
             move |executor, outcome| executor.pdf_finished(outcome, at),
             cancel,
+            None,
             at,
         );
         if !self.busy.get() {

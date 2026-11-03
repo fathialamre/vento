@@ -83,6 +83,7 @@ impl Executor {
             move || execute(&steps, &RealDisk, Os::HOST, &progress),
             move |executor, outcome| executor.rename_finished(outcome, at),
             None,
+            None,
             at,
         );
         if !self.busy.get() {
@@ -144,6 +145,7 @@ impl Executor {
             ActionId::Rename,
             move || undo(&record, &RealDisk, Os::HOST),
             move |executor, outcome| executor.rename_undo_finished(&outcome, at),
+            None,
             None,
             at,
         );

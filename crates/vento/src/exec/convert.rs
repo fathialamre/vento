@@ -17,7 +17,7 @@ use vento_platform::{probe_image, write_image};
 use super::archive::{cancelled_text, copy_quarantine, failed_with_reason, show_progress};
 use super::{Executor, LastOp, action_error_text, in_english, only_name};
 use crate::archive_ui::Verb;
-use crate::notice::Notice;
+use crate::notice::{Notice, next_job_id};
 
 /// The notice for a finished Convert job, `text` being what
 /// [`convert_toast_text`] said. Nothing made is a failure, unless the job
@@ -140,15 +140,16 @@ impl ImageCodec for SystemCodec {
     }
 }
 
-/// The worker's half of Convert: has the progress window follow the job and
-/// runs it.
+/// The worker's half of Convert: has the island or the progress window
+/// follow the job (`job`) and runs it.
 fn convert_job(
     paths: &[PathBuf],
     format: ImageFormat,
     progress: &Arc<Progress>,
+    job: u64,
     at: Point,
 ) -> ConvertOutcome {
-    show_progress(progress, Verb::Converting, at);
+    show_progress(progress, Verb::Converting, job, at);
     convert_batch(paths, format, &SystemCodec, progress, &copy_quarantine())
 }
 
@@ -161,11 +162,13 @@ impl Executor {
         }
         let progress = Progress::new();
         let cancel = Some(Arc::clone(&progress));
+        let job = next_job_id();
         self.spawn_file_job(
             ActionId::Convert,
-            move || convert_job(&paths, format, &progress, at),
+            move || convert_job(&paths, format, &progress, job, at),
             move |executor, outcome| executor.convert_finished(outcome, at),
             cancel,
+            Some(job),
             at,
         );
     }

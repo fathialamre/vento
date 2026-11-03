@@ -94,6 +94,16 @@ fn route(sink: Option<Rc<dyn NoticeSink>>, view: &dyn Present, n: Notice, at: Po
     view.present(&n.text, undo, at);
 }
 
+/// What the classic toast shows for `n` when the island declines it, through
+/// [`route`]: its text and whether it has an Undo; `None` for no toast.
+#[cfg(test)]
+pub(crate) fn classic_toast(n: Notice) -> Option<(String, bool)> {
+    let (view, sink) = (tests::Recorder::default(), tests::FakeSink::new(false));
+    let sink: Rc<dyn NoticeSink> = sink;
+    route(Some(sink), &view, n, Point { x: 0.0, y: 0.0 });
+    view.shown.into_inner().pop()
+}
+
 /// Shows short-lived messages in a single reused window.
 pub struct Toaster {
     this: Weak<Toaster>,
@@ -174,14 +184,11 @@ impl Toaster {
     }
 
     /// Offers a job to the island; `false` leaves it to its progress window.
-    // The jobs call it in a later step.
-    #[allow(dead_code)]
     pub fn job_started(&self, job: JobNotice) -> bool {
         self.sink().is_some_and(|sink| sink.job_started(job))
     }
 
     /// Tells the island that job `id` is over.
-    #[allow(dead_code)]
     pub fn job_ended(&self, id: u64) {
         if let Some(sink) = self.sink() {
             sink.job_ended(id);
@@ -280,8 +287,8 @@ mod tests {
 
     /// What the toast would show, recorded instead of shown.
     #[derive(Default)]
-    struct Recorder {
-        shown: RefCell<Vec<(String, bool)>>,
+    pub(super) struct Recorder {
+        pub(super) shown: RefCell<Vec<(String, bool)>>,
     }
 
     impl Present for Recorder {
@@ -293,13 +300,13 @@ mod tests {
     }
 
     /// A sink that takes every notice, or none.
-    struct FakeSink {
+    pub(super) struct FakeSink {
         takes: bool,
         taken: RefCell<Vec<String>>,
     }
 
     impl FakeSink {
-        fn new(takes: bool) -> Rc<Self> {
+        pub(super) fn new(takes: bool) -> Rc<Self> {
             Rc::new(Self {
                 takes,
                 taken: RefCell::default(),

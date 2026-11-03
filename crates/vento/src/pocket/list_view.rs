@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use log::{debug, warn};
 use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
+use vento_core::actions::ActionId;
 use vento_core::destinations::display_path;
 use vento_core::i18n::{fill, tr};
 use vento_core::pocket::{Pocket, PocketItem};
@@ -343,7 +344,10 @@ impl PocketController {
                 &tr("Couldn't copy: {reason}"),
                 &[("reason", &e.to_string())],
             );
-            self.toast.notify(Notice::error(text), self.toast_at());
+            self.toast.notify(
+                Notice::error(text).with_icon(ActionId::Pocket),
+                self.toast_at(),
+            );
         }
     }
 
