@@ -58,7 +58,7 @@ use vento_core::pocket_zone::{IslandState, Presence};
 use vento_core::settings::{
     IslandMode, IslandPlace, IslandShape, PocketView, Settings, ShimmerEvery, ShimmerStyle,
 };
-use vento_core::shimmer::{MomentConditions, moment_allowed, motion_reduced};
+use vento_core::shimmer::{AWAY_AFTER, MomentConditions, moment_allowed, motion_reduced};
 use vento_core::trigger::InputSample;
 use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
@@ -305,12 +305,26 @@ fn reduce_due(last: Option<Instant>, now: Instant) -> bool {
     last.is_none_or(|t| now.saturating_duration_since(t) >= REDUCE_CHECK)
 }
 
-/// Whether the island shows a shimmer: only while it rests as the pill or the
-/// circle of the virtual island, with no news up and not open. The window
-/// draws the same rule, so a moment under way ends when news comes or the
-/// island opens.
-fn shimmer_on(virtual_resting: bool, news: bool, expanded: bool) -> bool {
-    virtual_resting && !news && !expanded
+/// Whether the island rests where a shimmer may play: it is ready, laid out
+/// as the virtual island at `spot`, not open, and resting as the pill or the
+/// circle, not as the lip or the half-moon over a window's bar. (News is
+/// ruled on apart; the window draws the same rule with it, so a moment under
+/// way ends when news comes or the island opens.)
+fn virtual_resting(warm: bool, spot: Option<VirtualSpot>, expanded: bool) -> bool {
+    warm && spot.is_some_and(|s| !s.bar_under) && !expanded
+}
+
+/// Whether the pointer moving again after `idle_before` without any starts
+/// the wait for the next shimmer moment again: after [`AWAY_AFTER`] away,
+/// the next one waits a whole period from the return.
+fn rearm_on_return(idle_before: Duration) -> bool {
+    idle_before >= AWAY_AFTER
+}
+
+/// Whether news that `was` shown and `now` is not starts the wait for the
+/// next shimmer moment again, so none comes right after a job or a notice.
+fn rearm_on_news_end(was: bool, now: bool) -> bool {
+    was && !now
 }
 
 /// How long until the next shimmer moment with `style` and `every`: one
@@ -2259,7 +2273,7 @@ impl PocketController {
             s.island_glass
         };
         self.window.set_glass(glass_alpha(glass));
-        self.refresh_reduce_motion(Instant::now());
+        self.follow_reduce_setting();
         let now_virtual = is_virtual(self);
         if !was_virtual && !now_virtual {
             return;
@@ -2476,11 +2490,16 @@ impl PocketController {
     }
 
     /// Notes that someone is at the computer when the cursor or the left
-    /// button differs from the last sample.
+    /// button differs from the last sample. Back after a long time away, the
+    /// next shimmer moment waits a whole period from now.
     fn note_input(&self, sample: &InputSample) {
         let seen = Some((sample.cursor, sample.left_down));
         if self.last_seen.replace(seen) != seen {
-            self.last_input.set(Instant::now());
+            let now = Instant::now();
+            let idle_before = now.saturating_duration_since(self.last_input.replace(now));
+            if rearm_on_return(idle_before) {
+                self.arm_shimmer();
+            }
         }
     }
 
@@ -2489,6 +2508,22 @@ impl PocketController {
     fn refresh_reduce_motion(&self, now: Instant) {
         let system = self.platform.reduce_motion();
         self.reduce_cache.set((Some(now), system));
+        self.show_reduce_motion(system);
+    }
+
+    /// Follows the Follow Reduce motion setting with the system's Reduce
+    /// motion as last read, without asking the system again (it is asked
+    /// every [`REDUCE_CHECK`]); read now if it never was.
+    fn follow_reduce_setting(&self) {
+        match self.reduce_cache.get() {
+            (Some(_), system) => self.show_reduce_motion(system),
+            (None, _) => self.refresh_reduce_motion(Instant::now()),
+        }
+    }
+
+    /// Tells the window whether motion is reduced with the system's Reduce
+    /// motion `system`, only when that changes.
+    fn show_reduce_motion(&self, system: bool) {
         let follow = self.settings.borrow().island_reduce_motion;
         let reduced = motion_reduced(follow, system);
         if self.window.get_reduce_motion() != reduced {
@@ -2545,11 +2580,9 @@ impl PocketController {
                 s.island_reduce_motion,
             )
         };
-        // The pill or the circle, not the lip or the half-moon over a bar.
-        let in_form = self.warm.get() && self.laid_out.get().is_some_and(|s| !s.bar_under);
         MomentConditions {
             style,
-            virtual_resting: shimmer_on(in_form, false, self.expanded()),
+            virtual_resting: virtual_resting(self.warm.get(), self.laid_out.get(), self.expanded()),
             news_or_job: self.news_view.borrow().is_some(),
             paused: self.paused.get(),
             pocket_items: self.item_count(),
@@ -2630,7 +2663,12 @@ impl PocketController {
             // The rest stays, for the pill to fade out with.
             None => w.set_news_stage(0),
         }
-        *self.news_view.borrow_mut() = view;
+        let now_shown = view.is_some();
+        let was_shown = self.news_view.replace(view).is_some();
+        // News over, the next shimmer moment waits a whole period.
+        if rearm_on_news_end(was_shown, now_shown) {
+            self.arm_shimmer();
+        }
     }
 
     /// Where the news the window shows lies with `f`, as the window lays it
@@ -3166,11 +3204,43 @@ mod tests {
     }
 
     #[test]
-    fn moment_ends_when_news_or_open() {
-        assert!(shimmer_on(true, false, false));
-        assert!(!shimmer_on(true, true, false));
-        assert!(!shimmer_on(true, false, true));
-        assert!(!shimmer_on(false, false, false));
+    fn shimmer_only_on_the_resting_pill_or_circle() {
+        let spot = |shape, bar_under| {
+            Some(VirtualSpot {
+                place: IslandPlace::Centre,
+                bar_under,
+                shape,
+            })
+        };
+        let pill = spot(IslandShape::Island, false);
+        let circle = spot(IslandShape::Circle, false);
+        let lip = spot(IslandShape::Island, true);
+        let half_moon = spot(IslandShape::Circle, true);
+        assert!(virtual_resting(true, pill, false));
+        assert!(virtual_resting(true, circle, false));
+        assert!(!virtual_resting(true, lip, false));
+        assert!(!virtual_resting(true, half_moon, false));
+        // Open, not ready, or not the virtual island.
+        assert!(!virtual_resting(true, pill, true));
+        assert!(!virtual_resting(true, circle, true));
+        assert!(!virtual_resting(false, pill, false));
+        assert!(!virtual_resting(true, None, false));
+    }
+
+    #[test]
+    fn coming_back_from_away_waits_a_period() {
+        assert!(!rearm_on_return(Duration::ZERO));
+        assert!(!rearm_on_return(Duration::from_secs(299)));
+        assert!(rearm_on_return(Duration::from_secs(300)));
+        assert!(rearm_on_return(Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn news_ending_waits_a_period() {
+        assert!(rearm_on_news_end(true, false));
+        assert!(!rearm_on_news_end(true, true));
+        assert!(!rearm_on_news_end(false, true));
+        assert!(!rearm_on_news_end(false, false));
     }
 
     #[test]
