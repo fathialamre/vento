@@ -3501,24 +3501,25 @@ component CircleNews inherits Rectangle {
     }
 }
 
-// The circle while something is dragged: a 62 pt round drop target, near
-// black, its edge 16 orange dashes pulsing between 0.55 and 1 opaque every
-// 1.2 s, and the Pocket's icon in the middle. It is only made while it
-// shows, so the pulse ticks only then.
+// The circle while something is dragged near it: a round drop target, 62 pt
+// across once swollen, near black, its edge 16 orange dashes pulsing
+// between 0.55 and 1 opaque every 1.2 s, and the Pocket's icon in the
+// middle. The edge is only made while it shows (`pulse`), so the pulse
+// ticks only then.
 component DropOrb inherits Rectangle {
+    in property <bool> pulse;
+
     property <color> accent: #ff6a1a;
 
-    width: 62px;
-    height: 62px;
-    border-radius: 31px;
+    border-radius: self.width / 2;
     background: #000000e6;
 
-    edge := Path {
+    if root.pulse: edge := Path {
         property <float> phase: Math.mod(animation-tick() / 1ms, 1200) / 1200;
         x: 0px;
         y: 0px;
-        width: 62px;
-        height: 62px;
+        width: root.width;
+        height: root.height;
         viewbox-width: 62;
         viewbox-height: 62;
         stroke: root.accent;
@@ -3532,8 +3533,8 @@ component DropOrb inherits Rectangle {
     Image {
         source: Icons.pocket;
         colorize: root.accent;
-        x: 19px;
-        y: 19px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
         width: 24px;
         height: 24px;
     }
@@ -3813,9 +3814,9 @@ export component PocketIsland inherits Window {
     // is stretched into a pill.
     property <bool> circle-round: root.circle-style && root.rest-round;
     property <bool> news-disc: root.circle-style && root.news-round;
-    // While something is dragged, the circle is the drop orb: the window is
-    // the orb's size, below `top-h`.
-    property <bool> orb-on: root.virtual-style && root.circle-style && root.drop-box;
+    // While something is dragged near it, the circle opens as the drop orb:
+    // the window is the orb's size, below `top-h`.
+    property <bool> orb-on: root.virtual-style && root.circle-style && root.drop-box && root.expanded;
     // The virtual island at rest: the lip (or the circle's half-moon) hangs
     // from the window's top edge (the bar's lower edge, or the screen's),
     // the pill (or the circle) sits `top-h` below it, as wide as what it
@@ -4476,7 +4477,7 @@ export component PocketIsland inherits Window {
             duration: root.news-on ? 120ms : 600ms;
             easing: ease;
         }
-        visible: root.virtual-style && !root.expanded && self.opacity > 0;
+        visible: root.virtual-style && !root.expanded && !root.orb-on && self.opacity > 0;
         background: #000000;
         border-width: 1px;
         border-color: #ffffff22;
@@ -4543,11 +4544,17 @@ export component PocketIsland inherits Window {
         }
     }
 
-    // While something is dragged, the circle is the drop orb, filling the
-    // window below `top-h`, in place of the island.
-    if root.orb-on: DropOrb {
+    // While something is dragged near it, the circle swells into the drop
+    // orb over 200 ms, from 34 to the 62 that fill the window below
+    // `top-h`, in place of the island; it shrinks back unseen.
+    DropOrb {
+        width: root.orb-on ? 62px : 34px;
+        height: self.width;
+        animate width { duration: 200ms; easing: ease-out; }
         x: (root.width - self.width) / 2;
         y: root.top-h;
+        visible: root.orb-on;
+        pulse: root.orb-on;
     }
 
     // A push against the top edge over the resting virtual island: an

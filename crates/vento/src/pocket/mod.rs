@@ -251,15 +251,17 @@ fn virtual_spot_of(
 }
 
 /// Whether the drop box is wanted: something is dragged (and not by the
-/// Pocket's own drag out) over the island in the corner by the clock, or
-/// over the virtual circle, which then opens as the drop orb.
+/// Pocket's own drag out) anywhere on the screen of the island in the
+/// corner by the clock, or near the virtual circle (`in_zone`, the drag in
+/// its zone), which then opens as the drop orb.
 fn drop_box_wanted(
     corner: bool,
     circle_virtual: bool,
+    in_zone: bool,
     dragging: bool,
     latch_running: bool,
 ) -> bool {
-    (corner || circle_virtual) && dragging && !latch_running
+    (corner || (circle_virtual && in_zone)) && dragging && !latch_running
 }
 
 /// Whether the circle's resting pill rests as the round disc: it stretches
@@ -1539,8 +1541,14 @@ impl PocketController {
             return;
         }
         let circle = self.circle_virtual(&home);
+        // Near the circle: in its zone, or on the orb once it is out.
+        let near = {
+            let f = self.frames_of(&home);
+            geometry::contains(&f.zone, sample.cursor)
+                || (self.drop_box.get() && f.orb && geometry::contains(&f.expanded, sample.cursor))
+        };
         self.show_drop_box(
-            drop_box_wanted(corner, circle, dragging, self.latch.running()),
+            drop_box_wanted(corner, circle, near, dragging, self.latch.running()),
             now,
         );
         let f = self.frames_of(&home);
@@ -2902,11 +2910,13 @@ mod tests {
             bar_under: false,
             shape: IslandShape::Circle,
         };
-        // A drag in the zone on the virtual circle brings the drop box out
-        // (and the corner's rule is unchanged: a corner drop box needs the
-        // corner, not the circle).
-        assert!(drop_box_wanted(false, true, true, false));
-        assert!(drop_box_wanted(true, false, true, false));
+        // A drag in the zone on the virtual circle brings the drop box out;
+        // one far from it does not. The corner's rule is unchanged: any
+        // drag on its screen, near or not.
+        assert!(drop_box_wanted(false, true, true, true, false));
+        assert!(!drop_box_wanted(false, true, false, true, false));
+        assert!(drop_box_wanted(true, false, false, true, false));
+        assert!(drop_box_wanted(true, false, true, true, false));
         let panel = |on| {
             if on {
                 Panel::Drop
@@ -2917,9 +2927,9 @@ mod tests {
         assert!(virtual_frames(&home, circle, panel(true)).orb);
         // A sample with no drag ends it, and the drag out's own latch or
         // the pill never raises it.
-        assert!(!drop_box_wanted(false, true, false, false));
-        assert!(!drop_box_wanted(false, true, true, true));
-        assert!(!drop_box_wanted(false, false, true, false));
+        assert!(!drop_box_wanted(false, true, true, false, false));
+        assert!(!drop_box_wanted(false, true, true, true, true));
+        assert!(!drop_box_wanted(false, false, true, true, false));
         assert!(!virtual_frames(&home, circle, panel(false)).orb);
     }
 
