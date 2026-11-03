@@ -67,17 +67,10 @@ pub(super) fn sample(cache: &DragPasteboardCache) -> InputSample {
     let count = pasteboard.changeCount() as i64;
     let drag_has_files = cache.has_files(count, || pasteboard_has_file_url(pasteboard));
 
-    let location = NSEvent::mouseLocation();
-    let cursor = match MainThreadMarker::new() {
-        Some(mtm) => Point {
-            x: location.x,
-            y: primary_height(mtm) - location.y,
-        },
-        None => {
-            log::warn!("sample_input called off the main thread; cursor unknown");
-            Point { x: 0.0, y: 0.0 }
-        }
-    };
+    let cursor = cursor().unwrap_or_else(|| {
+        log::warn!("sample_input called off the main thread; cursor unknown");
+        Point { x: 0.0, y: 0.0 }
+    });
 
     InputSample {
         left_down: NSEvent::pressedMouseButtons() & 1 == 1,
@@ -91,6 +84,17 @@ pub(super) fn sample(cache: &DragPasteboardCache) -> InputSample {
         clip_change_count: cache.general().changeCount() as i64,
         cursor,
     }
+}
+
+/// Where the cursor is, flipped to top-left-origin global coordinates;
+/// `None` off the main thread.
+pub(super) fn cursor() -> Option<Point> {
+    let mtm = MainThreadMarker::new()?;
+    let location = NSEvent::mouseLocation();
+    Some(Point {
+        x: location.x,
+        y: primary_height(mtm) - location.y,
+    })
 }
 
 /// The file paths on the system drag pasteboard.

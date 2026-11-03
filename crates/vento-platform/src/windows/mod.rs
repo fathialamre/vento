@@ -324,8 +324,21 @@ fn primary_button() -> VIRTUAL_KEY {
     }
 }
 
+/// Where the cursor is, in logical global coordinates; `None` when Windows
+/// can't say.
+fn cursor_point() -> Option<Point> {
+    let mut cursor = POINT::default();
+    // SAFETY: `cursor` is a live local.
+    (unsafe { GetCursorPos(&mut cursor) } != 0)
+        .then(|| screens::to_logical(&screens::monitors(), cursor))
+}
+
 impl Platform for WindowsPlatform {
     fn prepare_app(&self) {}
+
+    fn cursor(&self) -> Option<(f64, f64)> {
+        cursor_point().map(|p| (p.x, p.y))
+    }
 
     fn sample_input(&self) -> InputSample {
         if instance::asked_to_end() {
@@ -341,13 +354,7 @@ impl Platform for WindowsPlatform {
         {
             (handler.0)();
         }
-        let mut cursor = POINT::default();
-        // SAFETY: `cursor` is a live local.
-        let cursor = if unsafe { GetCursorPos(&mut cursor) } != 0 {
-            screens::to_logical(&screens::monitors(), cursor)
-        } else {
-            Point { x: 0.0, y: 0.0 }
-        };
+        let cursor = cursor_point().unwrap_or(Point { x: 0.0, y: 0.0 });
         let dragging = drag::active();
         InputSample {
             left_down: key_down(primary_button()),

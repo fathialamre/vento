@@ -353,6 +353,14 @@ pub trait Platform {
     fn prepare_app(&self);
     /// Snapshot of global input state. Main thread only.
     fn sample_input(&self) -> InputSample;
+    /// Where the cursor is, `(x, y)` in logical, top-left-origin global
+    /// coordinates (as [`InputSample::cursor`]), read with no other effect:
+    /// cheap enough to follow a drag at every frame. `None` where it can't be
+    /// read alone (Linux, whose sampling also feeds the drop catcher). Main
+    /// thread only.
+    fn cursor(&self) -> Option<(f64, f64)> {
+        None
+    }
     /// The local files in the drag in progress (empty when none, or when
     /// the drag carries no files). Main thread only.
     fn drag_paths(&self) -> Vec<PathBuf>;

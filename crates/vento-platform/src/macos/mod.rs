@@ -124,6 +124,10 @@ impl Platform for MacPlatform {
         input::sample(&self.drag)
     }
 
+    fn cursor(&self) -> Option<(f64, f64)> {
+        input::cursor().map(|p| (p.x, p.y))
+    }
+
     fn drag_paths(&self) -> Vec<PathBuf> {
         input::drag_paths()
     }
