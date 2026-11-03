@@ -3041,6 +3041,7 @@ impl PocketController {
             button_w.map(|_| f64::from(w.get_news_button_x())),
             chip_w,
             chip_w.map(|_| f64::from(w.get_news_chip_x())),
+            geometry::WING_W,
         ))
     }
 

@@ -9,7 +9,9 @@ use vento_core::settings::{IslandPlace, IslandShape, IslandSpot};
 use vento_platform::{IslandHome, TrayCorner};
 
 /// Width of each wing beside the notch.
-const WING_W: f64 = 44.0;
+pub(super) const WING_W: f64 = 44.0;
+/// The widest each wing grows to for news.
+pub(super) const NOTCH_NEWS_MAX_W: f64 = 260.0;
 /// The collapsed pill on screens without a notch.
 pub(super) const PILL_W: f64 = 120.0;
 const PILL_H: f64 = 28.0;
@@ -146,6 +148,8 @@ pub(super) struct Frames {
     /// Where pushing the pointer against the top edge opens it; [`NOWHERE`]
     /// outside the virtual island.
     pub(super) push: Rect,
+    /// The island's screen.
+    pub(super) screen: Rect,
     pub(super) notch_style: bool,
     pub(super) notch_w: f64,
     pub(super) top_h: f64,
@@ -228,6 +232,7 @@ pub(super) fn frames(home: &IslandHome, panel: Panel) -> Frames {
         circle: false,
         orb: false,
         push: NOWHERE,
+        screen,
         notch_style,
         notch_w,
         top_h,
@@ -427,6 +432,7 @@ pub(super) fn virtual_frames(home: &IslandHome, spot: VirtualSpot, panel: Panel)
             w: rest_w + 2.0 * PUSH_PAD,
             h: PUSH_DEPTH,
         },
+        screen,
         notch_style: false,
         notch_w: 0.0,
         top_h: gap,
@@ -466,6 +472,7 @@ fn corner_frames(screen: Rect, corner: TrayCorner, panel: Panel) -> Frames {
         circle: false,
         orb: false,
         push: NOWHERE,
+        screen,
         notch_style: false,
         notch_w: 0.0,
         top_h: 0.0,
@@ -571,6 +578,25 @@ pub(super) struct NewsRects {
     pub chip: Option<Rect>,
 }
 
+/// The notch island's collapsed shape widened for news: each wing
+/// `wing_w` wide (at least [`WING_W`], at most [`NOTCH_NEWS_MAX_W`]), the
+/// notch in the middle. It stays centred on the notch and inside the screen
+/// less [`SCREEN_MARGIN`]; where the screen's end is too near, both sides
+/// shrink equally, but never below the collapsed shape.
+pub(super) fn notch_news_rect(f: &Frames, wing_w: f64) -> Rect {
+    let mid = f.collapsed.x + f.collapsed.w / 2.0;
+    let wanted = f.notch_w + 2.0 * wing_w.clamp(WING_W, NOTCH_NEWS_MAX_W);
+    let room =
+        (mid - (f.screen.x + SCREEN_MARGIN)).min(f.screen.x + f.screen.w - SCREEN_MARGIN - mid);
+    let w = wanted.min(2.0 * room).max(f.collapsed.w);
+    Rect {
+        x: mid - w / 2.0,
+        y: f.collapsed.y,
+        w,
+        h: f.collapsed.h,
+    }
+}
+
 /// The news pill `pill_w` wide, with its button `button_w` wide at
 /// `button_x` from the pill's left and its "+N" chip `chip_w` wide at
 /// `chip_x` (as the window lays them out, at the end of the line: the
@@ -578,6 +604,11 @@ pub(super) struct NewsRects {
 /// `None` for none). The pill is [`NEWS_H`] high with its top at the
 /// resting pill's, also while the island rests as the lip, and centred on
 /// the island. The button and the chip are centred in its height.
+///
+/// On the notch island the pill is instead the widened wings
+/// ([`notch_news_rect`] of `wing_w`), `f.top_h` high, and `pill_w` is not
+/// used; `button_x` and `chip_x` count from the start of the right wing, and
+/// the button and the chip are centred in the top height.
 pub(super) fn news_rects(
     f: &Frames,
     pill_w: f64,
@@ -585,23 +616,33 @@ pub(super) fn news_rects(
     button_x: Option<f64>,
     chip_w: Option<f64>,
     chip_x: Option<f64>,
+    wing_w: f64,
 ) -> NewsRects {
-    let mid = f.expanded.x + f.expanded.w / 2.0;
-    let pill = Rect {
-        x: mid - pill_w / 2.0,
-        y: f.expanded.y + f.top_h,
-        w: pill_w,
-        h: NEWS_H,
+    let (pill, from, height) = if f.notch_style {
+        let pill = notch_news_rect(f, wing_w);
+        // The right wing starts after the left one and the notch. Read off
+        // the rect, so that wings shrunk to fit the screen are right too.
+        let from = pill.x + (pill.w + f.notch_w) / 2.0;
+        (pill, from, f.top_h)
+    } else {
+        let mid = f.expanded.x + f.expanded.w / 2.0;
+        let pill = Rect {
+            x: mid - pill_w / 2.0,
+            y: f.expanded.y + f.top_h,
+            w: pill_w,
+            h: NEWS_H,
+        };
+        (pill, pill.x, NEWS_H)
     };
     let button = button_w.zip(button_x).map(|(w, x)| Rect {
-        x: pill.x + x,
-        y: pill.y + (NEWS_H - NEWS_BUTTON_H) / 2.0,
+        x: from + x,
+        y: pill.y + (height - NEWS_BUTTON_H) / 2.0,
         w,
         h: NEWS_BUTTON_H,
     });
     let chip = chip_w.zip(chip_x).map(|(w, x)| Rect {
-        x: pill.x + x,
-        y: pill.y + (NEWS_H - NEWS_CHIP_H) / 2.0,
+        x: from + x,
+        y: pill.y + (height - NEWS_CHIP_H) / 2.0,
         w,
         h: NEWS_CHIP_H,
     });
@@ -652,7 +693,8 @@ pub(super) fn rest_hovered(f: &Frames, presence: Presence, rest_w: f64, cursor: 
 /// Where the window should take the pointer in this presence; everywhere
 /// else, clicks fall through to what is below. The resting virtual island
 /// takes none, except on the button and the chip of the news it shows and
-/// on the paused pill's `resume`.
+/// on the paused pill's `resume`. The notch island's wings take clicks,
+/// widened with the news pill when that is wider.
 pub(super) fn interactive_rects(
     f: &Frames,
     presence: Presence,
@@ -667,6 +709,16 @@ pub(super) fn interactive_rects(
             .chain(resume)
             .collect(),
         Presence::Collapsed if f.corner => Vec::new(),
+        // The notch island's wings take clicks as ever; widened for news, the
+        // pill does too, and so do its button, chip and Resume.
+        Presence::Collapsed if f.notch_style => std::iter::once(f.collapsed)
+            .chain(news.filter(|n| n.pill.w > f.collapsed.w).map(|n| n.pill))
+            .chain(
+                news.into_iter()
+                    .flat_map(|n| n.button.into_iter().chain(n.chip)),
+            )
+            .chain(resume)
+            .collect(),
         Presence::Collapsed => vec![f.collapsed],
         Presence::Expanded => vec![hold(f)],
     }
@@ -1332,6 +1384,7 @@ mod tests {
             button.then_some(300.0 - 5.0 - 60.0),
             chip.then_some(28.0),
             chip.then_some(200.0),
+            WING_W,
         )
     }
 
@@ -1375,7 +1428,7 @@ mod tests {
             vec![news.chip.unwrap()]
         );
         // A width without its x is no chip, nor button.
-        let news = news_rects(&f, 300.0, Some(60.0), None, Some(28.0), None);
+        let news = news_rects(&f, 300.0, Some(60.0), None, Some(28.0), None, WING_W);
         assert_eq!((news.button, news.chip), (None, None));
     }
 
@@ -1398,7 +1451,15 @@ mod tests {
         let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
         // Mirrored: the button 5 in from the pill's left end, the chip
         // after it.
-        let news = news_rects(&f, 300.0, Some(60.0), Some(5.0), Some(28.0), Some(73.0));
+        let news = news_rects(
+            &f,
+            300.0,
+            Some(60.0),
+            Some(5.0),
+            Some(28.0),
+            Some(73.0),
+            WING_W,
+        );
         assert_eq!(news.pill, rect(490.0, 6.0, 300.0, 34.0));
         assert_eq!(news.button, Some(rect(495.0, 10.0, 60.0, 26.0)));
         assert_eq!(news.chip, Some(rect(563.0, 13.0, 28.0, 20.0)));
@@ -1426,13 +1487,124 @@ mod tests {
                     // gap.
                     let window = window_frame(&f, f.expanded.h - f.top_h);
                     let w = f.expanded.w - 40.0;
-                    let news = news_rects(&f, w, Some(60.0), Some(w - 65.0), None, None);
+                    let news = news_rects(&f, w, Some(60.0), Some(w - 65.0), None, None, WING_W);
                     for shape in [news.pill, news.button.unwrap()] {
                         assert_eq!(union(window, shape), window, "{shape:?} outside {window:?}");
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn notch_news_rect_symmetric() {
+        let f = frames(&notched(180.0, 37.0), TWO);
+        let r = notch_news_rect(&f, 100.0);
+        assert_eq!(r.w, f.notch_w + 200.0);
+        assert_eq!(r.x + r.w / 2.0, f.collapsed.x + f.collapsed.w / 2.0);
+        assert_eq!((r.y, r.h), (f.collapsed.y, f.collapsed.h));
+        // The notch stays in the middle: 100 of wing on each side of it.
+        assert_eq!(r.x + 100.0 + f.notch_w + 100.0, r.x + r.w);
+    }
+
+    #[test]
+    fn notch_news_rect_caps_and_stays_on_screen() {
+        let f = frames(&notched(180.0, 37.0), TWO);
+        let r = notch_news_rect(&f, 900.0);
+        assert_eq!(r.w, f.notch_w + 2.0 * NOTCH_NEWS_MAX_W);
+        // A notch (or slot) near the end of the screen: the rect stays
+        // inside it less the margin, both sides shrinking equally.
+        let mut home = notched(180.0, 37.0);
+        home.screen = rect(0.0, 0.0, 600.0, 400.0);
+        home.slot = Some(rect(300.0, 0.0, 180.0 + 2.0 * WING_W, 37.0));
+        let f = frames(&home, TWO);
+        let r = notch_news_rect(&f, 900.0);
+        assert!(r.x >= SCREEN_MARGIN, "{r:?}");
+        assert!(r.x + r.w <= 600.0 - SCREEN_MARGIN, "{r:?}");
+        assert_eq!(r.x + r.w / 2.0, f.collapsed.x + f.collapsed.w / 2.0);
+        assert!(r.w >= f.collapsed.w);
+    }
+
+    #[test]
+    fn notch_news_rect_min_is_collapsed() {
+        let f = frames(&notched(180.0, 37.0), TWO);
+        assert_eq!(notch_news_rect(&f, 10.0), f.collapsed);
+    }
+
+    #[test]
+    fn notch_news_rects_follow_the_right_wing() {
+        let f = frames(&notched(180.0, 37.0), TWO);
+        let news = news_rects(
+            &f,
+            999.0,
+            Some(50.0),
+            Some(6.0),
+            Some(24.0),
+            Some(60.0),
+            100.0,
+        );
+        assert_eq!(news.pill, notch_news_rect(&f, 100.0));
+        assert_eq!(news.pill.h, f.top_h);
+        // The right wing starts a wing and the notch in from the pill's left.
+        let start = news.pill.x + 100.0 + f.notch_w;
+        let button = news.button.unwrap();
+        assert_eq!(
+            (button.x, button.w, button.h),
+            (start + 6.0, 50.0, NEWS_BUTTON_H)
+        );
+        assert_eq!(button.y, news.pill.y + (f.top_h - NEWS_BUTTON_H) / 2.0);
+        let chip = news.chip.unwrap();
+        assert_eq!((chip.x, chip.w, chip.h), (start + 60.0, 24.0, NEWS_CHIP_H));
+        assert_eq!(chip.y, news.pill.y + (f.top_h - NEWS_CHIP_H) / 2.0);
+    }
+
+    #[test]
+    fn notch_collapsed_hits_add_news_button() {
+        let f = frames(&notched(180.0, 37.0), TWO);
+        // At rest, or with news no wider than the wings: as ever.
+        assert_eq!(
+            interactive_rects(&f, Presence::Collapsed, None, None),
+            vec![f.collapsed]
+        );
+        let plain_news = news_rects(&f, 0.0, None, None, None, None, WING_W);
+        assert_eq!(
+            interactive_rects(&f, Presence::Collapsed, Some(&plain_news), None),
+            vec![f.collapsed]
+        );
+        // Widened, with a button, a chip and Resume: all four.
+        let news = news_rects(
+            &f,
+            0.0,
+            Some(50.0),
+            Some(60.0),
+            Some(24.0),
+            Some(6.0),
+            100.0,
+        );
+        let resume = rect(10.0, 5.0, 40.0, 20.0);
+        assert_eq!(
+            interactive_rects(&f, Presence::Collapsed, Some(&news), Some(resume)),
+            vec![
+                f.collapsed,
+                news.pill,
+                news.button.unwrap(),
+                news.chip.unwrap(),
+                resume
+            ]
+        );
+        // Expanded and hidden are unchanged.
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, Some(&news), None),
+            vec![hold(&f)]
+        );
+        assert!(interactive_rects(&f, Presence::Hidden, Some(&news), None).is_empty());
+        // The widened wings take clicks where the button is.
+        let on_button = Point {
+            x: news.button.unwrap().x + 5.0,
+            y: 16.0,
+        };
+        assert!(!contains(&f.collapsed, on_button));
+        assert!(hits(&f, Presence::Collapsed, Some(&news), None, on_button));
     }
 
     #[test]
