@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use crate::settings::ShimmerStyle;
 
-/// How long without a key or a click counts as being away from the computer.
+/// How long without the pointer moving or a click counts as being away from
+/// the computer (key presses are not seen).
 pub const AWAY_AFTER: Duration = Duration::from_secs(300);
 
 /// Everything the rules look at, read when a moment is due.
@@ -27,11 +28,12 @@ pub struct MomentConditions {
     pub follow_reduce: bool,
     /// Whether the system asks for less motion.
     pub system_reduce: bool,
-    /// Do Not Disturb or a Focus is on.
+    /// The system holds notifications back (Do Not Disturb where it can be
+    /// read: not a Mac's Focus).
     pub quiet_time: bool,
     /// The computer is saving power (battery saver).
     pub power_saving: bool,
-    /// How long since the last key or click.
+    /// How long since the pointer last moved or the left button last changed.
     pub idle_for: Duration,
 }
 

@@ -166,7 +166,7 @@ pub enum ShimmerStyle {
     Halo,
     /// A few tiny sparks twinkling on the island.
     Sparkle,
-    /// A slow ripple, as if the island were liquid.
+    /// The island stretching and settling, as if it were liquid.
     Liquid,
 }
 

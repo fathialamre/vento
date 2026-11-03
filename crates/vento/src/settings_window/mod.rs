@@ -42,6 +42,7 @@ use vento_core::settings::{
     SettingsError, ShimmerEvery, ShimmerStyle, ThemeName, clamp_glass, is_reserved_shortcut,
     move_row, parse_shortcut,
 };
+use vento_core::shimmer::motion_reduced;
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_core::update::state::UpdateState;
 use vento_core::update::version::Version;
@@ -1334,7 +1335,10 @@ impl SettingsWindowController {
         ));
         window.set_island_shimmer_needs_items(settings.island_shimmer_needs_items);
         window.set_island_follow_reduce(settings.island_reduce_motion);
-        window.set_island_reduce_motion(self.platform.reduce_motion());
+        window.set_island_reduce_motion(motion_reduced(
+            settings.island_reduce_motion,
+            self.platform.reduce_motion(),
+        ));
     }
 
     /// Shows Keep Awake's times, the time Add adds and what the tile

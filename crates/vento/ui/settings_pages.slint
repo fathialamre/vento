@@ -462,7 +462,8 @@ component ShimmerTile inherits VerticalLayout {
             border-radius: 8px;
             background: #1c1c1e;
 
-            // Halo: a faint ring just outside the edge, lit and faded.
+            // Halo: a faint orange ring just outside the edge, lit and
+            // faded, like the island's own.
             if root.kind == 3: Rectangle {
                 width: root.w + 8px;
                 height: root.h + 8px;
@@ -470,7 +471,7 @@ component ShimmerTile inherits VerticalLayout {
                 y: (parent.height - self.height) / 2;
                 border-radius: self.height / 2;
                 border-width: 2px;
-                border-color: #ffffff;
+                border-color: #ff6a1a;
                 opacity: root.playing ? 0.15 + 0.6 * Math.sin(root.t * 180deg) : 0.15;
             }
 
@@ -590,7 +591,10 @@ component ShimmerPicker inherits Rectangle {
     for name[i] in root.names: ShimmerTile {
         property <int> column: mod(i, root.columns);
 
-        x: (Theme.rtl ? root.columns - 1 - self.column : self.column) * (root.cell-w + root.gap);
+        // Each row starts at the page's start edge: the right one in a
+        // right-to-left language.
+        x: Theme.rtl ? root.width - root.cell-w - self.column * (root.cell-w + root.gap)
+            : self.column * (root.cell-w + root.gap);
         y: floor(i / root.columns) * (root.cell-h + root.gap);
         height: root.cell-h;
         kind: i;
@@ -1139,8 +1143,9 @@ export component IslandPage inherits VerticalLayout {
     in property <int> shimmer-every;
     in property <bool> shimmer-needs-items;
     in property <bool> follow-reduce;
-    // Whether the system asks for less motion (the previews stay still),
-    // and whether the shape chosen is the circle (the previews draw it).
+    // Whether motion is reduced (Reduce motion is followed and the system
+    // asks for it; the previews stay still), and whether the shape chosen
+    // is the circle (the previews draw it).
     in property <bool> reduce-motion;
     in property <bool> circle;
     // 0 the virtual island, 1 the other one.

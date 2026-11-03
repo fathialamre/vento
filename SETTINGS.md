@@ -136,10 +136,13 @@ island_glass = 55
 # Island: the shimmer the virtual island plays now and then while it rests:
 # "off", "sweep" (a band of light crossing it), "edge_run" (a bright spot
 # running round its edge), "halo" (the edge glowing softly), "sparkle" (a few
-# tiny sparks) or "liquid" (a slow ripple). It never plays on the lip or the
-# half-moon, or while the island is open, busy with a job or the news, paused,
-# in Do Not Disturb or a Focus, on battery saver, or after five minutes without
-# a key or a click. Any other value is read as "sweep"
+# tiny sparks) or "liquid" (the island stretches and settles). It never plays
+# on the lip or the half-moon, or while the island is open, busy with a job or
+# the news, paused, on battery saver, or after five minutes without the pointer
+# moving or a click; after those, the next one waits a whole period. Nor in Do
+# Not Disturb where Vento can tell (Windows: Focus assist, a presentation, a
+# full-screen game; GNOME: notification banners off; a Mac's Focus is not
+# read). Any other value is read as "sweep"
 island_shimmer = "sweep"
 
 # Island: how often the shimmer plays: "rarely" (every 10 minutes), "sometimes"

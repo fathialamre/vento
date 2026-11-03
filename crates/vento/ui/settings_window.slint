@@ -105,7 +105,9 @@ export component SettingsWindow inherits Window {
     in property <int> island-glass;
     // The virtual island's shimmer: its style and how often (as the
     // settings list them), whether it waits for items in the Pocket,
-    // whether Reduce motion is followed and whether the system asks for it.
+    // whether Reduce motion is followed and whether motion is reduced (it
+    // is followed and the system asks for it), which keeps the previews
+    // still.
     in property <int> island-shimmer;
     in property <int> island-shimmer-every;
     in property <bool> island-shimmer-needs-items;
