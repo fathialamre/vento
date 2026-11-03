@@ -962,6 +962,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 pocket.apply_pocket_settings(new);
                 if old.island_mode != new.island_mode
                     || old.island_place != new.island_place
+                    || old.island_shape != new.island_shape
                     || old.island_glass != new.island_glass
                 {
                     pocket.island_settings_changed();

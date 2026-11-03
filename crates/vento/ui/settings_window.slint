@@ -95,10 +95,12 @@ export component SettingsWindow inherits Window {
     in property <int> pocket-view;
     // The Island page: whether the virtual island can be chosen here;
     // whether it is, what the other island is called, and the
-    // virtual one's place (0 Left, 1 Centre, 2 Right) and Glass in percent.
+    // virtual one's shape (0 Island, 1 Circle), place (0 Left, 1 Centre,
+    // 2 Right) and Glass in percent.
     in property <bool> island-offered;
     in property <bool> island-virtual;
     in property <string> classic-label;
+    in property <int> island-shape;
     in property <int> island-place;
     in property <int> island-glass;
     // The wheel's actions, the shown ones first, and how many are shown.
@@ -199,6 +201,7 @@ export component SettingsWindow inherits Window {
     callback pocket-view-chosen(int);
     // 0 the virtual island, 1 the other one.
     callback island-mode-chosen(int);
+    callback island-shape-chosen(int);
     callback island-place-chosen(int);
     callback island-glass-changed(int);
     callback action-toggled(int, bool);
@@ -482,9 +485,11 @@ export component SettingsWindow inherits Window {
                                 offered: root.island-offered;
                                 virtual: root.island-virtual;
                                 classic-label: root.classic-label;
+                                shape: root.island-shape;
                                 place: root.island-place;
                                 glass: root.island-glass;
                                 mode-chosen(i) => { root.island-mode-chosen(i); }
+                                shape-chosen(i) => { root.island-shape-chosen(i); }
                                 place-chosen(i) => { root.island-place-chosen(i); }
                                 glass-changed(v) => { root.island-glass-changed(v); }
                             }

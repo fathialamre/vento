@@ -124,6 +124,32 @@ impl IslandPlace {
     pub const ALL: [Self; 3] = [Self::Left, Self::Centre, Self::Right];
 }
 
+/// How the virtual island looks while it rests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IslandShape {
+    /// A pill under the top edge.
+    #[default]
+    Island,
+    /// A small circle.
+    Circle,
+}
+
+impl IslandShape {
+    /// Every shape, in the order the Settings window lists them.
+    pub const ALL: [Self; 2] = [Self::Island, Self::Circle];
+}
+
+/// Reads [`IslandShape`], taking a value it does not know as the default
+/// instead of failing the whole file.
+fn lenient_shape<'de, D: serde::Deserializer<'de>>(d: D) -> Result<IslandShape, D::Error> {
+    let text = String::deserialize(d)?;
+    Ok(match text.as_str() {
+        "circle" => IslandShape::Circle,
+        _ => IslandShape::Island,
+    })
+}
+
 /// Bounds, step, default and presets of [`Settings::island_glass`], how solid
 /// the virtual island is, in percent (100 = solid).
 pub const GLASS_MIN: u32 = 10;
@@ -181,6 +207,8 @@ pub struct Settings {
     pub island_mode: IslandMode,
     /// Where the virtual island sits along the top edge.
     pub island_place: IslandPlace,
+    /// How the virtual island looks while it rests.
+    pub island_shape: IslandShape,
     /// How solid the virtual island is while resting, in percent (100 =
     /// solid), from [`GLASS_MIN`] to [`GLASS_MAX`] in steps of [`GLASS_STEP`].
     pub island_glass: u32,
@@ -310,6 +338,7 @@ impl Default for Settings {
             clipboard_history: true,
             island_mode: IslandMode::Classic,
             island_place: IslandPlace::Centre,
+            island_shape: IslandShape::Island,
             island_glass: GLASS_DEFAULT,
             island_hint_shown: false,
             screenshots: false,
@@ -358,6 +387,8 @@ struct RawSettings {
     /// Welcome setup, which writes the key.
     island_mode: Option<IslandMode>,
     island_place: IslandPlace,
+    #[serde(deserialize_with = "lenient_shape")]
+    island_shape: IslandShape,
     island_glass: u32,
     island_hint_shown: bool,
     screenshots: bool,
@@ -514,6 +545,7 @@ impl From<&Settings> for RawSettings {
             clipboard_history: s.clipboard_history,
             island_mode: Some(s.island_mode),
             island_place: s.island_place,
+            island_shape: s.island_shape,
             island_glass: s.island_glass,
             island_hint_shown: s.island_hint_shown,
             screenshots: s.screenshots,
@@ -624,6 +656,7 @@ impl From<RawSettings> for Settings {
             clipboard_history: raw.clipboard_history,
             island_mode: raw.island_mode.unwrap_or(IslandMode::Classic),
             island_place: raw.island_place,
+            island_shape: raw.island_shape,
             island_glass: clamp_glass(raw.island_glass),
             island_hint_shown: raw.island_hint_shown,
             screenshots: raw.screenshots,
@@ -1387,6 +1420,50 @@ mod tests {
         assert!(text.contains("island_place = \"right\""));
         assert!(text.contains("island_glass = 25"));
         assert_eq!(Settings::try_load(&path).unwrap(), s);
+    }
+
+    #[test]
+    fn island_shape_defaults_to_island() {
+        assert_eq!(Settings::default().island_shape, IslandShape::Island);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "island_place = \"left\"\n").unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_shape, IslandShape::Island);
+        let first = crate::welcome::first_settings(&["en-US".into()]);
+        assert_eq!(first.island_shape, IslandShape::Island);
+    }
+
+    #[test]
+    fn island_shape_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        let s = Settings {
+            island_shape: IslandShape::Circle,
+            ..Settings::default()
+        };
+        s.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("island_shape = \"circle\""), "{text}");
+        assert_eq!(
+            Settings::try_load(&path).unwrap().island_shape,
+            IslandShape::Circle
+        );
+    }
+
+    #[test]
+    fn island_shape_garbage_falls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(
+            &path,
+            "island_shape = \"hexagon\"\nisland_place = \"left\"\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_shape, IslandShape::Island);
+        // The rest of the file is still read.
+        assert_eq!(s.island_place, IslandPlace::Left);
     }
 
     #[test]

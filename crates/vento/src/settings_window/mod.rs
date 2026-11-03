@@ -37,9 +37,9 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, MAX_MOVE_HOLD_MS,
-    MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView, Settings, SettingsError,
-    ThemeName, clamp_glass, is_reserved_shortcut, move_row, parse_shortcut,
+    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, IslandShape,
+    MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView, Settings,
+    SettingsError, ThemeName, clamp_glass, is_reserved_shortcut, move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_core::update::state::UpdateState;
@@ -743,6 +743,13 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
+        window.on_island_shape_chosen(move |i| {
+            if let (Some(controller), Some(shape)) = (this.upgrade(), choice(&IslandShape::ALL, i))
+            {
+                controller.apply(|s| s.island_shape = shape);
+            }
+        });
+        let this = self.this.clone();
         window.on_island_place_chosen(move |i| {
             if let (Some(controller), Some(place)) = (this.upgrade(), choice(&IslandPlace::ALL, i))
             {
@@ -1290,6 +1297,7 @@ impl SettingsWindowController {
             window.set_classic_label(classic_label(&home, gnome_slot).into());
         }
         window.set_island_virtual(settings.island_mode == IslandMode::Virtual);
+        window.set_island_shape(choice_index(&IslandShape::ALL, settings.island_shape));
         window.set_island_place(choice_index(&IslandPlace::ALL, settings.island_place));
         window.set_island_glass(i32::try_from(settings.island_glass).unwrap_or(0));
     }

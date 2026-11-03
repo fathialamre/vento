@@ -297,6 +297,104 @@ component LookPicker inherits HorizontalLayout {
     }
 }
 
+// One shape the resting virtual island can take, drawn small on the
+// island's dark with its name under it, ringed in the accent while chosen.
+component ShapeTile inherits VerticalLayout {
+    in property <string> label;
+    in property <bool> chosen;
+    // 0 the island's pill, 1 a circle, as the setting counts them.
+    in property <int> kind;
+    callback clicked();
+
+    spacing: 6px;
+    width: 120px;
+    accessible-role: radio-button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    Rectangle {
+        height: 64px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: root.chosen ? Theme.accent : touch.has-hover ? Theme.panel-line : transparent;
+
+        Rectangle {
+            x: 2px;
+            y: 2px;
+            width: parent.width - 4px;
+            height: parent.height - 4px;
+            border-radius: 8px;
+            background: #1c1c1e;
+
+            // The shape itself: black, with a faint edge and the orange dot.
+            Rectangle {
+                width: root.kind == 0 ? 60px : 18px;
+                height: root.kind == 0 ? 14px : 18px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                background: #000000;
+                border-width: 1px;
+                border-color: #ffffff22;
+
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: #ff6a1a;
+                    x: root.kind == 0
+                        ? (Theme.rtl ? parent.width - self.width - 8px : 8px)
+                        : (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.label;
+        font-size: 12px;
+        font-weight: root.chosen ? 500 : 400;
+        color: root.chosen ? Theme.text : Theme.muted;
+    }
+}
+
+// The Shape setting's two shapes, side by side.
+component ShapePicker inherits HorizontalLayout {
+    // 0 Island, 1 Circle.
+    in property <int> current;
+    callback chosen(int);
+
+    spacing: 8px;
+    alignment: start;
+    accessible-role: radio-group;
+    accessible-label: @tr("Shape");
+
+    ShapeTile {
+        layout-order: Theme.rtl ? 1 : 0;
+        kind: 0;
+        label: @tr("Island");
+        chosen: root.current == 0;
+        clicked => { root.chosen(0); }
+    }
+
+    ShapeTile {
+        layout-order: Theme.rtl ? 0 : 1;
+        kind: 1;
+        label: @tr("Circle");
+        chosen: root.current == 1;
+        clicked => { root.chosen(1); }
+    }
+}
+
 // The themes, each a dot in its accent over its name, the chosen one
 // ringed in the accent: one row where the page is wide enough, else rows
 // of four.
@@ -823,10 +921,13 @@ export component IslandPage inherits VerticalLayout {
     in property <string> classic-label;
     // Where the virtual island sits: 0 Left, 1 Centre, 2 Right.
     in property <int> place;
+    // How it looks while resting: 0 Island, 1 Circle.
+    in property <int> shape;
     // How solid it is while resting, in percent (100 = solid).
     in property <int> glass;
     // 0 the virtual island, 1 the other one.
     callback mode-chosen(int);
+    callback shape-chosen(int);
     callback place-chosen(int);
     callback glass-changed(int);
 
@@ -845,6 +946,20 @@ export component IslandPage inherits VerticalLayout {
         }
 
         if root.virtual: VerticalLayout {
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Shape");
+                description: @tr("How the island looks while resting");
+            }
+
+            RowBody {
+                ShapePicker {
+                    current: root.shape;
+                    chosen(i) => { root.shape-chosen(i); }
+                }
+            }
+
             RowSeparator { }
 
             SettingRow {
