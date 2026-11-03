@@ -551,7 +551,6 @@ pub(super) fn resume_rect(f: &Frames, pill_w: f64, button_w: f64, button_x: f64)
 /// the island with its top where the news pill's is, [`CIRCLE_D`] high as
 /// the circle and [`PILL_H`] as the pill. `None` over the lip or the
 /// half-moon, and outside the virtual island.
-#[allow(dead_code)] // The window uses it once the shape is wired in.
 pub(super) fn rest_rect(f: &Frames, rest_w: f64) -> Option<Rect> {
     if !f.virtual_island || f.lip {
         return None;
@@ -566,7 +565,6 @@ pub(super) fn rest_rect(f: &Frames, rest_w: f64) -> Option<Rect> {
 }
 
 /// Whether the island rests collapsed with the pointer on its resting shape.
-#[allow(dead_code)] // The window uses it once the shape is wired in.
 pub(super) fn rest_hovered(f: &Frames, presence: Presence, rest_w: f64, cursor: Point) -> bool {
     presence == Presence::Collapsed && rest_rect(f, rest_w).is_some_and(|r| contains(&r, cursor))
 }

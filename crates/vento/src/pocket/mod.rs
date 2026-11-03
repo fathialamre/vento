@@ -232,6 +232,53 @@ pub(crate) fn virtual_offered(home: &IslandHome, supported: bool) -> bool {
     home.notch.is_none() && supported
 }
 
+/// Where the virtual island lies at `home` with the island's settings, or
+/// `None` when the island is not the virtual one there (`supported` says the
+/// platform can place it).
+fn virtual_spot_of(
+    mode: IslandMode,
+    home: &IslandHome,
+    supported: bool,
+    place: IslandPlace,
+    bar_under: bool,
+    shape: IslandShape,
+) -> Option<VirtualSpot> {
+    virtual_active(mode, home, supported).then_some(VirtualSpot {
+        place,
+        bar_under,
+        shape,
+    })
+}
+
+/// Whether the drop box is wanted: something is dragged (and not by the
+/// Pocket's own drag out) over the island in the corner by the clock, or
+/// over the virtual circle, which then opens as the drop orb.
+fn drop_box_wanted(
+    corner: bool,
+    circle_virtual: bool,
+    dragging: bool,
+    latch_running: bool,
+) -> bool {
+    (corner || circle_virtual) && dragging && !latch_running
+}
+
+/// Whether the circle's resting pill rests as the round disc: it stretches
+/// only to say something (paused with Resume, Keep Awake's time), and only
+/// while the pointer is on it.
+fn rest_round(paused: bool, awake: bool, hovered: bool) -> bool {
+    !(hovered && (paused || awake))
+}
+
+/// The Pocket's count on the circle's badge: nothing for none, the number up
+/// to 99, then "99+".
+fn badge_text(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1..=99 => count.to_string(),
+        _ => "99+".into(),
+    }
+}
+
 /// The window's `glass` for the settings' Glass level, in percent.
 fn glass_alpha(percent: u32) -> f32 {
     percent as f32 / 100.0
@@ -392,6 +439,12 @@ pub struct PocketController {
     /// The island's mode and its place on the top edge in the settings.
     mode: Cell<IslandMode>,
     place: Cell<IslandPlace>,
+    /// The virtual island's shape in the settings: the island, or the circle.
+    shape: Cell<IslandShape>,
+    /// What the window was last told of the circle: the news pill and the
+    /// resting pill rest as the round disc.
+    news_round: Cell<bool>,
+    rest_round: Cell<bool>,
     /// The front window has a bar under the virtual island, which then
     /// rests as the lip; asked at most every [`FRONT_CHECK`].
     bar_under: Cell<bool>,
@@ -443,9 +496,15 @@ impl PocketController {
         let kinds = Kinds::new(&window);
         let clip_view = ClipView::new(&window);
         let shots_view = ShotsView::new(&window);
-        let (pocket_view, mode, place, glass) = {
+        let (pocket_view, mode, place, shape, glass) = {
             let s = settings.borrow();
-            (s.pocket_view, s.island_mode, s.island_place, s.island_glass)
+            (
+                s.pocket_view,
+                s.island_mode,
+                s.island_place,
+                s.island_shape,
+                s.island_glass,
+            )
         };
         window.set_glass(glass_alpha(glass));
         let list = ListView::new(&window, pocket_view);
@@ -502,6 +561,9 @@ impl PocketController {
             shrink_timer: Timer::default(),
             mode: Cell::new(mode),
             place: Cell::new(place),
+            shape: Cell::new(shape),
+            news_round: Cell::new(false),
+            rest_round: Cell::new(false),
             bar_under: Cell::new(false),
             front_checked: Cell::new(None),
             laid_out: Cell::new(None),
@@ -1209,12 +1271,15 @@ impl PocketController {
 
     /// Keep Awake runs with `status` (the time it has left, empty for no
     /// end; `None` while it does not run), and ends soon: the virtual
-    /// island's resting pill shows a cup and the time.
-    pub fn set_awake(&self, status: Option<String>, ending_soon: bool) {
+    /// island's resting pill shows a cup and the time. `left` is how much of
+    /// a timed session is left, 1 down to 0, for the circle's ring; `None`
+    /// for one with no length.
+    pub fn set_awake(&self, status: Option<String>, ending_soon: bool, left: Option<f32>) {
         let w = &self.window;
         w.set_rest_awake(status.is_some());
         w.set_rest_awake_text(status.unwrap_or_default().into());
         w.set_rest_awake_soon(ending_soon);
+        w.set_rest_awake_fraction(left.unwrap_or(-1.0));
     }
 
     /// Shows `n` in the virtual island; where it does not take it, as a
@@ -1438,6 +1503,12 @@ impl PocketController {
         );
         let view = self.news.borrow_mut().tick(now, hovered);
         self.show_news(view.filter(|_| spot.is_some()));
+        self.show_news_round(&home, hovered);
+        self.show_rest_round(
+            &self.frames_of(&home),
+            self.island.borrow().presence(),
+            sample.cursor,
+        );
         if self.activity.get() {
             self.refresh_activity();
         }
@@ -1456,7 +1527,11 @@ impl PocketController {
         if taken {
             return;
         }
-        self.show_drop_box(corner && dragging && !self.latch.running(), now);
+        let circle = self.circle_virtual(&home);
+        self.show_drop_box(
+            drop_box_wanted(corner, circle, dragging, self.latch.running()),
+            now,
+        );
         let f = self.frames_of(&home);
         let before = self.island.borrow().presence();
         let has_items = self.has_content();
@@ -1478,7 +1553,7 @@ impl PocketController {
         // The card goes as the island leaves it, and the island rests as
         // it would without it.
         if after != Presence::Expanded && self.card.is_up() {
-            self.close_card();
+            self.close_card_into_disc();
             if !self.has_content() {
                 after = self.island.borrow_mut().settle(f.virtual_island);
             }
@@ -1588,6 +1663,7 @@ impl PocketController {
             return;
         };
         let presence = self.island.borrow().presence();
+        self.show_rest_round(&f, presence, cursor);
         if !self.shape_input(presence) {
             let inside = hits(&f, presence, None, self.resume_rect(&f), cursor);
             if inside != self.hittest.get() {
@@ -1609,12 +1685,12 @@ impl PocketController {
         }
         self.front_checked.set(Some(now));
         let mid_x = virtual_mid_x(home, self.place.get());
-        let under = geometry::bar_under(
-            self.platform.front_window_frame(),
-            home,
-            mid_x,
-            geometry::PILL_W,
-        );
+        let rest_w = if self.circle_virtual(home) {
+            geometry::CIRCLE_D
+        } else {
+            geometry::PILL_W
+        };
+        let under = geometry::bar_under(self.platform.front_window_frame(), home, mid_x, rest_w);
         if self.bar_under.replace(under) != under {
             debug!("pocket bar under the island: {under}");
         }
@@ -2088,7 +2164,7 @@ impl PocketController {
         }
     }
 
-    /// Follows the island's mode, place and Glass in the settings: the
+    /// Follows the island's mode, place, shape and Glass in the settings: the
     /// island moves, changes form or rests in sight at once. The desktop's
     /// room in its top bar is kept only for an island that is not the
     /// virtual one.
@@ -2101,6 +2177,7 @@ impl PocketController {
             let s = self.settings.borrow();
             self.mode.set(s.island_mode);
             self.place.set(s.island_place);
+            self.shape.set(s.island_shape);
             s.island_glass
         };
         self.window.set_glass(glass_alpha(glass));
@@ -2184,6 +2261,8 @@ impl PocketController {
         let count = i32::try_from(self.item_count()).unwrap_or(i32::MAX);
         self.window.set_count(count);
         self.window.set_rest_count(count);
+        self.window
+            .set_rest_badge(badge_text(self.item_count()).into());
         self.refresh_clip();
         self.refresh_shots();
         self.fit_panel();
@@ -2281,12 +2360,20 @@ impl PocketController {
     /// Where the virtual island sits at `home`, or `None` when the island
     /// is not the virtual one there.
     fn virtual_spot(&self, home: &IslandHome) -> Option<VirtualSpot> {
-        let supported = self.platform.virtual_island_supported();
-        virtual_active(self.mode.get(), home, supported).then(|| VirtualSpot {
-            place: self.place.get(),
-            bar_under: self.bar_under.get(),
-            shape: IslandShape::Island,
-        })
+        virtual_spot_of(
+            self.mode.get(),
+            home,
+            self.platform.virtual_island_supported(),
+            self.place.get(),
+            self.bar_under.get(),
+            self.shape.get(),
+        )
+    }
+
+    /// Whether the island at `home` is the virtual one in its circle shape.
+    fn circle_virtual(&self, home: &IslandHome) -> bool {
+        self.virtual_spot(home)
+            .is_some_and(|s| s.shape == IslandShape::Circle)
     }
 
     /// The island's frames for `home`, sized for the view it shows now.
@@ -2318,6 +2405,39 @@ impl PocketController {
                 .is_some_and(|home| self.virtual_spot(&home).is_some())
     }
 
+    /// Tells the window whether the circle's news pill rests as the round
+    /// disc, only when that changes. Only the circle stretches; `hovered` is
+    /// the pointer on the news pill.
+    fn show_news_round(&self, home: &IslandHome, hovered: bool) {
+        let circle = self.circle_virtual(home);
+        let round = circle
+            && self
+                .news_view
+                .borrow()
+                .as_ref()
+                .is_some_and(|v| news::circle_round(v, hovered));
+        if self.news_round.replace(round) != round {
+            self.window.set_news_round(round);
+        }
+    }
+
+    /// Tells the window whether the circle's resting pill rests round: it
+    /// stretches to its text (paused with Resume, Keep Awake's time) while
+    /// the pointer is on it, as drawn.
+    fn show_rest_round(&self, f: &Frames, presence: Presence, cursor: Point) {
+        let hovered = geometry::rest_hovered(
+            f,
+            presence,
+            f64::from(self.window.get_rest_pill_w()),
+            cursor,
+        );
+        let round =
+            f.circle && rest_round(self.paused.get(), self.window.get_rest_awake(), hovered);
+        if self.rest_round.replace(round) != round {
+            self.window.set_rest_round(round);
+        }
+    }
+
     /// Gives `view` to the window, only when it differs from the last.
     fn show_news(&self, view: Option<NewsView>) {
         if *self.news_view.borrow() == view {
@@ -2338,6 +2458,7 @@ impl PocketController {
                 w.set_news_extra(i32::try_from(v.extra).unwrap_or(i32::MAX));
                 w.set_news_fraction(v.fraction.unwrap_or(-1.0));
                 w.set_news_count(v.count_text.as_str().into());
+                w.set_news_short(v.short_count.as_str().into());
             }
             // The rest stays, for the pill to fade out with.
             None => w.set_news_stage(0),
@@ -2546,6 +2667,7 @@ impl NoticeSink for PocketController {
 
 #[cfg(test)]
 mod tests {
+    use super::geometry::Panel;
     use super::*;
 
     #[test]
@@ -2688,5 +2810,104 @@ mod tests {
         assert!(!virtual_active(IslandMode::Classic, &plain, true));
         assert!(!virtual_active(IslandMode::Virtual, &notched, true));
         assert!(!virtual_active(IslandMode::Virtual, &plain, false));
+    }
+
+    #[test]
+    fn badge_text_caps_at_99() {
+        assert_eq!(badge_text(0), "");
+        assert_eq!(badge_text(7), "7");
+        assert_eq!(badge_text(99), "99");
+        assert_eq!(badge_text(100), "99+");
+        assert_eq!(badge_text(5000), "99+");
+    }
+
+    #[test]
+    fn rest_round_stretches_only_with_something_to_say() {
+        // Nothing to say: hover changes nothing.
+        assert!(rest_round(false, false, false));
+        assert!(rest_round(false, false, true));
+        // Paused or awake: round until hovered, then the pill with its text.
+        assert!(rest_round(true, false, false));
+        assert!(!rest_round(true, false, true));
+        assert!(rest_round(false, true, false));
+        assert!(!rest_round(false, true, true));
+        assert!(!rest_round(true, true, true));
+    }
+
+    /// A plain screen, for the circle's layout tests.
+    fn plain_home() -> IslandHome {
+        IslandHome {
+            screen: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 1440.0,
+                h: 900.0,
+            },
+            notch: None,
+            menu_bar_h: 24.0,
+            slot: None,
+            tray_corner: None,
+        }
+    }
+
+    #[test]
+    fn shape_change_relays_out() {
+        let home = plain_home();
+        let spot = |shape| {
+            virtual_spot_of(
+                IslandMode::Virtual,
+                &home,
+                true,
+                IslandPlace::Centre,
+                false,
+                shape,
+            )
+        };
+        let pill = spot(IslandShape::Island).expect("virtual");
+        let circle = spot(IslandShape::Circle).expect("virtual");
+        // The shape is part of where the island is laid out, so a change of
+        // it is laid out again at the next sample.
+        assert_ne!(pill, circle);
+        assert!(!virtual_frames(&home, pill, Panel::Kinds { groups: 2 }).circle);
+        assert!(virtual_frames(&home, circle, Panel::Kinds { groups: 2 }).circle);
+        // Classic never takes the shape.
+        let classic = virtual_spot_of(
+            IslandMode::Classic,
+            &home,
+            true,
+            IslandPlace::Centre,
+            false,
+            IslandShape::Circle,
+        );
+        assert_eq!(classic, None);
+    }
+
+    #[test]
+    fn drag_on_the_circle_shows_the_orb_and_ends_it() {
+        let home = plain_home();
+        let circle = VirtualSpot {
+            place: IslandPlace::Centre,
+            bar_under: false,
+            shape: IslandShape::Circle,
+        };
+        // A drag in the zone on the virtual circle brings the drop box out
+        // (and the corner's rule is unchanged: a corner drop box needs the
+        // corner, not the circle).
+        assert!(drop_box_wanted(false, true, true, false));
+        assert!(drop_box_wanted(true, false, true, false));
+        let panel = |on| {
+            if on {
+                Panel::Drop
+            } else {
+                Panel::Kinds { groups: 1 }
+            }
+        };
+        assert!(virtual_frames(&home, circle, panel(true)).orb);
+        // A sample with no drag ends it, and the drag out's own latch or
+        // the pill never raises it.
+        assert!(!drop_box_wanted(false, true, false, false));
+        assert!(!drop_box_wanted(false, true, true, true));
+        assert!(!drop_box_wanted(false, false, true, false));
+        assert!(!virtual_frames(&home, circle, panel(false)).orb);
     }
 }

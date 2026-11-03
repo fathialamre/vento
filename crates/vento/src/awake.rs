@@ -51,6 +51,20 @@ pub fn ends_soon(session: Session, now: Timestamp) -> bool {
     time_left(session, now).is_some_and(|left| left <= ENDING_SOON)
 }
 
+/// How much of its time `session` has left at `now`, 1 down to 0, for the
+/// circle's ring. `None` unless it is timed ([`Chip::For`]): one until a time
+/// or with no end has no length to drain.
+pub fn left_fraction(session: Session, now: Timestamp) -> Option<f32> {
+    let Chip::For(length) = session.chip else {
+        return None;
+    };
+    let left = time_left(session, now)?;
+    if length.is_zero() {
+        return Some(0.0);
+    }
+    Some((left.as_secs_f32() / length.as_secs_f32()).clamp(0.0, 1.0))
+}
+
 /// What the island's resting pill says of `session` at `now`, beside the
 /// cup: the time it has left (`"1 h 23 min"`, never under a minute) for a
 /// timed one, when it ends (`"18:30"`, in `tz`) for one until a time, and
@@ -425,5 +439,31 @@ mod tests {
             assert_eq!(keep_awake_menu_text(false), "بدء إبقاء الجهاز مستيقظاً");
             assert_eq!(keep_awake_menu_text(true), "إيقاف إبقاء الجهاز مستيقظاً");
         });
+    }
+
+    #[test]
+    fn left_fraction_drains_for_a_timed_session() {
+        let hour = session(Chip::For(minutes(60)), at(12, 0));
+        assert_eq!(left_fraction(hour, at(12, 0)), Some(1.0));
+        assert_eq!(left_fraction(hour, at(12, 45)), Some(0.25));
+        // Past its end, and before its start, the fraction stays in 0..=1.
+        assert_eq!(left_fraction(hour, at(13, 30)), Some(0.0));
+        assert_eq!(left_fraction(hour, at(11, 0)), Some(1.0));
+    }
+
+    #[test]
+    fn left_fraction_none_until_a_time_or_forever() {
+        let until = session(
+            Chip::Until {
+                hour: 18,
+                minute: 30,
+            },
+            at(12, 0),
+        );
+        assert_eq!(left_fraction(until, at(12, 0)), None);
+        assert_eq!(
+            left_fraction(session(Chip::Forever, at(12, 0)), at(12, 0)),
+            None
+        );
     }
 }

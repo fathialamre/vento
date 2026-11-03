@@ -1129,6 +1129,28 @@ impl PocketController {
         self.run_undo_timer();
     }
 
+    /// Takes the card down as the island leaves it: on the circle, the
+    /// shot's picture shrinks into the disc.
+    pub(super) fn close_card_into_disc(&self) {
+        let picture = self.card.picture.borrow().clone();
+        self.close_card();
+        if let Some(picture) = picture {
+            self.shot_into_circle(picture);
+        }
+    }
+
+    /// The shot of a card that just ended shrinks into the circle: the
+    /// window shows `picture` on the disc and starts the shrink, a new id
+    /// for each. Only the virtual circle does; every other island ignores it.
+    pub(super) fn shot_into_circle(&self, picture: Image) {
+        if !self.home.get().is_some_and(|h| self.circle_virtual(&h)) {
+            return;
+        }
+        let w = &self.window;
+        w.set_shot_disc(picture);
+        w.set_shot_disc_id(w.get_shot_disc_id().wrapping_add(1));
+    }
+
     /// After an action on the card: on the next turn of the event loop,
     /// once the window has finished with the click, the card closes, `then`
     /// runs, and the island goes back to rest.

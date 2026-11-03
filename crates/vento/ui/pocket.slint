@@ -3248,6 +3248,15 @@ export component PocketIsland inherits Window {
     in property <bool> rest-awake-soon;
     // vento is paused: the resting pill is grey, with Resume.
     in property <bool> rest-paused;
+    // The Circle shape of the virtual island: it rests as a disc, and the
+    // resting pill and the news pill rest round, stretching into a pill only
+    // to say something. `rest-awake-fraction` is how much of a timed Keep
+    // Awake is left (1 down to 0; below 0 for none), and `rest-badge` the
+    // Pocket's count for the disc ("" for none, "99+" above 99).
+    in property <bool> circle-style;
+    in property <bool> rest-round;
+    in property <float> rest-awake-fraction: -1;
+    in property <string> rest-badge;
     // Where the resting pill lies, for the clicks its Resume takes: its
     // width, and Resume's width (0 for none) and x from the pill's left.
     out property <length> rest-pill-w: rest-body.pill-w;
@@ -3336,6 +3345,10 @@ export component PocketIsland inherits Window {
     in property <bool> card;
     in property <image> card-picture;
     in property <string> card-meta;
+    // On the circle, the shot of a card that just ended shrinks into the
+    // disc: its picture, and an id that starts the 800 ms shrink anew.
+    in property <image> shot-disc;
+    in property <int> shot-disc-id;
     // The virtual island's news: what shows (0 none, 1 a
     // job at work, 2 a result), how it reads (0 done, 1 info, 2 error,
     // 3 busy), the action's icon (empty for the tone's own mark), the
@@ -3354,6 +3367,10 @@ export component PocketIsland inherits Window {
     in property <int> news-extra;
     in property <float> news-fraction: -1;
     in property <string> news-count;
+    // On the circle: the news rests as the round disc rather than stretched
+    // into a pill, and its count in a few characters ("25%", "3/5").
+    in property <bool> news-round;
+    in property <string> news-short;
     // The board's id of the news shown, to tell a new error from the same
     // one shown again.
     in property <int> news-id;

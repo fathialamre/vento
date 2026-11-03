@@ -436,6 +436,7 @@ fn main() -> Result<(), slint::PlatformError> {
             pocket.set_awake(
                 session.map(|s| awake::rest_status(s, now, &tz)),
                 session.is_some_and(|s| awake::ends_soon(s, now)),
+                session.and_then(|s| awake::left_fraction(s, now)),
             );
             let news = watch.borrow_mut().changed(session, now);
             match news {

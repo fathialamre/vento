@@ -41,6 +41,8 @@ pub(super) struct NewsView {
     pub fraction: Option<f32>,
     /// The job's count ("25%", "3 of 5"); empty for none.
     pub count_text: String,
+    /// The same count in a few characters, for the circle ("25%", "3/5").
+    pub short_count: String,
 }
 
 /// One row of Activity: a running job, or a result posted today.
@@ -267,13 +269,13 @@ pub(super) fn today_start(now: Timestamp, tz: &TimeZone) -> Option<Timestamp> {
 /// A job at work, `id` on the board: its text, the item it is on, and its
 /// count.
 fn work_view(id: u64, job: &JobNotice, extra: usize, pressed: bool) -> NewsView {
-    let (fraction, count_text, sub) = match &job.progress {
+    let (fraction, count_text, short_count, sub) = match &job.progress {
         Some(progress) => {
             let s = progress.snapshot();
-            let (fraction, count) = progress_count(job.icon, s.done, s.total);
-            (fraction, count, s.current)
+            let (fraction, count, short) = progress_count(job.icon, s.done, s.total);
+            (fraction, count, short, s.current)
         }
-        None => (None, String::new(), String::new()),
+        None => (None, String::new(), String::new(), String::new()),
     };
     NewsView {
         stage: Stage::Work,
@@ -287,6 +289,7 @@ fn work_view(id: u64, job: &JobNotice, extra: usize, pressed: bool) -> NewsView 
         extra,
         fraction,
         count_text,
+        short_count,
     }
 }
 
@@ -308,32 +311,53 @@ fn result_view(id: u64, n: &Notice, extra: usize, pressed: bool) -> NewsView {
         extra,
         fraction: None,
         count_text: String::new(),
+        short_count: String::new(),
     }
 }
 
-/// How far a job of `action` has got, `done` of `total`: the share done and
-/// the count. Convert counts pictures, the picture under way first ("3 of
-/// 5"); the others (and a job of no action) count bytes, as a percent.
-/// Nothing while the total is unknown.
-fn progress_count(action: Option<ActionId>, done: u64, total: u64) -> (Option<f32>, String) {
+/// How far a job of `action` has got, `done` of `total`: the share done, the
+/// count and the count in short. Convert counts pictures, the picture under
+/// way first ("3 of 5", "3/5"); the others (and a job of no action) count
+/// bytes, as a percent, the same short. Nothing while the total is unknown.
+fn progress_count(
+    action: Option<ActionId>,
+    done: u64,
+    total: u64,
+) -> (Option<f32>, String, String) {
     if total == 0 {
-        return (None, String::new());
+        return (None, String::new(), String::new());
     }
     let fraction = (done as f64 / total as f64).min(1.0) as f32;
-    let count = match action {
-        Some(ActionId::Convert) => fill(
-            &tr("{current} of {total}"),
-            &[
-                ("current", &(done + 1).min(total).to_string()),
-                ("total", &total.to_string()),
-            ],
-        ),
-        _ => fill(
-            &tr("{}%"),
-            &[("", &(done.min(total) * 100 / total).to_string())],
-        ),
+    let (count, short) = match action {
+        Some(ActionId::Convert) => {
+            let current = (done + 1).min(total).to_string();
+            let total = total.to_string();
+            (
+                fill(
+                    &tr("{current} of {total}"),
+                    &[("current", &current), ("total", &total)],
+                ),
+                format!("{current}/{total}"),
+            )
+        }
+        _ => {
+            let percent = fill(
+                &tr("{}%"),
+                &[("", &(done.min(total) * 100 / total).to_string())],
+            );
+            (percent.clone(), percent)
+        }
     };
-    (Some(fraction), count)
+    (Some(fraction), count, short)
+}
+
+/// Whether the circle shows `view` as the round disc rather than stretched
+/// into a pill. Work is round (its ring says it), and so is a result without
+/// a button or with an error's (until it is hovered); a result with a button
+/// stretches to say it, and so does the pointer on any of them.
+pub(super) fn circle_round(view: &NewsView, hovered: bool) -> bool {
+    !hovered
+        && !(view.stage == Stage::Result && view.button_text.is_some() && view.tone != Tone::Error)
 }
 
 #[cfg(test)]
@@ -795,5 +819,94 @@ mod tests {
             (view.stage, view.tone, view.extra),
             (Stage::Result, Tone::Error, 1)
         );
+    }
+
+    /// A view of `stage` and `tone` with a button or none, for the circle.
+    fn round_view(stage: Stage, tone: Tone, button: Option<&str>) -> NewsView {
+        NewsView {
+            stage,
+            tone,
+            icon: None,
+            text: "Text".into(),
+            sub: String::new(),
+            id: 1,
+            button_text: button.map(Into::into),
+            quiet_button: false,
+            extra: 0,
+            fraction: None,
+            count_text: String::new(),
+            short_count: String::new(),
+        }
+    }
+
+    #[test]
+    fn circle_stays_round_at_work() {
+        // Work shows a ring, even with Cancel offered.
+        let work = round_view(Stage::Work, Tone::Info, Some("Cancel"));
+        assert!(circle_round(&work, false));
+    }
+
+    #[test]
+    fn circle_stretches_for_a_result_with_a_button() {
+        let undo = round_view(Stage::Result, Tone::Done, Some("Undo"));
+        assert!(!circle_round(&undo, false));
+        let info = round_view(Stage::Result, Tone::Info, Some("Change"));
+        assert!(!circle_round(&info, false));
+    }
+
+    #[test]
+    fn circle_error_round_until_hovered() {
+        let error = round_view(Stage::Result, Tone::Error, Some("Details"));
+        assert!(circle_round(&error, false));
+        assert!(!circle_round(&error, true));
+    }
+
+    #[test]
+    fn circle_tick_without_button_is_round() {
+        let done = round_view(Stage::Result, Tone::Done, None);
+        assert!(circle_round(&done, false));
+    }
+
+    #[test]
+    fn circle_hover_always_stretches() {
+        for view in [
+            round_view(Stage::Work, Tone::Info, None),
+            round_view(Stage::Result, Tone::Done, None),
+            round_view(Stage::Result, Tone::Done, Some("Undo")),
+            round_view(Stage::Result, Tone::Error, Some("Details")),
+        ] {
+            assert!(!circle_round(&view, true), "{view:?}");
+        }
+    }
+
+    #[test]
+    fn convert_short_count_is_slash() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let progress = Progress::new();
+        progress.start(5);
+        progress.add_done(2);
+        news.start(job(ActionId::Convert, Some(progress)), t0, noon());
+        let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
+        assert_eq!(view.short_count, "3/5");
+    }
+
+    #[test]
+    fn percent_short_count_matches_count_text() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let progress = Progress::new();
+        progress.start(200);
+        progress.add_done(50);
+        news.start(job(ActionId::Archive, Some(progress)), t0, noon());
+        let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
+        assert_eq!(view.short_count, "25%");
+        assert_eq!(view.short_count, view.count_text);
+    }
+
+    #[test]
+    fn unknown_fraction_has_no_short_count() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        news.start(job(ActionId::Move, None), t0, noon());
+        let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
+        assert_eq!(view.short_count, "");
     }
 }
