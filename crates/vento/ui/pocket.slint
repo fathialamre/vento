@@ -3257,14 +3257,12 @@ component CircleRing inherits Rectangle {
 }
 
 // What the virtual island's circle holds at rest, 34 pt round: the orange
-// dot, with the Pocket's count in an orange badge at its lower right (lower
-// left in a right-to-left language), past its edge. While Keep Awake runs,
-// the cup (amber once it ends soon) in a ring of the time left, draining
-// clockwise from the top; a full ring for no end. Paused, a grey disc with
-// two white bars. The glass under it is the island's.
+// dot (the Pocket's count is its `CircleBadge`, drawn over any shimmer).
+// While Keep Awake runs, the cup (amber once it ends soon) in a ring of the
+// time left, draining clockwise from the top; a full ring for no end.
+// Paused, a grey disc with two white bars. The glass under it is the
+// island's.
 component CircleBody inherits Rectangle {
-    // The badge's text ("" for none, "99+" above 99).
-    in property <string> badge;
     in property <bool> awake;
     in property <bool> awake-soon;
     // How much of a timed Keep Awake is left, 1 down to 0; below 0 for none.
@@ -3313,9 +3311,21 @@ component CircleBody inherits Rectangle {
         height: 10px;
         background: white;
     }
+}
 
-    // The Pocket's count, centred on a point 5 pt in from the lower corner.
-    if root.badge != "" && !root.paused && !root.awake: Rectangle {
+// The round circle's count, over its body and any shimmer: an orange badge
+// centred on a point 5 pt in from the circle's lower right corner (lower
+// left in a right-to-left language), past its edge. As large as the circle.
+component CircleBadge inherits Rectangle {
+    // The badge's text ("" for none, "99+" above 99).
+    in property <string> badge;
+
+    property <color> accent: #ff6a1a;
+
+    width: 34px;
+    height: 34px;
+
+    if root.badge != "": Rectangle {
         x: (Theme.rtl ? 5px : 29px) - self.width / 2;
         y: 29px - self.height / 2;
         width: max(16px, badge-text.preferred-width + 8px);
@@ -3339,7 +3349,8 @@ component CircleBody inherits Rectangle {
 // from the top (or an arc going round when it cannot say how far, only
 // while it can be seen) around its count in short; done, a green tick that
 // pops in; an error, a red ring around "!"; busy, an amber ring around "…";
-// information, the action's icon, or the orange dot without one.
+// information, the action's icon, or the orange dot without one. With
+// motion reduced the tick shows at its size, with no pop.
 component CircleNews inherits Rectangle {
     // 1 at work, 2 a result.
     in property <int> stage;
@@ -3355,6 +3366,7 @@ component CircleNews inherits Rectangle {
     in property <bool> round;
     // The board's id of the news shown, to pop the tick of each new one.
     in property <int> id;
+    in property <bool> reduce-motion;
 
     property <color> accent: #ff6a1a;
     property <bool> done: root.stage == 2 && root.tone == 0;
@@ -3364,7 +3376,7 @@ component CircleNews inherits Rectangle {
     property <float> pop-t: root.popping ? min(1, (animation-tick() - root.pop-start) / 200ms) : 1;
     property <float> pop: 0.6 + 0.4 * (1 - (1 - root.pop-t) * (1 - root.pop-t));
     function pop-in() {
-        if root.done && root.round {
+        if root.done && root.round && !root.reduce-motion {
             root.pop-start = animation-tick();
             root.popping = true;
             pop-timer.restart();
@@ -3505,9 +3517,10 @@ component CircleNews inherits Rectangle {
 // across once swollen, near black, its edge 16 orange dashes pulsing
 // between 0.55 and 1 opaque every 1.2 s, and the Pocket's icon in the
 // middle. The edge is only made while it shows (`pulse`), so the pulse
-// ticks only then.
+// ticks only then; `still`, it stays fully opaque and nothing ticks.
 component DropOrb inherits Rectangle {
     in property <bool> pulse;
+    in property <bool> still;
 
     property <color> accent: #ff6a1a;
 
@@ -3524,7 +3537,7 @@ component DropOrb inherits Rectangle {
         viewbox-height: 62;
         stroke: root.accent;
         stroke-width: 2px;
-        opacity: 0.775 + 0.225 * Math.cos(self.phase * 360deg);
+        opacity: root.still ? 1 : 0.775 + 0.225 * Math.cos(self.phase * 360deg);
         // Sixteen arcs of 13.5° on a circle of 29 round the middle, one
         // every 22.5° from the top.
         commands: "M 27.59 2.2 A 29 29 0 0 1 34.41 2.2 M 38.87 3.09 A 29 29 0 0 1 45.17 5.7 M 48.95 8.23 A 29 29 0 0 1 53.77 13.05 M 56.3 16.83 A 29 29 0 0 1 58.91 23.13 M 59.8 27.59 A 29 29 0 0 1 59.8 34.41 M 58.91 38.87 A 29 29 0 0 1 56.3 45.17 M 53.77 48.95 A 29 29 0 0 1 48.95 53.77 M 45.17 56.3 A 29 29 0 0 1 38.87 58.91 M 34.41 59.8 A 29 29 0 0 1 27.59 59.8 M 23.13 58.91 A 29 29 0 0 1 16.83 56.3 M 13.05 53.77 A 29 29 0 0 1 8.23 48.95 M 5.7 45.17 A 29 29 0 0 1 3.09 38.87 M 2.2 34.41 A 29 29 0 0 1 2.2 27.59 M 3.09 23.13 A 29 29 0 0 1 5.7 16.83 M 8.23 13.05 A 29 29 0 0 1 13.05 8.23 M 16.83 5.7 A 29 29 0 0 1 23.13 3.09";
@@ -3537,6 +3550,238 @@ component DropOrb inherits Rectangle {
         y: (parent.height - self.height) / 2;
         width: 24px;
         height: 24px;
+    }
+}
+
+// One shimmer moment on the resting virtual island, `w` by `h` over its
+// pill or its circle (`round`): each new `play` plays the `style` once over
+// 1.2 s, eased in and out, while the island is `live` for it (0 Off,
+// 1 Sweep, 2 Edge run, 3 Halo, 4 Sparkle, 5 Liquid). It stops at once when
+// it no longer is, and nothing ticks between moments. Sweep and Edge run
+// are kept within the shape; Halo grows out of it by up to `room`, and
+// Sparkle's stars sit on its rim. Liquid draws nothing here: the island is
+// drawn `stretch-w` wider and `stretch-h` taller, around its middle, while
+// its own size stays as it is.
+component Shimmer inherits Rectangle {
+    in property <int> style;
+    in property <bool> round;
+    in property <length> w;
+    in property <length> h;
+    in property <int> play;
+    in property <bool> live;
+    in property <length> room: 6px;
+    out property <length> stretch-w: root.liquid * 6px;
+    out property <length> stretch-h: root.liquid * -2px;
+
+    property <bool> playing;
+    property <duration> start;
+    property <bool> on: root.playing && root.live;
+    // How far the moment has played, 0 to 1 eased in and out; read only
+    // while it plays.
+    property <float> p: root.on ? min(1, (animation-tick() - root.start) / 1200ms) : 0;
+    property <float> t: root.p * root.p * (3 - 2 * root.p);
+    changed play => {
+        if root.live && root.style != 0 {
+            root.start = animation-tick();
+            root.playing = true;
+            end-timer.restart();
+        }
+    }
+    changed live => {
+        if !root.live {
+            root.playing = false;
+        }
+    }
+    end-timer := Timer {
+        interval: 1200ms;
+        running: root.playing;
+        triggered => {
+            root.playing = false;
+        }
+    }
+
+    // The shape's corner radius.
+    property <length> radius: root.round ? root.w / 2 : root.h / 2;
+    // The pill's outline 1 in from its edge, for Edge run (in points): a
+    // stadium of two straight runs and two half circles, measured from the
+    // top centre clockwise.
+    property <float> sw: root.w / 1px;
+    property <float> sh: root.h / 1px;
+    property <float> r: max(0, root.sh / 2 - 1);
+    property <float> run: max(0, root.sw - root.sh);
+    property <float> half: 3.14159265 * root.r;
+    property <float> perimeter: max(1, 2 * root.run + 2 * root.half);
+    // Liquid: 1 at its widest, then back to 0 with one small overshoot
+    // past it (about 0.18 the other way).
+    property <float> liquid: root.on && root.style == 5
+        ? (root.t < 0.45 ? Math.sin(root.t / 0.45 * 90deg)
+            : (1 - (root.t - 0.45) / 0.55) * (1 - (root.t - 0.45) / 0.55)
+                * Math.cos((root.t - 0.45) / 0.55 * 270deg))
+        : 0;
+    // Sparkle's spots on the rim: across the pill, alternately on its top
+    // and bottom edge; round the circle, clockwise from the top.
+    property <[float]> spots: [0.2, 0.55, 0.85];
+    property <[angle]> turns: [30deg, 150deg, 270deg];
+
+    // The point `d` along the pill's outline.
+    pure function edge-x(d: float) -> float {
+        let s = Math.mod(Math.mod(d, root.perimeter) + root.perimeter, root.perimeter);
+        let a = root.run / 2;
+        let b = a + root.half;
+        let c = b + root.run;
+        let e = c + root.half;
+        s < a ? root.sw / 2 + s
+            : s < b ? root.sw - root.sh / 2 + root.r * Math.sin((s - a) / root.r * 1rad)
+            : s < c ? root.sw - root.sh / 2 - (s - b)
+            : s < e ? root.sh / 2 - root.r * Math.sin((s - c) / root.r * 1rad)
+            : root.sh / 2 + (s - e)
+    }
+    pure function edge-y(d: float) -> float {
+        let s = Math.mod(Math.mod(d, root.perimeter) + root.perimeter, root.perimeter);
+        let a = root.run / 2;
+        let b = a + root.half;
+        let c = b + root.run;
+        let e = c + root.half;
+        s < a ? root.sh / 2 - root.r
+            : s < b ? root.sh / 2 - root.r * Math.cos((s - a) / root.r * 1rad)
+            : s < c ? root.sh / 2 + root.r
+            : s < e ? root.sh / 2 + root.r * Math.cos((s - c) / root.r * 1rad)
+            : root.sh / 2 - root.r
+    }
+
+    width: root.w;
+    height: root.h;
+
+    // Halo: an orange outline growing out of the shape, from 1 pt to
+    // `room`, fading from 60 % to nothing.
+    if root.on && root.style == 3: Rectangle {
+        property <length> spread: 1px + (root.room - 1px) * root.t;
+        x: -self.spread;
+        y: -self.spread;
+        width: root.w + 2 * self.spread;
+        height: root.h + 2 * self.spread;
+        border-radius: root.radius + self.spread;
+        border-width: self.spread;
+        border-color: #ff6a1a;
+        opacity: 0.6 * (1 - root.t);
+    }
+
+    // Sweep and Edge run, within the shape.
+    if root.on && (root.style == 1 || root.style == 2): Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.w;
+        height: root.h;
+        border-radius: root.radius;
+        clip: true;
+
+        // Sweep: a slanted band of light, 0.4 of the shape wide, crossing
+        // it from left to right.
+        if root.style == 1: Rectangle {
+            x: -self.width + root.t * (root.w + self.width);
+            y: 0px;
+            width: root.w * 0.4;
+            height: root.h;
+            background: @linear-gradient(70deg, #ffffff00 0%, #ffffff2e 50%, #ffffff00 100%);
+        }
+
+        // Edge run on the pill: a bright segment 24 long running once round
+        // the outline, from the top centre clockwise, drawn through seven
+        // points 4 apart.
+        if root.style == 2 && !root.round: segment := Path {
+            property <float> tail: root.t * root.perimeter;
+            x: 0px;
+            y: 0px;
+            width: root.w;
+            height: root.h;
+            viewbox-width: root.sw;
+            viewbox-height: root.sh;
+            stroke: #ffffffb3;
+            stroke-width: 2px;
+
+            MoveTo {
+                x: root.edge-x(segment.tail);
+                y: root.edge-y(segment.tail);
+            }
+
+            LineTo {
+                x: root.edge-x(segment.tail + 4);
+                y: root.edge-y(segment.tail + 4);
+            }
+
+            LineTo {
+                x: root.edge-x(segment.tail + 8);
+                y: root.edge-y(segment.tail + 8);
+            }
+
+            LineTo {
+                x: root.edge-x(segment.tail + 12);
+                y: root.edge-y(segment.tail + 12);
+            }
+
+            LineTo {
+                x: root.edge-x(segment.tail + 16);
+                y: root.edge-y(segment.tail + 16);
+            }
+
+            LineTo {
+                x: root.edge-x(segment.tail + 20);
+                y: root.edge-y(segment.tail + 20);
+            }
+
+            LineTo {
+                x: root.edge-x(segment.tail + 24);
+                y: root.edge-y(segment.tail + 24);
+            }
+        }
+
+        // Orbit on the circle: a 50° arc of a ring, 2 pt wide at its edge,
+        // turning once round from the top clockwise.
+        if root.style == 2 && root.round: orbit := Path {
+            property <angle> turn: root.t * 360deg;
+            property <float> ring: max(0, root.sw / 2 - 1);
+            x: 0px;
+            y: 0px;
+            width: root.w;
+            height: root.h;
+            viewbox-width: root.sw;
+            viewbox-height: root.sh;
+            stroke: #ffffffb3;
+            stroke-width: 2px;
+
+            MoveTo {
+                x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn);
+                y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn);
+            }
+
+            ArcTo {
+                x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn + 50deg);
+                y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn + 50deg);
+                radius-x: orbit.ring;
+                radius-y: orbit.ring;
+                sweep: true;
+            }
+        }
+    }
+
+    // Sparkle: three white four-point stars, 6 pt, on the rim, each
+    // growing from nothing and back, 0.15 of the moment after the one
+    // before.
+    for i in (root.on && root.style == 4 ? 3 : 0): Path {
+        property <float> u: clamp((root.t - 0.15 * i) / 0.7, 0, 1);
+        property <length> size: 6px * Math.sin(self.u * 180deg);
+        property <length> mid-x: root.round ? root.w / 2 + root.w / 2 * Math.sin(root.turns[i])
+            : root.w * root.spots[i];
+        property <length> mid-y: root.round ? root.h / 2 - root.h / 2 * Math.cos(root.turns[i])
+            : Math.mod(i, 2) == 0 ? 0px : root.h;
+        x: self.mid-x - self.size / 2;
+        y: self.mid-y - self.size / 2;
+        width: self.size;
+        height: self.size;
+        viewbox-width: 6;
+        viewbox-height: 6;
+        commands: "M 3 0 L 3.8 2.2 L 6 3 L 3.8 3.8 L 3 6 L 2.2 3.8 L 0 3 L 2.2 2.2 Z";
+        fill: #ffffff;
     }
 }
 
@@ -3853,6 +4098,11 @@ export component PocketIsland inherits Window {
     // opens) it goes back to the resting form, and the last news stays on
     // it as it fades.
     property <bool> news-on: root.resting && root.news-stage != 0;
+    // The resting pill or circle may play a shimmer moment: never on the
+    // lip, under news, open, with the style Off or with motion reduced. A
+    // moment under way stops as soon as one of those comes.
+    property <bool> shimmer-on: root.virtual-style && root.resting && !root.lip && !root.news-on
+        && !root.expanded && root.shimmer-style != 0 && !root.reduce-motion;
     // What the pill shows: the news, or the last while it fades.
     property <int> news-shown-stage: root.news-stage != 0 ? root.news-stage : root.news-last-stage;
     property <int> news-last-stage;
@@ -3861,12 +4111,13 @@ export component PocketIsland inherits Window {
             root.news-last-stage = root.news-stage;
         }
     }
-    // An error shakes the pill once, over 500 ms: three swings dying out.
+    // An error shakes the pill once, over 500 ms: three swings dying out;
+    // with motion reduced, not at all.
     property <bool> news-error: root.news-on && root.news-stage == 2 && root.news-tone == 2;
     property <bool> shaking;
     property <duration> shake-start;
     property <float> shake-t: root.shaking ? min(1, (animation-tick() - root.shake-start) / 500ms) : 1;
-    property <length> shake-dx: root.shaking ? 6px * (1 - root.shake-t) * Math.sin(root.shake-t * 3 * 360deg) : 0px;
+    property <length> shake-dx: root.shaking && !root.reduce-motion ? 6px * (1 - root.shake-t) * Math.sin(root.shake-t * 3 * 360deg) : 0px;
     function shake() {
         root.shake-start = animation-tick();
         root.shaking = true;
@@ -3878,7 +4129,9 @@ export component PocketIsland inherits Window {
     function shake-new-error() {
         if root.news-error && root.news-id != root.shaken-id {
             root.shaken-id = root.news-id;
-            root.shake();
+            if !root.reduce-motion {
+                root.shake();
+            }
         }
     }
     changed news-error => {
@@ -3896,7 +4149,8 @@ export component PocketIsland inherits Window {
         }
     }
     // The shot of a card that just ended shrinks into the circle, from 62
-    // to 34 over 800 ms easing out, fading out over the last 200 ms.
+    // to 34 over 800 ms easing out, fading out over the last 200 ms; with
+    // motion reduced it stays 62 across and fades out over the 800 ms.
     property <bool> shot-shrinking;
     property <duration> shot-start;
     property <float> shot-t: root.shot-shrinking ? min(1, (animation-tick() - root.shot-start) / 800ms) : 1;
@@ -3929,21 +4183,26 @@ export component PocketIsland inherits Window {
     property <int> drag-count: root.on-list && root.list-filter > 0 && root.list-filter < root.list-chips.length
         ? root.list-chips[root.list-filter].count : root.count;
 
+    // The island's size; a Liquid shimmer draws it stretched around its
+    // middle for a moment, this staying as it is.
+    property <length> island-w: root.expanded ? root.width : root.collapsed-w;
+    animate island-w {
+        duration: root.resting ? 250ms : 160ms;
+        easing: root.resting ? ease : ease-out;
+    }
+    property <length> island-h: root.expanded ? (root.virtual-style ? 0px : root.top-h) + root.panel-h : root.collapsed-h;
+    animate island-h {
+        duration: root.resting ? 250ms : 240ms;
+        easing: root.resting ? ease : cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
     island := Rectangle {
         visible: !root.orb-on;
-        width: root.expanded ? root.width : root.collapsed-w;
-        height: root.expanded ? (root.virtual-style ? 0px : root.top-h) + root.panel-h : root.collapsed-h;
+        width: root.island-w + shimmer.stretch-w;
+        height: root.island-h + shimmer.stretch-h;
         x: (root.width - self.width) / 2;
         // In the corner by the clock, its bottom stays on the window's.
-        y: root.corner-style ? root.height - self.height : root.top-y;
-        animate width {
-            duration: root.resting ? 250ms : 160ms;
-            easing: root.resting ? ease : ease-out;
-        }
-        animate height {
-            duration: root.resting ? 250ms : 240ms;
-            easing: root.resting ? ease : cubic-bezier(0.22, 1, 0.36, 1);
-        }
+        y: root.corner-style ? root.height - self.height : root.top-y - shimmer.stretch-h / 2;
 
         // The virtual island's resting forms are glass, as opaque as the
         // settings say; the lip never less than 60 %, with an outline, so
@@ -4448,25 +4707,48 @@ export component PocketIsland inherits Window {
         }
     }
 
-    // The round circle's body, over the island's glass: unclipped, so its
-    // badge can sit past its edge. Hidden under the news, its badge too.
-    CircleBody {
+    // The round circle's body, over the island's glass.
+    circle-body := CircleBody {
         x: island.x + (island.width - self.width) / 2;
         y: island.y + (island.height - self.height) / 2;
         visible: root.resting && !root.lip && root.circle-round && !root.orb-on;
-        badge: root.news-on ? "" : root.rest-badge;
         awake: root.rest-awake;
         awake-soon: root.rest-awake-soon;
         awake-fraction: root.rest-awake-fraction;
         paused: root.rest-paused;
     }
 
+    // The shimmer moments, over the resting pill or the circle (unclipped,
+    // so Halo and Sparkle can reach past the edge, Halo by 6 pt where the
+    // window has the room above it, else 4).
+    shimmer := Shimmer {
+        x: island.x;
+        y: island.y;
+        w: island.width;
+        h: island.height;
+        style: root.shimmer-style;
+        round: root.circle-round;
+        play: root.shimmer-id;
+        live: root.shimmer-on;
+        room: island.y >= 6px ? 6px : 4px;
+    }
+
+    // The circle's count, over the shimmer, past the circle's edge; hidden
+    // under the news, and with the cup or paused.
+    CircleBadge {
+        x: circle-body.x;
+        y: circle-body.y;
+        visible: circle-body.visible;
+        badge: root.news-on || root.rest-awake || root.rest-paused ? "" : root.rest-badge;
+    }
+
     // The virtual island's news pill, over its resting form: solid black,
     // 34 pt high with its top at the pill's. It wakes from the resting
-    // form's size with a spring over 250 ms and goes back to it as it fades
-    // over 600 ms. Open, the island shows none. Its content keeps its own
-    // width as the pill grows and shrinks around it. At rest, clicks pass
-    // through it, except on its button and its chip. On the circle it rests
+    // form's size with a spring (none with motion reduced) over 250 ms and
+    // goes back to it as it fades over 600 ms. Open, the island shows none.
+    // Its content keeps its own width as the pill grows and shrinks around
+    // it. At rest, clicks pass through it, except on its button and its
+    // chip. On the circle it rests
     // round, 34 pt across, and stretches into the pill (and back) over
     // 250 ms with no spring.
     news := Rectangle {
@@ -4476,7 +4758,7 @@ export component PocketIsland inherits Window {
         y: root.news-on ? root.top-h : root.collapsed-y;
         animate width, height, y {
             duration: root.news-on ? 250ms : 600ms;
-            easing: root.news-on && !root.circle-style ? ease-out-back : ease;
+            easing: root.news-on && !root.circle-style && !root.reduce-motion ? ease-out-back : ease;
         }
         opacity: root.news-on ? 1 : 0;
         animate opacity {
@@ -4526,19 +4808,20 @@ export component PocketIsland inherits Window {
             live: news.visible && root.news-disc;
             round: root.news-disc && root.news-on;
             id: root.news-id;
+            reduce-motion: root.reduce-motion;
         }
     }
 
     // The shot shrinking into the circle, round, over everything.
     if root.shot-shrinking: Rectangle {
-        property <length> d: 62px - 28px * (1 - (1 - root.shot-t) * (1 - root.shot-t));
+        property <length> d: root.reduce-motion ? 62px : 62px - 28px * (1 - (1 - root.shot-t) * (1 - root.shot-t));
         x: (root.width - self.width) / 2;
         y: root.collapsed-y;
         width: self.d;
         height: self.d;
         border-radius: self.d / 2;
         clip: true;
-        opacity: root.shot-t < 0.75 ? 1 : (1 - root.shot-t) * 4;
+        opacity: root.reduce-motion ? 1 - root.shot-t : root.shot-t < 0.75 ? 1 : (1 - root.shot-t) * 4;
 
         Image {
             x: 0px;
@@ -4552,15 +4835,17 @@ export component PocketIsland inherits Window {
 
     // While something is dragged near it, the circle swells into the drop
     // orb over 200 ms, from 34 to the 62 that fill the window below
-    // `top-h`, in place of the island; it shrinks back unseen.
+    // `top-h`, in place of the island; it shrinks back unseen. With motion
+    // reduced it is at once 62 across, and its edge does not pulse.
     DropOrb {
         width: root.orb-on ? 62px : 34px;
         height: self.width;
-        animate width { duration: 200ms; easing: ease-out; }
+        animate width { duration: root.reduce-motion ? 0ms : 200ms; easing: ease-out; }
         x: (root.width - self.width) / 2;
         y: root.top-h;
         visible: root.orb-on;
         pulse: root.orb-on;
+        still: root.reduce-motion;
     }
 
     // A push against the top edge over the resting virtual island: an
