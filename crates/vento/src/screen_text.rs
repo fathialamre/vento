@@ -18,7 +18,7 @@ use vento_platform::{Platform, PlatformError, ScreenText};
 
 use crate::appearance;
 use crate::lazy_window::LazyWindow;
-use crate::notice::Notice;
+use crate::notice::{CopySource, Notice};
 use crate::ui::{ScreenAccess, Theme};
 
 /// What a read hands back: the text boxes found, or why there are none.
@@ -131,7 +131,7 @@ impl ScreenTextController {
                     warn!("cannot copy the text read from the screen: {e}");
                     Notice::error(failed_text())
                 } else {
-                    Notice::done(copied_text())
+                    Notice::done(copied_text()).with_copy(CopySource::Own)
                 }
             }
         };

@@ -30,7 +30,7 @@ use vento_core::screenshots::{
 };
 use vento_platform::{Dropped, PlatformError, RgbaImage};
 
-use crate::notice::Notice;
+use crate::notice::{CopySource, Notice};
 use crate::screen_text::ReadResult;
 use crate::ui::{PocketIsland, ShotDay, ShotTile};
 
@@ -873,8 +873,10 @@ impl PocketController {
         match self.platform.write_clipboard(&shot_snapshot(path, png)) {
             Ok(_) => {
                 info!("screenshot copied");
-                self.toast
-                    .notify(Notice::done(tr("Copied")), self.toast_at());
+                self.toast.notify(
+                    Notice::done(tr("Copied")).with_copy(CopySource::Own),
+                    self.toast_at(),
+                );
             }
             Err(e) => self.copy_failed(&e),
         }
@@ -935,9 +937,10 @@ impl PocketController {
             return;
         }
         match self.platform.copy_text(&text) {
-            Ok(()) => self
-                .toast
-                .notify(Notice::done(tr("Copied text")), self.toast_at()),
+            Ok(()) => self.toast.notify(
+                Notice::done(tr("Copied text")).with_copy(CopySource::Own),
+                self.toast_at(),
+            ),
             Err(e) => self.copy_failed(&e),
         }
     }

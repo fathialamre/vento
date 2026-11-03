@@ -2667,6 +2667,8 @@ component NewsBody inherits Rectangle {
     in property <string> text;
     in property <string> sub;
     in property <string> button;
+    // The button is grey (Details, Change) rather than the accent.
+    in property <bool> quiet;
     in property <int> extra;
     in property <float> fraction: -1;
     in property <string> count;
@@ -2711,14 +2713,16 @@ component NewsBody inherits Rectangle {
     property <length> bar-end: root.tail-x + (root.has-bar ? 10px + root.bar-w : 0px);
     property <length> count-x: root.bar-end + 8px;
     property <length> count-end: root.bar-end + (root.has-count ? 8px + count-text.preferred-width : 0px);
-    property <length> ltr-chip-x: root.count-end + 8px;
     property <length> ltr-button-x: root.pill-w - root.lead - 5px - root.button-w;
+    // After the count; but never under the button: a tail wider than the
+    // room ends 8 pt before it.
+    property <length> ltr-chip-x: root.has-button
+        ? min(root.count-end + 8px, root.ltr-button-x - 8px - root.chip-w)
+        : root.count-end + 8px;
     out property <length> chip-w: root.has-chip ? max(20px, chip-text.preferred-width + 14px) : 0px;
     out property <length> button-w: root.has-button ? button-text.preferred-width + 24px : 0px;
     out property <length> chip-x: root.mirror(root.ltr-chip-x, root.chip-w);
     out property <length> button-x: root.mirror(root.ltr-button-x, root.button-w);
-    // Details and Change are grey; any other button is the accent.
-    property <bool> quiet-button: root.button == @tr("Details") || root.button == @tr("Change");
 
     // The x of something `w` wide at `x` from the pill's left, left to
     // right: as far from the right in a right-to-left language.
@@ -2914,7 +2918,7 @@ component NewsBody inherits Rectangle {
         height: 26px;
         visible: root.has-button;
         border-radius: 13px;
-        background: root.quiet-button
+        background: root.quiet
             ? (button-touch.has-hover ? #3a3a40 : #2c2c32)
             : (button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : #ff6a1a);
         animate background { duration: 140ms; }
@@ -2930,7 +2934,152 @@ component NewsBody inherits Rectangle {
             text: root.button;
             color: white;
             font-size: 12px;
-            font-weight: root.quiet-button ? 500 : 600;
+            font-weight: root.quiet ? 500 : 600;
+        }
+
+        button-touch := TouchArea {
+            enabled: root.has-button;
+            clicked => {
+                root.button-clicked();
+            }
+        }
+    }
+}
+
+// What the virtual island's resting pill holds, 28 pt high and `pill-w`
+// wide (as wide as what it says, at least 120 and at most `max-w`): a mark,
+// a word and the Pocket's count in a chip, centred. The mark is the orange
+// dot, or a cup while Keep Awake runs (amber once it ends soon), whose time
+// left then takes the word's place. Paused, it is grey: two bars and
+// "Vento paused", with a Resume button 3 pt in from the end; it says where
+// it puts the button, for the clicks it takes. The other way round in a
+// right-to-left language.
+component RestBody inherits Rectangle {
+    in property <int> count;
+    // Keep Awake runs, with the time it has left (empty for no end), and
+    // ends soon.
+    in property <bool> awake;
+    in property <string> awake-text;
+    in property <bool> awake-soon;
+    in property <bool> paused;
+    in property <length> max-w;
+    callback button-clicked();
+
+    property <color> accent: #ff6a1a;
+    property <length> mark-w: root.paused || root.awake ? 14px : 8px;
+    property <length> gap: 6px;
+    property <bool> has-chip: root.count > 0 && !root.paused;
+    property <bool> has-button: root.paused;
+    property <length> chip-w: max(16px, chip-text.preferred-width + 10px);
+    // The mark, the word and the chip, each after a gap.
+    property <length> content-w: root.mark-w + root.gap + label.preferred-width
+        + (root.has-chip ? root.gap + root.chip-w : 0px);
+    // With 8 pt on each side; with a button, 10 pt before the content and
+    // the button 3 pt in from the end.
+    property <length> natural-w: root.has-button
+        ? 10px + root.content-w + 8px + root.button-w + 3px
+        : 8px + root.content-w + 8px;
+    out property <length> pill-w: min(root.max-w, max(120px, root.natural-w));
+    // Where the content starts: centred while narrower than the pill.
+    property <length> lead: max(0px, (root.pill-w - root.natural-w) / 2);
+    // The word gives way when the pill cannot grow any more.
+    property <length> label-w: max(0px, min(label.preferred-width,
+        root.pill-w - (root.natural-w - label.preferred-width)));
+    // Left to right, from the pill's left edge.
+    property <length> mark-x: root.lead + (root.has-button ? 10px : 8px);
+    property <length> label-x: root.mark-x + root.mark-w + root.gap;
+    property <length> chip-x: root.label-x + root.label-w + root.gap;
+    property <length> ltr-button-x: root.pill-w - root.lead - 3px - root.button-w;
+    out property <length> button-w: root.has-button ? button-text.preferred-width + 20px : 0px;
+    out property <length> button-x: root.mirror(root.ltr-button-x, root.button-w);
+
+    // The x of something `w` wide at `x` from the pill's left, left to
+    // right: as far from the right in a right-to-left language.
+    pure function mirror(x: length, w: length) -> length {
+        Theme.rtl ? root.pill-w - x - w : x
+    }
+
+    width: root.pill-w;
+
+    // The mark: two grey bars, the cup, or the dot.
+    Image {
+        x: root.mirror(root.mark-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: 14px;
+        height: 14px;
+        visible: root.paused || root.awake;
+        source: root.paused ? PanelIcons.pause : PanelIcons.awake;
+        colorize: root.paused ? #ffffff80 : root.awake-soon ? #ffb340 : root.accent;
+    }
+
+    Rectangle {
+        x: root.mirror(root.mark-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 8px;
+        visible: !root.paused && !root.awake;
+        border-radius: 4px;
+        background: root.accent;
+    }
+
+    label := LineText {
+        x: root.mirror(root.label-x, self.width);
+        y: 0px;
+        width: root.label-w;
+        height: parent.height;
+        // "Vento" alone is the app's name, not translated.
+        text: root.paused ? @tr("Vento paused")
+            : root.awake && root.awake-text != "" ? root.awake-text
+            : root.count > 0 ? @tr("Pocket") : "Vento";
+        color: root.paused ? #ffffff80 : white;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        x: root.mirror(root.chip-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: root.chip-w;
+        height: 16px;
+        visible: root.has-chip;
+        border-radius: 8px;
+        background: #ffffff26;
+
+        chip-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.count;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+        }
+    }
+
+    // Resume. (`AccessibleRole.button` in full: the role, not a property.)
+    Rectangle {
+        x: root.button-x;
+        y: (parent.height - self.height) / 2;
+        width: root.button-w;
+        height: 22px;
+        visible: root.has-button;
+        border-radius: 11px;
+        background: button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : root.accent;
+        animate background { duration: 140ms; }
+        accessible-role: AccessibleRole.button;
+        accessible-label: button-text.text;
+        accessible-action-default => {
+            root.button-clicked();
+        }
+
+        button-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("Resume");
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
         }
 
         button-touch := TouchArea {
@@ -2974,6 +3123,18 @@ export component PocketIsland inherits Window {
     in property <float> push-progress;
     // The Pocket's count on the resting pill; 0 shows none.
     in property <int> rest-count;
+    // The resting pill while Keep Awake runs: the time it has left (empty
+    // for no end), and whether it ends soon.
+    in property <bool> rest-awake;
+    in property <string> rest-awake-text;
+    in property <bool> rest-awake-soon;
+    // vento is paused: the resting pill is grey, with Resume.
+    in property <bool> rest-paused;
+    // Where the resting pill lies, for the clicks its Resume takes: its
+    // width, and Resume's width (0 for none) and x from the pill's left.
+    out property <length> rest-pill-w: rest-body.pill-w;
+    out property <length> rest-button-w: rest-body.button-w;
+    out property <length> rest-button-x: rest-body.button-x;
     // The Pocket view's groups, one per kind present, and their tiles.
     in property <[PocketGroup]> groups;
     in property <[PocketTile]> tiles;
@@ -3060,17 +3221,18 @@ export component PocketIsland inherits Window {
     // The virtual island's news: what shows (0 none, 1 a
     // job at work, 2 a result), how it reads (0 done, 1 info, 2 error,
     // 3 busy), the action's icon (empty for the tone's own mark), the
-    // sentence and its detail, the one button's label (empty for none), how
-    // many other things are going on (the "+N" chip), how much of the job is
-    // done (0 to 1; below 0 when it cannot say) and its count ("25%", "3 of
-    // 5"). With nothing shown, the rest keeps the last news, to fade out
-    // with.
+    // sentence and its detail, the one button's label (empty for none) and
+    // whether it is grey, how many other things are going on (the "+N"
+    // chip), how much of the job is done (0 to 1; below 0 when it cannot
+    // say) and its count ("25%", "3 of 5"). With nothing shown, the rest
+    // keeps the last news, to fade out with.
     in property <int> news-stage;
     in property <int> news-tone;
     in property <image> news-icon;
     in property <string> news-text;
     in property <string> news-sub;
     in property <string> news-button;
+    in property <bool> news-quiet;
     in property <int> news-extra;
     in property <float> news-fraction: -1;
     in property <string> news-count;
@@ -3162,6 +3324,8 @@ export component PocketIsland inherits Window {
     // The news pill's one button, and its "+N" chip.
     callback news-button-clicked();
     callback news-chip-clicked();
+    // The paused resting pill's Resume.
+    callback rest-button-clicked();
 
     width: root.panel-w;
     height: root.top-h + root.window-h;
@@ -3173,9 +3337,9 @@ export component PocketIsland inherits Window {
 
     // The virtual island at rest: the lip hangs from the window's top edge
     // (the bar's lower edge, or the screen's), the pill sits `top-h` below
-    // it.
+    // it, as wide as what it says.
     property <length> collapsed-w: root.corner-style ? root.width : root.notch-style ? root.notch-w + 2 * root.wing
-        : root.virtual-style && root.lip ? 84px : 120px;
+        : root.virtual-style ? (root.lip ? 84px : rest-body.pill-w) : 120px;
     property <length> collapsed-h: root.corner-style ? 0px : root.notch-style ? root.top-h
         : root.virtual-style && root.lip ? 6px : 28px;
     property <length> collapsed-y: root.notch-style ? 0px : root.virtual-style ? (root.lip ? 0px : root.top-h)
@@ -3320,64 +3484,23 @@ export component PocketIsland inherits Window {
         }
 
         // The virtual island's pill: an orange dot and "Pocket" with the
-        // count in a chip (the other way round in a right-to-left language),
-        // or "Vento" alone with an empty Pocket. The lip shows nothing. At
-        // rest, clicks pass through both to the window under them.
-        if root.resting && !root.lip: Rectangle {
-            x: 0px;
+        // count in a chip, or "Vento" alone with an empty Pocket; a cup and
+        // the time left while Keep Awake runs; grey with Resume while
+        // paused. The lip shows nothing. At rest, clicks pass through both
+        // to the window under them, except on Resume.
+        rest-body := RestBody {
+            x: (parent.width - self.width) / 2;
             y: 0px;
-            width: parent.width;
             height: parent.height;
-
-            HorizontalLayout {
-                x: (parent.width - self.width) / 2;
-                y: 0px;
-                width: min(self.preferred-width, parent.width - 16px);
-                height: parent.height;
-                spacing: 6px;
-
-                VerticalLayout {
-                    layout-order: Theme.rtl ? 3 : 0;
-                    alignment: center;
-
-                    Rectangle {
-                        width: 8px;
-                        height: 8px;
-                        border-radius: 4px;
-                        background: root.accent;
-                    }
-                }
-
-                LineText {
-                    layout-order: Theme.rtl ? 2 : 0;
-                    // The app's name, not translated.
-                    text: root.rest-count > 0 ? @tr("Pocket") : "Vento";
-                    color: white;
-                    font-size: 12px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
-
-                if root.rest-count > 0: VerticalLayout {
-                    layout-order: Theme.rtl ? 1 : 0;
-                    alignment: center;
-
-                    Rectangle {
-                        width: max(16px, chip-text.preferred-width + 10px);
-                        height: 16px;
-                        border-radius: 8px;
-                        background: #ffffff26;
-
-                        chip-text := Text {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            text: root.rest-count;
-                            color: white;
-                            font-size: 10px;
-                            font-weight: 600;
-                        }
-                    }
-                }
+            visible: root.resting && !root.lip;
+            count: root.rest-count;
+            awake: root.rest-awake;
+            awake-text: root.rest-awake-text;
+            awake-soon: root.rest-awake-soon;
+            paused: root.rest-paused;
+            max-w: root.panel-w - 40px;
+            button-clicked => {
+                root.rest-button-clicked();
             }
         }
 
@@ -3824,6 +3947,7 @@ export component PocketIsland inherits Window {
             text: root.news-text;
             sub: root.news-sub;
             button: root.news-button;
+            quiet: root.news-quiet;
             extra: root.news-extra;
             fraction: root.news-fraction;
             count: root.news-count;

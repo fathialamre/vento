@@ -27,7 +27,7 @@ msgstr "* للاسم كامل"
 msgid "+1 h"
 msgstr "+ساعة"
 
-#: crates/vento/ui/pocket.slint:2895
+#: crates/vento/ui/pocket.slint:2898
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] "+{n}"
@@ -37,7 +37,7 @@ msgstr[3] "+{n}"
 msgstr[4] "+{n}"
 msgstr[5] "+{n}"
 
-#: crates/vento/src/pocket/clip.rs:134
+#: crates/vento/src/pocket/clip.rs:135
 msgid "+{n} more"
 msgstr "+{n} أخرى"
 
@@ -105,7 +105,7 @@ msgstr "إضافة إلى الجيب"
 msgid "Added"
 msgstr "أُضيف"
 
-#: crates/vento/src/pocket/clip.rs:594
+#: crates/vento/src/pocket/clip.rs:600
 msgid "Address"
 msgstr "العنوان"
 
@@ -172,6 +172,10 @@ msgstr "صوت"
 #: crates/vento/src/settings_window/mod.rs:1720
 msgid "Automatic (system language)"
 msgstr "تلقائي (لغة النظام)"
+
+#: crates/vento/src/main.rs:428
+msgid "Awake ends in 5 min"
+msgstr "ينتهي إبقاء الجهاز مستيقظاً بعد 5 دقائق"
 
 #: crates/vento-core/src/awake.rs:123
 msgid "Awake for less than a minute more"
@@ -265,7 +269,7 @@ msgstr "إلغاء"
 msgid "Cancelled"
 msgstr "أُلغي"
 
-#: crates/vento/src/awake.rs:90
+#: crates/vento/src/awake.rs:166
 msgid "Cannot keep the computer awake"
 msgstr "لا يمكن إبقاء الجهاز مستيقظاً"
 
@@ -453,11 +457,11 @@ msgstr "جارٍ التحويل"
 msgid "Converting {name}…"
 msgstr "جارٍ تحويل {name}…"
 
-#: crates/vento/src/exec.rs:380
+#: crates/vento/src/exec.rs:381
 msgid "Copied"
 msgstr "تم النسخ"
 
-#: crates/vento/src/pocket/shots_view.rs:940
+#: crates/vento/src/pocket/shots_view.rs:941
 msgid "Copied text"
 msgstr "تم نسخ النص"
 
@@ -641,7 +645,7 @@ msgstr "تعذّر استبدال Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "تعذّر حفظ الإعدادات: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2097
+#: crates/vento/src/pocket/mod.rs:2157
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
@@ -721,7 +725,7 @@ msgstr "مستندات"
 msgid "Done"
 msgstr "تم"
 
-#: crates/vento/src/panel/mod.rs:113
+#: crates/vento/src/main.rs:640
 msgid "Downloading {v}…"
 msgstr "جارٍ تنزيل ‎{v}…"
 
@@ -737,7 +741,7 @@ msgstr "ارسم مستطيلاً بالسحب فوق النص الذي تريد
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "اسحب الصف من مقبضه لتغيير مكان الإجراء."
 
-#: crates/vento/ui/pocket.slint:3743
+#: crates/vento/ui/pocket.slint:3865
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "اسحب الكل ({n})"
@@ -769,7 +773,7 @@ msgstr[3] "اسحب {n}"
 msgstr[4] "اسحب {n}"
 msgstr[5] "اسحب {n}"
 
-#: crates/vento/ui/pocket.slint:3525
+#: crates/vento/ui/pocket.slint:3647
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
@@ -857,7 +861,7 @@ msgstr "جارٍ فك ضغط {name}…"
 msgid "Fewer pages"
 msgstr "صفحات أقل"
 
-#: crates/vento/src/pocket/clip.rs:967
+#: crates/vento/src/pocket/clip.rs:973
 msgid "File"
 msgstr "ملف"
 
@@ -917,7 +921,7 @@ msgstr "شبح"
 msgid "GitHub answered {code}"
 msgstr "ردّ GitHub بالرمز {code}"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:178
 msgid "GitHub's answer couldn't be read"
 msgstr "تعذّرت قراءة ردّ GitHub"
 
@@ -969,11 +973,11 @@ msgstr "كيف تُرتَّب الإجراءات حول المؤشر"
 msgid "How to use"
 msgstr "طريقة الاستخدام"
 
-#: crates/vento/src/pocket/clip.rs:960
+#: crates/vento/src/pocket/clip.rs:966
 msgid "Image"
 msgstr "صورة"
 
-#: crates/vento/src/pocket/clip.rs:1007
+#: crates/vento/src/pocket/clip.rs:1013
 msgid "Image {w}×{h}"
 msgstr "صورة {w}×{h}"
 
@@ -1117,7 +1121,7 @@ msgstr "فاتح"
 msgid "Light, dark, or as your system is set"
 msgstr "فاتح أو داكن، أو حسب إعداد نظامك"
 
-#: crates/vento/src/pocket/clip.rs:959
+#: crates/vento/src/pocket/clip.rs:965
 msgid "Link"
 msgstr "رابط"
 
@@ -1197,7 +1201,7 @@ msgstr "نقل إلى"
 msgid "Move to Trash"
 msgstr "نقل إلى سلة المهملات"
 
-#: crates/vento/src/pocket/shots_view.rs:1183
+#: crates/vento/src/pocket/shots_view.rs:1186
 msgid "Moved to Trash"
 msgstr "نُقلت إلى سلة المهملات"
 
@@ -1329,11 +1333,11 @@ msgstr "لا شيء محدد"
 msgid "Nothing to convert: already {format}"
 msgstr "لا يوجد ما يُحوَّل: الصيغة {format} أصلاً"
 
-#: crates/vento/src/exec.rs:956
+#: crates/vento/src/exec.rs:959
 msgid "Nothing to copy"
 msgstr "لا يوجد شيء لنسخه"
 
-#: crates/vento/src/exec.rs:921
+#: crates/vento/src/exec.rs:924
 msgid "Nothing to move"
 msgstr "لا يوجد شيء لنقله"
 
@@ -1405,7 +1409,7 @@ msgstr "فتح لقطات الشاشة"
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
-#: crates/vento/src/main.rs:242
+#: crates/vento/src/main.rs:251
 msgid "Open the Pocket"
 msgstr "فتح الجيب"
 
@@ -1417,7 +1421,7 @@ msgstr "افتح تبويب لقطات الشاشة في الجزيرة لترى
 msgid "Open the Welcome setup"
 msgstr "فتح إعداد الترحيب"
 
-#: crates/vento/src/main.rs:246
+#: crates/vento/src/main.rs:255
 msgid "Open the clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1477,7 +1481,7 @@ msgstr[5] "الصفحات {pages}"
 msgid "Password"
 msgstr "كلمة السر"
 
-#: crates/vento/src/exec.rs:394
+#: crates/vento/src/exec.rs:396
 msgid "Path copied"
 msgstr "تم نسخ المسار"
 
@@ -1549,7 +1553,7 @@ msgstr "كبسولة بسيطة"
 msgid "Pocket"
 msgstr "الجيب"
 
-#: crates/vento/ui/pocket.slint:3494
+#: crates/vento/ui/pocket.slint:3616
 msgid "Pocket cleared"
 msgstr "أُفرغ الجيب"
 
@@ -1933,7 +1937,7 @@ msgstr "إظهار لقطات الشاشة في الجزيرة"
 msgid "Shown under the Keep Awake tile, with Until stopped and Until…"
 msgstr "تظهر تحت مربع «إبقاء الجهاز مستيقظاً»، مع «حتى الإيقاف» و«حتى…»"
 
-#: crates/vento/src/pocket/clip.rs:594
+#: crates/vento/src/pocket/clip.rs:600
 msgid "Site"
 msgstr "الموقع"
 
@@ -1944,6 +1948,10 @@ msgstr "الحجم"
 #: crates/vento/ui/welcome.slint:1172
 msgid "Skip setup"
 msgstr "تخطي الإعداد"
+
+#: crates/vento/src/main.rs:438
+msgid "Sleep allowed again"
+msgstr "يُسمح بالسكون مجدداً"
 
 #: crates/vento/ui/pdf.slint:1240
 msgid "Smaller file"
@@ -1995,7 +2003,7 @@ msgstr "تقسيم…"
 msgid "Start"
 msgstr "بدء"
 
-#: crates/vento/src/awake.rs:32
+#: crates/vento/src/awake.rs:34
 msgid "Start Keep Awake"
 msgstr "بدء إبقاء الجهاز مستيقظاً"
 
@@ -2015,7 +2023,7 @@ msgstr "ما زالت النسخة ‎{running} قيد التشغيل. {reason}"
 msgid "Stop"
 msgstr "إيقاف"
 
-#: crates/vento/src/awake.rs:30
+#: crates/vento/src/awake.rs:32
 msgid "Stop Keep Awake"
 msgstr "إيقاف إبقاء الجهاز مستيقظاً"
 
@@ -2031,7 +2039,7 @@ msgstr "يُخزَّن على هذا الجهاز دون تشفير. تُتجا�
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "يُخزَّن على هذا الحاسوب دون تشفير. تُتجاهل النسخ التي تعلّمها برامج إدارة كلمات السر على أنها خاصة."
 
-#: crates/vento/src/main.rs:948
+#: crates/vento/src/main.rs:1082
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "فعّل إذن تسجيل الشاشة من جديد للنسخ من الشاشة"
 
@@ -2063,7 +2071,7 @@ msgstr "قالب"
 msgid "Terminal"
 msgstr "الطرفية"
 
-#: crates/vento/src/pocket/clip.rs:958
+#: crates/vento/src/pocket/clip.rs:964
 msgid "Text"
 msgstr "نصوص"
 
@@ -2079,7 +2087,7 @@ msgstr "الجيب يستخدم هذا الاختصار"
 msgid "The download couldn't be opened"
 msgstr "تعذّر فتح التنزيل"
 
-#: crates/vento/src/updater/mod.rs:176
+#: crates/vento/src/updater/mod.rs:177
 msgid "The download didn't match its checksum"
 msgstr "التنزيل لا يطابق مجموعه الاختباري"
 
@@ -2087,7 +2095,7 @@ msgstr "التنزيل لا يطابق مجموعه الاختباري"
 msgid "The list and the numbers follow it"
 msgstr "تتبعه القائمة والأرقام"
 
-#: crates/vento/src/updater/mod.rs:69
+#: crates/vento/src/updater/mod.rs:70
 msgid "The new version didn't start."
 msgstr "لم يبدأ تشغيل الإصدار الجديد."
 
@@ -2119,7 +2127,7 @@ msgstr "السمة"
 msgid "This shortcut can't be used"
 msgstr "لا يمكن استخدام هذا الاختصار"
 
-#: crates/vento/src/pocket/mod.rs:851
+#: crates/vento/src/pocket/mod.rs:860
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
@@ -2243,6 +2251,10 @@ msgstr "7 مجلدات كحد أقصى"
 msgid "Update"
 msgstr "تحديث"
 
+#: crates/vento/src/main.rs:666
+msgid "Update ready"
+msgstr "التحديث جاهز"
+
 #: crates/vento/src/whats_new_window/mod.rs:438
 msgid "Updated from {v}"
 msgstr "تم التحديث من ‎{v}"
@@ -2283,7 +2295,7 @@ msgstr "‏Vento كله"
 msgid "Vento can't read this folder."
 msgstr "لا يستطيع Vento قراءة هذا المجلد."
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:71
 msgid "Vento didn't quit"
 msgstr "لم يُغلَق Vento"
 
@@ -2315,6 +2327,10 @@ msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته 
 msgid "Vento needs to see {} again after the update."
 msgstr "يحتاج Vento إلى رؤية {} مجددًا بعد التحديث."
 
+#: crates/vento/ui/pocket.slint:3030
+msgid "Vento paused"
+msgstr "‏Vento متوقف مؤقتاً"
+
 #: crates/vento/src/welcome_window/practice.rs:61
 msgid "Vento was here."
 msgstr "مرّ Vento من هنا."
@@ -2322,6 +2338,10 @@ msgstr "مرّ Vento من هنا."
 #: crates/vento/src/panel/mod.rs:125
 msgid "Vento will be back in a second"
 msgstr "‏Vento سيعود خلال لحظة"
+
+#: crates/vento/src/main.rs:619
+msgid "Vento {version} is out"
+msgstr "صدر Vento ‎{version}"
 
 #: crates/vento/src/whats_new_window/mod.rs:433
 msgid "Vento {v}"
@@ -2455,11 +2475,11 @@ msgstr "أنت على أحدث إصدار"
 msgid "You've got it. This works on any file, in Finder or anywhere you drag files from."
 msgstr "أتقنتها. تعمل على أي ملف تسحبه، في Finder أو في أي مكان."
 
-#: crates/vento/src/awake.rs:20
+#: crates/vento/src/awake.rs:22
 msgid "Your Mac follows its usual energy settings"
 msgstr "يتبع جهاز Mac إعدادات الطاقة المعتادة"
 
-#: crates/vento/src/awake.rs:22
+#: crates/vento/src/awake.rs:24
 msgid "Your computer follows its usual energy settings"
 msgstr "يتبع جهازك إعدادات الطاقة المعتادة"
 
@@ -2519,11 +2539,11 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start"
 msgstr "تعذّر البدء"
 
-#: crates/vento/src/pocket/mod.rs:1783
+#: crates/vento/src/pocket/mod.rs:1843
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
-#: crates/vento/src/exec.rs:1127
+#: crates/vento/src/exec.rs:1131
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
@@ -2555,7 +2575,7 @@ msgstr "فارغ"
 msgid "i/o error: {reason}"
 msgstr "خطأ في القراءة أو الكتابة: {reason}"
 
-#: crates/vento/src/exec.rs:1110
+#: crates/vento/src/exec.rs:1114
 msgid "internal error"
 msgstr "خطأ داخلي"
 
@@ -2643,7 +2663,7 @@ msgstr "لا يوجد اسم متاح للعنصر المحفوظ"
 msgid "no free temporary name"
 msgstr "لا يوجد اسم مؤقت متاح"
 
-#: crates/vento/src/exec.rs:642
+#: crates/vento/src/exec.rs:645
 msgid "no images"
 msgstr "لا توجد صور"
 
@@ -2675,7 +2695,7 @@ msgstr "لا شيء للمشاركة"
 msgid "nothing to write"
 msgstr "لا يوجد ما يُكتب"
 
-#: crates/vento/src/pocket/clip.rs:1071
+#: crates/vento/src/pocket/clip.rs:1122
 msgid "now"
 msgstr "الآن"
 
@@ -2743,7 +2763,7 @@ msgstr "‏{app} لم يعد موجوداً"
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
-#: crates/vento/src/pocket/news.rs:169
+#: crates/vento/src/pocket/news.rs:192
 msgid "{current} of {total}"
 msgstr "‏{current} من {total}"
 
@@ -2759,7 +2779,7 @@ msgstr "‏{find} → {with}"
 msgid "{first} + {second}"
 msgstr "‏{first} + {second}"
 
-#: crates/vento/src/pocket/clip.rs:1041
+#: crates/vento/src/pocket/clip.rs:1047
 msgid "{first} +{n}"
 msgstr "‏{first} +{n}"
 
@@ -2805,7 +2825,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:992
+#: crates/vento/src/main.rs:1126
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 
@@ -2867,7 +2887,7 @@ msgstr[3] "{n} ملفات"
 msgstr[4] "{n} ملفاً"
 msgstr[5] "{n} ملف"
 
-#: crates/vento/src/exec.rs:382
+#: crates/vento/src/exec.rs:383
 msgid "{n} file ready to paste"
 msgid_plural "{n} files ready to paste"
 msgstr[0] "لا توجد ملفات جاهزة للصق"
@@ -2877,7 +2897,7 @@ msgstr[3] "{n} ملفات جاهزة للصق"
 msgstr[4] "{n} ملفاً جاهزاً للصق"
 msgstr[5] "{n} ملف جاهز للصق"
 
-#: crates/vento/src/pocket/clip.rs:963
+#: crates/vento/src/pocket/clip.rs:969
 msgid "{n} files"
 msgstr "ملفات ({n})"
 
@@ -3025,11 +3045,11 @@ msgstr[3] "ستتغيّر {n} عناصر"
 msgstr[4] "سيتغيّر {n} عنصراً"
 msgstr[5] "سيتغيّر {n} عنصر"
 
-#: crates/vento/src/pocket/clip.rs:1077
+#: crates/vento/src/pocket/clip.rs:1128
 msgid "{n}h"
 msgstr "{n} س"
 
-#: crates/vento/src/pocket/clip.rs:1074
+#: crates/vento/src/pocket/clip.rs:1125
 msgid "{n}m"
 msgstr "{n} د"
 
@@ -3067,7 +3087,7 @@ msgstr[3] "‏{} {n}"
 msgstr[4] "‏{} {n}"
 msgstr[5] "‏{} {n}"
 
-#: crates/vento/src/pocket/news.rs:176
+#: crates/vento/src/pocket/news.rs:199
 msgid "{}%"
 msgstr "‏{}%"
 

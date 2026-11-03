@@ -224,6 +224,15 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
+    // The virtual island's paused pill resumes.
+    {
+        let pause = Rc::downgrade(&pause);
+        pocket.set_on_resume(Box::new(move || {
+            if let Some(pause) = pause.upgrade() {
+                pause.set(false);
+            }
+        }));
+    }
     // The Pocket shortcut opens the island on the Pocket, the Clipboard
     // shortcut on the history, and the Copy from screen shortcut starts
     // that. Each is registered at startup (the Clipboard one only while the
@@ -394,6 +403,44 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    // Keep Awake in the virtual island: the resting pill shows a cup and
+    // the time left, and the island says when a session ends soon (with
+    // +1 h) and when the computer may sleep again.
+    {
+        let keep = panel.keep_awake();
+        let (watched, island) = (Rc::downgrade(&keep), Rc::downgrade(&pocket));
+        let watch = RefCell::new(awake::AwakeWatch::default());
+        keep.on_change(Box::new(move || {
+            let (Some(keep), Some(pocket)) = (watched.upgrade(), island.upgrade()) else {
+                return;
+            };
+            let (session, now) = (keep.session(), jiff::Timestamp::now());
+            let tz = jiff::tz::TimeZone::system();
+            pocket.set_awake(
+                session.map(|s| awake::rest_status(s, now, &tz)),
+                session.is_some_and(|s| awake::ends_soon(s, now)),
+            );
+            let news = watch.borrow_mut().changed(session, now);
+            match news {
+                Some(awake::AwakeNews::EndsSoon) => {
+                    let keep = Rc::downgrade(&keep);
+                    pocket.notify(
+                        notice::Notice::busy(tr("Awake ends in 5 min"))
+                            .with_button(notice::ButtonLabel::AddHour, move || {
+                                if let Some(keep) = keep.upgrade() {
+                                    keep.add_hour();
+                                }
+                            })
+                            .island_only(),
+                    );
+                }
+                Some(awake::AwakeNews::Stopped) => {
+                    pocket.notify(notice::Notice::info(tr("Sleep allowed again")).island_only());
+                }
+                None => {}
+            }
+        }));
+    }
     // The menu-bar icon needs the running event loop, and lives as long as the app.
     let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
     // Updates (macOS): the daily check, the download and the restart. Its
@@ -542,6 +589,91 @@ fn main() -> Result<(), slint::PlatformError> {
         });
         // The row shows the state at once, not only after the first change.
         show_now();
+    }
+    // The update in the virtual island: a new version, its download as a
+    // job with Cancel, and the update ready to restart. Get it and Restart
+    // do what the panel's card does.
+    #[cfg(target_os = "macos")]
+    if let Some(updates) = &updates {
+        use vento_core::i18n::fill;
+
+        let (watched, island, jobs) = (
+            Rc::downgrade(updates),
+            Rc::downgrade(&pocket),
+            toaster.clone(),
+        );
+        let watch = RefCell::new(updater::island::UpdateWatch::default());
+        let job: RefCell<Option<(u64, std::sync::Arc<vento_core::archive::Progress>)>> =
+            RefCell::new(None);
+        updates.on_change(Box::new(move |state| {
+            let Some(pocket) = island.upgrade() else {
+                return;
+            };
+            let steps = watch.borrow_mut().changed(state);
+            for step in steps {
+                match step {
+                    updater::island::IslandStep::Out(version) => {
+                        let updates = watched.clone();
+                        pocket.notify(
+                            notice::Notice::info(fill(
+                                &tr("Vento {version} is out"),
+                                &[("version", &version.to_string())],
+                            ))
+                            .with_button(notice::ButtonLabel::GetIt, move || {
+                                if let Some(updates) = updates.upgrade() {
+                                    updates.update();
+                                }
+                            })
+                            .island_only(),
+                        );
+                    }
+                    updater::island::IslandStep::DownloadStarted(version) => {
+                        let (id, progress) =
+                            (notice::next_job_id(), updater::island::download_progress());
+                        let updates = watched.clone();
+                        jobs.job_started(notice::JobNotice {
+                            id,
+                            icon: None,
+                            text: fill(
+                                &tr("Downloading {v}\u{2026}"),
+                                &[("v", &version.to_string())],
+                            ),
+                            progress: Some(progress.clone()),
+                            cancel: Some(Rc::new(move || {
+                                if let Some(updates) = updates.upgrade() {
+                                    updates.cancel();
+                                }
+                            })),
+                        });
+                        *job.borrow_mut() = Some((id, progress));
+                    }
+                    updater::island::IslandStep::Downloaded(fraction) => {
+                        if let Some((_, progress)) = job.borrow().as_ref() {
+                            updater::island::set_downloaded(progress, fraction);
+                        }
+                    }
+                    updater::island::IslandStep::DownloadEnded => {
+                        let ended = job.borrow_mut().take();
+                        if let Some((id, _)) = ended {
+                            jobs.job_ended(id);
+                        }
+                    }
+                    updater::island::IslandStep::Ready => {
+                        let updates = watched.clone();
+                        pocket.notify(
+                            notice::Notice::done(tr("Update ready"))
+                                .with_button(notice::ButtonLabel::Restart, move || {
+                                    if let Some(updates) = updates.upgrade() {
+                                        updates.restart();
+                                    }
+                                })
+                                .sticky()
+                                .island_only(),
+                        );
+                    }
+                }
+            }
+        }));
     }
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));

@@ -26,7 +26,7 @@ use vento_core::settings::Settings;
 use vento_platform::Platform;
 
 use crate::archive_ui::{PasswordView, ProgressView, Verb, progress_title};
-use crate::notice::{JobNotice, Notice, middle_cut, next_job_id};
+use crate::notice::{CopySource, JobNotice, Notice, middle_cut, next_job_id};
 use crate::toast::Toaster;
 use crate::wheel::WheelDrop;
 
@@ -360,18 +360,19 @@ fn result_notice(action: ActionId, text: String) -> Notice {
 }
 
 /// The notice for `text`, a result of `action` that `on_undo` undoes;
-/// `serial` names the operation it undoes.
+/// `serial` names the operation it undoes, which the island's Undo,
+/// `island_undo`, undoes alone.
 fn undo_notice(
     action: ActionId,
     text: String,
     on_undo: Box<dyn Fn()>,
-    serial: Option<u64>,
+    serial: u64,
+    island_undo: impl Fn() + 'static,
 ) -> Notice {
-    let notice = result_notice(action, text).with_undo(Some(on_undo));
-    match serial {
-        Some(serial) => notice.with_undo_serial(serial),
-        None => notice,
-    }
+    result_notice(action, text)
+        .with_undo(Some(on_undo))
+        .with_undo_serial(serial)
+        .with_island_undo(island_undo)
 }
 
 /// The notice that Copy put `n` files on the clipboard. The classic toast
@@ -384,6 +385,7 @@ fn files_copied_notice(n: usize) -> Notice {
             "{n} files ready to paste",
             n as u64,
         ))
+        .with_copy(CopySource::Own)
         .island_only()
 }
 
@@ -394,6 +396,7 @@ fn path_copied_notice(copied: &str) -> Notice {
     Notice::done(tr("Path copied"))
         .with_icon(ActionId::CopyPath)
         .with_sub(middle_cut(first, PATH_SUB_CHARS))
+        .with_copy(CopySource::Own)
         .island_only()
 }
 
@@ -985,7 +988,8 @@ impl Executor {
         self.notify_undo_changed();
     }
 
-    /// Says `text`, a result of `action`, with Undo for the last operation.
+    /// Says `text`, a result of `action`, with Undo for the operation
+    /// [`remember_last`](Self::remember_last) has just remembered.
     fn toast_undo(&self, text: String, action: ActionId, at: Point) {
         let this = self.this.clone();
         let on_undo: Box<dyn Fn()> = Box::new(move || {
@@ -993,11 +997,11 @@ impl Executor {
                 executor.undo_last();
             }
         });
-        let serial = self.last_serial();
-        let mut notice = undo_notice(action, text, on_undo, serial);
-        if let Some(serial) = serial {
-            notice = notice.with_island_undo(self.undo_while_last(serial));
-        }
+        // The operation just remembered: the island's Undo undoes it while
+        // it is still the last, and never whatever came after.
+        let serial = self.last_serial.get();
+        let island_undo = self.undo_while_last(serial);
+        let notice = undo_notice(action, text, on_undo, serial, island_undo);
         self.toast.notify(notice, at);
     }
 
@@ -1019,7 +1023,7 @@ impl Executor {
         let id = next_job_id();
         let job = JobNotice {
             id,
-            icon: action,
+            icon: Some(action),
             text: text.clone(),
             progress: None,
             cancel: None,
@@ -1038,7 +1042,7 @@ impl Executor {
         let (cancel, this) = (Arc::clone(&progress), self.this.clone());
         let taken = self.toast.job_started(JobNotice {
             id: job,
-            icon: verb.action(),
+            icon: Some(verb.action()),
             text: progress_title(verb, ""),
             progress: Some(Arc::clone(&progress)),
             cancel: Some(Rc::new(move || {
@@ -1690,7 +1694,8 @@ mod tests {
                 ActionId::Move,
                 move_toast_text(&outcome(2, vec![])),
                 undo(),
-                Some(4)
+                4,
+                || {}
             )),
             shown("Moved 2 items to Photos", true)
         );
@@ -1699,7 +1704,8 @@ mod tests {
                 ActionId::CopyTo,
                 "Copied 1 item to Photos".into(),
                 undo(),
-                None
+                5,
+                || {}
             )),
             shown("Copied 1 item to Photos", true)
         );
@@ -1753,13 +1759,47 @@ mod tests {
 
     #[test]
     fn an_undo_notice_names_the_operation_it_undoes() {
-        let n = undo_notice(ActionId::Move, "Moved".into(), Box::new(|| {}), Some(7));
+        let n = undo_notice(ActionId::Move, "Moved".into(), Box::new(|| {}), 7, || {});
         assert_eq!((n.tone, n.icon), (Tone::Done, Some(ActionId::Move)));
         assert_eq!(n.undo_serial, Some(7));
         assert_eq!(
             n.button.as_ref().map(|b| b.label),
             Some(crate::notice::ButtonLabel::Undo)
         );
+    }
+
+    #[test]
+    fn the_islands_undo_is_always_its_own() {
+        // The toast's Undo undoes the last operation; the island's undoes
+        // only the one the notice names, so it never falls back to the
+        // toast's.
+        let (last, own) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
+        let (l, o) = (last.clone(), own.clone());
+        let n = undo_notice(
+            ActionId::Move,
+            "Moved".into(),
+            Box::new(move || l.set(l.get() + 1)),
+            7,
+            move || o.set(o.get() + 1),
+        );
+        (n.island_undo.expect("the island's own undo"))();
+        assert_eq!((last.get(), own.get()), (0, 1));
+    }
+
+    #[test]
+    fn the_islands_undo_with_nothing_to_undo_does_nothing() {
+        let platform: Rc<dyn Platform> = Rc::new(vento_platform::StubPlatform);
+        let executor = Executor::new(
+            platform.clone(),
+            Rc::new(RefCell::new(Settings::default())),
+            Toaster::new(platform.clone()),
+            Rc::new(RefCell::new(RecentDestinations::default())),
+            ProgressView::new(platform.clone()),
+            PasswordView::new(platform),
+        );
+        assert_eq!(executor.last_serial(), None);
+        (executor.undo_while_last(executor.last_serial.get()))();
+        assert!(!executor.busy.get());
     }
 
     #[test]

@@ -44,6 +44,22 @@ impl ButtonLabel {
             Self::Open => tr("Open"),
         }
     }
+
+    /// Whether the button is grey: Details and Change only look or ask,
+    /// while the others act.
+    pub fn quiet(self) -> bool {
+        matches!(self, Self::Details | Self::Change)
+    }
+}
+
+/// Whose copy a notice tells of, so that the island tells of one copy once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CopySource {
+    /// Vento put it on the clipboard: Copy, Copy path, Copy from screen, a
+    /// screenshot.
+    Own,
+    /// The clipboard history's watcher saw it, whoever made it.
+    Watched,
 }
 
 /// A button on a notice and what it does when pressed.
@@ -74,6 +90,8 @@ pub struct Notice {
     /// can hold a result while newer work happens, so it undoes only the
     /// operation `undo_serial` names.
     pub island_undo: Option<Rc<dyn Fn()>>,
+    /// The copy it tells of, if it tells of one.
+    pub copy: Option<CopySource>,
 }
 
 impl Notice {
@@ -88,6 +106,7 @@ impl Notice {
             sticky: false,
             undo_serial: None,
             island_undo: None,
+            copy: None,
         }
     }
 
@@ -153,12 +172,18 @@ impl Notice {
         self
     }
 
+    pub fn with_copy(mut self, source: CopySource) -> Self {
+        self.copy = Some(source);
+        self
+    }
+
     pub fn island_only(mut self) -> Self {
         self.island_only = true;
         self
     }
 
-    #[allow(dead_code)]
+    // Only "Update ready" asks for it, and updates are macOS only.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn sticky(mut self) -> Self {
         self.sticky = true;
         self
@@ -169,7 +194,8 @@ impl Notice {
 pub struct JobNotice {
     /// From [`next_job_id`]; ends with [`NoticeSink::job_ended`].
     pub id: u64,
-    pub icon: ActionId,
+    /// The action it is for; none for a job no action runs (an update).
+    pub icon: Option<ActionId>,
     pub text: String,
     /// Where the job has got to; none while it cannot say.
     pub progress: Option<Arc<Progress>>,

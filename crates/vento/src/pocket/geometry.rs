@@ -68,6 +68,8 @@ const BAR_TOLERANCE: f64 = 8.0;
 const NEWS_H: f64 = 34.0;
 const NEWS_BUTTON_H: f64 = 26.0;
 const NEWS_CHIP_H: f64 = 20.0;
+/// The Resume button on the paused resting pill.
+const RESUME_H: f64 = 22.0;
 
 /// A shape no pointer is ever in: it has a negative size.
 pub(super) const NOWHERE: Rect = Rect {
@@ -470,19 +472,41 @@ pub(super) fn news_rects(
     NewsRects { pill, button, chip }
 }
 
+/// The Resume button of the paused resting pill, `pill_w` wide, with the
+/// button `button_w` wide at `button_x` from the pill's left (as the window
+/// lays it out), centred in the pill's height. The pill is centred on the
+/// island with its top where the news pill's is. `None` where no pill rests:
+/// over the lip, and on the other islands.
+pub(super) fn resume_rect(f: &Frames, pill_w: f64, button_w: f64, button_x: f64) -> Option<Rect> {
+    if !f.virtual_island || f.lip {
+        return None;
+    }
+    let mid = f.expanded.x + f.expanded.w / 2.0;
+    Some(Rect {
+        x: mid - pill_w / 2.0 + button_x,
+        y: f.expanded.y + f.top_h + (PILL_H - RESUME_H) / 2.0,
+        w: button_w,
+        h: RESUME_H,
+    })
+}
+
 /// Where the window should take the pointer in this presence; everywhere
 /// else, clicks fall through to what is below. The resting virtual island
-/// takes none, except on the button and the chip of the news it shows.
+/// takes none, except on the button and the chip of the news it shows and
+/// on the paused pill's `resume`.
 pub(super) fn interactive_rects(
     f: &Frames,
     presence: Presence,
     news: Option<&NewsRects>,
+    resume: Option<Rect>,
 ) -> Vec<Rect> {
     match presence {
         Presence::Hidden => Vec::new(),
         Presence::Collapsed if f.virtual_island => news
-            .map(|n| n.button.into_iter().chain(n.chip).collect())
-            .unwrap_or_default(),
+            .into_iter()
+            .flat_map(|n| n.button.into_iter().chain(n.chip))
+            .chain(resume)
+            .collect(),
         Presence::Collapsed if f.corner => Vec::new(),
         Presence::Collapsed => vec![f.collapsed],
         Presence::Expanded => vec![hold(f)],
@@ -495,14 +519,15 @@ pub(super) fn contains(r: &Rect, p: Point) -> bool {
 }
 
 /// Whether the window should take the pointer at `cursor`, with `news`
-/// showing.
+/// showing, and `resume` while paused.
 pub(super) fn hits(
     f: &Frames,
     presence: Presence,
     news: Option<&NewsRects>,
+    resume: Option<Rect>,
     cursor: Point,
 ) -> bool {
-    interactive_rects(f, presence, news)
+    interactive_rects(f, presence, news, resume)
         .iter()
         .any(|r| contains(r, cursor))
 }
@@ -619,8 +644,8 @@ mod tests {
         assert_eq!(f.collapsed, rect(708.0, 740.0, 560.0, 60.0));
         // Collapsed, the window takes no clicks, even on the band.
         let low = Point { x: 900.0, y: 799.0 };
-        assert!(interactive_rects(&f, Presence::Collapsed, None).is_empty());
-        assert!(!hits(&f, Presence::Collapsed, None, low));
+        assert!(interactive_rects(&f, Presence::Collapsed, None, None).is_empty());
+        assert!(!hits(&f, Presence::Collapsed, None, None, low));
         let t0 = Instant::now();
         let at = |s: &mut IslandState, p: Point, dragging: bool, ms: u64| {
             let inputs = island_inputs(&f, true, dragging, p, false);
@@ -706,22 +731,22 @@ mod tests {
     #[test]
     fn only_the_drawn_shape_takes_the_pointer() {
         let f = frames(&notched(188.0, 38.0), TWO);
-        assert!(interactive_rects(&f, Presence::Hidden, None).is_empty());
+        assert!(interactive_rects(&f, Presence::Hidden, None, None).is_empty());
         assert_eq!(
-            interactive_rects(&f, Presence::Collapsed, None),
+            interactive_rects(&f, Presence::Collapsed, None, None),
             vec![f.collapsed]
         );
         assert_eq!(
-            interactive_rects(&f, Presence::Expanded, None),
+            interactive_rects(&f, Presence::Expanded, None, None),
             vec![union(f.collapsed, f.expanded)]
         );
         let wing = Point { x: 630.0, y: 10.0 };
         // Inside the window, under the collapsed wings: where toolbars sit.
         let below = Point { x: 700.0, y: 100.0 };
-        assert!(hits(&f, Presence::Collapsed, None, wing));
-        assert!(!hits(&f, Presence::Collapsed, None, below));
-        assert!(hits(&f, Presence::Expanded, None, below));
-        assert!(!hits(&f, Presence::Hidden, None, wing));
+        assert!(hits(&f, Presence::Collapsed, None, None, wing));
+        assert!(!hits(&f, Presence::Collapsed, None, None, below));
+        assert!(hits(&f, Presence::Expanded, None, None, below));
+        assert!(!hits(&f, Presence::Hidden, None, None, wing));
     }
 
     #[test]
@@ -848,7 +873,7 @@ mod tests {
                 let now = t0 + Duration::from_millis(100 * k);
                 let presence = s.update(&island_inputs(&f, true, false, at, false), now);
                 assert_eq!(presence, Presence::Collapsed);
-                assert!(!hits(&f, presence, None, at), "{at:?} takes clicks");
+                assert!(!hits(&f, presence, None, None, at), "{at:?} takes clicks");
             }
         }
         // Resting on the wings opens it.
@@ -950,9 +975,9 @@ mod tests {
     #[test]
     fn a_resting_virtual_island_takes_no_clicks() {
         let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
-        assert!(interactive_rects(&f, Presence::Collapsed, None).is_empty());
+        assert!(interactive_rects(&f, Presence::Collapsed, None, None).is_empty());
         assert_eq!(
-            interactive_rects(&f, Presence::Expanded, None),
+            interactive_rects(&f, Presence::Expanded, None, None),
             vec![hold(&f)]
         );
     }
@@ -980,19 +1005,19 @@ mod tests {
         assert_eq!(news.button, Some(rect(725.0, 10.0, 60.0, 26.0)));
         assert_eq!(news.chip, Some(rect(690.0, 13.0, 28.0, 20.0)));
         assert_eq!(
-            interactive_rects(&f, Presence::Collapsed, Some(&news)),
+            interactive_rects(&f, Presence::Collapsed, Some(&news), None),
             vec![news.button.unwrap(), news.chip.unwrap()]
         );
         // The pill's text lets clicks through to the tab bar below.
         let text = Point { x: 550.0, y: 23.0 };
         assert!(contains(&news.pill, text));
-        assert!(!hits(&f, Presence::Collapsed, Some(&news), text));
+        assert!(!hits(&f, Presence::Collapsed, Some(&news), None, text));
         let button = Point { x: 750.0, y: 23.0 };
-        assert!(hits(&f, Presence::Collapsed, Some(&news), button));
+        assert!(hits(&f, Presence::Collapsed, Some(&news), None, button));
         let chip = Point { x: 700.0, y: 23.0 };
-        assert!(hits(&f, Presence::Collapsed, Some(&news), chip));
+        assert!(hits(&f, Presence::Collapsed, Some(&news), None, chip));
         // Hidden, nothing does.
-        assert!(interactive_rects(&f, Presence::Hidden, Some(&news)).is_empty());
+        assert!(interactive_rects(&f, Presence::Hidden, Some(&news), None).is_empty());
     }
 
     #[test]
@@ -1000,13 +1025,13 @@ mod tests {
         let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
         let news = news_with(&f, false, false);
         assert_eq!((news.button, news.chip), (None, None));
-        assert!(interactive_rects(&f, Presence::Collapsed, Some(&news)).is_empty());
+        assert!(interactive_rects(&f, Presence::Collapsed, Some(&news), None).is_empty());
         let middle = Point { x: 640.0, y: 23.0 };
-        assert!(!hits(&f, Presence::Collapsed, Some(&news), middle));
+        assert!(!hits(&f, Presence::Collapsed, Some(&news), None, middle));
         // A chip alone takes its own clicks only.
         let news = news_with(&f, false, true);
         assert_eq!(
-            interactive_rects(&f, Presence::Collapsed, Some(&news)),
+            interactive_rects(&f, Presence::Collapsed, Some(&news), None),
             vec![news.chip.unwrap()]
         );
         // A width without its x is no chip, nor button.
@@ -1024,10 +1049,10 @@ mod tests {
         assert_eq!(news.button, Some(rect(495.0, 10.0, 60.0, 26.0)));
         assert_eq!(news.chip, Some(rect(563.0, 13.0, 28.0, 20.0)));
         let button = Point { x: 520.0, y: 23.0 };
-        assert!(hits(&f, Presence::Collapsed, Some(&news), button));
+        assert!(hits(&f, Presence::Collapsed, Some(&news), None, button));
         // Where the button is left to right, the text lets clicks through.
         let end = Point { x: 750.0, y: 23.0 };
-        assert!(!hits(&f, Presence::Collapsed, Some(&news), end));
+        assert!(!hits(&f, Presence::Collapsed, Some(&news), None, end));
     }
 
     #[test]
@@ -1075,17 +1100,57 @@ mod tests {
         let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
         let news = news_with(&f, true, true);
         assert_eq!(
-            interactive_rects(&f, Presence::Expanded, Some(&news)),
+            interactive_rects(&f, Presence::Expanded, Some(&news), None),
             vec![hold(&f)]
         );
         let text = Point { x: 550.0, y: 23.0 };
-        assert!(hits(&f, Presence::Expanded, Some(&news), text));
+        assert!(hits(&f, Presence::Expanded, Some(&news), None, text));
         // Without news, as before.
         assert_eq!(
-            interactive_rects(&f, Presence::Expanded, None),
+            interactive_rects(&f, Presence::Expanded, None, None),
             vec![hold(&f)]
         );
-        assert!(interactive_rects(&f, Presence::Collapsed, None).is_empty());
+        assert!(interactive_rects(&f, Presence::Collapsed, None, None).is_empty());
+    }
+
+    #[test]
+    fn a_paused_pill_takes_clicks_on_its_resume_alone() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        // A 180-wide pill with a 60-wide Resume 3 in from its right end,
+        // centred in the pill's height.
+        let resume = resume_rect(&f, 180.0, 60.0, 117.0).expect("a Resume");
+        assert_eq!(resume, rect(667.0, 9.0, 60.0, 22.0));
+        assert_eq!(
+            interactive_rects(&f, Presence::Collapsed, None, Some(resume)),
+            vec![resume]
+        );
+        assert!(hits(
+            &f,
+            Presence::Collapsed,
+            None,
+            Some(resume),
+            Point { x: 690.0, y: 20.0 }
+        ));
+        // "Vento paused" lets clicks through.
+        let words = Point { x: 600.0, y: 20.0 };
+        assert!(!hits(&f, Presence::Collapsed, None, Some(resume), words));
+        // Right to left, the button is at the left end.
+        let rtl = resume_rect(&f, 180.0, 60.0, 3.0).expect("a Resume");
+        assert_eq!(rtl, rect(553.0, 9.0, 60.0, 22.0));
+        // Open, the whole hold takes clicks, as before; hidden, nothing.
+        assert_eq!(
+            interactive_rects(&f, Presence::Expanded, None, Some(resume)),
+            vec![hold(&f)]
+        );
+        assert!(interactive_rects(&f, Presence::Hidden, None, Some(resume)).is_empty());
+    }
+
+    #[test]
+    fn the_lip_and_the_other_islands_have_no_resume() {
+        let lip = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, true), TWO);
+        assert_eq!(resume_rect(&lip, 180.0, 60.0, 117.0), None);
+        let classic = frames(&plain(24.0), TWO);
+        assert_eq!(resume_rect(&classic, 180.0, 60.0, 117.0), None);
     }
 
     #[test]

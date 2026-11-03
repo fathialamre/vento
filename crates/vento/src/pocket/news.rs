@@ -4,13 +4,17 @@
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use vento_core::actions::ActionId;
 use vento_core::i18n::{fill, tr};
 use vento_core::news::{NewsBoard, Stage, Tone};
 
-use crate::notice::{ButtonLabel, JobNotice, Notice, next_job_id};
+use crate::notice::{ButtonLabel, CopySource, JobNotice, Notice, next_job_id};
+
+/// How long after the island tells of a copy vento made the clipboard
+/// watcher's notice of a copy is taken for that same copy, and dropped.
+pub(super) const OWN_COPY_GRACE: Duration = Duration::from_millis(1500);
 
 /// What the news pill shows: a job at work or a result.
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +27,8 @@ pub(super) struct NewsView {
     pub sub: String,
     /// The one button's label, if it has one.
     pub button_text: Option<String>,
+    /// The button is grey (Details, Change) rather than the accent.
+    pub quiet_button: bool,
     /// Other things going on, for the "+N" chip.
     pub extra: usize,
     /// How much of the job is done, 0 to 1, while it can say.
@@ -44,11 +50,26 @@ pub(super) struct News {
     pressed: HashSet<u64>,
     /// What showed at the last tick, for its button.
     shown: Option<(u64, Stage)>,
+    /// When the island last told of a copy vento made.
+    own_copy: Option<Instant>,
 }
 
 impl News {
-    /// Posts `n` as a result, under an id of its own.
+    /// Posts `n` as a result, under an id of its own. The watcher's notice
+    /// of a copy is dropped within [`OWN_COPY_GRACE`] of one of vento's own
+    /// copies: it is that copy, seen again.
     pub fn post(&mut self, n: Notice, now: Instant) {
+        match n.copy {
+            Some(CopySource::Own) => self.own_copy = Some(now),
+            Some(CopySource::Watched)
+                if self
+                    .own_copy
+                    .is_some_and(|t| now.saturating_duration_since(t) < OWN_COPY_GRACE) =>
+            {
+                return;
+            }
+            _ => {}
+        }
         let id = next_job_id();
         self.board.post(id, n.tone, n.sticky, now);
         self.notices.insert(id, n);
@@ -126,10 +147,11 @@ fn work_view(job: &JobNotice, extra: usize, pressed: bool) -> NewsView {
     NewsView {
         stage: Stage::Work,
         tone: Tone::Info,
-        icon: Some(job.icon),
+        icon: job.icon,
         text: job.text.clone(),
         sub,
         button_text: (job.cancel.is_some() && !pressed).then(|| ButtonLabel::Cancel.text()),
+        quiet_button: false,
         extra,
         fraction,
         count_text,
@@ -149,6 +171,7 @@ fn result_view(n: &Notice, extra: usize, pressed: bool) -> NewsView {
             .as_ref()
             .filter(|_| !pressed)
             .map(|b| b.label.text()),
+        quiet_button: n.button.as_ref().is_some_and(|b| b.label.quiet()),
         extra,
         fraction: None,
         count_text: String::new(),
@@ -157,15 +180,15 @@ fn result_view(n: &Notice, extra: usize, pressed: bool) -> NewsView {
 
 /// How far a job of `action` has got, `done` of `total`: the share done and
 /// the count. Convert counts pictures, the picture under way first ("3 of
-/// 5"); the others count bytes, as a percent. Nothing while the total is
-/// unknown.
-fn progress_count(action: ActionId, done: u64, total: u64) -> (Option<f32>, String) {
+/// 5"); the others (and a job of no action) count bytes, as a percent.
+/// Nothing while the total is unknown.
+fn progress_count(action: Option<ActionId>, done: u64, total: u64) -> (Option<f32>, String) {
     if total == 0 {
         return (None, String::new());
     }
     let fraction = (done as f64 / total as f64).min(1.0) as f32;
     let count = match action {
-        ActionId::Convert => fill(
+        Some(ActionId::Convert) => fill(
             &tr("{current} of {total}"),
             &[
                 ("current", &(done + 1).min(total).to_string()),
@@ -194,7 +217,7 @@ mod tests {
     fn job(icon: ActionId, progress: Option<Arc<Progress>>) -> JobNotice {
         JobNotice {
             id: next_job_id(),
-            icon,
+            icon: Some(icon),
             text: "Working…".into(),
             progress,
             cancel: None,
@@ -299,6 +322,89 @@ mod tests {
         assert_eq!(view.button_text.as_deref(), Some("Cancel"));
         (news.press_button().expect("Cancel"))();
         assert!(progress.is_cancelled());
+    }
+
+    #[test]
+    fn sticky_results_wait_to_be_seen() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let n = Notice::done("Update ready")
+            .with_button(ButtonLabel::Restart, || {})
+            .sticky();
+        news.post(n, t0);
+        let later = t0 + RESULT_HOLD * 20;
+        let view = news.tick(later, false).expect("still up, not seen yet");
+        assert_eq!(view.text, "Update ready");
+        assert_eq!(view.button_text.as_deref(), Some("Restart"));
+        // Seen once, it goes the usual hold after the pointer leaves.
+        assert!(news.tick(later, true).is_some());
+        assert!(news.tick(later + RESULT_HOLD, false).is_some());
+        assert_eq!(news.tick(later + RESULT_HOLD * 2, false), None);
+    }
+
+    #[test]
+    fn an_own_copy_hides_the_watchers_echo() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let watched = || {
+            Notice::done("Copied")
+                .with_sub("report.pdf")
+                .with_copy(CopySource::Watched)
+        };
+        news.post(
+            Notice::done("Copied")
+                .with_sub("1 file ready to paste")
+                .with_copy(CopySource::Own),
+            t0,
+        );
+        // The watcher sees the same copy a moment later: it is not told
+        // twice.
+        news.post(watched(), t0 + Duration::from_millis(200));
+        let view = news
+            .tick(t0 + Duration::from_millis(200), false)
+            .expect("up");
+        assert_eq!(
+            (view.sub.as_str(), view.extra),
+            ("1 file ready to paste", 0)
+        );
+        // A copy made later in another app is news again.
+        news.post(watched(), t0 + OWN_COPY_GRACE);
+        let view = news.tick(t0 + OWN_COPY_GRACE, false).expect("up");
+        assert_eq!(view.sub, "report.pdf");
+    }
+
+    #[test]
+    fn the_watcher_alone_is_told() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let n = Notice::done("Copied").with_copy(CopySource::Watched);
+        news.post(n, t0);
+        assert_eq!(news.tick(t0, false).expect("up").text, "Copied");
+    }
+
+    #[test]
+    fn details_and_change_are_quiet_buttons() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        news.post(Notice::error("Couldn't move"), t0);
+        let quiet = |news: &mut News, label| {
+            news.post(Notice::info("x").with_button(label, || {}), t0);
+            news.tick(t0, false).expect("up").quiet_button
+        };
+        assert!(quiet(&mut news, ButtonLabel::Details));
+        assert!(quiet(&mut news, ButtonLabel::Change));
+        assert!(!quiet(&mut news, ButtonLabel::Undo));
+        assert!(!quiet(&mut news, ButtonLabel::Restart));
+    }
+
+    #[test]
+    fn a_job_without_an_action_counts_a_percent() {
+        let (t0, mut news) = (Instant::now(), News::default());
+        let progress = Progress::new();
+        progress.start(1000);
+        progress.add_done(420);
+        let mut j = job(ActionId::Move, Some(progress));
+        j.icon = None;
+        news.start(j, t0);
+        let view = news.tick(t0 + WORK_DELAY, false).expect("work shows");
+        assert_eq!(view.icon, None);
+        assert_eq!(view.count_text, "42%");
     }
 
     #[test]

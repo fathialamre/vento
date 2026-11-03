@@ -4,6 +4,7 @@
 //! [`UpdateController`] runs that flow from the event loop for the banner,
 //! the About rows and the tray dot.
 
+pub mod island;
 pub mod net;
 pub mod swap;
 pub mod watch;

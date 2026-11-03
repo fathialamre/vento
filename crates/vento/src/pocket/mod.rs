@@ -400,6 +400,8 @@ pub struct PocketController {
     news: RefCell<News>,
     /// The news last given to the window; `None` while it shows none.
     news_view: RefCell<Option<NewsView>>,
+    /// What the paused pill's Resume runs: vento resumes.
+    on_resume: RefCell<Option<Box<dyn Fn()>>>,
     this: Weak<Self>,
 }
 
@@ -486,6 +488,7 @@ impl PocketController {
             slot_kept: Cell::new(true),
             news: RefCell::new(News::default()),
             news_view: RefCell::new(None),
+            on_resume: RefCell::new(None),
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -547,6 +550,12 @@ impl PocketController {
         w.on_news_button_clicked(move || {
             if let Some(c) = c() {
                 c.news_button_clicked();
+            }
+        });
+        let c = with.clone();
+        w.on_rest_button_clicked(move || {
+            if let Some(c) = c() {
+                c.resume_clicked();
             }
         });
         let c = with.clone();
@@ -915,7 +924,14 @@ impl PocketController {
             return;
         };
         let news = self.news_rects(&f);
-        let over = hits(&f, self.island.borrow().presence(), news.as_ref(), at);
+        let resume = self.resume_rect(&f);
+        let over = hits(
+            &f,
+            self.island.borrow().presence(),
+            news.as_ref(),
+            resume,
+            at,
+        );
         for event in drag_end_events(&self.window_frame(&f), at, over) {
             self.dispatch(event);
         }
@@ -1114,11 +1130,13 @@ impl PocketController {
     }
 
     /// While vento is paused the island rests (collapsed with items, hidden
-    /// without), takes no pointer and no drops; once unpaused, the next
+    /// without), takes no pointer and no drops; the virtual island's pill is
+    /// grey, and only its Resume takes clicks. Once unpaused, the next
     /// sample decides again.
     pub fn set_paused(&self, paused: bool) {
         self.paused.set(paused);
         self.clip.set_paused(paused);
+        self.window.set_rest_paused(paused);
         if !paused || !self.warm.get() {
             return;
         }
@@ -1127,6 +1145,27 @@ impl PocketController {
         self.show_news(None);
         let after = self.settle_now();
         debug!("pocket paused: {after:?}");
+    }
+
+    /// Sets what the paused pill's Resume runs.
+    pub fn set_on_resume(&self, f: Box<dyn Fn()>) {
+        *self.on_resume.borrow_mut() = Some(f);
+    }
+
+    /// Keep Awake runs with `status` (the time it has left, empty for no
+    /// end; `None` while it does not run), and ends soon: the virtual
+    /// island's resting pill shows a cup and the time.
+    pub fn set_awake(&self, status: Option<String>, ending_soon: bool) {
+        let w = &self.window;
+        w.set_rest_awake(status.is_some());
+        w.set_rest_awake_text(status.unwrap_or_default().into());
+        w.set_rest_awake_soon(ending_soon);
+    }
+
+    /// Shows `n` in the virtual island; where it does not take it, as a
+    /// toast under the island (none for a notice for the island only).
+    pub fn notify(&self, n: Notice) {
+        self.toast.notify(n, self.toast_at());
     }
 
     /// Tells the island in the corner by the clock whether another window of
@@ -1292,8 +1331,14 @@ impl PocketController {
     /// Updates the island from one input sample; `dragging` is whether a drag
     /// of any type is under way. Called on every poll tick of the wheel.
     pub fn observe(&self, sample: &InputSample, dragging: bool) {
-        self.clip.observe(sample.clip_change_count);
-        if !self.warm.get() || self.paused.get() {
+        if let Some(copied) = self.clip.observe(sample.clip_change_count) {
+            self.notify(copied);
+        }
+        if !self.warm.get() {
+            return;
+        }
+        if self.paused.get() {
+            self.follow_resume(sample.cursor);
             return;
         }
         let now = Instant::now();
@@ -1375,8 +1420,13 @@ impl PocketController {
                 after = self.island.borrow_mut().settle(f.virtual_island);
             }
         }
+        // Not paused: there is no Resume to click.
         let news = self.news_rects(&f);
-        self.card_hover(after, hits(&f, after, news.as_ref(), sample.cursor), now);
+        self.card_hover(
+            after,
+            hits(&f, after, news.as_ref(), None, sample.cursor),
+            now,
+        );
         // Opened by resting on it: with an empty Pocket, on the view the
         // wings show.
         if before != Presence::Expanded
@@ -1412,14 +1462,14 @@ impl PocketController {
             View::Screenshots => !self.latch.running(),
             View::Pocket => false,
         };
-        if dragging && hits(&f, after, news.as_ref(), sample.cursor) && headed_in {
+        if dragging && hits(&f, after, news.as_ref(), None, sample.cursor) && headed_in {
             self.set_view(View::Pocket);
         }
         // One over the Pocket list (not the list's own drag out) goes back
         // to the kinds, which say what a drop does.
         if dragging
             && !self.latch.running()
-            && hits(&f, after, news.as_ref(), sample.cursor)
+            && hits(&f, after, news.as_ref(), None, sample.cursor)
             && self.list_shown()
         {
             self.close_pocket_list();
@@ -1444,7 +1494,7 @@ impl PocketController {
             }
         }
         if !self.shape_input(after) {
-            let inside = hits(&f, after, self.news_rects(&f).as_ref(), sample.cursor);
+            let inside = hits(&f, after, self.news_rects(&f).as_ref(), None, sample.cursor);
             if changed || inside != self.hittest.get() {
                 self.set_hittest(inside);
             }
@@ -1455,6 +1505,22 @@ impl PocketController {
         self.place_catcher(catches.then_some(f.expanded));
         if !sample.left_down {
             self.replay_hover(&f, after, sample.cursor);
+        }
+    }
+
+    /// While paused, lets the virtual island's window take the pointer where
+    /// the pill's Resume is, and nowhere else. The other islands keep what
+    /// pausing set.
+    fn follow_resume(&self, cursor: Point) {
+        let Some(f) = self.island_frames().filter(|f| f.virtual_island) else {
+            return;
+        };
+        let presence = self.island.borrow().presence();
+        if !self.shape_input(presence) {
+            let inside = hits(&f, presence, None, self.resume_rect(&f), cursor);
+            if inside != self.hittest.get() {
+                self.set_hittest(inside);
+            }
         }
     }
 
@@ -1578,15 +1644,20 @@ impl PocketController {
         };
         let window = self.window_frame(&f);
         let scale = self.window.window().scale_factor() as f64;
-        interactive_rects(&f, presence, self.news_rects(&f).as_ref())
-            .into_iter()
-            .map(|r| Rect {
-                x: (r.x - window.x) * scale,
-                y: (r.y - window.y) * scale,
-                w: r.w * scale,
-                h: r.h * scale,
-            })
-            .collect()
+        interactive_rects(
+            &f,
+            presence,
+            self.news_rects(&f).as_ref(),
+            self.resume_rect(&f),
+        )
+        .into_iter()
+        .map(|r| Rect {
+            x: (r.x - window.x) * scale,
+            y: (r.y - window.y) * scale,
+            w: r.w * scale,
+            h: r.h * scale,
+        })
+        .collect()
     }
 
     fn pinned_open(&self, now: Instant) -> bool {
@@ -2187,6 +2258,7 @@ impl PocketController {
                 w.set_news_text(v.text.as_str().into());
                 w.set_news_sub(v.sub.as_str().into());
                 w.set_news_button(v.button_text.as_deref().unwrap_or_default().into());
+                w.set_news_quiet(v.quiet_button);
                 w.set_news_extra(i32::try_from(v.extra).unwrap_or(i32::MAX));
                 w.set_news_fraction(v.fraction.unwrap_or(-1.0));
                 w.set_news_count(v.count_text.as_str().into());
@@ -2215,6 +2287,32 @@ impl PocketController {
             chip_w,
             chip_w.map(|_| f64::from(w.get_news_chip_x())),
         ))
+    }
+
+    /// Where the paused pill's Resume lies with `f`, as the window lays it
+    /// out; `None` while not paused, and where no pill rests (the lip).
+    fn resume_rect(&self, f: &Frames) -> Option<Rect> {
+        if !self.paused.get() {
+            return None;
+        }
+        let w = &self.window;
+        let button_w = f64::from(w.get_rest_button_w());
+        if button_w <= 0.0 {
+            return None;
+        }
+        geometry::resume_rect(
+            f,
+            f64::from(w.get_rest_pill_w()),
+            button_w,
+            f64::from(w.get_rest_button_x()),
+        )
+    }
+
+    /// Resume on the paused pill: vento resumes.
+    fn resume_clicked(&self) {
+        if let Some(on) = self.on_resume.borrow().as_ref() {
+            on();
+        }
     }
 
     /// The news pill's button: runs what it does once, outside the borrow
