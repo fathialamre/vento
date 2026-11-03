@@ -1846,6 +1846,21 @@ mod tests {
     }
 
     #[test]
+    fn an_integer_free_value_is_a_number() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(
+            &path,
+            "island_place_free = 1\n[island_places.\"A\"]\nplace = \"left\"\nfree = 1\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_place_free, Some(1.0));
+        assert_eq!(s.island_spot(None), IslandSpot::Free(1000));
+        assert_eq!(s.island_spot(Some("A")), IslandSpot::Free(1000));
+    }
+
+    #[test]
     fn free_value_that_is_not_a_number_is_none() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.toml");

@@ -144,17 +144,8 @@ island_place_each_screen = true
 # connected)
 # island_screen = "2560x1440+1920+0"
 
-# Island: the place of each screen, by its key (see island_screen). Each entry
-# has a "place" ("left", "centre" or "right") and, for a free spot, a "free"
-# fraction as in island_place_free. Vento writes these when you drag the
-# island; the entry of a screen that is not connected is kept. An entry that
-# cannot be read is skipped
-# [island_places."1920x1080+0+0"]
-# place = "left"
-#
-# [island_places."2560x1440+1920+0"]
-# place = "centre"
-# free = 0.25
+# Island: the place of each screen is the [island_places] table at the end of
+# this file (a table header must come after all the plain keys)
 
 # Island: the virtual island's shape: "island" (a pill) or "circle" (a disc
 # that stretches into a pill only to say something). Any other value is read
@@ -265,6 +256,19 @@ check_for_updates = true
 last_rules = []
 order = "name"
 reverse = false
+
+# Island: the place of each screen, by its key (see island_screen). Each entry
+# has a "place" ("left", "centre" or "right") and, for a free spot, a "free"
+# fraction as in island_place_free. Vento writes these when you drag the
+# island; the entry of a screen that is not connected is kept. An entry that
+# cannot be read is skipped. A table header must come after all the plain
+# keys above: every key after it would belong to that table
+# [island_places."1920x1080+0+0"]
+# place = "left"
+#
+# [island_places."2560x1440+1920+0"]
+# place = "centre"
+# free = 0.25
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the
