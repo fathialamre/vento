@@ -64,8 +64,8 @@ const PUSH_DEPTH: f64 = 2.0;
 /// count as a bar under the island.
 const BAR_TOLERANCE: f64 = 8.0;
 
-/// Activity: the room above its title and below its rows, the title's
-/// line, and one row; at most [`ACTIVITY_ROWS`] rows are listed.
+/// Activity: the room above its title, the title's line, and one row (the
+/// last row ends the panel); at most [`ACTIVITY_ROWS`] rows are listed.
 const ACTIVITY_PAD: f64 = 16.0;
 const ACTIVITY_TITLE_H: f64 = 40.0;
 const ACTIVITY_ROW_H: f64 = 48.0;

@@ -1279,7 +1279,7 @@ msgstr "وقت جديد"
 
 #: crates/vento/src/main.rs:1124
 msgid "New: try the Virtual island in Settings › Pocket"
-msgstr "جديد: جرّب جزيرة افتراضية من الإعدادات ‹ الجيب"
+msgstr "جديد: جرّب الجزيرة الافتراضية من الإعدادات ‹ الجيب"
 
 #: crates/vento/ui/welcome.slint:1192
 msgid "Next"

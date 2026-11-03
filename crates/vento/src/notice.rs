@@ -14,18 +14,23 @@ use vento_core::i18n::tr;
 use vento_core::news::Tone;
 
 /// The one button a notice can carry.
-// The notices with the other buttons come in later steps.
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonLabel {
     Undo,
     Cancel,
     Details,
+    // The island's set of labels; no notice carries Resume (the paused
+    // pill draws its own) or Open yet.
+    #[allow(dead_code)]
     Resume,
     Change,
+    // Get it and Restart come with the updates, on macOS only.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     GetIt,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Restart,
     AddHour,
+    #[allow(dead_code)]
     Open,
 }
 
