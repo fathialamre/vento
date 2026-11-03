@@ -39,7 +39,8 @@ use vento_core::paths::PathFormat;
 use vento_core::settings::{
     Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, IslandShape,
     MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView, Settings,
-    SettingsError, ThemeName, clamp_glass, is_reserved_shortcut, move_row, parse_shortcut,
+    SettingsError, ShimmerEvery, ShimmerStyle, ThemeName, clamp_glass, is_reserved_shortcut,
+    move_row, parse_shortcut,
 };
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_core::update::state::UpdateState;
@@ -764,6 +765,32 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
+        window.on_island_shimmer_chosen(move |i| {
+            if let (Some(controller), Some(style)) = (this.upgrade(), choice(&ShimmerStyle::ALL, i))
+            {
+                controller.apply(|s| s.island_shimmer = style);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_shimmer_every_chosen(move |i| {
+            if let (Some(controller), Some(every)) = (this.upgrade(), choice(&ShimmerEvery::ALL, i))
+            {
+                controller.apply(|s| s.island_shimmer_every = every);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_shimmer_needs_items_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_shimmer_needs_items = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_follow_reduce_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_reduce_motion = on);
+            }
+        });
+        let this = self.this.clone();
         window.on_shake_to_open_toggled(move |on| {
             if let Some(controller) = this.upgrade() {
                 controller.apply(|s| s.shake_to_open = on);
@@ -1300,6 +1327,14 @@ impl SettingsWindowController {
         window.set_island_shape(choice_index(&IslandShape::ALL, settings.island_shape));
         window.set_island_place(choice_index(&IslandPlace::ALL, settings.island_place));
         window.set_island_glass(i32::try_from(settings.island_glass).unwrap_or(0));
+        window.set_island_shimmer(choice_index(&ShimmerStyle::ALL, settings.island_shimmer));
+        window.set_island_shimmer_every(choice_index(
+            &ShimmerEvery::ALL,
+            settings.island_shimmer_every,
+        ));
+        window.set_island_shimmer_needs_items(settings.island_shimmer_needs_items);
+        window.set_island_follow_reduce(settings.island_reduce_motion);
+        window.set_island_reduce_motion(self.platform.reduce_motion());
     }
 
     /// Shows Keep Awake's times, the time Add adds and what the tile

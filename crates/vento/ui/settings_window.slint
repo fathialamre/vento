@@ -103,6 +103,14 @@ export component SettingsWindow inherits Window {
     in property <int> island-shape;
     in property <int> island-place;
     in property <int> island-glass;
+    // The virtual island's shimmer: its style and how often (as the
+    // settings list them), whether it waits for items in the Pocket,
+    // whether Reduce motion is followed and whether the system asks for it.
+    in property <int> island-shimmer;
+    in property <int> island-shimmer-every;
+    in property <bool> island-shimmer-needs-items;
+    in property <bool> island-follow-reduce;
+    in property <bool> island-reduce-motion;
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
@@ -204,6 +212,10 @@ export component SettingsWindow inherits Window {
     callback island-shape-chosen(int);
     callback island-place-chosen(int);
     callback island-glass-changed(int);
+    callback island-shimmer-chosen(int);
+    callback island-shimmer-every-chosen(int);
+    callback island-shimmer-needs-items-toggled(bool);
+    callback island-follow-reduce-toggled(bool);
     callback action-toggled(int, bool);
     // A row of the Wheel page's list dragged from one place to another.
     callback action-moved(int, int);
@@ -488,10 +500,20 @@ export component SettingsWindow inherits Window {
                                 shape: root.island-shape;
                                 place: root.island-place;
                                 glass: root.island-glass;
+                                shimmer: root.island-shimmer;
+                                shimmer-every: root.island-shimmer-every;
+                                shimmer-needs-items: root.island-shimmer-needs-items;
+                                follow-reduce: root.island-follow-reduce;
+                                reduce-motion: root.island-reduce-motion;
+                                circle: root.island-shape == 1;
                                 mode-chosen(i) => { root.island-mode-chosen(i); }
                                 shape-chosen(i) => { root.island-shape-chosen(i); }
                                 place-chosen(i) => { root.island-place-chosen(i); }
                                 glass-changed(v) => { root.island-glass-changed(v); }
+                                shimmer-chosen(i) => { root.island-shimmer-chosen(i); }
+                                shimmer-every-chosen(i) => { root.island-shimmer-every-chosen(i); }
+                                shimmer-needs-items-toggled(on) => { root.island-shimmer-needs-items-toggled(on); }
+                                follow-reduce-toggled(on) => { root.island-follow-reduce-toggled(on); }
                             }
                             if root.page-id == 5: ClipboardPage {
                                 history: root.clip-history;

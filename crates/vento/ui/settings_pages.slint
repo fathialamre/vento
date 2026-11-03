@@ -395,6 +395,201 @@ component ShapePicker inherits HorizontalLayout {
     }
 }
 
+// One shimmer style, drawn on a still island over its name, ringed in the
+// accent while chosen. Hovering it or choosing it plays the style once
+// over 1.2 s (never when Reduce motion is on); nothing else moves.
+component ShimmerTile inherits VerticalLayout {
+    in property <string> label;
+    in property <bool> chosen;
+    // The style as the setting counts them: 0 Off, 1 Sweep, 2 Edge run,
+    // 3 Halo, 4 Sparkle, 5 Liquid.
+    in property <int> kind;
+    // Whether the island is drawn as the circle rather than the pill.
+    in property <bool> circle;
+    // Whether the previews stay still.
+    in property <bool> reduce-motion;
+    callback clicked();
+
+    // How far the moment has played, 0 to 1; 0 while it is not playing.
+    property <bool> playing;
+    property <duration> start;
+    property <float> t: root.playing ? min(1, (animation-tick() - root.start) / 1200ms) : 0;
+    // The island drawn, its width growing for Liquid, and where it sits.
+    property <length> base-w: root.circle ? 18px : 56px;
+    property <length> base-h: root.circle ? 18px : 14px;
+    property <length> grow: root.kind == 5 ? 4px * (0.5 + 0.5 * Math.cos(root.t * 720deg)) : 0px;
+    property <length> w: root.base-w + root.grow;
+    property <length> h: root.base-h;
+    function play() {
+        if !root.reduce-motion && root.kind != 0 && !root.playing {
+            root.start = animation-tick();
+            root.playing = true;
+            play-timer.restart();
+        }
+    }
+    changed chosen => {
+        if root.chosen {
+            root.play();
+        }
+    }
+    play-timer := Timer {
+        interval: 1200ms;
+        running: root.playing;
+        triggered => {
+            root.playing = false;
+        }
+    }
+
+    spacing: 6px;
+    width: 96px;
+    accessible-role: radio-button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    Rectangle {
+        height: 64px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: root.chosen ? Theme.accent : touch.has-hover ? Theme.panel-line : transparent;
+
+        Rectangle {
+            x: 2px;
+            y: 2px;
+            width: parent.width - 4px;
+            height: parent.height - 4px;
+            border-radius: 8px;
+            background: #1c1c1e;
+
+            // Halo: a faint ring just outside the edge, lit and faded.
+            if root.kind == 3: Rectangle {
+                width: root.w + 8px;
+                height: root.h + 8px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                border-width: 2px;
+                border-color: #ffffff;
+                opacity: root.playing ? 0.15 + 0.6 * Math.sin(root.t * 180deg) : 0.15;
+            }
+
+            // The island, black with a faint edge; Sweep and Edge run
+            // are drawn on it, kept within its shape.
+            island := Rectangle {
+                width: root.w;
+                height: root.h;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                background: #000000;
+                border-width: 1px;
+                border-color: #ffffff22;
+                clip: true;
+
+                // Sweep: a slanted band of light crossing from side to side.
+                if root.kind == 1: Path {
+                    width: 10px;
+                    height: root.h;
+                    x: root.playing ? -14px + root.t * (root.w + 28px) : (root.w - 10px) / 2;
+                    y: 0px;
+                    viewbox-width: 10;
+                    viewbox-height: 14;
+                    commands: "M 5 0 L 10 0 L 5 14 L 0 14 Z";
+                    fill: #ffffff66;
+                }
+
+                // Edge run: a short bright segment on the edge; played, it
+                // runs along the top, then back along the bottom (round the
+                // circle on the circle).
+                if root.kind == 2: Rectangle {
+                    property <bool> top: root.t < 0.5;
+                    width: root.circle ? 4px : 12px;
+                    height: root.circle ? 4px : 2px;
+                    border-radius: 1px;
+                    background: #ffffffdd;
+                    x: !root.playing ? (root.w - self.width) / 2
+                        : root.circle ? (root.w - self.width) / 2 + 7px * Math.sin(root.t * 360deg)
+                        : self.top ? -12px + root.t * 2 * (root.w + 12px)
+                        : root.w - (root.t - 0.5) * 2 * (root.w + 12px);
+                    y: !root.playing ? 0px
+                        : root.circle ? (root.h - self.height) / 2 - 7px * Math.cos(root.t * 360deg)
+                        : self.top ? 0px : root.h - 2px;
+                }
+            }
+
+            // Sparkle: three tiny four-point stars, each twinkling in turn.
+            for pos[i] in [{ fx: 0.2, fy: 0.15 }, { fx: 0.5, fy: 0.8 }, { fx: 0.8, fy: 0.2 }]: Path {
+                width: 5px;
+                height: 5px;
+                x: island.x + pos.fx * (root.w - 5px);
+                y: island.y + pos.fy * (root.h - 5px);
+                viewbox-width: 5;
+                viewbox-height: 5;
+                commands: "M 2.5 0 L 3 2 L 5 2.5 L 3 3 L 2.5 5 L 2 3 L 0 2.5 L 2 2 Z";
+                fill: #ffffff;
+                visible: root.kind == 4;
+                opacity: root.playing
+                    ? 0.2 + 0.8 * Math.max(0, Math.sin(Math.clamp((root.t - 0.2 * i) / 0.6, 0, 1) * 180deg))
+                    : 0.85;
+            }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+            changed has-hover => {
+                if self.has-hover {
+                    root.play();
+                }
+            }
+        }
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.label;
+        font-size: 12px;
+        font-weight: root.chosen ? 500 : 400;
+        color: root.chosen ? Theme.text : Theme.muted;
+    }
+}
+
+// The Shimmer setting's styles, Off first, in rows as wide as the page
+// allows.
+component ShimmerPicker inherits Rectangle {
+    in property <int> current;
+    in property <bool> circle;
+    in property <bool> reduce-motion;
+    callback chosen(int);
+
+    property <[string]> names: [
+        @tr("Off"), @tr("Sweep"), @tr("Edge run"), @tr("Halo"), @tr("Sparkle"), @tr("Liquid"),
+    ];
+    property <length> gap: 8px;
+    property <length> cell-w: 96px;
+    property <length> cell-h: 88px;
+    property <int> columns: max(1, floor((self.width + self.gap) / (self.cell-w + self.gap)));
+
+    height: ceil(self.names.length / self.columns) * (self.cell-h + self.gap) - self.gap;
+    accessible-role: radio-group;
+    accessible-label: @tr("Shimmer");
+
+    for name[i] in root.names: ShimmerTile {
+        property <int> column: mod(i, root.columns);
+
+        x: (Theme.rtl ? root.columns - 1 - self.column : self.column) * (root.cell-w + root.gap);
+        y: floor(i / root.columns) * (root.cell-h + root.gap);
+        height: root.cell-h;
+        kind: i;
+        label: name;
+        circle: root.circle;
+        reduce-motion: root.reduce-motion;
+        chosen: root.current == i;
+        clicked => { root.chosen(i); }
+    }
+}
+
 // The themes, each a dot in its accent over its name, the chosen one
 // ringed in the accent: one row where the page is wide enough, else rows
 // of four.
@@ -925,11 +1120,26 @@ export component IslandPage inherits VerticalLayout {
     in property <int> shape;
     // How solid it is while resting, in percent (100 = solid).
     in property <int> glass;
+    // The shimmer style (an index of `ShimmerStyle::ALL`, 0 Off), how often
+    // it plays (of `ShimmerEvery::ALL`), whether it waits for items in the
+    // Pocket and whether Reduce motion is followed.
+    in property <int> shimmer;
+    in property <int> shimmer-every;
+    in property <bool> shimmer-needs-items;
+    in property <bool> follow-reduce;
+    // Whether the system asks for less motion (the previews stay still),
+    // and whether the shape chosen is the circle (the previews draw it).
+    in property <bool> reduce-motion;
+    in property <bool> circle;
     // 0 the virtual island, 1 the other one.
     callback mode-chosen(int);
     callback shape-chosen(int);
     callback place-chosen(int);
     callback glass-changed(int);
+    callback shimmer-chosen(int);
+    callback shimmer-every-chosen(int);
+    callback shimmer-needs-items-toggled(bool);
+    callback follow-reduce-toggled(bool);
 
     if root.offered: VerticalLayout {
         SettingRow {
@@ -1036,6 +1246,62 @@ export component IslandPage inherits VerticalLayout {
                         chosen: root.glass == 100;
                         clicked => { root.glass-changed(100); }
                     }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Shimmer");
+                description: @tr("A small moment of light while the island rests");
+            }
+
+            RowBody {
+                ShimmerPicker {
+                    current: root.shimmer;
+                    circle: root.circle;
+                    reduce-motion: root.reduce-motion;
+                    chosen(i) => { root.shimmer-chosen(i); }
+                }
+            }
+
+            if root.shimmer != 0: VerticalLayout {
+                RowSeparator { }
+
+                SettingRow {
+                    label: @tr("How often");
+
+                    Segmented {
+                        width: 210px;
+                        items: [@tr("Rarely"), @tr("Sometimes"), @tr("Often")];
+                        current: root.shimmer-every;
+                        chosen(i) => { root.shimmer-every-chosen(i); }
+                    }
+                }
+
+                RowSeparator { }
+
+                SettingRow {
+                    label: @tr("Only while the Pocket holds items");
+
+                    Switch {
+                        label: @tr("Only while the Pocket holds items");
+                        on: root.shimmer-needs-items;
+                        toggled(on) => { root.shimmer-needs-items-toggled(on); }
+                    }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Follow Reduce motion");
+                description: @tr("No shimmer, no shake, plain fades when the system asks for less motion");
+
+                Switch {
+                    label: @tr("Follow Reduce motion");
+                    on: root.follow-reduce;
+                    toggled(on) => { root.follow-reduce-toggled(on); }
                 }
             }
         }
