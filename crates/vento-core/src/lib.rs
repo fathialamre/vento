@@ -27,6 +27,7 @@ pub mod screenshots;
 pub mod settings;
 pub mod shake;
 pub mod share;
+pub mod shimmer;
 pub mod sizes;
 pub mod trigger;
 pub mod update;

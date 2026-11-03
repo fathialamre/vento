@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use directories::ProjectDirs;
 use log::warn;
@@ -150,6 +151,78 @@ fn lenient_shape<'de, D: serde::Deserializer<'de>>(d: D) -> Result<IslandShape, 
     })
 }
 
+/// The shimmer the virtual island plays now and then while it rests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShimmerStyle {
+    /// No shimmer.
+    Off,
+    /// A band of light crossing the island.
+    #[default]
+    Sweep,
+    /// A bright spot running once around the edge.
+    EdgeRun,
+    /// The edge glowing softly and fading.
+    Halo,
+    /// A few tiny sparks twinkling on the island.
+    Sparkle,
+    /// A slow ripple, as if the island were liquid.
+    Liquid,
+}
+
+impl ShimmerStyle {
+    /// Every style, in the order the Settings window lists them.
+    pub const ALL: [Self; 6] = [
+        Self::Off,
+        Self::Sweep,
+        Self::EdgeRun,
+        Self::Halo,
+        Self::Sparkle,
+        Self::Liquid,
+    ];
+}
+
+/// How often the shimmer plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShimmerEvery {
+    /// About every ten minutes.
+    Rarely,
+    /// About every two minutes.
+    #[default]
+    Sometimes,
+    /// About every half minute.
+    Often,
+}
+
+impl ShimmerEvery {
+    /// Every choice, in the order the Settings window lists them.
+    pub const ALL: [Self; 3] = [Self::Rarely, Self::Sometimes, Self::Often];
+
+    /// The time between two shimmers.
+    pub fn period(self) -> Duration {
+        Duration::from_secs(match self {
+            Self::Rarely => 600,
+            Self::Sometimes => 120,
+            Self::Often => 30,
+        })
+    }
+}
+
+/// Reads [`ShimmerStyle`], taking any value it does not know (a word or not)
+/// as the default instead of failing the whole file.
+fn lenient_shimmer<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ShimmerStyle, D::Error> {
+    let value = toml::Value::deserialize(d)?;
+    Ok(value.try_into().unwrap_or_default())
+}
+
+/// Reads [`ShimmerEvery`], taking any value it does not know (a word or not)
+/// as the default instead of failing the whole file.
+fn lenient_shimmer_every<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ShimmerEvery, D::Error> {
+    let value = toml::Value::deserialize(d)?;
+    Ok(value.try_into().unwrap_or_default())
+}
+
 /// Bounds, step, default and presets of [`Settings::island_glass`], how solid
 /// the virtual island is, in percent (100 = solid).
 pub const GLASS_MIN: u32 = 10;
@@ -212,6 +285,15 @@ pub struct Settings {
     /// How solid the virtual island is while resting, in percent (100 =
     /// solid), from [`GLASS_MIN`] to [`GLASS_MAX`] in steps of [`GLASS_STEP`].
     pub island_glass: u32,
+    /// The shimmer the virtual island plays now and then while it rests.
+    pub island_shimmer: ShimmerStyle,
+    /// How often the shimmer plays.
+    pub island_shimmer_every: ShimmerEvery,
+    /// Whether the shimmer plays only while the Pocket holds items.
+    pub island_shimmer_needs_items: bool,
+    /// Whether the island follows the system's Reduce motion: no shimmer, no
+    /// shake, plain fades.
+    pub island_reduce_motion: bool,
     /// Whether the one-time hint about the virtual island has been shown (or
     /// was never needed: a new install starts on it).
     pub island_hint_shown: bool,
@@ -340,6 +422,10 @@ impl Default for Settings {
             island_place: IslandPlace::Centre,
             island_shape: IslandShape::Island,
             island_glass: GLASS_DEFAULT,
+            island_shimmer: ShimmerStyle::Sweep,
+            island_shimmer_every: ShimmerEvery::Sometimes,
+            island_shimmer_needs_items: true,
+            island_reduce_motion: true,
             island_hint_shown: false,
             screenshots: false,
             screenshot_card: true,
@@ -390,6 +476,12 @@ struct RawSettings {
     #[serde(deserialize_with = "lenient_shape")]
     island_shape: IslandShape,
     island_glass: u32,
+    #[serde(deserialize_with = "lenient_shimmer")]
+    island_shimmer: ShimmerStyle,
+    #[serde(deserialize_with = "lenient_shimmer_every")]
+    island_shimmer_every: ShimmerEvery,
+    island_shimmer_needs_items: bool,
+    island_reduce_motion: bool,
     island_hint_shown: bool,
     screenshots: bool,
     screenshot_card: bool,
@@ -547,6 +639,10 @@ impl From<&Settings> for RawSettings {
             island_place: s.island_place,
             island_shape: s.island_shape,
             island_glass: s.island_glass,
+            island_shimmer: s.island_shimmer,
+            island_shimmer_every: s.island_shimmer_every,
+            island_shimmer_needs_items: s.island_shimmer_needs_items,
+            island_reduce_motion: s.island_reduce_motion,
             island_hint_shown: s.island_hint_shown,
             screenshots: s.screenshots,
             screenshot_card: s.screenshot_card,
@@ -658,6 +754,10 @@ impl From<RawSettings> for Settings {
             island_place: raw.island_place,
             island_shape: raw.island_shape,
             island_glass: clamp_glass(raw.island_glass),
+            island_shimmer: raw.island_shimmer,
+            island_shimmer_every: raw.island_shimmer_every,
+            island_shimmer_needs_items: raw.island_shimmer_needs_items,
+            island_reduce_motion: raw.island_reduce_motion,
             island_hint_shown: raw.island_hint_shown,
             screenshots: raw.screenshots,
             screenshot_card: raw.screenshot_card,
@@ -1464,6 +1564,74 @@ mod tests {
         assert_eq!(s.island_shape, IslandShape::Island);
         // The rest of the file is still read.
         assert_eq!(s.island_place, IslandPlace::Left);
+    }
+
+    #[test]
+    fn shimmer_defaults() {
+        let d = Settings::default();
+        assert_eq!(d.island_shimmer, ShimmerStyle::Sweep);
+        assert_eq!(d.island_shimmer_every, ShimmerEvery::Sometimes);
+        assert!(d.island_shimmer_needs_items);
+        assert!(d.island_reduce_motion);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "island_place = \"left\"\n").unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_shimmer, ShimmerStyle::Sweep);
+        assert_eq!(s.island_shimmer_every, ShimmerEvery::Sometimes);
+        assert!(s.island_shimmer_needs_items);
+        assert!(s.island_reduce_motion);
+        let first = crate::welcome::first_settings(&["en-US".into()]);
+        assert_eq!(first.island_shimmer, ShimmerStyle::Sweep);
+        assert_eq!(first.island_shimmer_every, ShimmerEvery::Sometimes);
+        assert!(first.island_shimmer_needs_items);
+        assert!(first.island_reduce_motion);
+    }
+
+    #[test]
+    fn shimmer_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        let s = Settings {
+            island_shimmer: ShimmerStyle::EdgeRun,
+            island_shimmer_every: ShimmerEvery::Often,
+            island_shimmer_needs_items: false,
+            island_reduce_motion: false,
+            ..Settings::default()
+        };
+        s.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("island_shimmer = \"edge_run\""), "{text}");
+        assert!(text.contains("island_shimmer_every = \"often\""), "{text}");
+        let back = Settings::try_load(&path).unwrap();
+        assert_eq!(back.island_shimmer, ShimmerStyle::EdgeRun);
+        assert_eq!(back.island_shimmer_every, ShimmerEvery::Often);
+        assert!(!back.island_shimmer_needs_items);
+        assert!(!back.island_reduce_motion);
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn shimmer_garbage_falls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(
+            &path,
+            "island_shimmer = \"disco\"\nisland_shimmer_every = 7\nisland_place = \"left\"\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_shimmer, ShimmerStyle::Sweep);
+        assert_eq!(s.island_shimmer_every, ShimmerEvery::Sometimes);
+        // The rest of the file is still read.
+        assert_eq!(s.island_place, IslandPlace::Left);
+    }
+
+    #[test]
+    fn shimmer_periods() {
+        assert_eq!(ShimmerEvery::Rarely.period(), Duration::from_secs(600));
+        assert_eq!(ShimmerEvery::Sometimes.period(), Duration::from_secs(120));
+        assert_eq!(ShimmerEvery::Often.period(), Duration::from_secs(30));
     }
 
     #[test]

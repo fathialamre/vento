@@ -133,6 +133,27 @@ island_shape = "island"
 # solid). Other values are rounded to the nearest 5 and kept between 10 and 100
 island_glass = 55
 
+# Island: the shimmer the virtual island plays now and then while it rests:
+# "off", "sweep" (a band of light crossing it), "edge_run" (a bright spot
+# running round its edge), "halo" (the edge glowing softly), "sparkle" (a few
+# tiny sparks) or "liquid" (a slow ripple). It never plays on the lip or the
+# half-moon, or while the island is open, busy with a job or the news, paused,
+# in Do Not Disturb or a Focus, on battery saver, or after five minutes without
+# a key or a click. Any other value is read as "sweep"
+island_shimmer = "sweep"
+
+# Island: how often the shimmer plays: "rarely" (every 10 minutes), "sometimes"
+# (every 2 minutes) or "often" (every 30 seconds). Any other value is read as
+# "sometimes"
+island_shimmer_every = "sometimes"
+
+# Island: play the shimmer only while the Pocket holds items
+island_shimmer_needs_items = true
+
+# Island: follow the system's Reduce motion setting. While it is on in the
+# system, the island plays no shimmer and no shake, and uses plain fades
+island_reduce_motion = true
+
 # Island: whether the one-time toast about the virtual island has been shown.
 # Vento shows it once, on the classic island, where the virtual one can be
 # chosen, then sets this to true; a new install never sees it
