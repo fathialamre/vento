@@ -665,7 +665,7 @@ msgstr "Date de modification"
 msgid "Delete"
 msgstr "Supprimer"
 
-#: crates/vento-core/src/welcome.rs:91
+#: crates/vento-core/src/welcome.rs:93
 msgid "Designer"
 msgstr "Designer"
 
@@ -673,7 +673,7 @@ msgstr "Designer"
 msgid "Details"
 msgstr "Détails"
 
-#: crates/vento-core/src/welcome.rs:90
+#: crates/vento-core/src/welcome.rs:92
 msgid "Developer"
 msgstr "Développeur"
 
@@ -757,11 +757,11 @@ msgstr "Vide"
 msgid "Empty folder"
 msgstr "Dossier vide"
 
-#: crates/vento-core/src/welcome.rs:89
+#: crates/vento-core/src/welcome.rs:91
 msgid "Essentials"
 msgstr "L’essentiel"
 
-#: crates/vento-core/src/welcome.rs:100
+#: crates/vento-core/src/welcome.rs:102
 msgid "Every action"
 msgstr "Toutes les actions"
 
@@ -775,7 +775,7 @@ msgid_plural "Every {n} pages"
 msgstr[0] "Chaque page"
 msgstr[1] "Toutes les {n} pages"
 
-#: crates/vento-core/src/welcome.rs:92
+#: crates/vento-core/src/welcome.rs:94
 msgid "Everything"
 msgstr "Tout"
 
@@ -1208,6 +1208,10 @@ msgstr "Nouvelle extension"
 #: crates/vento/ui/settings_pages.slint:1379
 msgid "New time"
 msgstr "Nouvelle durée"
+
+#: crates/vento/src/main.rs:1124
+msgid "New: try the Virtual island in Settings › Pocket"
+msgstr "Nouveau : essayez l’îlot virtuel dans Réglages › Poche"
 
 #: crates/vento/ui/welcome.slint:1192
 msgid "Next"
@@ -1919,7 +1923,7 @@ msgstr "Stocké sur ce Mac sans chiffrement. Les copies que les gestionnaires de
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Stocké sur cet ordinateur sans chiffrement. Les copies que les gestionnaires de mots de passe marquent comme privées sont ignorées."
 
-#: crates/vento/src/main.rs:1088
+#: crates/vento/src/main.rs:1090
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Réactivez l’enregistrement de l’écran pour Copier depuis l’écran"
 
@@ -2463,7 +2467,7 @@ msgstr "erreur interne"
 msgid "interrupted"
 msgstr "interrompu"
 
-#: crates/vento-core/src/settings.rs:840
+#: crates/vento-core/src/settings.rs:855
 msgid "invalid shortcut \"{spec}\""
 msgstr "raccourci non valide « {spec} »"
 
@@ -2693,7 +2697,7 @@ msgstr[1] "{name} + {n} autres"
 msgid "{name} is locked"
 msgstr "{name} est verrouillé"
 
-#: crates/vento/src/main.rs:1132
+#: crates/vento/src/main.rs:1162
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Raccourci {name} indisponible : {reason}"
 

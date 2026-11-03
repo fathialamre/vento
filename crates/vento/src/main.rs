@@ -990,6 +990,7 @@ fn main() -> Result<(), slint::PlatformError> {
     #[cfg(target_os = "macos")]
     let start_updates = updates.clone();
     let start_whats_new = whats_new.clone();
+    let (hint_hub, hint_platform, hint_toaster) = (hub.clone(), platform.clone(), toaster.clone());
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
@@ -1040,6 +1041,7 @@ fn main() -> Result<(), slint::PlatformError> {
             remove_old_copy_later(old);
         }
         show_whats_new_on_start(&start_whats_new, fresh);
+        show_island_hint_once(&hint_hub, hint_platform.as_ref(), &hint_toaster);
         #[cfg(target_os = "macos")]
         if let Some(updates) = start_updates {
             if let Some(tray) = keep.borrow().as_ref() {
@@ -1096,6 +1098,34 @@ fn show_whats_new_on_start(whats_new: &whats_new_window::WhatsNewController, fre
     {
         log::warn!("cannot save {}: {e}", path.display());
     }
+}
+
+/// At start, tells someone on the classic island, where the virtual one can
+/// be chosen, about it: one toast, then `island_hint_shown` is saved so it
+/// never comes again. The toast waits for the save, so a settings file that
+/// cannot be written does not bring it back at every start.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn show_island_hint_once(
+    hub: &settings_hub::SettingsHub,
+    platform: &dyn vento_platform::Platform,
+    toaster: &toast::Toaster,
+) {
+    let offered = platform
+        .pocket_home()
+        .is_some_and(|home| pocket::virtual_offered(&home, platform.virtual_island_supported()));
+    if !vento_core::settings::should_show_island_hint(&hub.current(), offered) {
+        return;
+    }
+    if let Err(e) = hub.update(|s| s.island_hint_shown = true) {
+        log::warn!("cannot save that the island hint was shown: {e}");
+        return;
+    }
+    toaster.notify(
+        notice::Notice::info(vento_core::i18n::tr(
+            "New: try the Virtual island in Settings › Pocket",
+        )),
+        platform.sample_input().cursor,
+    );
 }
 
 /// Deletes `old`, the old copy an update left beside the bundle

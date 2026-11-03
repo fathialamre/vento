@@ -665,7 +665,7 @@ msgstr "Data de modificação"
 msgid "Delete"
 msgstr "Apagar"
 
-#: crates/vento-core/src/welcome.rs:91
+#: crates/vento-core/src/welcome.rs:93
 msgid "Designer"
 msgstr "Designer"
 
@@ -673,7 +673,7 @@ msgstr "Designer"
 msgid "Details"
 msgstr "Detalhes"
 
-#: crates/vento-core/src/welcome.rs:90
+#: crates/vento-core/src/welcome.rs:92
 msgid "Developer"
 msgstr "Desenvolvedor"
 
@@ -757,11 +757,11 @@ msgstr "Vazio"
 msgid "Empty folder"
 msgstr "Pasta vazia"
 
-#: crates/vento-core/src/welcome.rs:89
+#: crates/vento-core/src/welcome.rs:91
 msgid "Essentials"
 msgstr "Essenciais"
 
-#: crates/vento-core/src/welcome.rs:100
+#: crates/vento-core/src/welcome.rs:102
 msgid "Every action"
 msgstr "Todas as ações"
 
@@ -775,7 +775,7 @@ msgid_plural "Every {n} pages"
 msgstr[0] "A cada {n} página"
 msgstr[1] "A cada {n} páginas"
 
-#: crates/vento-core/src/welcome.rs:92
+#: crates/vento-core/src/welcome.rs:94
 msgid "Everything"
 msgstr "Tudo"
 
@@ -1208,6 +1208,10 @@ msgstr "Nova extensão"
 #: crates/vento/ui/settings_pages.slint:1379
 msgid "New time"
 msgstr "Nova duração"
+
+#: crates/vento/src/main.rs:1124
+msgid "New: try the Virtual island in Settings › Pocket"
+msgstr "Novo: experimente a ilha virtual em Ajustes › Bolso"
 
 #: crates/vento/ui/welcome.slint:1192
 msgid "Next"
@@ -1919,7 +1923,7 @@ msgstr "Armazenado neste Mac sem criptografia. Cópias que gerenciadores de senh
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Armazenado neste computador sem criptografia. Cópias que gerenciadores de senhas marcam como privadas são ignoradas."
 
-#: crates/vento/src/main.rs:1088
+#: crates/vento/src/main.rs:1090
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ative de novo a Gravação de Tela para Copiar da tela"
 
@@ -2463,7 +2467,7 @@ msgstr "erro interno"
 msgid "interrupted"
 msgstr "interrompido"
 
-#: crates/vento-core/src/settings.rs:840
+#: crates/vento-core/src/settings.rs:855
 msgid "invalid shortcut \"{spec}\""
 msgstr "atalho inválido \"{spec}\""
 
@@ -2693,7 +2697,7 @@ msgstr[1] "{name} + {n} outros"
 msgid "{name} is locked"
 msgstr "{name} está bloqueado"
 
-#: crates/vento/src/main.rs:1132
+#: crates/vento/src/main.rs:1162
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Atalho de {name} indisponível: {reason}"
 

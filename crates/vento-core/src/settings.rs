@@ -184,6 +184,9 @@ pub struct Settings {
     /// How solid the virtual island is while resting, in percent (100 =
     /// solid), from [`GLASS_MIN`] to [`GLASS_MAX`] in steps of [`GLASS_STEP`].
     pub island_glass: u32,
+    /// Whether the one-time hint about the virtual island has been shown (or
+    /// was never needed: a new install starts on it).
+    pub island_hint_shown: bool,
     /// Whether the island lists the screenshots taken in the last week.
     pub screenshots: bool,
     /// Whether a card with the picture shows when a screenshot is saved.
@@ -308,6 +311,7 @@ impl Default for Settings {
             island_mode: IslandMode::Classic,
             island_place: IslandPlace::Centre,
             island_glass: GLASS_DEFAULT,
+            island_hint_shown: false,
             screenshots: false,
             screenshot_card: true,
             screenshot_card_secs: DEFAULT_CARD_SECS,
@@ -355,6 +359,7 @@ struct RawSettings {
     island_mode: Option<IslandMode>,
     island_place: IslandPlace,
     island_glass: u32,
+    island_hint_shown: bool,
     screenshots: bool,
     screenshot_card: bool,
     screenshot_card_secs: u32,
@@ -510,6 +515,7 @@ impl From<&Settings> for RawSettings {
             island_mode: Some(s.island_mode),
             island_place: s.island_place,
             island_glass: s.island_glass,
+            island_hint_shown: s.island_hint_shown,
             screenshots: s.screenshots,
             screenshot_card: s.screenshot_card,
             screenshot_card_secs: s.screenshot_card_secs,
@@ -619,6 +625,7 @@ impl From<RawSettings> for Settings {
             island_mode: raw.island_mode.unwrap_or(IslandMode::Classic),
             island_place: raw.island_place,
             island_glass: clamp_glass(raw.island_glass),
+            island_hint_shown: raw.island_hint_shown,
             screenshots: raw.screenshots,
             screenshot_card: raw.screenshot_card,
             screenshot_card_secs,
@@ -669,6 +676,14 @@ pub enum SettingsError {
         /// What is wrong, without the source excerpt.
         message: String,
     },
+}
+
+/// Whether the one-time hint about the virtual island is due: for someone on
+/// the classic island, where the virtual one is `offered`, who has not been
+/// told yet. A new install starts on the virtual island and is never told
+/// (see `welcome::first_settings`).
+pub fn should_show_island_hint(settings: &Settings, offered: bool) -> bool {
+    offered && settings.island_mode == IslandMode::Classic && !settings.island_hint_shown
 }
 
 impl Settings {
@@ -1272,6 +1287,47 @@ mod tests {
         assert_eq!(s.island_mode, IslandMode::Virtual);
         assert_eq!(s.island_place, IslandPlace::Centre);
         assert_eq!(s.island_glass, 55);
+    }
+
+    #[test]
+    fn the_hint_shows_once_for_existing_users() {
+        // A file from before the virtual island: classic, not told yet.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "pocket_view = \"list\"\n").unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert!(!s.island_hint_shown);
+        assert!(should_show_island_hint(&s, true));
+        // Not where the virtual island is not offered.
+        assert!(!should_show_island_hint(&s, false));
+        // Once shown, saved, and read back: never again.
+        let told = Settings {
+            island_hint_shown: true,
+            ..s
+        };
+        told.save(&path).unwrap();
+        let again = Settings::try_load(&path).unwrap();
+        assert!(again.island_hint_shown);
+        assert!(!should_show_island_hint(&again, true));
+        // Whoever already chose the virtual island needs no hint.
+        let virtual_island = Settings {
+            island_mode: IslandMode::Virtual,
+            ..Settings::default()
+        };
+        assert!(!should_show_island_hint(&virtual_island, true));
+    }
+
+    #[test]
+    fn new_installs_never_get_the_hint() {
+        let s = crate::welcome::first_settings(&["en-US".into()]);
+        assert!(s.island_hint_shown);
+        assert!(!should_show_island_hint(&s, true));
+        // Even if they switch to the classic island later.
+        let classic = Settings {
+            island_mode: IslandMode::Classic,
+            ..s
+        };
+        assert!(!should_show_island_hint(&classic, true));
     }
 
     #[test]

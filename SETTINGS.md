@@ -128,6 +128,11 @@ island_place = "centre"
 # solid). Other values are rounded to the nearest 5 and kept between 10 and 100
 island_glass = 55
 
+# Island: whether the one-time toast about the virtual island has been shown.
+# Vento shows it once, on the classic island, where the virtual one can be
+# chosen, then sets this to true; a new install never sees it
+island_hint_shown = false
+
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
 # (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
 pocket_shortcut = "ctrl+alt+p"

@@ -25,8 +25,9 @@ pub fn is_fresh_install(settings_file: &Path, data_dir: Option<&Path>) -> bool {
 }
 
 /// The settings a fresh install starts with: the defaults, the Welcome setup
-/// still to do, the virtual island, and the interface language set to the
-/// one that `"auto"` picks from the system's `preferred` languages.
+/// still to do, the virtual island (so with no hint to give about it), and
+/// the interface language set to the one that `"auto"` picks from the
+/// system's `preferred` languages.
 ///
 /// This is the only place a new install gets the virtual island: anything
 /// else without a settings file (v0.1 and v0.2 never wrote one at startup)
@@ -35,6 +36,7 @@ pub fn first_settings(preferred: &[String]) -> Settings {
     Settings {
         welcome_done: false,
         island_mode: IslandMode::Virtual,
+        island_hint_shown: true,
         language: i18n::resolve("auto", preferred).code.to_owned(),
         ..Settings::default()
     }
@@ -203,6 +205,7 @@ mod tests {
             Settings {
                 welcome_done: false,
                 island_mode: IslandMode::Virtual,
+                island_hint_shown: true,
                 ..Settings::default()
             }
         );
