@@ -1,5 +1,6 @@
 //! User settings stored as TOML.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -123,6 +124,85 @@ pub enum IslandPlace {
 impl IslandPlace {
     /// Every place, in the order the Settings window lists them.
     pub const ALL: [Self; 3] = [Self::Left, Self::Centre, Self::Right];
+}
+
+/// Where the virtual island sits: against a side, or at a free spot the user
+/// dragged it to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IslandSpot {
+    /// Against the left side, in the middle or against the right side.
+    Side(IslandPlace),
+    /// A free spot, in permille of the screen width (0..=1000).
+    Free(u16),
+}
+
+impl IslandSpot {
+    /// The spot from the stored pair: a free spot wins over `place`, kept
+    /// between 0 and 1; no value, or one that is not a number, means `place`.
+    pub fn from_parts(place: IslandPlace, free: Option<f64>) -> IslandSpot {
+        match free {
+            Some(f) if !f.is_nan() => IslandSpot::Free((f.clamp(0.0, 1.0) * 1000.0).round() as u16),
+            _ => IslandSpot::Side(place),
+        }
+    }
+
+    /// The pair to store. A free spot comes with [`IslandPlace::Centre`], a
+    /// placeholder that is never shown while the free value is there.
+    pub fn parts(self) -> (IslandPlace, Option<f64>) {
+        match self {
+            IslandSpot::Side(place) => (place, None),
+            IslandSpot::Free(pm) => (IslandPlace::Centre, Some(f64::from(pm.min(1000)) / 1000.0)),
+        }
+    }
+}
+
+/// The place the virtual island has on one screen.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(default)]
+pub struct ScreenPlace {
+    /// The side, when there is no free spot.
+    pub place: IslandPlace,
+    /// A free spot as a fraction of the screen width, 0 to 1.
+    #[serde(deserialize_with = "lenient_free")]
+    pub free: Option<f64>,
+}
+
+/// `value` as a free spot: a number kept between 0 and 1; anything else
+/// (NaN, a word) is no free spot.
+fn free_of(value: &toml::Value) -> Option<f64> {
+    let f = match value {
+        toml::Value::Float(f) => *f,
+        toml::Value::Integer(i) => *i as f64,
+        _ => return None,
+    };
+    (!f.is_nan()).then(|| f.clamp(0.0, 1.0))
+}
+
+/// Reads a free spot, taking a value that is not a number as none instead of
+/// failing the whole file.
+fn lenient_free<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+    Ok(free_of(&toml::Value::deserialize(d)?))
+}
+
+/// Reads the place of each screen, dropping an entry that cannot be read (and
+/// everything when the value is not a table) instead of failing the whole file.
+fn lenient_places<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<BTreeMap<String, ScreenPlace>, D::Error> {
+    let toml::Value::Table(table) = toml::Value::deserialize(d)? else {
+        warn!("ignoring island_places: not a table");
+        return Ok(BTreeMap::new());
+    };
+    let mut places = BTreeMap::new();
+    for (screen, entry) in table {
+        match entry.try_into::<ScreenPlace>() {
+            Ok(place) => {
+                places.insert(screen, place);
+            }
+            Err(e) => warn!("ignoring the island place of screen {screen}: {e}"),
+        }
+    }
+    Ok(places)
 }
 
 /// How the virtual island looks while it rests.
@@ -280,6 +360,17 @@ pub struct Settings {
     pub island_mode: IslandMode,
     /// Where the virtual island sits along the top edge.
     pub island_place: IslandPlace,
+    /// A free spot along the top edge as a fraction of the screen width, 0
+    /// to 1; it wins over [`Settings::island_place`] while it is set.
+    pub island_place_free: Option<f64>,
+    /// Whether each screen keeps its own place for the virtual island.
+    pub island_place_each_screen: bool,
+    /// Key of the screen the virtual island is on; `None` is the primary
+    /// one. See [`Settings::island_spot`] for the keys.
+    pub island_screen: Option<String>,
+    /// The place of each screen, by screen key (`"{w}x{h}+{x}+{y}"`). An
+    /// entry of a screen that is gone is kept.
+    pub island_places: BTreeMap<String, ScreenPlace>,
     /// How the virtual island looks while it rests.
     pub island_shape: IslandShape,
     /// How solid the virtual island is while resting, in percent (100 =
@@ -420,6 +511,10 @@ impl Default for Settings {
             clipboard_history: true,
             island_mode: IslandMode::Classic,
             island_place: IslandPlace::Centre,
+            island_place_free: None,
+            island_place_each_screen: true,
+            island_screen: None,
+            island_places: BTreeMap::new(),
             island_shape: IslandShape::Island,
             island_glass: GLASS_DEFAULT,
             island_shimmer: ShimmerStyle::Sweep,
@@ -473,6 +568,12 @@ struct RawSettings {
     /// Welcome setup, which writes the key.
     island_mode: Option<IslandMode>,
     island_place: IslandPlace,
+    #[serde(deserialize_with = "lenient_free")]
+    island_place_free: Option<f64>,
+    island_place_each_screen: bool,
+    island_screen: Option<String>,
+    #[serde(deserialize_with = "lenient_places")]
+    island_places: BTreeMap<String, ScreenPlace>,
     #[serde(deserialize_with = "lenient_shape")]
     island_shape: IslandShape,
     island_glass: u32,
@@ -637,6 +738,10 @@ impl From<&Settings> for RawSettings {
             clipboard_history: s.clipboard_history,
             island_mode: Some(s.island_mode),
             island_place: s.island_place,
+            island_place_free: s.island_place_free,
+            island_place_each_screen: s.island_place_each_screen,
+            island_screen: s.island_screen.clone(),
+            island_places: s.island_places.clone(),
             island_shape: s.island_shape,
             island_glass: s.island_glass,
             island_shimmer: s.island_shimmer,
@@ -752,6 +857,10 @@ impl From<RawSettings> for Settings {
             clipboard_history: raw.clipboard_history,
             island_mode: raw.island_mode.unwrap_or(IslandMode::Classic),
             island_place: raw.island_place,
+            island_place_free: raw.island_place_free,
+            island_place_each_screen: raw.island_place_each_screen,
+            island_screen: raw.island_screen,
+            island_places: raw.island_places,
             island_shape: raw.island_shape,
             island_glass: clamp_glass(raw.island_glass),
             island_shimmer: raw.island_shimmer,
@@ -821,6 +930,37 @@ pub fn should_show_island_hint(settings: &Settings, offered: bool, loaded: bool)
 }
 
 impl Settings {
+    /// Where the virtual island sits on `screen` (its key, the frame as
+    /// `"{w}x{h}+{x}+{y}"` rounded to whole pixels): the place saved for that
+    /// screen when each screen has its own and this one has an entry, else the
+    /// global place.
+    pub fn island_spot(&self, screen: Option<&str>) -> IslandSpot {
+        let entry = screen
+            .filter(|_| self.island_place_each_screen)
+            .and_then(|key| self.island_places.get(key));
+        if let Some(entry) = entry {
+            return IslandSpot::from_parts(entry.place, entry.free);
+        }
+        IslandSpot::from_parts(self.island_place, self.island_place_free)
+    }
+
+    /// Saves where the virtual island sits on `screen`: in that screen's
+    /// entry when each screen has its own place and a key is given, else in
+    /// the global place.
+    pub fn set_island_spot(&mut self, screen: Option<&str>, spot: IslandSpot) {
+        let (place, free) = spot.parts();
+        match screen {
+            Some(key) if self.island_place_each_screen => {
+                self.island_places
+                    .insert(key.to_owned(), ScreenPlace { place, free });
+            }
+            _ => {
+                self.island_place = place;
+                self.island_place_free = free;
+            }
+        }
+    }
+
     /// Loads settings from `path`: a missing file yields the defaults, an
     /// unreadable or invalid one an error.
     pub fn try_load(path: &Path) -> Result<Settings, SettingsError> {
@@ -1564,6 +1704,163 @@ mod tests {
         assert_eq!(s.island_shape, IslandShape::Island);
         // The rest of the file is still read.
         assert_eq!(s.island_place, IslandPlace::Left);
+    }
+
+    #[test]
+    fn spot_parts_round_trip() {
+        assert_eq!(
+            IslandSpot::from_parts(IslandPlace::Centre, Some(0.25)),
+            IslandSpot::Free(250)
+        );
+        assert_eq!(
+            IslandSpot::Free(250).parts(),
+            (IslandPlace::Centre, Some(0.25))
+        );
+        assert_eq!(
+            IslandSpot::from_parts(IslandPlace::Right, None),
+            IslandSpot::Side(IslandPlace::Right)
+        );
+        assert_eq!(
+            IslandSpot::Side(IslandPlace::Right).parts(),
+            (IslandPlace::Right, None)
+        );
+    }
+
+    #[test]
+    fn free_clamped_and_nan() {
+        let from = |f| IslandSpot::from_parts(IslandPlace::Left, f);
+        assert_eq!(from(Some(1.7)), IslandSpot::Free(1000));
+        assert_eq!(from(Some(-0.2)), IslandSpot::Free(0));
+        assert_eq!(from(Some(f64::NAN)), IslandSpot::Side(IslandPlace::Left));
+    }
+
+    #[test]
+    fn spot_for_unknown_screen_is_global() {
+        let mut s = Settings {
+            island_place: IslandPlace::Right,
+            ..Settings::default()
+        };
+        s.island_places.insert(
+            "A".to_owned(),
+            ScreenPlace {
+                place: IslandPlace::Left,
+                free: None,
+            },
+        );
+        assert_eq!(
+            s.island_spot(Some("A")),
+            IslandSpot::Side(IslandPlace::Left)
+        );
+        assert_eq!(
+            s.island_spot(Some("B")),
+            IslandSpot::Side(IslandPlace::Right)
+        );
+        assert_eq!(s.island_spot(None), IslandSpot::Side(IslandPlace::Right));
+    }
+
+    #[test]
+    fn set_spot_writes_the_screen_entry() {
+        let mut s = Settings::default();
+        s.set_island_spot(Some("A"), IslandSpot::Free(300));
+        assert_eq!(s.island_spot(Some("A")), IslandSpot::Free(300));
+        assert_eq!(s.island_place_free, None);
+        s.set_island_spot(None, IslandSpot::Side(IslandPlace::Left));
+        assert_eq!(s.island_place, IslandPlace::Left);
+        assert_eq!(s.island_places.len(), 1);
+    }
+
+    #[test]
+    fn each_screen_off_uses_global() {
+        let mut s = Settings {
+            island_place_each_screen: false,
+            ..Settings::default()
+        };
+        s.set_island_spot(Some("A"), IslandSpot::Free(300));
+        assert!(s.island_places.is_empty());
+        assert_eq!(s.island_place_free, Some(0.3));
+        assert_eq!(s.island_spot(Some("A")), IslandSpot::Free(300));
+        assert_eq!(s.island_spot(None), IslandSpot::Free(300));
+    }
+
+    #[test]
+    fn per_screen_round_trips_through_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        let mut s = Settings {
+            island_screen: Some("2560x1440+1920+0".to_owned()),
+            island_place_free: Some(0.75),
+            ..Settings::default()
+        };
+        s.set_island_spot(Some("1920x1080+0+0"), IslandSpot::Side(IslandPlace::Left));
+        s.set_island_spot(Some("2560x1440+1920+0"), IslandSpot::Free(250));
+        s.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("1920x1080+0+0"), "{text}");
+        let back = Settings::try_load(&path).unwrap();
+        assert_eq!(back.island_places, s.island_places);
+        assert_eq!(back.island_screen.as_deref(), Some("2560x1440+1920+0"));
+        assert_eq!(back.island_place_free, Some(0.75));
+        assert!(back.island_place_each_screen);
+        assert_eq!(
+            back.island_spot(Some("2560x1440+1920+0")),
+            IslandSpot::Free(250)
+        );
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn old_file_loads_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "island_place = \"left\"\n").unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert!(s.island_place_each_screen);
+        assert!(s.island_places.is_empty());
+        assert_eq!(s.island_place_free, None);
+        assert_eq!(s.island_screen, None);
+    }
+
+    #[test]
+    fn bad_places_are_dropped_quietly() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(
+            &path,
+            "island_place_free = 1.7\n\
+             [island_places.\"good\"]\nplace = \"right\"\nfree = 2.0\n\
+             [island_places.\"bad place\"]\nplace = \"sideways\"\n\
+             [island_places.\"bad type\"]\nplace = 7\n\
+             [island_places.\"bad free\"]\nplace = \"left\"\nfree = \"x\"\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_place_free, Some(1.0));
+        assert_eq!(s.island_spot(Some("good")), IslandSpot::Free(1000));
+        assert_eq!(s.island_spot(Some("bad place")), s.island_spot(None));
+        assert_eq!(s.island_spot(Some("bad type")), s.island_spot(None));
+        assert_eq!(
+            s.island_spot(Some("bad free")),
+            IslandSpot::Side(IslandPlace::Left)
+        );
+        assert_eq!(s.island_places.len(), 2);
+    }
+
+    #[test]
+    fn free_value_that_is_not_a_number_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(
+            &path,
+            "island_place_free = \"left\"\nisland_place = \"left\"\n",
+        )
+        .unwrap();
+        let s = Settings::try_load(&path).unwrap();
+        assert_eq!(s.island_place_free, None);
+        assert_eq!(s.island_place, IslandPlace::Left);
+        std::fs::write(&path, "island_place_free = nan\n").unwrap();
+        assert_eq!(Settings::try_load(&path).unwrap().island_place_free, None);
+        std::fs::write(&path, "island_places = 5\n").unwrap();
+        assert!(Settings::try_load(&path).unwrap().island_places.is_empty());
     }
 
     #[test]

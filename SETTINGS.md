@@ -124,6 +124,38 @@ island_mode = "virtual"
 # "right" ("center" is read as "centre")
 island_place = "centre"
 
+# Island: a free spot for the virtual island along the top edge, as a fraction
+# of the screen's width (0 = the left end, 1 = the right end). Vento writes it
+# when you drag the island and leave it between the left, centre and right
+# snaps; while it is set, it wins over island_place. A value outside 0 to 1 is
+# kept inside it; a value that is not a number counts as not set. Leave it out
+# for no free spot
+# island_place_free = 0.35
+
+# Island: whether each screen keeps its own place for the virtual island (its
+# own island_places entry below). With false, one place (island_place and
+# island_place_free) holds on every screen
+island_place_each_screen = true
+
+# Island: the screen the virtual island is on, by its key: the screen's frame
+# as "{width}x{height}+{x}+{y}" in whole pixels, as in the keys of
+# island_places. Vento writes it when you drag the island onto another screen.
+# Leave it out for the main screen (also used when this screen is not
+# connected)
+# island_screen = "2560x1440+1920+0"
+
+# Island: the place of each screen, by its key (see island_screen). Each entry
+# has a "place" ("left", "centre" or "right") and, for a free spot, a "free"
+# fraction as in island_place_free. Vento writes these when you drag the
+# island; the entry of a screen that is not connected is kept. An entry that
+# cannot be read is skipped
+# [island_places."1920x1080+0+0"]
+# place = "left"
+#
+# [island_places."2560x1440+1920+0"]
+# place = "centre"
+# free = 0.25
+
 # Island: the virtual island's shape: "island" (a pill) or "circle" (a disc
 # that stretches into a pill only to say something). Any other value is read
 # as "island"
