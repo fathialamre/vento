@@ -1223,7 +1223,9 @@ export component PanelOutline inherits Path {
 // at the band's sides and up to `peak` white in its middle. The software
 // renderer clips only to rectangles, so the band is never clipped: each
 // slice is cut to the shape itself, as tall as the shape is at the slice's
-// outer side and nothing outside it.
+// outer side and nothing outside it. With `square-top` the shape is instead
+// a rectangle hanging from its top edge (the notch island's wings): its top
+// corners square, its bottom ones round by `bottom-r`.
 export component SweepBand inherits Rectangle {
     in property <length> w;
     in property <length> h;
@@ -1231,6 +1233,8 @@ export component SweepBand inherits Rectangle {
     in property <length> left;
     in property <int> slices: 10;
     in property <float> peak: 0.18;
+    in property <bool> square-top;
+    in property <length> bottom-r: 10px;
 
     // In points.
     property <float> sw: root.w / 1px;
@@ -1245,6 +1249,14 @@ export component SweepBand inherits Rectangle {
         Math.sqrt(max(0, r * r - d * d))
     }
 
+    // With `square-top`, how far down the shape reaches at `x`: all the way
+    // between its bottom corners, less in them.
+    pure function depth-at(x: float) -> float {
+        let r = min(root.bottom-r / 1px, root.sw / 2, root.sh);
+        let d = max(0, max(r - x, x - (root.sw - r)));
+        root.sh - r + Math.sqrt(max(0, r * r - d * d))
+    }
+
     width: root.w;
     height: root.h;
 
@@ -1255,11 +1267,12 @@ export component SweepBand inherits Rectangle {
         // The slice's side farther from the middle, where the shape is
         // lowest.
         property <float> outer: abs(self.x0 - root.sw / 2) > abs(self.x1 - root.sw / 2) ? self.x0 : self.x1;
-        property <float> half: self.x1 > self.x0 ? root.half-at(self.outer) : 0;
+        property <float> half: self.x1 > self.x0 && !root.square-top ? root.half-at(self.outer) : 0;
+        property <float> depth: self.x1 > self.x0 && root.square-top ? root.depth-at(self.outer) : 0;
         x: self.x0 * 1px;
-        y: (root.sh / 2 - self.half) * 1px;
+        y: root.square-top ? 0px : (root.sh / 2 - self.half) * 1px;
         width: max(0, self.x1 - self.x0) * 1px;
-        height: 2 * self.half * 1px;
+        height: (root.square-top ? self.depth : 2 * self.half) * 1px;
         background: #ffffff.with-alpha(root.peak * (1 - abs((i + 0.5) * 2 / root.slices - 1)));
     }
 }

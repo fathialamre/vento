@@ -629,7 +629,7 @@ msgstr "No se pudo reemplazar Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "No se pudieron guardar los ajustes: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2892
+#: crates/vento/src/pocket/mod.rs:2917
 msgid "Couldn't save the Pocket: {error}"
 msgstr "No se pudo guardar el Bolsillo: {error}"
 
@@ -725,7 +725,7 @@ msgstr "Arrastra un rectángulo sobre el texto que quieras y suelta."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Arrastra una fila por su asa para cambiar dónde va la acción."
 
-#: crates/vento/ui/pocket.slint:4674
+#: crates/vento/ui/pocket.slint:5017
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "Arrastrar {n}"
@@ -749,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "Arrastrar {n}"
 msgstr[1] "Arrastrar {n}"
 
-#: crates/vento/ui/pocket.slint:4444
+#: crates/vento/ui/pocket.slint:4787
 msgid "Drop to add"
 msgstr "Suelta para añadir"
 
@@ -1533,7 +1533,7 @@ msgstr "Píldora simple"
 msgid "Pocket"
 msgstr "Bolsillo"
 
-#: crates/vento/ui/pocket.slint:4413
+#: crates/vento/ui/pocket.slint:4756
 msgid "Pocket cleared"
 msgstr "Bolsillo vaciado"
 
@@ -2099,7 +2099,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Este atajo no se puede usar"
 
-#: crates/vento/src/pocket/mod.rs:1263
+#: crates/vento/src/pocket/mod.rs:1281
 msgid "Those items are no longer there"
 msgstr "Esos elementos ya no están"
 
@@ -2299,7 +2299,7 @@ msgstr "Vento vive en la barra de menús. Haz clic en su icono para el panel rá
 msgid "Vento needs to see {} again after the update."
 msgstr "Vento necesita volver a ver {} tras la actualización."
 
-#: crates/vento/ui/pocket.slint:3149
+#: crates/vento/ui/pocket.slint:3314
 msgid "Vento paused"
 msgstr "Vento en pausa"
 
@@ -2511,7 +2511,7 @@ msgstr "no se puede quitar de la carpeta de solo lectura {dir}"
 msgid "cannot start"
 msgstr "no se puede iniciar"
 
-#: crates/vento/src/pocket/mod.rs:2562
+#: crates/vento/src/pocket/mod.rs:2587
 msgid "cannot start copying: {reason}"
 msgstr "no se puede empezar a copiar: {reason}"
 
@@ -2727,7 +2727,7 @@ msgstr "{app} ya no está"
 msgid "{app} is not installed"
 msgstr "{app} no está instalada"
 
-#: crates/vento/src/pocket/news.rs:342
+#: crates/vento/src/pocket/news.rs:348
 msgid "{current} of {total}"
 msgstr "{current} de {total}"
 
@@ -2963,7 +2963,7 @@ msgid_plural "{} {n}"
 msgstr[0] "{} {n}"
 msgstr[1] "{} {n}"
 
-#: crates/vento/src/pocket/news.rs:350
+#: crates/vento/src/pocket/news.rs:356
 msgid "{}%"
 msgstr "{}%"
 

@@ -629,7 +629,7 @@ msgstr "Não foi possível substituir o Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Não foi possível guardar as definições: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2892
+#: crates/vento/src/pocket/mod.rs:2917
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Não foi possível guardar o Bolso: {error}"
 
@@ -725,7 +725,7 @@ msgstr "Arraste um retângulo sobre o texto que pretende e solte."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Arraste uma linha pela pega para mudar a posição da ação."
 
-#: crates/vento/ui/pocket.slint:4674
+#: crates/vento/ui/pocket.slint:5017
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "Arrastar todos ({n})"
@@ -749,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "Arrastar {n}"
 msgstr[1] "Arrastar {n}"
 
-#: crates/vento/ui/pocket.slint:4444
+#: crates/vento/ui/pocket.slint:4787
 msgid "Drop to add"
 msgstr "Largar para adicionar"
 
@@ -1533,7 +1533,7 @@ msgstr "Pílula simples"
 msgid "Pocket"
 msgstr "Bolso"
 
-#: crates/vento/ui/pocket.slint:4413
+#: crates/vento/ui/pocket.slint:4756
 msgid "Pocket cleared"
 msgstr "Bolso limpo"
 
@@ -2099,7 +2099,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Este atalho não pode ser usado"
 
-#: crates/vento/src/pocket/mod.rs:1263
+#: crates/vento/src/pocket/mod.rs:1281
 msgid "Those items are no longer there"
 msgstr "Esses elementos já não existem"
 
@@ -2299,7 +2299,7 @@ msgstr "O Vento vive na barra de menus. Clique no ícone para abrir o Painel rá
 msgid "Vento needs to see {} again after the update."
 msgstr "O Vento precisa de voltar a ver {} após a atualização."
 
-#: crates/vento/ui/pocket.slint:3149
+#: crates/vento/ui/pocket.slint:3314
 msgid "Vento paused"
 msgstr "Vento em pausa"
 
@@ -2511,7 +2511,7 @@ msgstr "não é possível remover da pasta só de leitura {dir}"
 msgid "cannot start"
 msgstr "não é possível iniciar"
 
-#: crates/vento/src/pocket/mod.rs:2562
+#: crates/vento/src/pocket/mod.rs:2587
 msgid "cannot start copying: {reason}"
 msgstr "não é possível começar a copiar: {reason}"
 
@@ -2727,7 +2727,7 @@ msgstr "{app} já não existe"
 msgid "{app} is not installed"
 msgstr "{app} não está instalado"
 
-#: crates/vento/src/pocket/news.rs:342
+#: crates/vento/src/pocket/news.rs:348
 msgid "{current} of {total}"
 msgstr "{current} de {total}"
 
@@ -2963,7 +2963,7 @@ msgid_plural "{} {n}"
 msgstr[0] "{} {n}"
 msgstr[1] "{} {n}"
 
-#: crates/vento/src/pocket/news.rs:350
+#: crates/vento/src/pocket/news.rs:356
 msgid "{}%"
 msgstr "{}%"
 

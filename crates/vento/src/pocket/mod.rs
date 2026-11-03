@@ -3206,22 +3206,38 @@ impl PocketController {
     }
 
     /// Where the news the window shows lies with `f`, as the window lays it
-    /// out; `None` while it shows none.
+    /// out (on the notch island's wings, or the virtual island's pill);
+    /// `None` while it shows none.
     fn news_rects(&self, f: &Frames) -> Option<NewsRects> {
         if !(f.virtual_island || f.notch_style) || self.news_view.borrow().is_none() {
             return None;
         }
         let w = &self.window;
         let width = |l: f32| (l > 0.0).then_some(f64::from(l));
-        let button_w = width(w.get_news_button_w());
-        let chip_w = width(w.get_news_chip_w());
+        let (button_w, button_x, chip_w, chip_x) = if f.notch_style {
+            (
+                w.get_wing_button_w(),
+                w.get_wing_button_x(),
+                w.get_wing_chip_w(),
+                w.get_wing_chip_x(),
+            )
+        } else {
+            (
+                w.get_news_button_w(),
+                w.get_news_button_x(),
+                w.get_news_chip_w(),
+                w.get_news_chip_x(),
+            )
+        };
+        let button_w = width(button_w);
+        let chip_w = width(chip_w);
         Some(geometry::news_rects(
             f,
             f64::from(w.get_news_pill_w()),
             button_w,
-            button_w.map(|_| f64::from(w.get_news_button_x())),
+            button_w.map(|_| f64::from(button_x)),
             chip_w,
-            chip_w.map(|_| f64::from(w.get_news_chip_x())),
+            chip_w.map(|_| f64::from(chip_x)),
             f64::from(w.get_news_wing_w()),
         ))
     }

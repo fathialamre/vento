@@ -629,7 +629,7 @@ msgstr "Impossible de remplacer Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Impossible d’enregistrer les réglages : {error}"
 
-#: crates/vento/src/pocket/mod.rs:2892
+#: crates/vento/src/pocket/mod.rs:2917
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Impossible d’enregistrer la Poche : {error}"
 
@@ -725,7 +725,7 @@ msgstr "Tracez un rectangle sur le texte voulu et relâchez."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Faites glisser une ligne par sa poignée pour changer la place de l’action."
 
-#: crates/vento/ui/pocket.slint:4674
+#: crates/vento/ui/pocket.slint:5017
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "Faire glisser {n}"
@@ -749,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "Faire glisser {n}"
 msgstr[1] "Faire glisser {n}"
 
-#: crates/vento/ui/pocket.slint:4444
+#: crates/vento/ui/pocket.slint:4787
 msgid "Drop to add"
 msgstr "Déposer pour ajouter"
 
@@ -1533,7 +1533,7 @@ msgstr "Pastille simple"
 msgid "Pocket"
 msgstr "Poche"
 
-#: crates/vento/ui/pocket.slint:4413
+#: crates/vento/ui/pocket.slint:4756
 msgid "Pocket cleared"
 msgstr "Poche vidée"
 
@@ -2099,7 +2099,7 @@ msgstr "Thème"
 msgid "This shortcut can't be used"
 msgstr "Ce raccourci n’est pas utilisable"
 
-#: crates/vento/src/pocket/mod.rs:1263
+#: crates/vento/src/pocket/mod.rs:1281
 msgid "Those items are no longer there"
 msgstr "Ces éléments n’existent plus"
 
@@ -2299,7 +2299,7 @@ msgstr "Vento se trouve dans la barre des menus. Cliquez sur son icône pour le 
 msgid "Vento needs to see {} again after the update."
 msgstr "Vento doit à nouveau voir {} après la mise à jour."
 
-#: crates/vento/ui/pocket.slint:3149
+#: crates/vento/ui/pocket.slint:3314
 msgid "Vento paused"
 msgstr "Vento en pause"
 
@@ -2511,7 +2511,7 @@ msgstr "impossible de retirer du dossier en lecture seule {dir}"
 msgid "cannot start"
 msgstr "démarrage impossible"
 
-#: crates/vento/src/pocket/mod.rs:2562
+#: crates/vento/src/pocket/mod.rs:2587
 msgid "cannot start copying: {reason}"
 msgstr "impossible de lancer la copie : {reason}"
 
@@ -2727,7 +2727,7 @@ msgstr "{app} n’est plus là"
 msgid "{app} is not installed"
 msgstr "{app} n’est pas installé"
 
-#: crates/vento/src/pocket/news.rs:342
+#: crates/vento/src/pocket/news.rs:348
 msgid "{current} of {total}"
 msgstr "{current} sur {total}"
 
@@ -2963,7 +2963,7 @@ msgid_plural "{} {n}"
 msgstr[0] "{} {n}"
 msgstr[1] "{} {n}"
 
-#: crates/vento/src/pocket/news.rs:350
+#: crates/vento/src/pocket/news.rs:356
 msgid "{}%"
 msgstr "{} %"
 

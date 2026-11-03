@@ -2970,6 +2970,171 @@ component NewsBody inherits Rectangle {
     }
 }
 
+// The news on the notch island's wings, over the whole collapsed island
+// (`notch-w` in its middle): the mark at the left end of the left wing (a
+// turning ring at work; for a result a tick, "!" or "…" on the tone's
+// colour, or the action's icon for information), and in the right wing,
+// from the notch out, what it says (at work the count in short, for a
+// result its sentence, ending in an ellipsis when too long), the "+N" chip
+// and the one button. `wing-w` is how wide the wings grow for it: the right
+// wing's content and 6 pt each side of it, at least `wing` and at most
+// `most`; content narrower than that is centred in the wing. The other way
+// round in a right-to-left language. It says where it puts the button and
+// the chip, from the right wing's start (less than 0 in the left wing), for
+// the clicks they take.
+component WingNews inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    in property <string> text;
+    // The job's count in a few characters ("25%", "3/5").
+    in property <string> short;
+    in property <string> button;
+    // The button is grey (Details, Change) rather than the accent.
+    in property <bool> quiet;
+    in property <int> extra;
+    in property <length> notch-w;
+    // The plain wing's width, and the widest a wing grows.
+    in property <length> wing;
+    in property <length> most;
+    // The ring may turn: the wings are in sight.
+    in property <bool> live;
+    callback button-clicked();
+    callback chip-clicked();
+
+    property <length> pad: 6px;
+    property <length> gap: 6px;
+    property <string> line: root.stage == 1 ? root.short : root.text;
+    property <bool> has-line: root.line != "";
+    property <bool> has-chip: root.extra > 0;
+    property <bool> has-button: root.button != "";
+    property <length> chip-gap: root.has-line ? root.gap : 0px;
+    property <length> button-gap: root.has-line || root.has-chip ? root.gap : 0px;
+    // What follows the line, each with the gap before it.
+    property <length> tail-w: (root.has-chip ? root.chip-gap + root.chip-w : 0px)
+        + (root.has-button ? root.button-gap + root.button-w : 0px);
+    property <length> natural-w: 2 * root.pad + (root.has-line ? line-text.preferred-width : 0px) + root.tail-w;
+    out property <length> wing-w: min(root.most, max(root.wing, root.natural-w));
+    // Where the content starts: centred while narrower than the wing.
+    property <length> lead: max(0px, (root.wing-w - root.natural-w) / 2);
+    property <length> line-w: root.has-line
+        ? max(0px, min(line-text.preferred-width, root.wing-w - 2 * root.pad - root.tail-w)) : 0px;
+    // Left to right, from the right wing's start.
+    property <length> line-x: root.lead + root.pad;
+    property <length> ltr-chip-x: root.line-x + root.line-w + root.chip-gap;
+    property <length> ltr-button-x: root.line-x + root.line-w + (root.has-chip ? root.chip-gap + root.chip-w : 0px)
+        + root.button-gap;
+    out property <length> chip-w: root.has-chip ? max(20px, chip-text.preferred-width + 14px) : 0px;
+    out property <length> button-w: root.has-button ? button-text.preferred-width + 20px : 0px;
+    out property <length> chip-x: root.from-start(root.ltr-chip-x, root.chip-w);
+    out property <length> button-x: root.from-start(root.ltr-button-x, root.button-w);
+
+    // The x in this island of something `w` wide at `x` from the right
+    // wing's start, left to right: as far from the left wing's end, the
+    // other way, in a right-to-left language.
+    pure function place(x: length, w: length) -> length {
+        Theme.rtl ? (root.width - root.notch-w) / 2 - x - w : (root.width + root.notch-w) / 2 + x
+    }
+    // The same, from the right wing's start.
+    pure function from-start(x: length, w: length) -> length {
+        Theme.rtl ? -root.notch-w - x - w : x
+    }
+
+    // The mark, in the middle of a plain wing's room at the left end.
+    NewsMark {
+        x: Theme.rtl ? root.width - (root.wing + self.width) / 2 : (root.wing - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        stage: root.stage;
+        tone: root.tone;
+        icon: root.icon;
+        live: root.live;
+    }
+
+    line-text := LineText {
+        x: root.place(root.line-x, self.width);
+        y: 0px;
+        width: root.line-w;
+        height: parent.height;
+        visible: root.has-line && self.width > 0;
+        text: root.line;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    // "+N": the other things going on. (`AccessibleRole.button` in full
+    // here: `button` alone is the button's label.)
+    Rectangle {
+        x: root.place(root.ltr-chip-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: root.chip-w;
+        height: 20px;
+        visible: root.has-chip;
+        border-radius: 10px;
+        background: chip-touch.has-hover ? #3a3a40 : #2c2c32;
+        accessible-role: AccessibleRole.button;
+        accessible-label: chip-text.text;
+        accessible-action-default => {
+            root.chip-clicked();
+        }
+
+        chip-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("+{n}" | "+{n}" % root.extra);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        chip-touch := TouchArea {
+            enabled: root.has-chip;
+            clicked => {
+                root.chip-clicked();
+            }
+        }
+    }
+
+    // The one button.
+    Rectangle {
+        x: root.place(root.ltr-button-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: root.button-w;
+        height: 26px;
+        visible: root.has-button;
+        border-radius: 13px;
+        background: root.quiet
+            ? (button-touch.has-hover ? #3a3a40 : #2c2c32)
+            : (button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : #ff6a1a);
+        animate background { duration: 140ms; }
+        accessible-role: AccessibleRole.button;
+        accessible-label: root.button;
+        accessible-action-default => {
+            root.button-clicked();
+        }
+
+        button-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.button;
+            color: white;
+            font-size: 12px;
+            font-weight: root.quiet ? 500 : 600;
+        }
+
+        button-touch := TouchArea {
+            enabled: root.has-button;
+            clicked => {
+                root.button-clicked();
+            }
+        }
+    }
+}
+
 // Activity: today's jobs and results under a title, newest first (the
 // running jobs on top), one 48 pt row each: the mark, what it says, how
 // long ago, and the row's button at the end. The other way round in a
@@ -3562,6 +3727,13 @@ component DropOrb inherits Rectangle {
 // Sparkle's stars sit on its rim. Liquid draws nothing here: the island is
 // drawn `stretch-w` wider and `stretch-h` taller, around its middle, while
 // its own size stays as it is.
+// On the notch island's wings (`wings`) the shape hangs from the screen's
+// top edge, its top corners square and its bottom ones round by 10, with
+// the notch, `gap` wide, in its middle: Sweep and Edge run are drawn over
+// the wings only, the notch staying black, and Edge run goes down one side,
+// along the bottom and up the other (the top is the screen's edge); Halo
+// grows out below and beside it, and Sparkle's stars sit on the wings'
+// bottom edge.
 component Shimmer inherits Rectangle {
     in property <int> style;
     in property <bool> round;
@@ -3570,6 +3742,8 @@ component Shimmer inherits Rectangle {
     in property <int> play;
     in property <bool> live;
     in property <length> room: 6px;
+    in property <bool> wings;
+    in property <length> gap;
     out property <length> stretch-w: root.liquid * 6px;
     out property <length> stretch-h: root.liquid * -2px;
 
@@ -3619,9 +3793,20 @@ component Shimmer inherits Rectangle {
                 * Math.cos((root.t - 0.45) / 0.55 * 270deg))
         : 0;
     // Sparkle's spots on the rim: across the pill, alternately on its top
-    // and bottom edge; round the circle, clockwise from the top.
+    // and bottom edge; round the circle, clockwise from the top; along the
+    // two wings' bottom edge, as if they met under the notch.
     property <[float]> spots: [0.2, 0.55, 0.85];
     property <[angle]> turns: [30deg, 150deg, 270deg];
+    // Each wing's width.
+    property <length> wing-w: max(0px, (root.w - root.gap) / 2);
+    // The wings' outline 1 in from their edge, for Edge run (in points):
+    // down the left side from the top, round the bottom corner (radius 10),
+    // along the bottom and up the right side, measured from the top left.
+    property <float> wr: 10;
+    property <float> wing-side: max(0, root.sh - root.wr);
+    property <float> wing-quarter: 3.14159265 / 2 * (root.wr - 1);
+    property <float> wing-run: max(0, root.sw - 2 * root.wr);
+    property <float> wing-length: 2 * root.wing-side + 2 * root.wing-quarter + root.wing-run;
 
     // The point `d` along the pill's outline.
     pure function edge-x(d: float) -> float {
@@ -3649,18 +3834,50 @@ component Shimmer inherits Rectangle {
             : root.sh / 2 - root.r
     }
 
+    // The point `d` along the wings' outline.
+    pure function wing-x(d: float) -> float {
+        let s = clamp(d, 0, root.wing-length);
+        let a = root.wing-side;
+        let b = a + root.wing-quarter;
+        let c = b + root.wing-run;
+        let e = c + root.wing-quarter;
+        let q = root.wr - 1;
+        s < a ? 1
+            : s < b ? root.wr - q * Math.cos((s - a) / q * 1rad)
+            : s < c ? root.wr + (s - b)
+            : s < e ? root.sw - root.wr + q * Math.sin((s - c) / q * 1rad)
+            : root.sw - 1
+    }
+    pure function wing-y(d: float) -> float {
+        let s = clamp(d, 0, root.wing-length);
+        let a = root.wing-side;
+        let b = a + root.wing-quarter;
+        let c = b + root.wing-run;
+        let e = c + root.wing-quarter;
+        let q = root.wr - 1;
+        s < a ? s
+            : s < b ? root.sh - root.wr + q * Math.sin((s - a) / q * 1rad)
+            : s < c ? root.sh - 1
+            : s < e ? root.sh - root.wr + q * Math.cos((s - c) / q * 1rad)
+            : max(0, root.sh - root.wr - (s - e))
+    }
+
     width: root.w;
     height: root.h;
 
     // Halo: an orange outline growing out of the shape, from 1 pt to
-    // `room`, fading from 60 % to nothing.
+    // `room`, fading from 60 % to nothing. On the wings its top is above
+    // the screen's edge, out of sight.
     if root.on && root.style == 3: Rectangle {
         property <length> spread: 1px + (root.room - 1px) * root.t;
         x: -self.spread;
         y: -self.spread;
         width: root.w + 2 * self.spread;
         height: root.h + 2 * self.spread;
-        border-radius: root.radius + self.spread;
+        border-top-left-radius: root.wings ? 0px : root.radius + self.spread;
+        border-top-right-radius: self.border-top-left-radius;
+        border-bottom-left-radius: (root.wings ? 10px : root.radius) + self.spread;
+        border-bottom-right-radius: self.border-bottom-left-radius;
         border-width: self.spread;
         border-color: #ff6a1a;
         opacity: 0.6 * (1 - root.t);
@@ -3668,7 +3885,7 @@ component Shimmer inherits Rectangle {
 
     // Sweep: a band of light, 0.4 of the shape wide, crossing it from left
     // to right, cut to the shape slice by slice.
-    if root.on && root.style == 1: SweepBand {
+    if root.on && root.style == 1 && !root.wings: SweepBand {
         x: 0px;
         y: 0px;
         w: root.w;
@@ -3680,7 +3897,7 @@ component Shimmer inherits Rectangle {
     // Edge run on the pill: a bright segment 24 long running once round
     // the outline, from the top centre clockwise, drawn through seven
     // points 4 apart.
-    if root.on && root.style == 2 && !root.round: segment := Path {
+    if root.on && root.style == 2 && !root.round && !root.wings: segment := Path {
         property <float> tail: root.t * root.perimeter;
         x: 0px;
         y: 0px;
@@ -3755,15 +3972,91 @@ component Shimmer inherits Rectangle {
         }
     }
 
+    // Sweep and Edge run on the wings: drawn twice, each cut to one wing,
+    // so the notch between them stays black.
+    for side in (root.on && root.wings && (root.style == 1 || root.style == 2) ? 2 : 0): Rectangle {
+        x: side == 0 ? 0px : root.w - root.wing-w;
+        y: 0px;
+        width: root.wing-w;
+        height: root.h;
+        clip: true;
+
+        // The band, cut to the shape's bottom corners slice by slice.
+        if root.style == 1: SweepBand {
+            x: -parent.x;
+            y: 0px;
+            w: root.w;
+            h: root.h;
+            square-top: true;
+            bottom-r: 10px;
+            band: root.w * 0.4;
+            left: -self.band + root.t * (root.w + self.band);
+        }
+
+        // A bright segment 24 long running once along the outline, coming
+        // in from the screen's edge on the left and going out on the right,
+        // drawn through seven points 4 apart.
+        if root.style == 2: wing-segment := Path {
+            property <float> tail: root.t * (root.wing-length + 24) - 24;
+            x: -parent.x;
+            y: 0px;
+            width: root.w;
+            height: root.h;
+            viewbox-width: root.sw;
+            viewbox-height: root.sh;
+            stroke: #ffffffb3;
+            stroke-width: 2px;
+
+            MoveTo {
+                x: root.wing-x(wing-segment.tail);
+                y: root.wing-y(wing-segment.tail);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 4);
+                y: root.wing-y(wing-segment.tail + 4);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 8);
+                y: root.wing-y(wing-segment.tail + 8);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 12);
+                y: root.wing-y(wing-segment.tail + 12);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 16);
+                y: root.wing-y(wing-segment.tail + 16);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 20);
+                y: root.wing-y(wing-segment.tail + 20);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 24);
+                y: root.wing-y(wing-segment.tail + 24);
+            }
+        }
+    }
+
     // Sparkle: three white four-point stars, 6 pt, on the rim, each
     // growing from nothing and back, 0.15 of the moment after the one
     // before.
     for i in (root.on && root.style == 4 ? 3 : 0): Path {
         property <float> u: clamp((root.t - 0.15 * i) / 0.7, 0, 1);
         property <length> size: 6px * Math.sin(self.u * 180deg);
-        property <length> mid-x: root.round ? root.w / 2 + root.w / 2 * Math.sin(root.turns[i])
+        // Along the two wings, the notch skipped.
+        property <length> along: 2 * root.wing-w * root.spots[i];
+        property <length> mid-x: root.wings ? (self.along < root.wing-w ? self.along : self.along + root.gap)
+            : root.round ? root.w / 2 + root.w / 2 * Math.sin(root.turns[i])
             : root.w * root.spots[i];
-        property <length> mid-y: root.round ? root.h / 2 - root.h / 2 * Math.cos(root.turns[i])
+        property <length> mid-y: root.wings ? root.h
+            : root.round ? root.h / 2 - root.h / 2 * Math.cos(root.turns[i])
             : Math.mod(i, 2) == 0 ? 0px : root.h;
         x: self.mid-x - self.size / 2;
         y: self.mid-y - self.size / 2;
@@ -3791,7 +4084,14 @@ export component PocketIsland inherits Window {
     in property <bool> notch-news: false;
     // How wide each wing is with the news, as drawn, for the clicks it
     // takes (the plain wing's width without it).
-    out property <length> news-wing-w: 44px;
+    out property <length> news-wing-w: root.wing-news-on ? wing-news.wing-w : root.wing;
+    // Where the wings' news puts its button and its "+N" chip, for the
+    // clicks they take: their width (0 for none) and x from the right
+    // wing's start (less than 0 in the left wing).
+    out property <length> wing-button-w: root.wing-news-on ? wing-news.button-w : 0px;
+    out property <length> wing-button-x: wing-news.button-x;
+    out property <length> wing-chip-w: root.wing-news-on ? wing-news.chip-w : 0px;
+    out property <length> wing-chip-x: wing-news.chip-x;
     // Height of the menu bar (or the notch, if taller).
     in property <length> top-h;
     // The island lives in the corner by the taskbar's clock (Windows): it
@@ -4109,11 +4409,21 @@ export component PocketIsland inherits Window {
     // opens) it goes back to the resting form, and the last news stays on
     // it as it fades.
     property <bool> news-on: root.resting && root.news-stage != 0;
-    // The resting pill or circle may play a shimmer moment: never on the
-    // lip, under news, open, with the style Off or with motion reduced. A
-    // moment under way stops as soon as one of those comes.
-    property <bool> shimmer-on: root.virtual-style && root.resting && !root.lip && !root.news-on
+    // The resting pill or circle, or the notch island's wings, may play a
+    // shimmer moment: never on the lip, under news, open, with the style
+    // Off or with motion reduced. A moment under way stops as soon as one
+    // of those comes.
+    property <bool> shimmer-on: ((root.virtual-style && root.resting && !root.lip && !root.news-on)
+        || (root.notch-style && !root.notch-news))
         && !root.expanded && root.shimmer-style != 0 && !root.reduce-motion;
+    // The notch island shows the news on its wings, which widen for it
+    // around the notch over 180 ms (at once with motion reduced).
+    property <bool> wing-news-on: root.notch-style && root.notch-news && !root.expanded;
+    property <length> wing-drawn: root.news-wing-w;
+    animate wing-drawn {
+        duration: root.reduce-motion ? 0ms : 180ms;
+        easing: ease;
+    }
     // What the pill shows: the news, or the last while it fades.
     property <int> news-shown-stage: root.news-stage != 0 ? root.news-stage : root.news-last-stage;
     property <int> news-last-stage;
@@ -4122,9 +4432,9 @@ export component PocketIsland inherits Window {
             root.news-last-stage = root.news-stage;
         }
     }
-    // An error shakes the pill once, over 500 ms: three swings dying out;
-    // with motion reduced, not at all.
-    property <bool> news-error: root.news-on && root.news-stage == 2 && root.news-tone == 2;
+    // An error shakes the pill (on the notch, the whole island) once, over
+    // 500 ms: three swings dying out; with motion reduced, not at all.
+    property <bool> news-error: (root.news-on || root.wing-news-on) && root.news-stage == 2 && root.news-tone == 2;
     property <bool> shaking;
     property <duration> shake-start;
     property <float> shake-t: root.shaking ? min(1, (animation-tick() - root.shake-start) / 500ms) : 1;
@@ -4207,13 +4517,16 @@ export component PocketIsland inherits Window {
         easing: root.resting ? ease : cubic-bezier(0.22, 1, 0.36, 1);
     }
 
+    // The island. On the notch its wings widen for the news, it shakes
+    // with an error, and Liquid keeps its top on the screen's edge.
     island := Rectangle {
         visible: !root.orb-on;
-        width: root.island-w + shimmer.stretch-w;
+        width: root.island-w + 2 * (root.wing-drawn - root.wing) + shimmer.stretch-w;
         height: root.island-h + shimmer.stretch-h;
-        x: (root.width - self.width) / 2;
+        x: (root.width - self.width) / 2 + (root.notch-style ? root.shake-dx : 0px);
         // In the corner by the clock, its bottom stays on the window's.
-        y: root.corner-style ? root.height - self.height : root.top-y - shimmer.stretch-h / 2;
+        y: root.corner-style ? root.height - self.height
+            : root.top-y - (root.notch-style ? 0px : shimmer.stretch-h / 2);
 
         // The virtual island's resting forms are glass, as opaque as the
         // settings say; the lip never less than 60 %, with an outline, so
@@ -4244,14 +4557,16 @@ export component PocketIsland inherits Window {
         // with an empty Pocket, the clipboard or the photo icon alone (that
         // of the view resting on the island opens);
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
+        // The news on the notch's wings takes their place.
         if !root.expanded && !root.corner-style && !root.virtual-style: Rectangle {
-            if root.undo-active: TouchArea {
+            if root.undo-active && !root.wing-news-on: TouchArea {
                 clicked => {
                     root.undo();
                 }
             }
 
             Image {
+                visible: !root.wing-news-on;
                 property <length> ltr-x: root.notch-style ? (root.wing - self.width) / 2
                     : root.icon-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
                 source: !root.undo-active
@@ -4264,7 +4579,7 @@ export component PocketIsland inherits Window {
                 y: (parent.height - self.height) / 2;
             }
 
-            if root.undo-active || !root.icon-wing: Text {
+            if (root.undo-active || !root.icon-wing) && !root.wing-news-on: Text {
                 text: root.undo-active ? @tr("Undo") : root.count;
                 color: root.undo-active ? root.accent : white;
                 font-size: root.undo-active ? 11px : 13px;
@@ -4274,6 +4589,34 @@ export component PocketIsland inherits Window {
                 height: parent.height;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+            }
+        }
+
+        // The news on the notch's wings, in the menu bar's height (also
+        // while the island is still shrinking to it).
+        wing-news := WingNews {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: root.top-h;
+            visible: root.wing-news-on;
+            stage: root.news-stage;
+            tone: root.news-tone;
+            icon: root.news-icon;
+            text: root.news-text;
+            short: root.news-short;
+            button: root.news-button;
+            quiet: root.news-quiet;
+            extra: root.news-extra;
+            notch-w: root.notch-w;
+            wing: root.wing;
+            most: min(260px, max(root.wing, (root.width - root.notch-w) / 2));
+            live: root.wing-news-on;
+            button-clicked => {
+                root.news-button-clicked();
+            }
+            chip-clicked => {
+                root.news-chip-clicked();
             }
         }
 
@@ -4772,9 +5115,10 @@ export component PocketIsland inherits Window {
         paused: root.rest-paused;
     }
 
-    // The shimmer moments, over the resting pill or the circle (unclipped,
-    // so Halo and Sparkle can reach past the edge, Halo by 6 pt where the
-    // window has the room above it, else 4).
+    // The shimmer moments, over the resting pill or the circle, or the
+    // notch island's wings (unclipped, so Halo and Sparkle can reach past
+    // the edge, Halo by 6 pt where the window has the room above it, else
+    // 4; from the wings it grows only down and out).
     shimmer := Shimmer {
         x: island.x;
         y: island.y;
@@ -4784,7 +5128,9 @@ export component PocketIsland inherits Window {
         round: root.circle-round;
         play: root.shimmer-id;
         live: root.shimmer-on;
-        room: island.y >= 6px ? 6px : 4px;
+        room: root.notch-style || island.y >= 6px ? 6px : 4px;
+        wings: root.notch-style;
+        gap: root.notch-w;
     }
 
     // The circle's count, over the shimmer, past the circle's edge; hidden
