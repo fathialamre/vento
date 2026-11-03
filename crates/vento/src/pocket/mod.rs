@@ -123,6 +123,12 @@ const DROP_GRACE: Duration = Duration::from_secs(60);
 /// under it: often enough to follow a window that is maximized or moved,
 /// rarely enough to cost nothing on the wheel's samples.
 pub(super) const FRONT_CHECK: Duration = Duration::from_millis(250);
+/// How far, in px, the cursor moves from the press on the grip before the
+/// island follows it.
+const DRAG_SLOP: f64 = 3.0;
+/// How often a held grip moves the island with the cursor, at most: once a
+/// frame.
+const DRAG_FRAME: Duration = Duration::from_millis(16);
 /// How often the island asks the system whether it wants less motion: a
 /// system call on macOS and Windows, so not on every sample.
 const REDUCE_CHECK: Duration = Duration::from_secs(30);
@@ -262,6 +268,13 @@ fn virtual_spot_of(
 /// `cursor_x`, global x).
 fn drag_mid(start_mid: f64, press_x: f64, cursor_x: f64) -> f64 {
     start_mid + (cursor_x - press_x)
+}
+
+/// Whether the cursor pressed on the grip at `press_x` has moved far enough
+/// (`cursor_x`, global x) for the island to follow it: at least
+/// [`DRAG_SLOP`], so a click or a double-click doesn't move it.
+fn drag_started(press_x: f64, cursor_x: f64) -> bool {
+    (cursor_x - press_x).abs() >= DRAG_SLOP
 }
 
 /// Whether a drag of the grip under way (`dragging`) has ended: the left
@@ -436,13 +449,15 @@ type OnVirtual = Box<dyn Fn(bool)>;
 type OnPlaceDropped = Box<dyn Fn(Option<String>, IslandSpot)>;
 
 /// The open virtual island dragged by its grip: the cursor's global x at
-/// the press (or where it came onto another screen) and the island's middle
-/// then, and the home and spot it was dragged from.
+/// the press and the island's middle then, the home and spot it was dragged
+/// from, and whether the cursor has moved far enough for the island to
+/// follow ([`drag_started`]).
 #[derive(Debug, Clone, Copy)]
 struct GripDrag {
     press_x: f64,
     start_mid: f64,
     from: (IslandHome, IslandSpot),
+    moving: bool,
 }
 
 /// Shows the Pocket as an island at the top of the screen: hidden while
@@ -549,6 +564,9 @@ pub struct PocketController {
     spot: Cell<IslandSpot>,
     /// The drag of the open virtual island's grip under way.
     drag: Cell<Option<GripDrag>>,
+    /// Moves the dragged island to the cursor at the next frame, while the
+    /// grip's moves come in.
+    drag_frame: Timer,
     /// Every screen's home, as last read (on a rehome and as a drag starts).
     homes: RefCell<Vec<IslandHome>>,
     /// What saves the island's place once it is dropped.
@@ -694,6 +712,7 @@ impl PocketController {
             mode: Cell::new(mode),
             spot: Cell::new(spot),
             drag: Cell::new(None),
+            drag_frame: Timer::default(),
             homes: RefCell::new(homes),
             on_place_dropped: RefCell::new(None),
             saving_place: Cell::new(false),
@@ -777,6 +796,12 @@ impl PocketController {
         w.on_grip_pressed(move || {
             if let Some(c) = c() {
                 c.grip_pressed();
+            }
+        });
+        let c = with.clone();
+        w.on_grip_moved(move || {
+            if let Some(c) = c() {
+                c.grip_moved();
             }
         });
         let c = with.clone();
@@ -1468,6 +1493,13 @@ impl PocketController {
     /// the island's settings. The virtual island rests in sight even with
     /// nothing in it.
     fn settle_now(&self) -> Presence {
+        // A drag of the grip under way is called off: the island goes back
+        // to where the settings have it.
+        if self.drag.take().is_some() {
+            debug!("pocket grip drag called off");
+            self.drag_frame.stop();
+            self.rehome();
+        }
         let visible = self.has_content() || self.island_frames().is_some_and(|f| f.virtual_island);
         let before = self.island.borrow().presence();
         let after = self.island.borrow_mut().settle(visible);
@@ -1631,6 +1663,18 @@ impl PocketController {
         // drops it, whether or not the window saw the release.
         if drag_ended(self.drag.get().is_some(), sample.left_down) {
             self.end_drag();
+            // The window may not have seen the button go up: the grip would
+            // keep the pointer grabbed.
+            if let Some(f) = self.island_frames() {
+                let w = self.window_frame(&f);
+                self.dispatch(WindowEvent::PointerReleased {
+                    position: LogicalPosition::new(
+                        (sample.cursor.x - w.x) as f32,
+                        (sample.cursor.y - w.y) as f32,
+                    ),
+                    button: PointerEventButton::Left,
+                });
+            }
         } else {
             self.follow_drag(sample.cursor);
         }
@@ -1958,8 +2002,27 @@ impl PocketController {
             press_x: self.platform.sample_input().cursor.x,
             start_mid: virtual_mid_x(&home, spot),
             from: (home, spot),
+            moving: false,
         }));
         debug!("pocket grip pressed at {spot:?}");
+    }
+
+    /// The held grip moved: the island follows the cursor at the next frame
+    /// (once a frame, however many moves come in), where the platform can
+    /// read the cursor alone; elsewhere it follows at the samples.
+    fn grip_moved(&self) {
+        if self.drag.get().is_none() || self.drag_frame.running() {
+            return;
+        }
+        let this = self.this.clone();
+        self.drag_frame
+            .start(TimerMode::SingleShot, DRAG_FRAME, move || {
+                if let Some(c) = this.upgrade()
+                    && let Some((x, y)) = c.platform.cursor()
+                {
+                    c.follow_drag(Point { x, y });
+                }
+            });
     }
 
     /// The grip is let go: the island stays where the cursor took it.
@@ -1974,6 +2037,7 @@ impl PocketController {
     /// its screen, and stays there.
     fn grip_centre(&self) {
         self.drag.set(None);
+        self.drag_frame.stop();
         let Some(home) = self.home.get().filter(|h| self.virtual_spot(h).is_some()) else {
             return;
         };
@@ -1984,10 +2048,11 @@ impl PocketController {
         self.save_place(&home, spot);
     }
 
-    /// Moves the dragged island with the cursor at `cursor`: along the top
-    /// edge, snapping to the left, the centre and the right, and onto the
-    /// screen without a notch the cursor comes onto, where the drag starts
-    /// again from the cursor.
+    /// Moves the dragged island with the cursor at `cursor`, once it has
+    /// moved [`DRAG_SLOP`] from the press: along the top edge, snapping to
+    /// the left, the centre and the right, and onto the screen without a
+    /// notch the cursor comes onto (the middle follows the cursor in global
+    /// coordinates, kept within that screen's places).
     fn follow_drag(&self, cursor: Point) {
         let Some(mut drag) = self.drag.get() else {
             return;
@@ -1997,19 +2062,23 @@ impl PocketController {
             self.drag.set(None);
             return;
         };
+        if !drag.moving {
+            if !drag_started(drag.press_x, cursor.x) {
+                return;
+            }
+            drag.moving = true;
+            self.drag.set(Some(drag));
+        }
         let onto = {
             let homes = self.homes.borrow();
             home_at(&homes, cursor.x, cursor.y)
                 .map(|i| homes[i])
-                .filter(|h| screen_key(&h.screen) != screen_key(&home.screen))
+                .filter(|h| h.screen != home.screen)
         };
         if let Some(other) = onto {
             debug!("pocket dragged onto {:?}", other.screen);
             home = other;
             self.home.set(Some(home));
-            drag.press_x = cursor.x;
-            drag.start_mid = cursor.x;
-            self.drag.set(Some(drag));
         }
         let (_, spot) = drag_spot(&home, drag_mid(drag.start_mid, drag.press_x, cursor.x));
         if self.spot.replace(spot) != spot || onto.is_some() {
@@ -2018,11 +2087,15 @@ impl PocketController {
     }
 
     /// Ends the drag of the grip, saving the screen and the spot the island
-    /// was dropped on when they changed.
+    /// was dropped on when it moved and they changed.
     fn end_drag(&self) {
         let Some(drag) = self.drag.take() else {
             return;
         };
+        self.drag_frame.stop();
+        if !drag.moving {
+            return;
+        }
         let Some(home) = self.home.get().filter(|h| self.virtual_spot(h).is_some()) else {
             return;
         };
@@ -2215,6 +2288,7 @@ impl PocketController {
         self.window.set_virtual_style(f.virtual_island);
         // The open virtual island has its grip on top; the orb has none.
         self.window.set_grip(f.virtual_island && !f.orb);
+        self.window.set_grip_h(geometry::GRIP_H as f32);
         // The circle, and the half-moon over a bar; never the other islands.
         self.window.set_circle_style(f.circle);
         self.window.set_lip(f.lip);
@@ -2502,6 +2576,8 @@ impl PocketController {
             return;
         }
         self.keep_slot(!now_virtual);
+        // On GNOME the home depends on the slot kept in the top bar.
+        self.rehome();
         let Some(home) = self.home.get() else {
             return;
         };
@@ -3290,6 +3366,16 @@ mod tests {
         assert!(!drag_ended(true, true));
         assert!(!drag_ended(false, false));
         assert!(!drag_ended(false, true));
+    }
+
+    #[test]
+    fn drag_starts_after_3px() {
+        assert!(!drag_started(700.0, 700.0));
+        assert!(!drag_started(700.0, 702.9));
+        assert!(!drag_started(700.0, 697.5));
+        assert!(drag_started(700.0, 703.0));
+        assert!(drag_started(700.0, 697.0));
+        assert!(drag_started(700.0, 900.0));
     }
 
     /// The primary screen and a second one on its right, for the screen key

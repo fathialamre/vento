@@ -3804,8 +3804,10 @@ export component PocketIsland inherits Window {
     in property <bool> lip;
     // Open, it has a grip in a strip on top, over its views: dragged, it
     // moves the island along the top edge; double-clicked, it puts it back
-    // in the middle. The orb has none.
+    // in the middle. The orb has none. `grip-h` is the strip's height
+    // (geometry::GRIP_H, set by the app).
     in property <bool> grip;
+    in property <length> grip-h: 20px;
     // How opaque its resting forms are, 0.1 to 1 (the settings' Glass).
     in property <float> glass;
     // The shimmer the resting island plays now and then: its style (0 Off,
@@ -4047,8 +4049,10 @@ export component PocketIsland inherits Window {
     callback rest-button-clicked();
     // A button on Activity's row, by the row's place.
     callback activity-button-clicked(int);
-    // The grip is pressed or let go, or double-clicked.
+    // The grip is pressed, moved while pressed (the app reads the cursor
+    // itself: the window moves under it), let go, or double-clicked.
     callback grip-pressed();
+    callback grip-moved();
     callback grip-released();
     callback grip-centre();
 
@@ -4060,7 +4064,7 @@ export component PocketIsland inherits Window {
     property <length> pad: 16px;
     property <length> bar-h: 44px;
     // The strip the open virtual island keeps on top for its grip.
-    property <length> grip-h: root.grip ? 20px : 0px;
+    property <length> grip-top: root.grip ? root.grip-h : 0px;
 
     // The circle rests as the round disc, and its news too; otherwise each
     // is stretched into a pill.
@@ -4296,7 +4300,7 @@ export component PocketIsland inherits Window {
         // edge, with the island's.
         if root.expanded: Rectangle {
             x: (parent.width - root.width) / 2;
-            y: (root.corner-style ? root.height - root.panel-h : root.top-h + root.grip-h) - parent.y;
+            y: (root.corner-style ? root.height - root.panel-h : root.top-h + root.grip-top) - parent.y;
             width: root.width;
             height: max(0px, parent.height - self.y);
 
@@ -4737,6 +4741,11 @@ export component PocketIsland inherits Window {
                     } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
                         || e.kind == PointerEventKind.cancel {
                         root.grip-released();
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.grip-moved();
                     }
                 }
                 double-clicked => {
