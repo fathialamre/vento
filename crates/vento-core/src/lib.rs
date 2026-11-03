@@ -13,6 +13,7 @@ pub mod fileops;
 pub mod geometry;
 pub mod i18n;
 pub mod info;
+pub mod news;
 pub mod paths;
 pub mod pdf;
 pub mod pocket;
