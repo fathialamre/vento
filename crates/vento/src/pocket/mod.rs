@@ -77,7 +77,7 @@ use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, 
 use clip::ClipController;
 use clip_view::{ClipView, set_rows_in_place, view_index};
 use geometry::{
-    Frames, NewsRects, VirtualSpot, drag_spot, frames, hits, home_at, hover_event,
+    Frames, NewsRects, VirtualSpot, drag_spot, frames, hits, hold, home_at, hover_event,
     interactive_rects, island_inputs, screen_key, virtual_frames, virtual_mid_x, window_frame,
 };
 use kinds::Kinds;
@@ -429,6 +429,15 @@ fn notch_keeps(jobs_on: bool, running: bool, shown: bool) -> bool {
 /// rests in sight anyway.)
 fn shows_window(has_content: bool, news_up: bool, notch_style: bool) -> bool {
     has_content || notch_style && news_up
+}
+
+/// Whether an open Activity (`activity`) holds the island open: while the
+/// pointer is on it (`over`), as items in the Pocket do. On the notch with
+/// an empty Pocket nothing else would once the brief pin ends (it has no
+/// push), and its rows' Cancel and Undo must stay in reach. Activity closes
+/// with the island, so it never holds it once the pointer has left.
+fn activity_holds(activity: bool, over: bool) -> bool {
+    activity && over
 }
 
 /// Whether the notch island draws the news on its wings: they are where
@@ -1905,7 +1914,11 @@ impl PocketController {
         // (which still doesn't open on a rest); a rest on its news with a
         // button or the "+N" chip holds it rather than opening the island.
         let news_up = self.news_view.borrow().is_some();
-        let pinned = self.pinned_open(now);
+        let pinned = self.pinned_open(now)
+            || activity_holds(
+                self.activity.get(),
+                geometry::contains(&hold(&f), sample.cursor),
+            );
         // The Pocket's own drag out leaves the island by the clock open only
         // while the pointer is over it, as on top, not wherever it goes.
         let drag_in = dragging && !(corner && self.latch.running());
@@ -4046,6 +4059,83 @@ mod tests {
         assert!(notch_keeps(false, false, true));
         // Off with nothing taken: nothing shows.
         assert!(!notch_keeps(false, false, false));
+    }
+
+    #[test]
+    fn activity_holds_the_empty_notch_island_open_under_the_pointer() {
+        use std::time::Duration;
+        let home = IslandHome {
+            screen: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 1440.0,
+                h: 900.0,
+            },
+            notch: Some(Rect {
+                x: 630.0,
+                y: 0.0,
+                w: 180.0,
+                h: 32.0,
+            }),
+            menu_bar_h: 32.0,
+            slot: None,
+            tray_corner: None,
+        };
+        let f = frames(&home, Panel::Kinds { groups: 2 });
+        let on_rows = Point {
+            x: f.expanded.x + f.expanded.w / 2.0,
+            y: f.expanded.y + f.expanded.h - 10.0,
+        };
+        let away = Point { x: 10.0, y: 600.0 };
+        // An empty Pocket, opened on Activity by "+N" (the brief pin): no
+        // items and no push hold it once the pin ends.
+        let step = |island: &mut IslandState, activity: bool, cursor: Point, pin: bool, now| {
+            let pinned = pin || activity_holds(activity, geometry::contains(&hold(&f), cursor));
+            let mut inputs = island_inputs(&f, false, false, cursor, pinned);
+            inputs.rest_visible |= shows_window(false, false, f.notch_style);
+            island.update(&inputs, now)
+        };
+        let t0 = Instant::now();
+        let mut island = IslandState::new();
+        assert_eq!(
+            step(&mut island, true, on_rows, true, t0),
+            Presence::Expanded
+        );
+        // The pin is over; the pointer stays on Activity's rows.
+        let later = t0 + Duration::from_secs(5);
+        assert_eq!(
+            step(&mut island, true, on_rows, false, later),
+            Presence::Expanded
+        );
+        // Without Activity, the same pointer no longer holds it.
+        let mut bare = IslandState::new();
+        step(&mut bare, false, on_rows, true, t0);
+        step(
+            &mut bare,
+            false,
+            on_rows,
+            false,
+            t0 + Duration::from_secs(1),
+        );
+        assert_eq!(
+            step(&mut bare, false, on_rows, false, later),
+            Presence::Hidden
+        );
+        // The pointer leaves: it closes as before, and an empty Pocket with
+        // no news hides (Activity goes with it; nothing keeps it in sight).
+        step(&mut island, true, away, false, later);
+        assert_eq!(
+            step(
+                &mut island,
+                true,
+                away,
+                false,
+                later + Duration::from_secs(1)
+            ),
+            Presence::Hidden
+        );
+        assert!(!activity_holds(false, true));
+        assert!(!activity_holds(true, false));
     }
 
     #[test]
