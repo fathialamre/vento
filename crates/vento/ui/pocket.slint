@@ -8,7 +8,7 @@
 
 import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
-import { PanelIcons } from "controls.slint";
+import { PanelIcons, SweepBand } from "controls.slint";
 
 // One entry of the clipboard history. `kind`: 0 text, 1 files, 2 link,
 // 3 image; `thumb` is an image's thumbnail, empty when it can't be shown;
@@ -3557,8 +3557,8 @@ component DropOrb inherits Rectangle {
 // pill or its circle (`round`): each new `play` plays the `style` once over
 // 1.2 s, eased in and out, while the island is `live` for it (0 Off,
 // 1 Sweep, 2 Edge run, 3 Halo, 4 Sparkle, 5 Liquid). It stops at once when
-// it no longer is, and nothing ticks between moments. Sweep and Edge run
-// are kept within the shape; Halo grows out of it by up to `room`, and
+// it no longer is, and nothing ticks between moments. Sweep, Edge run and
+// Orbit stay within the shape; Halo grows out of it by up to `room`, and
 // Sparkle's stars sit on its rim. Liquid draws nothing here: the island is
 // drawn `stretch-w` wider and `stretch-h` taller, around its middle, while
 // its own size stays as it is.
@@ -3666,101 +3666,92 @@ component Shimmer inherits Rectangle {
         opacity: 0.6 * (1 - root.t);
     }
 
-    // Sweep and Edge run, within the shape.
-    if root.on && (root.style == 1 || root.style == 2): Rectangle {
+    // Sweep: a band of light, 0.4 of the shape wide, crossing it from left
+    // to right, cut to the shape slice by slice.
+    if root.on && root.style == 1: SweepBand {
+        x: 0px;
+        y: 0px;
+        w: root.w;
+        h: root.h;
+        band: root.w * 0.4;
+        left: -self.band + root.t * (root.w + self.band);
+    }
+
+    // Edge run on the pill: a bright segment 24 long running once round
+    // the outline, from the top centre clockwise, drawn through seven
+    // points 4 apart.
+    if root.on && root.style == 2 && !root.round: segment := Path {
+        property <float> tail: root.t * root.perimeter;
         x: 0px;
         y: 0px;
         width: root.w;
         height: root.h;
-        border-radius: root.radius;
-        clip: true;
+        viewbox-width: root.sw;
+        viewbox-height: root.sh;
+        stroke: #ffffffb3;
+        stroke-width: 2px;
 
-        // Sweep: a slanted band of light, 0.4 of the shape wide, crossing
-        // it from left to right.
-        if root.style == 1: Rectangle {
-            x: -self.width + root.t * (root.w + self.width);
-            y: 0px;
-            width: root.w * 0.4;
-            height: root.h;
-            background: @linear-gradient(70deg, #ffffff00 0%, #ffffff2e 50%, #ffffff00 100%);
+        MoveTo {
+            x: root.edge-x(segment.tail);
+            y: root.edge-y(segment.tail);
         }
 
-        // Edge run on the pill: a bright segment 24 long running once round
-        // the outline, from the top centre clockwise, drawn through seven
-        // points 4 apart.
-        if root.style == 2 && !root.round: segment := Path {
-            property <float> tail: root.t * root.perimeter;
-            x: 0px;
-            y: 0px;
-            width: root.w;
-            height: root.h;
-            viewbox-width: root.sw;
-            viewbox-height: root.sh;
-            stroke: #ffffffb3;
-            stroke-width: 2px;
-
-            MoveTo {
-                x: root.edge-x(segment.tail);
-                y: root.edge-y(segment.tail);
-            }
-
-            LineTo {
-                x: root.edge-x(segment.tail + 4);
-                y: root.edge-y(segment.tail + 4);
-            }
-
-            LineTo {
-                x: root.edge-x(segment.tail + 8);
-                y: root.edge-y(segment.tail + 8);
-            }
-
-            LineTo {
-                x: root.edge-x(segment.tail + 12);
-                y: root.edge-y(segment.tail + 12);
-            }
-
-            LineTo {
-                x: root.edge-x(segment.tail + 16);
-                y: root.edge-y(segment.tail + 16);
-            }
-
-            LineTo {
-                x: root.edge-x(segment.tail + 20);
-                y: root.edge-y(segment.tail + 20);
-            }
-
-            LineTo {
-                x: root.edge-x(segment.tail + 24);
-                y: root.edge-y(segment.tail + 24);
-            }
+        LineTo {
+            x: root.edge-x(segment.tail + 4);
+            y: root.edge-y(segment.tail + 4);
         }
 
-        // Orbit on the circle: a 50° arc of a ring, 2 pt wide at its edge,
-        // turning once round from the top clockwise.
-        if root.style == 2 && root.round: orbit := Path {
-            property <angle> turn: root.t * 360deg;
-            property <float> ring: max(0, root.sw / 2 - 1);
-            x: 0px;
-            y: 0px;
-            width: root.w;
-            height: root.h;
-            viewbox-width: root.sw;
-            viewbox-height: root.sh;
-            stroke: #ffffffb3;
-            stroke-width: 2px;
+        LineTo {
+            x: root.edge-x(segment.tail + 8);
+            y: root.edge-y(segment.tail + 8);
+        }
 
-            MoveTo {
-                x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn);
-                y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn);
-            }
+        LineTo {
+            x: root.edge-x(segment.tail + 12);
+            y: root.edge-y(segment.tail + 12);
+        }
 
-            ArcTo {
-                x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn + 50deg);
-                y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn + 50deg);
-                radius-x: orbit.ring;
-                radius-y: orbit.ring;
-                sweep: true;
-            }
+        LineTo {
+            x: root.edge-x(segment.tail + 16);
+            y: root.edge-y(segment.tail + 16);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 20);
+            y: root.edge-y(segment.tail + 20);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 24);
+            y: root.edge-y(segment.tail + 24);
+        }
+    }
+
+    // Orbit on the circle: a 50° arc of a ring, 2 pt wide at its edge,
+    // turning once round from the top clockwise.
+    if root.on && root.style == 2 && root.round: orbit := Path {
+        property <angle> turn: root.t * 360deg;
+        property <float> ring: max(0, root.sw / 2 - 1);
+        x: 0px;
+        y: 0px;
+        width: root.w;
+        height: root.h;
+        viewbox-width: root.sw;
+        viewbox-height: root.sh;
+        stroke: #ffffffb3;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn);
+            y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn);
+        }
+
+        ArcTo {
+            x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn + 50deg);
+            y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn + 50deg);
+            radius-x: orbit.ring;
+            radius-y: orbit.ring;
+            sweep: true;
         }
     }
 
@@ -4748,9 +4739,8 @@ export component PocketIsland inherits Window {
     // goes back to it as it fades over 600 ms. Open, the island shows none.
     // Its content keeps its own width as the pill grows and shrinks around
     // it. At rest, clicks pass through it, except on its button and its
-    // chip. On the circle it rests
-    // round, 34 pt across, and stretches into the pill (and back) over
-    // 250 ms with no spring.
+    // chip. On the circle it rests round, 34 pt across, and stretches into
+    // the pill (and back) over 250 ms with no spring.
     news := Rectangle {
         width: root.news-on ? (root.news-disc ? 34px : news-body.pill-w) : root.collapsed-w;
         height: root.news-on ? 34px : root.collapsed-h;

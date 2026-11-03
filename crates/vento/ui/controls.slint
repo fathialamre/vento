@@ -1215,3 +1215,49 @@ export component PanelOutline inherits Path {
     }
     Close { }
 }
+
+// A band of light `band` wide on a pill or a circle `w` by `h` (its ends
+// half circles), its left edge at `left`: `slices` upright slices, clearest
+// at the band's sides and up to `peak` white in its middle. The software
+// renderer clips only to rectangles, so the band is never clipped: each
+// slice is cut to the shape itself, as tall as the shape is at the slice's
+// outer side and nothing outside it.
+export component SweepBand inherits Rectangle {
+    in property <length> w;
+    in property <length> h;
+    in property <length> band;
+    in property <length> left;
+    in property <int> slices: 10;
+    in property <float> peak: 0.18;
+
+    // In points.
+    property <float> sw: root.w / 1px;
+    property <float> sh: root.h / 1px;
+    property <float> step: root.band / 1px / max(1, root.slices);
+
+    // Half the shape's height at `x`: all of it along the straight run,
+    // less in the half circles at its ends.
+    pure function half-at(x: float) -> float {
+        let r = min(root.sw, root.sh) / 2;
+        let d = max(0, max(r - x, x - (root.sw - r)));
+        Math.sqrt(max(0, r * r - d * d))
+    }
+
+    width: root.w;
+    height: root.h;
+
+    for i in root.slices: Rectangle {
+        property <float> a: root.left / 1px + i * root.step;
+        property <float> x0: max(0, self.a);
+        property <float> x1: min(root.sw, self.a + root.step);
+        // The slice's side farther from the middle, where the shape is
+        // lowest.
+        property <float> outer: abs(self.x0 - root.sw / 2) > abs(self.x1 - root.sw / 2) ? self.x0 : self.x1;
+        property <float> half: self.x1 > self.x0 ? root.half-at(self.outer) : 0;
+        x: self.x0 * 1px;
+        y: (root.sh / 2 - self.half) * 1px;
+        width: max(0, self.x1 - self.x0) * 1px;
+        height: 2 * self.half * 1px;
+        background: #ffffff.with-alpha(root.peak * (1 - abs((i + 0.5) * 2 / root.slices - 1)));
+    }
+}

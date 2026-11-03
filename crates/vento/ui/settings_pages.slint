@@ -7,7 +7,7 @@ import { Icons } from "wheel.slint";
 import {
     PanelIcons, RowSeparator, Switch, Segmented, MenuField, TextButton, IconButton, Stepper,
     ShortcutField, ReorderRow, DragGrip, WrapText, SettingRow, RowBody, RowError, RowButton, Chip,
-    Slider,
+    Slider, SweepBand,
 } from "controls.slint";
 
 // One action in the Wheel page's list, shown on the wheel or not.
@@ -475,7 +475,8 @@ component ShimmerTile inherits VerticalLayout {
             }
 
             // The island, black with a faint edge; Sweep and Edge run
-            // are drawn on it, kept within its shape.
+            // are drawn on it, kept within its shape (the renderer clips
+            // only to rectangles, so they are cut to it by hand).
             island := Rectangle {
                 width: root.w;
                 height: root.h;
@@ -487,34 +488,45 @@ component ShimmerTile inherits VerticalLayout {
                 border-color: #ffffff22;
                 clip: true;
 
-                // Sweep: a slanted band of light crossing from side to side.
-                if root.kind == 1: Path {
-                    width: 10px;
-                    height: root.h;
-                    x: root.playing ? -14px + root.t * (root.w + 28px) : (root.w - 10px) / 2;
+                // Sweep: a band of light crossing from side to side.
+                if root.kind == 1: SweepBand {
+                    x: 0px;
                     y: 0px;
-                    viewbox-width: 10;
-                    viewbox-height: 14;
-                    commands: "M 5 0 L 10 0 L 5 14 L 0 14 Z";
-                    fill: #ffffff66;
+                    w: root.w;
+                    h: root.h;
+                    band: 10px;
+                    left: root.playing ? -10px + root.t * (root.w + 10px) : (root.w - 10px) / 2;
+                    slices: 5;
+                    peak: 0.4;
                 }
 
                 // Edge run: a short bright segment on the edge; played, it
-                // runs along the top, then back along the bottom (round the
-                // circle on the circle).
-                if root.kind == 2: Rectangle {
+                // runs along the top, then back along the bottom, showing
+                // only on the straight run between the round ends. On the
+                // circle, a dot runs round just inside the edge.
+                if root.kind == 2 && !root.circle: Rectangle {
                     property <bool> top: root.t < 0.5;
-                    width: root.circle ? 4px : 12px;
-                    height: root.circle ? 4px : 2px;
-                    border-radius: 1px;
-                    background: #ffffffdd;
-                    x: !root.playing ? (root.w - self.width) / 2
-                        : root.circle ? (root.w - self.width) / 2 + 7px * Math.sin(root.t * 360deg)
+                    // Where the segment would be, and the straight run it
+                    // shows on.
+                    property <length> at: !root.playing ? (root.w - 12px) / 2
                         : self.top ? -12px + root.t * 2 * (root.w + 12px)
                         : root.w - (root.t - 0.5) * 2 * (root.w + 12px);
-                    y: !root.playing ? 0px
-                        : root.circle ? (root.h - self.height) / 2 - 7px * Math.cos(root.t * 360deg)
-                        : self.top ? 0px : root.h - 2px;
+                    property <length> from: max(root.h / 2, self.at);
+                    property <length> to: min(root.w - root.h / 2, self.at + 12px);
+                    width: max(0px, self.to - self.from);
+                    height: 2px;
+                    background: #ffffffdd;
+                    x: self.from;
+                    y: !root.playing || self.top ? 0px : root.h - 2px;
+                }
+
+                if root.kind == 2 && root.circle: Rectangle {
+                    width: 4px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: #ffffffdd;
+                    x: (root.w - self.width) / 2 + (root.playing ? 6.5px * Math.sin(root.t * 360deg) : 0px);
+                    y: (root.h - self.height) / 2 - (root.playing ? 6.5px * Math.cos(root.t * 360deg) : 6.5px);
                 }
             }
 
