@@ -27,7 +27,7 @@ msgstr "* للاسم كامل"
 msgid "+1 h"
 msgstr "+ساعة"
 
-#: crates/vento/ui/pocket.slint:2923
+#: crates/vento/ui/pocket.slint:2934
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] "+{n}"
@@ -657,7 +657,7 @@ msgstr "تعذّر استبدال Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "تعذّر حفظ الإعدادات: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2917
+#: crates/vento/src/pocket/mod.rs:2930
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
@@ -753,7 +753,7 @@ msgstr "ارسم مستطيلاً بالسحب فوق النص الذي تريد
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "اسحب الصف من مقبضه لتغيير مكان الإجراء."
 
-#: crates/vento/ui/pocket.slint:5017
+#: crates/vento/ui/pocket.slint:5047
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "اسحب الكل ({n})"
@@ -785,7 +785,7 @@ msgstr[3] "اسحب {n}"
 msgstr[4] "اسحب {n}"
 msgstr[5] "اسحب {n}"
 
-#: crates/vento/ui/pocket.slint:4787
+#: crates/vento/ui/pocket.slint:4817
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
@@ -1609,7 +1609,7 @@ msgstr "كبسولة بسيطة"
 msgid "Pocket"
 msgstr "الجيب"
 
-#: crates/vento/ui/pocket.slint:4756
+#: crates/vento/ui/pocket.slint:4786
 msgid "Pocket cleared"
 msgstr "أُفرغ الجيب"
 
@@ -2219,7 +2219,7 @@ msgstr "السمة"
 msgid "This shortcut can't be used"
 msgstr "لا يمكن استخدام هذا الاختصار"
 
-#: crates/vento/src/pocket/mod.rs:1281
+#: crates/vento/src/pocket/mod.rs:1290
 msgid "Those items are no longer there"
 msgstr "هذه العناصر لم تعد موجودة"
 
@@ -2419,7 +2419,7 @@ msgstr "‏يعمل Vento من شريط القوائم. انقر أيقونته 
 msgid "Vento needs to see {} again after the update."
 msgstr "يحتاج Vento إلى رؤية {} مجددًا بعد التحديث."
 
-#: crates/vento/ui/pocket.slint:3314
+#: crates/vento/ui/pocket.slint:3341
 msgid "Vento paused"
 msgstr "‏Vento متوقف مؤقتاً"
 
@@ -2631,7 +2631,7 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start"
 msgstr "تعذّر البدء"
 
-#: crates/vento/src/pocket/mod.rs:2587
+#: crates/vento/src/pocket/mod.rs:2600
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 

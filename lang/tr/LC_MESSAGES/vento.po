@@ -27,7 +27,7 @@ msgstr "* adın tamamı için"
 msgid "+1 h"
 msgstr "+1 sa"
 
-#: crates/vento/ui/pocket.slint:2923
+#: crates/vento/ui/pocket.slint:2934
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] "+{n}"
@@ -629,7 +629,7 @@ msgstr "Vento değiştirilemedi"
 msgid "Couldn't save settings: {error}"
 msgstr "Ayarlar kaydedilemedi: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2917
+#: crates/vento/src/pocket/mod.rs:2930
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Cep kaydedilemedi: {error}"
 
@@ -725,7 +725,7 @@ msgstr "İstediğiniz metnin üzerinde bir dikdörtgen çizip bırakın."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Eylemin yerini değiştirmek için satırı tutamağından sürükleyin."
 
-#: crates/vento/ui/pocket.slint:5017
+#: crates/vento/ui/pocket.slint:5047
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "{n} öğenin tümünü sürükle"
@@ -749,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "{n} öğeyi sürükle"
 msgstr[1] "{n} öğeyi sürükle"
 
-#: crates/vento/ui/pocket.slint:4787
+#: crates/vento/ui/pocket.slint:4817
 msgid "Drop to add"
 msgstr "Eklemek için bırakın"
 
@@ -1533,7 +1533,7 @@ msgstr "Sade kapsül"
 msgid "Pocket"
 msgstr "Cep"
 
-#: crates/vento/ui/pocket.slint:4756
+#: crates/vento/ui/pocket.slint:4786
 msgid "Pocket cleared"
 msgstr "Cep temizlendi"
 
@@ -2099,7 +2099,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Bu kısayol kullanılamaz"
 
-#: crates/vento/src/pocket/mod.rs:1281
+#: crates/vento/src/pocket/mod.rs:1290
 msgid "Those items are no longer there"
 msgstr "O öğeler artık orada değil"
 
@@ -2299,7 +2299,7 @@ msgstr "Vento menü çubuğunda yaşar. Hızlı panel için simgesine tıklayın
 msgid "Vento needs to see {} again after the update."
 msgstr "Vento'nun güncellemeden sonra {} klasörünü yeniden görmesi gerekiyor."
 
-#: crates/vento/ui/pocket.slint:3314
+#: crates/vento/ui/pocket.slint:3341
 msgid "Vento paused"
 msgstr "Vento duraklatıldı"
 
@@ -2511,7 +2511,7 @@ msgstr "salt okunur klasörden kaldırılamaz: {dir}"
 msgid "cannot start"
 msgstr "başlatılamıyor"
 
-#: crates/vento/src/pocket/mod.rs:2587
+#: crates/vento/src/pocket/mod.rs:2600
 msgid "cannot start copying: {reason}"
 msgstr "kopyalama başlatılamıyor: {reason}"
 

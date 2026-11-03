@@ -2792,7 +2792,7 @@ component NewsBody inherits Rectangle {
     // What follows the sentence and its detail, each with the gap before
     // it, and the room left at the end.
     property <length> tail-w: (root.has-bar ? 10px + root.bar-w : 0px)
-        + (root.has-count ? 8px + count-text.preferred-width : 0px)
+        + (root.has-count ? 8px + root.count-w : 0px)
         + (root.has-chip ? 8px + root.chip-w : 0px)
         + (root.has-button ? 8px + root.button-w + 5px : 14px);
     property <length> natural-w: root.text-x + text-line.preferred-width
@@ -2813,7 +2813,10 @@ component NewsBody inherits Rectangle {
     property <length> bar-x: root.tail-x + 10px;
     property <length> bar-end: root.tail-x + (root.has-bar ? 10px + root.bar-w : 0px);
     property <length> count-x: root.bar-end + 8px;
-    property <length> count-end: root.bar-end + (root.has-count ? 8px + count-text.preferred-width : 0px);
+    // The count keeps at least the room of "100%", so the pill and what
+    // follows don't move as it grows.
+    property <length> count-w: max(count-text.preferred-width, count-room.preferred-width);
+    property <length> count-end: root.bar-end + (root.has-count ? 8px + root.count-w : 0px);
     property <length> ltr-button-x: root.pill-w - root.lead - 5px - root.button-w;
     // After the count; but never under the button: a tail wider than the
     // room ends 8 pt before it.
@@ -2892,13 +2895,21 @@ component NewsBody inherits Rectangle {
     count-text := Text {
         x: root.mirror(root.count-x, self.width);
         y: 0px;
-        width: self.preferred-width;
+        width: root.count-w;
         height: parent.height;
         visible: root.has-count;
         text: root.count;
         color: #ffffffb0;
         font-size: 12px;
+        horizontal-alignment: Theme.rtl ? right : left;
         vertical-alignment: center;
+    }
+
+    // Only measures the room the count keeps.
+    count-room := Text {
+        visible: false;
+        text: "100%";
+        font-size: 12px;
     }
 
     // "+N": the other things going on. (`AccessibleRole.button` in full
@@ -2975,13 +2986,13 @@ component NewsBody inherits Rectangle {
 // turning ring at work; for a result a tick, "!" or "…" on the tone's
 // colour, or the action's icon for information), and in the right wing,
 // from the notch out, what it says (at work the count in short, for a
-// result its sentence, ending in an ellipsis when too long), the "+N" chip
-// and the one button. `wing-w` is how wide the wings grow for it: the right
-// wing's content and 6 pt each side of it, at least `wing` and at most
-// `most`; content narrower than that is centred in the wing. The other way
-// round in a right-to-left language. It says where it puts the button and
-// the chip, from the right wing's start (less than 0 in the left wing), for
-// the clicks they take.
+// result its sentence and what follows it, ending in an ellipsis when too
+// long), the "+N" chip and the one button. `wing-w` is how wide the wings
+// grow for it: the right wing's content and 6 pt each side of it, at least
+// `wing` and at most `most`; content narrower than that is centred in the
+// wing. The other way round in a right-to-left language. It says where it
+// puts the button and the chip, from the right wing's start (less than 0 in
+// the left wing), for the clicks they take.
 component WingNews inherits Rectangle {
     // 1 at work, 2 a result.
     in property <int> stage;
@@ -2989,6 +3000,9 @@ component WingNews inherits Rectangle {
     in property <int> tone;
     in property <image> icon;
     in property <string> text;
+    // A result's second part ("1 file ready to paste", the path copied),
+    // after the sentence on the same line.
+    in property <string> sub;
     // The job's count in a few characters ("25%", "3/5").
     in property <string> short;
     in property <string> button;
@@ -3006,8 +3020,13 @@ component WingNews inherits Rectangle {
 
     property <length> pad: 6px;
     property <length> gap: 6px;
-    property <string> line: root.stage == 1 ? root.short : root.text;
+    property <string> line: root.stage == 1 ? root.short
+        : root.sub != "" ? root.text + " · " + root.sub : root.text;
     property <bool> has-line: root.line != "";
+    // At work the count keeps at least the room of "100%", so the wings
+    // and what follows don't move as it grows.
+    property <length> line-natural: root.stage == 1
+        ? max(line-text.preferred-width, count-room.preferred-width) : line-text.preferred-width;
     property <bool> has-chip: root.extra > 0;
     property <bool> has-button: root.button != "";
     property <length> chip-gap: root.has-line ? root.gap : 0px;
@@ -3015,12 +3034,12 @@ component WingNews inherits Rectangle {
     // What follows the line, each with the gap before it.
     property <length> tail-w: (root.has-chip ? root.chip-gap + root.chip-w : 0px)
         + (root.has-button ? root.button-gap + root.button-w : 0px);
-    property <length> natural-w: 2 * root.pad + (root.has-line ? line-text.preferred-width : 0px) + root.tail-w;
+    property <length> natural-w: 2 * root.pad + (root.has-line ? root.line-natural : 0px) + root.tail-w;
     out property <length> wing-w: min(root.most, max(root.wing, root.natural-w));
     // Where the content starts: centred while narrower than the wing.
     property <length> lead: max(0px, (root.wing-w - root.natural-w) / 2);
     property <length> line-w: root.has-line
-        ? max(0px, min(line-text.preferred-width, root.wing-w - 2 * root.pad - root.tail-w)) : 0px;
+        ? max(0px, min(root.line-natural, root.wing-w - 2 * root.pad - root.tail-w)) : 0px;
     // Left to right, from the right wing's start.
     property <length> line-x: root.lead + root.pad;
     property <length> ltr-chip-x: root.line-x + root.line-w + root.chip-gap;
@@ -3062,8 +3081,16 @@ component WingNews inherits Rectangle {
         color: white;
         font-size: 12px;
         font-weight: 600;
-        horizontal-alignment: Theme.rtl ? right : left;
+        horizontal-alignment: root.stage == 1 ? center : Theme.rtl ? right : left;
         vertical-alignment: center;
+    }
+
+    // Only measures the room the count keeps.
+    count-room := Text {
+        visible: false;
+        text: "100%";
+        font-size: 12px;
+        font-weight: 600;
     }
 
     // "+N": the other things going on. (`AccessibleRole.button` in full
@@ -4518,10 +4545,12 @@ export component PocketIsland inherits Window {
     }
 
     // The island. On the notch its wings widen for the news, it shakes
-    // with an error, and Liquid keeps its top on the screen's edge.
+    // with an error, and Liquid keeps its top on the screen's edge. Never
+    // wider than the window: opening while the wings still shrink would
+    // add their extra to the open width for a frame or two.
     island := Rectangle {
         visible: !root.orb-on;
-        width: root.island-w + 2 * (root.wing-drawn - root.wing) + shimmer.stretch-w;
+        width: min(root.width, root.island-w + 2 * (root.wing-drawn - root.wing) + shimmer.stretch-w);
         height: root.island-h + shimmer.stretch-h;
         x: (root.width - self.width) / 2 + (root.notch-style ? root.shake-dx : 0px);
         // In the corner by the clock, its bottom stays on the window's.
@@ -4604,6 +4633,7 @@ export component PocketIsland inherits Window {
             tone: root.news-tone;
             icon: root.news-icon;
             text: root.news-text;
+            sub: root.news-sub;
             short: root.news-short;
             button: root.news-button;
             quiet: root.news-quiet;

@@ -27,7 +27,7 @@ msgstr "* pour le nom entier"
 msgid "+1 h"
 msgstr "+1 h"
 
-#: crates/vento/ui/pocket.slint:2923
+#: crates/vento/ui/pocket.slint:2934
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] "+{n}"
@@ -629,7 +629,7 @@ msgstr "Impossible de remplacer Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Impossible d’enregistrer les réglages : {error}"
 
-#: crates/vento/src/pocket/mod.rs:2917
+#: crates/vento/src/pocket/mod.rs:2930
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Impossible d’enregistrer la Poche : {error}"
 
@@ -725,7 +725,7 @@ msgstr "Tracez un rectangle sur le texte voulu et relâchez."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Faites glisser une ligne par sa poignée pour changer la place de l’action."
 
-#: crates/vento/ui/pocket.slint:5017
+#: crates/vento/ui/pocket.slint:5047
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "Faire glisser {n}"
@@ -749,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "Faire glisser {n}"
 msgstr[1] "Faire glisser {n}"
 
-#: crates/vento/ui/pocket.slint:4787
+#: crates/vento/ui/pocket.slint:4817
 msgid "Drop to add"
 msgstr "Déposer pour ajouter"
 
@@ -1533,7 +1533,7 @@ msgstr "Pastille simple"
 msgid "Pocket"
 msgstr "Poche"
 
-#: crates/vento/ui/pocket.slint:4756
+#: crates/vento/ui/pocket.slint:4786
 msgid "Pocket cleared"
 msgstr "Poche vidée"
 
@@ -2099,7 +2099,7 @@ msgstr "Thème"
 msgid "This shortcut can't be used"
 msgstr "Ce raccourci n’est pas utilisable"
 
-#: crates/vento/src/pocket/mod.rs:1281
+#: crates/vento/src/pocket/mod.rs:1290
 msgid "Those items are no longer there"
 msgstr "Ces éléments n’existent plus"
 
@@ -2299,7 +2299,7 @@ msgstr "Vento se trouve dans la barre des menus. Cliquez sur son icône pour le 
 msgid "Vento needs to see {} again after the update."
 msgstr "Vento doit à nouveau voir {} après la mise à jour."
 
-#: crates/vento/ui/pocket.slint:3314
+#: crates/vento/ui/pocket.slint:3341
 msgid "Vento paused"
 msgstr "Vento en pause"
 
@@ -2511,7 +2511,7 @@ msgstr "impossible de retirer du dossier en lecture seule {dir}"
 msgid "cannot start"
 msgstr "démarrage impossible"
 
-#: crates/vento/src/pocket/mod.rs:2587
+#: crates/vento/src/pocket/mod.rs:2600
 msgid "cannot start copying: {reason}"
 msgstr "impossible de lancer la copie : {reason}"
 

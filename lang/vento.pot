@@ -25,7 +25,7 @@ msgstr ""
 msgid "+1 h"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2923
+#: crates/vento/ui/pocket.slint:2934
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] ""
@@ -627,7 +627,7 @@ msgstr ""
 msgid "Couldn't save settings: {error}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:2917
+#: crates/vento/src/pocket/mod.rs:2930
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
@@ -723,7 +723,7 @@ msgstr ""
 msgid "Drag a row by its grip to change where the action sits."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:5017
+#: crates/vento/ui/pocket.slint:5047
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] ""
@@ -747,7 +747,7 @@ msgid_plural "Drag {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pocket.slint:4787
+#: crates/vento/ui/pocket.slint:4817
 msgid "Drop to add"
 msgstr ""
 
@@ -1531,7 +1531,7 @@ msgstr ""
 msgid "Pocket"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:4756
+#: crates/vento/ui/pocket.slint:4786
 msgid "Pocket cleared"
 msgstr ""
 
@@ -2097,7 +2097,7 @@ msgstr ""
 msgid "This shortcut can't be used"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1281
+#: crates/vento/src/pocket/mod.rs:1290
 msgid "Those items are no longer there"
 msgstr ""
 
@@ -2297,7 +2297,7 @@ msgstr ""
 msgid "Vento needs to see {} again after the update."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:3314
+#: crates/vento/ui/pocket.slint:3341
 msgid "Vento paused"
 msgstr ""
 
@@ -2509,7 +2509,7 @@ msgstr ""
 msgid "cannot start"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:2587
+#: crates/vento/src/pocket/mod.rs:2600
 msgid "cannot start copying: {reason}"
 msgstr ""
 

@@ -27,7 +27,7 @@ msgstr "* per l'intero nome"
 msgid "+1 h"
 msgstr "+1 h"
 
-#: crates/vento/ui/pocket.slint:2923
+#: crates/vento/ui/pocket.slint:2934
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] "+{n}"
@@ -629,7 +629,7 @@ msgstr "Impossibile sostituire Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Impossibile salvare le impostazioni: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2917
+#: crates/vento/src/pocket/mod.rs:2930
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Impossibile salvare la Tasca: {error}"
 
@@ -725,7 +725,7 @@ msgstr "Trascina un rettangolo sul testo che vuoi e rilascia."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Trascina una riga dalla maniglia per cambiare la posizione dell'azione."
 
-#: crates/vento/ui/pocket.slint:5017
+#: crates/vento/ui/pocket.slint:5047
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "Trascina tutti ({n})"
@@ -749,7 +749,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "Trascina {n}"
 msgstr[1] "Trascina {n}"
 
-#: crates/vento/ui/pocket.slint:4787
+#: crates/vento/ui/pocket.slint:4817
 msgid "Drop to add"
 msgstr "Rilascia per aggiungere"
 
@@ -1533,7 +1533,7 @@ msgstr "Pillola semplice"
 msgid "Pocket"
 msgstr "Tasca"
 
-#: crates/vento/ui/pocket.slint:4756
+#: crates/vento/ui/pocket.slint:4786
 msgid "Pocket cleared"
 msgstr "Tasca svuotata"
 
@@ -2099,7 +2099,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Questa scorciatoia non è utilizzabile"
 
-#: crates/vento/src/pocket/mod.rs:1281
+#: crates/vento/src/pocket/mod.rs:1290
 msgid "Those items are no longer there"
 msgstr "Quegli elementi non ci sono più"
 
@@ -2299,7 +2299,7 @@ msgstr "Vento vive nella barra dei menu. Fai clic sull'icona per il pannello rap
 msgid "Vento needs to see {} again after the update."
 msgstr "Dopo l'aggiornamento Vento deve poter vedere di nuovo {}."
 
-#: crates/vento/ui/pocket.slint:3314
+#: crates/vento/ui/pocket.slint:3341
 msgid "Vento paused"
 msgstr "Vento in pausa"
 
@@ -2511,7 +2511,7 @@ msgstr "impossibile rimuovere dalla cartella di sola lettura {dir}"
 msgid "cannot start"
 msgstr "impossibile avviare"
 
-#: crates/vento/src/pocket/mod.rs:2587
+#: crates/vento/src/pocket/mod.rs:2600
 msgid "cannot start copying: {reason}"
 msgstr "impossibile avviare la copia: {reason}"
 
