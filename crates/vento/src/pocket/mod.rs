@@ -447,11 +447,14 @@ fn opening_opens_activity(virtual_island: bool, result_up: bool) -> bool {
 }
 
 /// Whether resting the pointer on the collapsed island opens it: not while
-/// the notch island shows news on its wings (`notch_news_up`), where a rest
-/// holds a result and leaves its button to click; not after giving way to
-/// the Quick panel until the pointer leaves (`hover_blocked`).
-fn dwell_opens(notch_news_up: bool, hover_blocked: bool) -> bool {
-    !notch_news_up && !hover_blocked
+/// the notch island's wings show news with something to click, a button
+/// (`notch_button`: Undo, Show…, Cancel and the like) or the "+N" chip
+/// (`notch_chip`), where a rest holds the news and leaves them to click;
+/// news with nothing to click waits while the island is open, as on the
+/// open island. Nor after giving way to the Quick panel, until the pointer
+/// leaves (`hover_blocked`).
+fn dwell_opens(notch_button: bool, notch_chip: bool, hover_blocked: bool) -> bool {
+    !notch_button && !notch_chip && !hover_blocked
 }
 
 /// Whether the island rests in its form, where a shimmer may play: the
@@ -1899,8 +1902,8 @@ impl PocketController {
         let before = self.island.borrow().presence();
         let has_items = self.has_content();
         // The notch island with news up shows, even with an empty Pocket
-        // (which still doesn't open on a rest); a rest on its news holds it
-        // rather than opening the island.
+        // (which still doesn't open on a rest); a rest on its news with a
+        // button or the "+N" chip holds it rather than opening the island.
         let news_up = self.news_view.borrow().is_some();
         let pinned = self.pinned_open(now);
         // The Pocket's own drag out leaves the island by the clock open only
@@ -1914,8 +1917,13 @@ impl PocketController {
         }
         let mut inputs = island_inputs(&f, has_items, drag_in, sample.cursor, pinned);
         inputs.rest_visible |= shows_window(has_items, news_up, f.notch_style);
-        let notch_news_up = target == NewsTarget::Notch && news_up;
-        if !dwell_opens(notch_news_up, self.hover_blocked.get()) {
+        let (notch_button, notch_chip) = self
+            .news_view
+            .borrow()
+            .as_ref()
+            .filter(|_| target == NewsTarget::Notch)
+            .map_or((false, false), |v| (v.button_text.is_some(), v.extra > 0));
+        if !dwell_opens(notch_button, notch_chip, self.hover_blocked.get()) {
             inputs.hover = geometry::NOWHERE;
         }
         let mut after = self.island.borrow_mut().update(&inputs, now);
@@ -4037,12 +4045,18 @@ mod tests {
 
     #[test]
     fn notch_news_holds_off_the_dwell() {
-        assert!(dwell_opens(false, false));
-        // News on the wings: a rest holds it rather than opening the island.
-        assert!(!dwell_opens(true, false));
+        // No news on the wings, or news with nothing to click (work, busy,
+        // info, a done tick): a rest opens the Pocket as before, and the
+        // news waits.
+        assert!(dwell_opens(false, false, false));
+        // A button (Undo, Show…, Cancel) or the "+N" chip on the
+        // wings: a rest holds the news and leaves them to click.
+        assert!(!dwell_opens(true, false, false));
+        assert!(!dwell_opens(false, true, false));
+        assert!(!dwell_opens(true, true, false));
         // After giving way to the Quick panel, as before.
-        assert!(!dwell_opens(false, true));
-        assert!(!dwell_opens(true, true));
+        assert!(!dwell_opens(false, false, true));
+        assert!(!dwell_opens(true, false, true));
     }
 
     #[test]
