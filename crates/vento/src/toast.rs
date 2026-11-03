@@ -165,15 +165,10 @@ impl Toaster {
         self.sink.borrow().as_ref().and_then(Weak::upgrade)
     }
 
-    /// Shows `text` 24 px under `at`, replacing any toast already up and
-    /// restarting the 5 s timer. With `undo`, the toast has an Undo button
-    /// that runs it once and closes the toast.
-    pub fn show(&self, text: &str, undo: Option<Box<dyn Fn()>>, at: Point) {
-        self.notify(Notice::info(text).with_undo(undo), at);
-    }
-
-    /// Shows `n` in the island, or as a toast under `at` when the island
-    /// does not take it.
+    /// Shows `n` in the island, or as a toast 24 px under `at` when the island
+    /// does not take it, replacing any toast already up and restarting the 5 s
+    /// timer. A toast whose notice has an Undo button has that button, which
+    /// runs it once and closes the toast.
     pub fn notify(&self, n: Notice, at: Point) {
         route(self.sink(), self, n, at);
     }
@@ -395,9 +390,8 @@ mod tests {
     }
 
     #[test]
-    fn show_is_an_info_notice_with_its_undo() {
+    fn an_info_notice_with_an_undo_is_a_toast_with_its_undo() {
         let (view, sink) = (Recorder::default(), FakeSink::new(false));
-        // What `show(text, undo, at)` sends to the router.
         let n = Notice::info("Renamed").with_undo(Some(Box::new(|| {})));
         assert_eq!(n.tone, Tone::Info);
         assert!(!n.sticky && !n.island_only);

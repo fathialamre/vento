@@ -262,7 +262,7 @@ fn main() -> Result<(), slint::PlatformError> {
             is_paused: Box::new(move || pause.is_paused()),
             read: Box::new(screen_text::read_on_worker),
             copy: Box::new(move |text| copier.copy_text(text)),
-            notify: Box::new(move |text, at| toaster.show(text, None, at)),
+            notify: Box::new(move |notice, at| toaster.notify(notice, at)),
             ask_access: Box::new(move || access.show()),
             hide_access: Box::new(move || hider.hide_if_shown()),
         })
@@ -742,6 +742,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let try_slot = {
         let toaster = toaster.clone();
         let platform = platform.clone();
+        let settings = Rc::downgrade(&settings);
         move |slot: &ShortcutSlot, name: &str, shown: String, spec: &str| {
             if let Err(reason) = slot.register(spec) {
                 log::warn!(
@@ -749,9 +750,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     in_english_text(reason.clone())
                 );
                 let at = platform.sample_input().cursor;
-                toaster.show(
-                    &shortcut_unavailable_text(&shown, &reason.to_string()),
-                    None,
+                let settings = settings.clone();
+                toaster.notify(
+                    shortcut_unavailable_notice(&shown, &reason.to_string(), move || {
+                        if let Some(settings) = settings.upgrade() {
+                            settings.open();
+                        }
+                    }),
                     at,
                 );
             }
@@ -987,6 +992,18 @@ fn shortcut_unavailable_text(name: &str, reason: &str) -> String {
         &vento_core::i18n::tr("{name} shortcut unavailable: {reason}"),
         &[("name", name), ("reason", reason)],
     )
+}
+
+/// The notice for a shortcut of the feature `name` that cannot be registered,
+/// for `reason`; its Change button runs `change`, which opens the settings.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn shortcut_unavailable_notice(
+    name: &str,
+    reason: &str,
+    change: impl Fn() + 'static,
+) -> notice::Notice {
+    notice::Notice::error(shortcut_unavailable_text(name, reason))
+        .with_button(notice::ButtonLabel::Change, change)
 }
 
 /// Why a shortcut failed, in English: for log lines.

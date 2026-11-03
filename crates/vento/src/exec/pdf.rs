@@ -16,6 +16,7 @@ use vento_platform::{SystemPdf, quarantine_of, set_quarantine};
 
 use super::archive::cancelled_text;
 use super::{Executor, LastOp, display_name, in_english};
+use crate::notice::Notice;
 
 /// Callback told, on the main thread, how a PDF job ended. It returns
 /// whether it showed the result itself (the PDF window, staying open, says
@@ -60,6 +61,26 @@ pub fn pdf_toast_text(outcome: &PdfOutcome) -> String {
             &[("folder", &name)],
         ),
     }
+}
+
+/// The notice for a finished PDF write job, `text` being what
+/// [`pdf_toast_text`] said: a cancel is something to know, a job that wrote
+/// nothing is a failure, the rest is done.
+pub(super) fn pdf_done_notice(outcome: &PdfOutcome, text: String) -> Notice {
+    let notice = if outcome.cancelled || matches!(outcome.failed, Some(PdfError::Cancelled)) {
+        Notice::info(text)
+    } else if outcome.failed.is_some() || outcome.made.is_empty() {
+        Notice::error(text)
+    } else {
+        Notice::done(text)
+    };
+    notice.with_icon(ActionId::Pdf)
+}
+
+/// The notice for opening PDFs where some paths were left out, `text` being
+/// what [`pdf_open_toast_text`] said, or that there were none to open.
+pub fn pdf_open_notice(text: String) -> Notice {
+    Notice::info(text).with_icon(ActionId::Pdf)
 }
 
 /// Toast text for opening PDFs where some paths were left out (`skipped`,
@@ -235,9 +256,9 @@ impl Executor {
         let shown = done.is_some_and(|done| done(&outcome));
         if !shown {
             if recorded {
-                self.toast_undo(&text, at);
+                self.toast_undo(text, ActionId::Pdf, at);
             } else {
-                self.toast.show(&text, None, at);
+                self.toast.notify(pdf_done_notice(&outcome, text), at);
             }
         }
     }
@@ -491,5 +512,23 @@ mod tests {
         assert_eq!(count.get(), 1);
         let denied = mark_tree(&file, b"q", &|_, _| Err(io::Error::other("denied")));
         assert!(denied.is_err());
+    }
+
+    #[test]
+    fn pdf_notices_follow_how_the_job_ended() {
+        use vento_core::news::Tone;
+        let notice = |o: &PdfOutcome| pdf_done_notice(o, pdf_toast_text(o));
+        let n = notice(&saved("/d/a.pdf"));
+        assert_eq!((n.tone, n.icon), (Tone::Done, Some(ActionId::Pdf)));
+        assert_eq!(n.text, "Saved a.pdf");
+        assert_eq!(notice(&failed(PdfError::Cancelled)).tone, Tone::Info);
+        let mut o = saved("/d/a.pdf");
+        o.cancelled = true;
+        assert_eq!(notice(&o).tone, Tone::Info);
+        assert_eq!(notice(&failed(PdfError::Locked)).tone, Tone::Error);
+        let mut o = saved("/d/a.pdf");
+        o.made.clear();
+        assert_eq!(notice(&o).tone, Tone::Error);
+        assert_eq!(pdf_open_notice("No PDFs to open".into()).tone, Tone::Info);
     }
 }

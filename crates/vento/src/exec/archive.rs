@@ -21,6 +21,7 @@ use vento_platform::{quarantine_of, set_quarantine};
 
 use super::{Executor, LastOp, display_name, in_english, on_main, only_name};
 use crate::archive_ui::Verb;
+use crate::notice::Notice;
 
 /// Toast for a job the user cancelled.
 pub(super) fn cancelled_text() -> String {
@@ -219,6 +220,28 @@ fn archive_done_text(done: &ArchiveDone) -> String {
     }
 }
 
+/// The notice for a finished Archive job, `text` being what
+/// [`archive_done_text`] said: a cancel is something to know, a job that made
+/// nothing for want of trying is a failure, the rest is done.
+fn archive_done_notice(done: &ArchiveDone, text: String) -> Notice {
+    let notice = match done {
+        ArchiveDone::Compressed {
+            result: Err(ArchiveError::Cancelled),
+            ..
+        } => Notice::info(text),
+        ArchiveDone::Compressed { result: Err(_), .. } => Notice::error(text),
+        ArchiveDone::Extracted(outcome) if outcome.made.is_empty() => {
+            if outcome.failed.is_empty() {
+                Notice::info(text)
+            } else {
+                Notice::error(text)
+            }
+        }
+        _ => Notice::done(text),
+    };
+    notice.with_icon(ActionId::Archive)
+}
+
 /// The worker's half of Archive: decides between compressing and
 /// extracting, has the progress window follow the job, and runs it.
 fn archive_job(paths: &[PathBuf], progress: &Arc<Progress>, at: Point) -> ArchiveDone {
@@ -348,7 +371,7 @@ impl Executor {
     }
 
     fn archive_finished(&self, done: ArchiveDone, at: Point) {
-        let text = archive_done_text(&done);
+        let notice = archive_done_notice(&done, archive_done_text(&done));
         // The log stays English whatever the interface language is.
         info!("archive: {}", in_english(|| archive_done_text(&done)));
         let made = match done {
@@ -368,7 +391,7 @@ impl Executor {
             .and_then(|m| m.output.parent())
             .map(Path::to_path_buf)
         else {
-            self.toast.show(&text, None, at);
+            self.toast.notify(notice, at);
             return;
         };
         let record = CopyRecord {
@@ -378,7 +401,7 @@ impl Executor {
                 .map(|m| (m.source, m.output, m.fingerprint))
                 .collect(),
         };
-        self.record_undo(LastOp::Archive(record), text, at);
+        self.record_undo(LastOp::Archive(record), notice.text, at);
     }
 }
 
@@ -793,5 +816,48 @@ mod tests {
         let third = file("c.txt");
         mark(&plain, &third).unwrap();
         assert_eq!(quarantine_of(&third), None);
+    }
+
+    #[test]
+    fn archive_notices_follow_how_the_job_ended() {
+        let tone = |done: &ArchiveDone| {
+            let n = archive_done_notice(done, archive_done_text(done));
+            assert_eq!(n.icon, Some(ActionId::Archive));
+            assert!(n.button.is_none());
+            n.tone
+        };
+        let compressed = |result| ArchiveDone::Compressed { count: 2, result };
+        assert_eq!(
+            tone(&compressed(Ok(made("/d/a", "/d/a.zip")))),
+            vento_core::news::Tone::Done
+        );
+        assert_eq!(
+            tone(&compressed(Err(ArchiveError::Cancelled))),
+            vento_core::news::Tone::Info
+        );
+        assert_eq!(
+            tone(&compressed(Err(ArchiveError::Damaged("crc".into())))),
+            vento_core::news::Tone::Error
+        );
+        let batch = |made, failed| ArchiveDone::Extracted(extracted(made, failed));
+        assert_eq!(
+            tone(&batch(vec![made("/d/a.zip", "/d/a")], vec![])),
+            vento_core::news::Tone::Done
+        );
+        assert_eq!(tone(&batch(vec![], vec![])), vento_core::news::Tone::Info);
+        assert_eq!(
+            tone(&batch(vec![], vec![damaged("/d/a.zip")])),
+            vento_core::news::Tone::Error
+        );
+    }
+
+    #[test]
+    fn archive_classic_fallback_is_the_legacy_text() {
+        let done = ArchiveDone::Compressed {
+            count: 1,
+            result: Ok(made("/d/a", "/d/a.zip")),
+        };
+        let n = archive_done_notice(&done, archive_done_text(&done));
+        assert_eq!(n.text, "Compressed 1 item to a.zip");
     }
 }

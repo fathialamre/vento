@@ -18,6 +18,7 @@ use vento_platform::{Platform, PlatformError, ScreenText};
 
 use crate::appearance;
 use crate::lazy_window::LazyWindow;
+use crate::notice::Notice;
 use crate::ui::{ScreenAccess, Theme};
 
 /// What a read hands back: the text boxes found, or why there are none.
@@ -29,8 +30,8 @@ pub type ReadDone = Box<dyn FnOnce(ReadResult)>;
 /// Puts text on the clipboard.
 pub type CopyText = Box<dyn Fn(&str) -> Result<(), PlatformError>>;
 
-/// Shows a toast below the given point.
-pub type Notify = Box<dyn Fn(&str, Point)>;
+/// Shows a notice below the given point.
+pub type Notify = Box<dyn Fn(Notice, Point)>;
 
 /// The toast after a copy.
 fn copied_text() -> String {
@@ -120,21 +121,21 @@ impl ScreenTextController {
         let message = match result {
             Err(e) => {
                 warn!("cannot read the screen: {e}");
-                failed_text()
+                Notice::error(failed_text())
             }
             Ok(boxes) => {
                 let text = assemble(&boxes);
                 if text.is_empty() {
-                    no_text()
+                    Notice::info(no_text())
                 } else if let Err(e) = (self.deps.copy)(&text) {
                     warn!("cannot copy the text read from the screen: {e}");
-                    failed_text()
+                    Notice::error(failed_text())
                 } else {
-                    copied_text()
+                    Notice::done(copied_text())
                 }
             }
         };
-        (self.deps.notify)(&message, bottom_centre(area));
+        (self.deps.notify)(message, bottom_centre(area));
         self.busy.set(false);
     }
 }
@@ -409,7 +410,7 @@ mod tests {
                 }),
                 notify: Box::new({
                     let log = log.clone();
-                    move |text, at| log.notes.borrow_mut().push((text.to_owned(), at))
+                    move |notice, at| log.notes.borrow_mut().push((notice.text, at))
                 }),
                 ask_access: Box::new({
                     let log = log.clone();

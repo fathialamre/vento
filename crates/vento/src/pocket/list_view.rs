@@ -18,6 +18,7 @@ use vento_core::pocket::{Pocket, PocketItem};
 use vento_core::pocket_kind::{PocketKind, kind_of};
 use vento_core::settings::PocketView;
 
+use crate::notice::Notice;
 use crate::ui::{Icons, PeekLine, PocketChip, PocketIsland, PocketRow};
 
 use super::clip::age_label_now;
@@ -342,7 +343,7 @@ impl PocketController {
                 &tr("Couldn't copy: {reason}"),
                 &[("reason", &e.to_string())],
             );
-            self.toast.show(&text, None, self.toast_at());
+            self.toast.notify(Notice::error(text), self.toast_at());
         }
     }
 

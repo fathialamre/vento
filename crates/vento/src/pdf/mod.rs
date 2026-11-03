@@ -18,12 +18,13 @@ use std::time::Duration;
 
 use log::{debug, warn};
 use slint::Timer;
+use vento_core::actions::ActionId;
 use vento_core::geometry::Point;
-use vento_core::i18n::{fill, tr};
+use vento_core::i18n::tr;
 use vento_core::pdf::{PdfError, Source, open_sources};
 use vento_platform::{Platform, SystemPdf};
 
-use crate::exec::{Executor, pdf_open_toast_text};
+use crate::exec::{Executor, action_error_notice, pdf_open_notice, pdf_open_toast_text};
 use crate::settings_hub::SettingsHub;
 use crate::toast::Toaster;
 pub use window::PdfView;
@@ -95,11 +96,8 @@ impl PdfController {
             });
         if let Err(e) = spawned {
             warn!("cannot start opening the PDFs: {e}");
-            let text = fill(
-                &tr("Couldn't open the PDF: {reason}"),
-                &[("reason", &e.to_string())],
-            );
-            self.toaster.show(&text, None, at);
+            self.toaster
+                .notify(action_error_notice(ActionId::Pdf, &e.to_string()), at);
         }
     }
 
@@ -112,7 +110,7 @@ impl PdfController {
         let text = pdf_open_toast_text(sources.len(), &skipped)
             .or_else(|| sources.is_empty().then(|| tr("No PDFs to open")));
         if let Some(text) = text {
-            self.toaster.show(&text, None, at);
+            self.toaster.notify(pdf_open_notice(text), at);
         }
         if sources.is_empty() {
             return;

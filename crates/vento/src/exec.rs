@@ -26,6 +26,7 @@ use vento_core::settings::Settings;
 use vento_platform::Platform;
 
 use crate::archive_ui::{PasswordView, ProgressView};
+use crate::notice::{Notice, middle_cut};
 use crate::toast::Toaster;
 use crate::wheel::WheelDrop;
 
@@ -36,7 +37,7 @@ mod rename;
 mod share;
 
 use archive::archive_undo_toast_text;
-pub use pdf::{PdfDone, pdf_open_toast_text, pdf_toast_text};
+pub use pdf::{PdfDone, pdf_open_notice, pdf_open_toast_text, pdf_toast_text};
 pub use rename::RenameDone;
 
 /// The side notes of a move or an undo: what failed, and what was moved
@@ -252,6 +253,16 @@ fn action_error_text(action: ActionId, reason: &str) -> String {
     fill(&template, &[("reason", reason)])
 }
 
+/// The notice for `action` failing for `reason`.
+pub(crate) fn action_error_notice(action: ActionId, reason: &str) -> Notice {
+    error_notice(action, action_error_text(action, reason))
+}
+
+/// An error notice for `action`, worded as `text`.
+pub(crate) fn error_notice(action: ActionId, text: String) -> Notice {
+    Notice::error(text).with_icon(action)
+}
+
 /// Folder a terminal should open in: the first path if it is a folder,
 /// otherwise its parent.
 fn terminal_dir(paths: &[PathBuf]) -> Option<PathBuf> {
@@ -278,6 +289,20 @@ pub enum UndoKind {
     Pdf,
     /// The last Rename (the names it changed).
     Rename,
+}
+
+impl UndoKind {
+    /// The action whose mark an undo of this kind carries.
+    fn action(self) -> ActionId {
+        match self {
+            UndoKind::Move => ActionId::Move,
+            UndoKind::Copy => ActionId::CopyTo,
+            UndoKind::Archive => ActionId::Archive,
+            UndoKind::Convert => ActionId::Convert,
+            UndoKind::Pdf => ActionId::Pdf,
+            UndoKind::Rename => ActionId::Rename,
+        }
+    }
 }
 
 /// The tray's Undo item text: names what would be undone, and reads
@@ -307,10 +332,57 @@ fn busy_text() -> String {
     tr("Busy — still working")
 }
 
+/// The notice for a move, copy or undo requested while one is running.
+pub(crate) fn busy_notice() -> Notice {
+    Notice::busy(busy_text())
+}
+
 /// Toast shown when Convert is released without a format chosen.
 fn hold_for_format_text() -> String {
     tr("Hold on Convert to pick a format")
 }
+
+/// The notice for Convert released without a format chosen.
+fn hold_for_format_notice() -> Notice {
+    Notice::info(hold_for_format_text()).with_icon(ActionId::Convert)
+}
+
+/// The notice for a move, copy or undo under way: `text` says what.
+fn working_notice(action: ActionId, text: String) -> Notice {
+    Notice::busy(text).with_icon(action)
+}
+
+/// The notice for a result of `action` with no Undo: an undo's result, or
+/// a job that made nothing to undo.
+fn result_notice(action: ActionId, text: String) -> Notice {
+    Notice::done(text).with_icon(action)
+}
+
+/// The notice that Copy put `n` files on the clipboard. The classic toast
+/// has nothing to say, so only the island shows it.
+fn files_copied_notice(n: usize) -> Notice {
+    Notice::done(tr("Copied"))
+        .with_icon(ActionId::Copy)
+        .with_sub(trn(
+            "{n} file ready to paste",
+            "{n} files ready to paste",
+            n as u64,
+        ))
+        .island_only()
+}
+
+/// The notice that Copy path put `copied` on the clipboard: the first line,
+/// cut to fit the island. Island only, like [`files_copied_notice`].
+fn path_copied_notice(copied: &str) -> Notice {
+    let first = copied.lines().next().unwrap_or_default();
+    Notice::done(tr("Path copied"))
+        .with_icon(ActionId::CopyPath)
+        .with_sub(middle_cut(first, PATH_SUB_CHARS))
+        .island_only()
+}
+
+/// Longest path, in characters, the island shows under "Path copied".
+const PATH_SUB_CHARS: usize = 40;
 
 /// Longest vento waits, when quitting, for a running job to stop.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
@@ -522,14 +594,22 @@ impl Executor {
             },
             ActionId::Copy => {
                 let result = self.platform.copy_files(&paths);
-                self.finish(action, result, at, || {
+                let copied = self.finish(action, result, at, || {
                     format!("copy: {} file(s)", paths.len())
                 });
+                if copied {
+                    self.toast.notify(files_copied_notice(paths.len()), at);
+                }
             }
             ActionId::CopyPath => {
                 let format = self.settings.borrow().copy_path_format;
-                let result = self.platform.copy_text(&format_paths(&paths, format));
-                self.finish(action, result, at, || format!("copy path: {}", paths.len()));
+                let text = format_paths(&paths, format);
+                let result = self.platform.copy_text(&text);
+                let copied =
+                    self.finish(action, result, at, || format!("copy path: {}", paths.len()));
+                if copied {
+                    self.toast.notify(path_copied_notice(&text), at);
+                }
             }
             ActionId::Archive => self.archive(paths, at),
             ActionId::Info => warn!("Info is handled by the info controller"),
@@ -541,7 +621,7 @@ impl Executor {
                 None if ring_formats(&paths, &vento_platform::convert_targets()).is_empty() => {
                     self.toast_error_as(action, &tr("no images"), "no images", at);
                 }
-                None => self.toast.show(&hold_for_format_text(), None, at),
+                None => self.toast.notify(hold_for_format_notice(), at),
             },
             ActionId::Terminal => {
                 let terminal = self.settings.borrow().terminal.clone();
@@ -606,9 +686,11 @@ impl Executor {
     }
 
     fn undo_move(&self, record: MoveRecord, at: Point) {
-        self.toast.show(
-            &working_text(Working::Restoring, record.moved.len()),
-            None,
+        self.toast.notify(
+            working_notice(
+                ActionId::Move,
+                working_text(Working::Restoring, record.moved.len()),
+            ),
             at,
         );
         self.spawn_file_job(
@@ -647,7 +729,8 @@ impl Executor {
             }
         }
         self.notify_undo_changed();
-        self.toast.show(&undo_toast_text(&outcome), None, at);
+        self.toast
+            .notify(result_notice(ActionId::Move, undo_toast_text(&outcome)), at);
     }
 
     /// Undoes a Copy to, an Archive, a Convert or a PDF write (`kind`), in
@@ -669,7 +752,7 @@ impl Executor {
             let text = working_text(Working::Removing, record.copies.len());
             (text, ActionId::CopyTo)
         };
-        self.toast.show(&text, None, at);
+        self.toast.notify(working_notice(action, text), at);
         self.spawn_file_job(
             action,
             move || {
@@ -721,7 +804,7 @@ impl Executor {
         } else {
             copy_undo_toast_text(&outcome)
         };
-        self.toast.show(&text, None, at);
+        self.toast.notify(result_notice(kind.action(), text), at);
     }
 
     /// Adds `f`, called with `has_undo()` after a move or copy records an
@@ -754,7 +837,7 @@ impl Executor {
     fn refuse_if_busy(&self, at: Point) -> bool {
         if self.busy.get() {
             debug!("busy: request ignored");
-            self.toast.show(&busy_text(), None, at);
+            self.toast.notify(busy_notice(), at);
         }
         self.busy.get()
     }
@@ -775,8 +858,10 @@ impl Executor {
             return;
         }
         if action == ActionId::CopyTo {
-            self.toast
-                .show(&working_text(Working::Copying, paths.len()), None, at);
+            self.toast.notify(
+                working_notice(action, working_text(Working::Copying, paths.len())),
+                at,
+            );
             self.spawn_file_job(
                 action,
                 move || copy_items(&paths, &dest),
@@ -785,8 +870,10 @@ impl Executor {
                 at,
             );
         } else {
-            self.toast
-                .show(&working_text(Working::Moving, paths.len()), None, at);
+            self.toast.notify(
+                working_notice(action, working_text(Working::Moving, paths.len())),
+                at,
+            );
             self.spawn_file_job(
                 action,
                 move || move_items(&paths, &dest),
@@ -814,7 +901,10 @@ impl Executor {
             }
             AfterTransfer::Nothing => {
                 debug!("nothing to move");
-                self.toast.show(&tr("Nothing to move"), None, at);
+                self.toast.notify(
+                    Notice::info(tr("Nothing to move")).with_icon(ActionId::Move),
+                    at,
+                );
                 return;
             }
             AfterTransfer::Done => {}
@@ -846,7 +936,10 @@ impl Executor {
             }
             AfterTransfer::Nothing => {
                 debug!("nothing to copy");
-                self.toast.show(&tr("Nothing to copy"), None, at);
+                self.toast.notify(
+                    Notice::info(tr("Nothing to copy")).with_icon(ActionId::CopyTo),
+                    at,
+                );
                 return;
             }
             AfterTransfer::Done => {}
@@ -861,11 +954,12 @@ impl Executor {
         self.record_undo(LastOp::Copy(outcome.record), text, at);
     }
 
-    /// Keeps `op` as the one thing to undo and toasts `text` with an Undo
+    /// Keeps `op` as the one thing to undo and says `text` with an Undo
     /// button.
     fn record_undo(&self, op: LastOp, text: String, at: Point) {
+        let action = op.kind().action();
         self.remember_last(op, at);
-        self.toast_undo(&text, at);
+        self.toast_undo(text, action, at);
     }
 
     /// Makes `op` the operation Undo undoes, without a toast.
@@ -875,15 +969,19 @@ impl Executor {
         self.notify_undo_changed();
     }
 
-    /// Toasts `text` with Undo for the last operation.
-    fn toast_undo(&self, text: &str, at: Point) {
+    /// Says `text`, a result of `action`, with Undo for the last operation.
+    fn toast_undo(&self, text: String, action: ActionId, at: Point) {
         let this = self.this.clone();
         let on_undo: Box<dyn Fn()> = Box::new(move || {
             if let Some(executor) = this.upgrade() {
                 executor.undo_last();
             }
         });
-        self.toast.show(text, Some(on_undo), at);
+        let mut notice = result_notice(action, text).with_undo(Some(on_undo));
+        if let Some(serial) = self.last_serial() {
+            notice = notice.with_undo_serial(serial);
+        }
+        self.toast.notify(notice, at);
     }
 
     /// The serial of the operation Undo would undo now, if any.
@@ -980,19 +1078,23 @@ impl Executor {
     }
 
     /// Logs a success (`describe`) or logs and toasts a platform failure;
-    /// success needs no toast.
+    /// success needs no toast. Returns whether it succeeded.
     fn finish(
         &self,
         action: ActionId,
         result: Result<(), vento_platform::PlatformError>,
         at: Point,
         describe: impl FnOnce() -> String,
-    ) {
+    ) -> bool {
         match result {
-            Ok(()) => info!("{}", describe()),
+            Ok(()) => {
+                info!("{}", describe());
+                true
+            }
             Err(error) => {
                 let logged = in_english(|| error.to_string());
                 self.toast_error_as(action, &error.to_string(), &logged, at);
+                false
             }
         }
     }
@@ -1002,14 +1104,14 @@ impl Executor {
     /// outside library, both are the same text).
     fn toast_error_as(&self, action: ActionId, reason: &str, logged: &str, at: Point) {
         warn!("{action:?} failed: {logged}");
-        self.toast
-            .show(&action_error_text(action, reason), None, at);
+        self.toast.notify(action_error_notice(action, reason), at);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vento_core::news::Tone;
 
     #[test]
     fn undo_item_names_what_it_would_undo() {
@@ -1466,5 +1568,113 @@ mod tests {
 
         assert!(start.elapsed() < Duration::from_secs(1));
         drop(release);
+    }
+
+    /// What the classic toast shows for a notice: its text and whether it has
+    /// an Undo.
+    fn classic(n: &Notice) -> (String, bool) {
+        let undo = n
+            .button
+            .as_ref()
+            .is_some_and(|b| b.label == crate::notice::ButtonLabel::Undo);
+        (n.text.clone(), undo)
+    }
+
+    #[test]
+    fn classic_fallback_matches_legacy_toasts() {
+        assert_eq!(
+            classic(&busy_notice()),
+            ("Busy — still working".into(), false)
+        );
+        assert_eq!(
+            classic(&hold_for_format_notice()),
+            ("Hold on Convert to pick a format".into(), false)
+        );
+        assert_eq!(
+            classic(&working_notice(
+                ActionId::Move,
+                working_text(Working::Moving, 2)
+            )),
+            ("Moving 2 items…".into(), false)
+        );
+        assert_eq!(
+            classic(&result_notice(
+                ActionId::Move,
+                undo_toast_text(&outcome(2, vec![]))
+            )),
+            ("Restored 2 items".into(), false)
+        );
+        assert_eq!(
+            classic(&action_error_notice(
+                ActionId::Terminal,
+                "no folder to open"
+            )),
+            (
+                "Couldn't open the terminal: no folder to open".into(),
+                false
+            )
+        );
+        vento_core::i18n::with_language("ar", || {
+            assert_eq!(classic(&busy_notice()).0, "مشغول، العمل جارٍ");
+        });
+    }
+
+    #[test]
+    fn errors_are_error_notices_with_their_action() {
+        let n = action_error_notice(ActionId::Move, "disk full");
+        assert_eq!(n.tone, Tone::Error);
+        assert_eq!(n.icon, Some(ActionId::Move));
+        assert_eq!(n.text, "Couldn't move: disk full");
+        assert!(n.sticky && n.button.is_none());
+    }
+
+    #[test]
+    fn busy_is_a_busy_notice() {
+        let n = busy_notice();
+        assert_eq!(n.tone, Tone::Busy);
+        assert_eq!(n.text, "Busy — still working");
+        assert!(!n.sticky && n.button.is_none());
+        let n = working_notice(ActionId::CopyTo, working_text(Working::Copying, 1));
+        assert_eq!((n.tone, n.icon), (Tone::Busy, Some(ActionId::CopyTo)));
+    }
+
+    #[test]
+    fn nothing_to_show_is_info_and_results_are_done() {
+        assert_eq!(hold_for_format_notice().tone, Tone::Info);
+        let n = result_notice(ActionId::Archive, "Nothing left to remove".into());
+        assert_eq!((n.tone, n.icon), (Tone::Done, Some(ActionId::Archive)));
+        assert!(!n.island_only);
+    }
+
+    #[test]
+    fn undo_kinds_name_the_action_that_did_it() {
+        assert_eq!(UndoKind::Move.action(), ActionId::Move);
+        assert_eq!(UndoKind::Copy.action(), ActionId::CopyTo);
+        assert_eq!(UndoKind::Archive.action(), ActionId::Archive);
+        assert_eq!(UndoKind::Convert.action(), ActionId::Convert);
+        assert_eq!(UndoKind::Pdf.action(), ActionId::Pdf);
+        assert_eq!(UndoKind::Rename.action(), ActionId::Rename);
+    }
+
+    #[test]
+    fn copying_files_says_so_only_in_the_island() {
+        let n = files_copied_notice(1);
+        assert_eq!((n.tone, n.icon), (Tone::Done, Some(ActionId::Copy)));
+        assert_eq!(n.text, "Copied");
+        assert_eq!(n.sub, "1 file ready to paste");
+        assert!(n.island_only);
+        assert_eq!(files_copied_notice(3).sub, "3 files ready to paste");
+    }
+
+    #[test]
+    fn copying_a_path_shows_it_cut_to_fit() {
+        let n = path_copied_notice("/Users/me/Downloads/a/very/long/folder/name/report.pdf");
+        assert_eq!((n.tone, n.icon), (Tone::Done, Some(ActionId::CopyPath)));
+        assert_eq!(n.text, "Path copied");
+        assert_eq!(n.sub.chars().count(), PATH_SUB_CHARS);
+        assert!(n.sub.starts_with("/Users/") && n.sub.ends_with("report.pdf"));
+        assert!(n.island_only);
+        // Several paths: the first.
+        assert_eq!(path_copied_notice("/a\n/b").sub, "/a");
     }
 }

@@ -45,6 +45,7 @@ use slint::winit_030::WinitWindowAccessor;
 use slint::{
     ComponentHandle, Image, LogicalPosition, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode,
 };
+use vento_core::actions::ActionId;
 use vento_core::clip_history::ClipEntry;
 use vento_core::geometry::{Point, Rect};
 use vento_core::i18n::errors::io_reason;
@@ -134,7 +135,7 @@ fn toast_late_open_error(error: PlatformError) {
         if let Some(c) = MAIN_POCKET.with(|slot| slot.borrow().upgrade()) {
             let reason = error.to_string();
             let text = fill(&tr("Couldn't open: {reason}"), &[("reason", &reason)]);
-            c.toast.show(&text, None, c.toast_at());
+            c.toast.notify(Notice::error(text), c.toast_at());
         }
     });
     if let Err(e) = delivered {
@@ -807,7 +808,7 @@ impl PocketController {
                 MenuFailure::Copy => tr("Couldn't copy: {reason}"),
             };
             let text = fill(&template, &[("reason", &e.to_string())]);
-            self.toast.show(&text, None, self.toast_at());
+            self.toast.notify(Notice::error(text), self.toast_at());
         }
     }
 
@@ -825,9 +826,8 @@ impl PocketController {
         let Some(first) = paths.first() else {
             self.latch.ended();
             info!("drag out: nothing left to drag");
-            self.toast.show(
-                &tr("Those items are no longer there"),
-                None,
+            self.toast.notify(
+                Notice::info(tr("Those items are no longer there")).with_icon(ActionId::Pocket),
                 self.toast_at(),
             );
             return;
@@ -1799,7 +1799,10 @@ impl PocketController {
                 &tr("Couldn't add to Pocket: {reason}"),
                 &[("reason", &first.shown)],
             );
-            self.toast.show(&text, None, self.toast_at());
+            self.toast.notify(
+                Notice::error(text).with_icon(ActionId::Pocket),
+                self.toast_at(),
+            );
         }
     }
 
@@ -2055,7 +2058,10 @@ impl PocketController {
                 &tr("Couldn't save the Pocket: {error}"),
                 &[("error", &io_reason(&e))],
             );
-            self.toast.show(&text, None, self.toast_at());
+            self.toast.notify(
+                Notice::error(text).with_icon(ActionId::Pocket),
+                self.toast_at(),
+            );
         }
     }
 

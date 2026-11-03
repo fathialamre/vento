@@ -4,9 +4,6 @@
 //! and shows the classic toast and progress window when the sink does not take
 //! it.
 
-// The island sink and the call sites come in later steps.
-#![allow(dead_code)]
-
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,6 +14,8 @@ use vento_core::i18n::tr;
 use vento_core::news::Tone;
 
 /// The one button a notice can carry.
+// The island sink builds the other buttons and shows the labels, in a later step.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonLabel {
     Undo,
@@ -32,6 +31,7 @@ pub enum ButtonLabel {
 
 impl ButtonLabel {
     /// The label in the language in use.
+    #[allow(dead_code)]
     pub fn text(self) -> String {
         match self {
             Self::Undo => tr("Undo"),
@@ -54,6 +54,8 @@ pub struct NoticeButton {
 }
 
 /// One message: what happened, how it reads, and what can be done about it.
+// The island sink reads the tone and whether it sticks, in a later step.
+#[allow(dead_code)]
 pub struct Notice {
     pub tone: Tone,
     /// The action it is about, for the mark; none shows the tone's own.
@@ -147,6 +149,7 @@ impl Notice {
         self
     }
 
+    #[allow(dead_code)]
     pub fn sticky(mut self) -> Self {
         self.sticky = true;
         self
@@ -154,6 +157,8 @@ impl Notice {
 }
 
 /// A job that runs for a while, for the island to show as work.
+// The jobs and the island sink come in later steps.
+#[allow(dead_code)]
 pub struct JobNotice {
     /// From [`next_job_id`]; ends with [`NoticeSink::job_ended`].
     pub id: u64,
@@ -174,7 +179,26 @@ pub trait NoticeSink {
     fn job_ended(&self, id: u64);
 }
 
+/// `s` cut to at most `max_chars` characters by dropping the middle for an
+/// "…", so the start and the end (a file's name) both show.
+pub(crate) fn middle_cut(s: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max_chars {
+        return s.to_owned();
+    }
+    // One character goes to the "…"; the tail, where the name is, gets the
+    // odd one out.
+    let kept = max_chars.saturating_sub(1);
+    let head = kept / 2;
+    let tail = kept - head;
+    let mut cut: String = chars[..head].iter().collect();
+    cut.push('…');
+    cut.extend(&chars[chars.len() - tail..]);
+    cut
+}
+
 /// A job id no other job has had in this run.
+#[allow(dead_code)]
 pub fn next_job_id() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
@@ -202,6 +226,23 @@ mod tests {
             .with_button(ButtonLabel::Open, || {})
             .with_undo(None);
         assert_eq!(n.button.as_ref().map(|b| b.label), Some(ButtonLabel::Open));
+    }
+
+    #[test]
+    fn middle_cut_keeps_both_ends() {
+        let cut = middle_cut("~/Downloads/very/long/path/report.pdf", 20);
+        assert!(cut.starts_with("~/Down"));
+        assert!(cut.ends_with("report.pdf"));
+        assert!(cut.contains('…'));
+        assert_eq!(cut.chars().count(), 20);
+    }
+
+    #[test]
+    fn middle_cut_leaves_what_fits_and_counts_characters() {
+        assert_eq!(middle_cut("short", 40), "short");
+        assert_eq!(middle_cut("exactly", 7), "exactly");
+        assert_eq!(middle_cut("ملف/التقرير/الطويل.pdf", 9).chars().count(), 9);
+        assert_eq!(middle_cut("abc", 0), "…");
     }
 
     #[test]

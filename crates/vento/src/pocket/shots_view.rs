@@ -29,6 +29,7 @@ use vento_core::screenshots::{
 };
 use vento_platform::{Dropped, PlatformError, RgbaImage};
 
+use crate::notice::Notice;
 use crate::screen_text::ReadResult;
 use crate::ui::{PocketIsland, ShotDay, ShotTile};
 
@@ -615,7 +616,7 @@ impl PocketController {
                         &tr("Couldn't open: {reason}"),
                         &[("reason", &e.to_string())],
                     );
-                    c.toast.show(&text, None, c.toast_at());
+                    c.toast.notify(Notice::error(text), c.toast_at());
                 }
             }
         });
@@ -855,7 +856,7 @@ impl PocketController {
                         &tr("Couldn't copy: {reason}"),
                         &[("reason", &vento_core::i18n::errors::io_reason(&e))],
                     );
-                    self.toast.show(&text, None, self.toast_at());
+                    self.toast.notify(Notice::error(text), self.toast_at());
                     return;
                 }
             }
@@ -865,7 +866,8 @@ impl PocketController {
         match self.platform.write_clipboard(&shot_snapshot(path, png)) {
             Ok(_) => {
                 info!("screenshot copied");
-                self.toast.show(&tr("Copied"), None, self.toast_at());
+                self.toast
+                    .notify(Notice::done(tr("Copied")), self.toast_at());
             }
             Err(e) => self.copy_failed(&e),
         }
@@ -881,7 +883,7 @@ impl PocketController {
             &tr("Couldn't copy: {reason}"),
             &[("reason", &e.to_string())],
         );
-        self.toast.show(&text, None, self.toast_at());
+        self.toast.notify(Notice::error(text), self.toast_at());
     }
 
     /// Copy text: reads the text in the picture on a worker thread with
@@ -910,17 +912,22 @@ impl PocketController {
                     "cannot read the text in a screenshot: {}",
                     with_language("en", || e.to_string())
                 );
-                self.toast
-                    .show(&tr("Couldn't read the picture"), None, self.toast_at());
+                self.toast.notify(
+                    Notice::error(tr("Couldn't read the picture")),
+                    self.toast_at(),
+                );
                 return;
             }
         };
         if text.is_empty() {
-            self.toast.show(&tr("No text found"), None, self.toast_at());
+            self.toast
+                .notify(Notice::info(tr("No text found")), self.toast_at());
             return;
         }
         match self.platform.copy_text(&text) {
-            Ok(()) => self.toast.show(&tr("Copied text"), None, self.toast_at()),
+            Ok(()) => self
+                .toast
+                .notify(Notice::done(tr("Copied text")), self.toast_at()),
             Err(e) => self.copy_failed(&e),
         }
     }
@@ -1162,8 +1169,10 @@ impl PocketController {
                     c.undo_shot_trash(&path);
                 }
             };
-            c.toast
-                .show(&tr("Moved to Trash"), Some(Box::new(undo)), at);
+            c.toast.notify(
+                Notice::done(tr("Moved to Trash")).with_undo(Some(Box::new(undo))),
+                at,
+            );
         });
     }
 
