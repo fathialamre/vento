@@ -27,6 +27,16 @@ msgstr "* للاسم كامل"
 msgid "+1 h"
 msgstr "+ساعة"
 
+#: crates/vento/ui/pocket.slint:2895
+msgid "+{n}"
+msgid_plural "+{n}"
+msgstr[0] "+{n}"
+msgstr[1] "+{n}"
+msgstr[2] "+{n}"
+msgstr[3] "+{n}"
+msgstr[4] "+{n}"
+msgstr[5] "+{n}"
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr "+{n} أخرى"
@@ -631,7 +641,7 @@ msgstr "تعذّر استبدال Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "تعذّر حفظ الإعدادات: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2085
+#: crates/vento/src/pocket/mod.rs:2097
 msgid "Couldn't save the Pocket: {error}"
 msgstr "تعذّر حفظ الجيب: {error}"
 
@@ -727,7 +737,7 @@ msgstr "ارسم مستطيلاً بالسحب فوق النص الذي تريد
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "اسحب الصف من مقبضه لتغيير مكان الإجراء."
 
-#: crates/vento/ui/pocket.slint:3399
+#: crates/vento/ui/pocket.slint:3743
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "اسحب الكل ({n})"
@@ -759,7 +769,7 @@ msgstr[3] "اسحب {n}"
 msgstr[4] "اسحب {n}"
 msgstr[5] "اسحب {n}"
 
-#: crates/vento/ui/pocket.slint:3181
+#: crates/vento/ui/pocket.slint:3525
 msgid "Drop to add"
 msgstr "أفلِت للإضافة"
 
@@ -1539,7 +1549,7 @@ msgstr "كبسولة بسيطة"
 msgid "Pocket"
 msgstr "الجيب"
 
-#: crates/vento/ui/pocket.slint:3150
+#: crates/vento/ui/pocket.slint:3494
 msgid "Pocket cleared"
 msgstr "أُفرغ الجيب"
 
@@ -2509,11 +2519,11 @@ msgstr "لا يمكن الحذف من مجلد للقراءة فقط {dir}"
 msgid "cannot start"
 msgstr "تعذّر البدء"
 
-#: crates/vento/src/pocket/mod.rs:1771
+#: crates/vento/src/pocket/mod.rs:1783
 msgid "cannot start copying: {reason}"
 msgstr "تعذّر بدء النسخ: {reason}"
 
-#: crates/vento/src/exec.rs:1112
+#: crates/vento/src/exec.rs:1127
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
@@ -2545,7 +2555,7 @@ msgstr "فارغ"
 msgid "i/o error: {reason}"
 msgstr "خطأ في القراءة أو الكتابة: {reason}"
 
-#: crates/vento/src/exec.rs:1095
+#: crates/vento/src/exec.rs:1110
 msgid "internal error"
 msgstr "خطأ داخلي"
 
@@ -2733,7 +2743,7 @@ msgstr "‏{app} لم يعد موجوداً"
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
-#: crates/vento/src/pocket/news.rs:163
+#: crates/vento/src/pocket/news.rs:169
 msgid "{current} of {total}"
 msgstr "‏{current} من {total}"
 
@@ -3057,7 +3067,7 @@ msgstr[3] "‏{} {n}"
 msgstr[4] "‏{} {n}"
 msgstr[5] "‏{} {n}"
 
-#: crates/vento/src/pocket/news.rs:170
+#: crates/vento/src/pocket/news.rs:176
 msgid "{}%"
 msgstr "‏{}%"
 

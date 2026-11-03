@@ -2205,11 +2205,13 @@ impl PocketController {
         }
         let w = &self.window;
         let width = |l: f32| (l > 0.0).then_some(f64::from(l));
+        let button_w = width(w.get_news_button_w());
         let chip_w = width(w.get_news_chip_w());
         Some(geometry::news_rects(
             f,
             f64::from(w.get_news_pill_w()),
-            width(w.get_news_button_w()),
+            button_w,
+            button_w.map(|_| f64::from(w.get_news_button_x())),
             chip_w,
             chip_w.map(|_| f64::from(w.get_news_chip_x())),
         ))

@@ -64,12 +64,10 @@ const PUSH_DEPTH: f64 = 2.0;
 /// count as a bar under the island.
 const BAR_TOLERANCE: f64 = 8.0;
 
-/// The news pill: its height, and its one button's and "+N" chip's, and
-/// how far the button sits in from the pill's right end.
+/// The news pill: its height, and its one button's and "+N" chip's.
 const NEWS_H: f64 = 34.0;
 const NEWS_BUTTON_H: f64 = 26.0;
 const NEWS_CHIP_H: f64 = 20.0;
-const NEWS_BUTTON_INSET: f64 = 5.0;
 
 /// A shape no pointer is ever in: it has a negative size.
 pub(super) const NOWHERE: Rect = Rect {
@@ -435,16 +433,18 @@ pub(super) struct NewsRects {
     pub chip: Option<Rect>,
 }
 
-/// The news pill `pill_w` wide, with its button `button_w` wide and its
-/// "+N" chip `chip_w` wide at `chip_x` from the pill's left (as the window
-/// lays them out; `None` for none). The pill is [`NEWS_H`] high with its
-/// top at the resting pill's, also while the island rests as the lip, and
-/// centred on the island; the button sits [`NEWS_BUTTON_INSET`] in from its
-/// right end. Both are centred in its height.
+/// The news pill `pill_w` wide, with its button `button_w` wide at
+/// `button_x` from the pill's left and its "+N" chip `chip_w` wide at
+/// `chip_x` (as the window lays them out, at the end of the line: the
+/// right in a left-to-right language, the left in a right-to-left one;
+/// `None` for none). The pill is [`NEWS_H`] high with its top at the
+/// resting pill's, also while the island rests as the lip, and centred on
+/// the island. The button and the chip are centred in its height.
 pub(super) fn news_rects(
     f: &Frames,
     pill_w: f64,
     button_w: Option<f64>,
+    button_x: Option<f64>,
     chip_w: Option<f64>,
     chip_x: Option<f64>,
 ) -> NewsRects {
@@ -455,8 +455,8 @@ pub(super) fn news_rects(
         w: pill_w,
         h: NEWS_H,
     };
-    let button = button_w.map(|w| Rect {
-        x: pill.x + pill.w - NEWS_BUTTON_INSET - w,
+    let button = button_w.zip(button_x).map(|(w, x)| Rect {
+        x: pill.x + x,
         y: pill.y + (NEWS_H - NEWS_BUTTON_H) / 2.0,
         w,
         h: NEWS_BUTTON_H,
@@ -957,12 +957,14 @@ mod tests {
         );
     }
 
-    /// A news pill 300 wide with a 60-wide button and a 28-wide chip 200 in.
+    /// A news pill 300 wide, laid out left to right: a 60-wide button 5 in
+    /// from its right end and a 28-wide chip 200 in.
     fn news_with(f: &Frames, button: bool, chip: bool) -> NewsRects {
         news_rects(
             f,
             300.0,
             button.then_some(60.0),
+            button.then_some(300.0 - 5.0 - 60.0),
             chip.then_some(28.0),
             chip.then_some(200.0),
         )
@@ -1007,9 +1009,51 @@ mod tests {
             interactive_rects(&f, Presence::Collapsed, Some(&news)),
             vec![news.chip.unwrap()]
         );
-        // A chip's width without its x is no chip.
-        let news = news_rects(&f, 300.0, None, Some(28.0), None);
-        assert_eq!(news.chip, None);
+        // A width without its x is no chip, nor button.
+        let news = news_rects(&f, 300.0, Some(60.0), None, Some(28.0), None);
+        assert_eq!((news.button, news.chip), (None, None));
+    }
+
+    #[test]
+    fn right_to_left_the_button_and_chip_take_clicks_on_the_left() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        // Mirrored: the button 5 in from the pill's left end, the chip
+        // after it.
+        let news = news_rects(&f, 300.0, Some(60.0), Some(5.0), Some(28.0), Some(73.0));
+        assert_eq!(news.pill, rect(490.0, 6.0, 300.0, 34.0));
+        assert_eq!(news.button, Some(rect(495.0, 10.0, 60.0, 26.0)));
+        assert_eq!(news.chip, Some(rect(563.0, 13.0, 28.0, 20.0)));
+        let button = Point { x: 520.0, y: 23.0 };
+        assert!(hits(&f, Presence::Collapsed, Some(&news), button));
+        // Where the button is left to right, the text lets clicks through.
+        let end = Point { x: 750.0, y: 23.0 };
+        assert!(!hits(&f, Presence::Collapsed, Some(&news), end));
+    }
+
+    #[test]
+    fn the_resting_window_holds_the_widest_news_pill() {
+        // The window draws the pill at most 40 narrower than the island.
+        let home = plain(24.0);
+        for place in IslandPlace::ALL {
+            for bar in [false, true] {
+                for panel in [
+                    Panel::Kinds { groups: 0 },
+                    Panel::Kinds { groups: 3 },
+                    Panel::List,
+                    Panel::Card,
+                ] {
+                    let f = virtual_frames(&home, spot(place, bar), panel);
+                    // At rest the window is as tall as the panel below the
+                    // gap.
+                    let window = window_frame(&f, f.expanded.h - f.top_h);
+                    let w = f.expanded.w - 40.0;
+                    let news = news_rects(&f, w, Some(60.0), Some(w - 65.0), None, None);
+                    for shape in [news.pill, news.button.unwrap()] {
+                        assert_eq!(union(window, shape), window, "{shape:?} outside {window:?}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

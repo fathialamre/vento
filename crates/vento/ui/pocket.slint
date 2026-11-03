@@ -2648,6 +2648,300 @@ component DragButton inherits Rectangle {
     }
 }
 
+// What the virtual island's news pill holds, 34 pt high and `pill-w` wide
+// (as wide as what it says, at least the resting pill's 120 and at most
+// `max-w`), laid out along the line from its start: the mark (a turning
+// ring at work; for a result a tick, "!" or "…" on the tone's colour, or
+// the action's icon for information), the sentence and its detail, the
+// job's bar and count, the "+N" chip, and the one button 5 pt in from the
+// end. Too long, the detail gives way first (down to 48 pt), then the
+// sentence; both end in an ellipsis. Content narrower than 120 is centred.
+// The other way round in a right-to-left language. It says where it puts
+// the button and the chip, for the clicks they take.
+component NewsBody inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    in property <string> text;
+    in property <string> sub;
+    in property <string> button;
+    in property <int> extra;
+    in property <float> fraction: -1;
+    in property <string> count;
+    in property <length> max-w;
+    // The ring may turn: the pill is in sight.
+    in property <bool> live;
+    callback button-clicked();
+    callback chip-clicked();
+
+    // The mark's 18 pt box, 8 pt in from the start, and the sentence 8 pt
+    // after it.
+    property <length> text-x: 8px + 18px + 8px;
+    property <bool> has-sub: root.sub != "";
+    property <bool> has-bar: root.fraction >= 0;
+    property <bool> has-count: root.count != "";
+    property <bool> has-chip: root.extra > 0;
+    property <bool> has-button: root.button != "";
+    property <length> sub-gap: 6px;
+    property <length> bar-w: 56px;
+    // What follows the sentence and its detail, each with the gap before
+    // it, and the room left at the end.
+    property <length> tail-w: (root.has-bar ? 10px + root.bar-w : 0px)
+        + (root.has-count ? 8px + count-text.preferred-width : 0px)
+        + (root.has-chip ? 8px + root.chip-w : 0px)
+        + (root.has-button ? 8px + root.button-w + 5px : 14px);
+    property <length> natural-w: root.text-x + text-line.preferred-width
+        + (root.has-sub ? root.sub-gap + sub-line.preferred-width : 0px) + root.tail-w;
+    out property <length> pill-w: min(root.max-w, max(120px, root.natural-w));
+    // Where the content starts: centred while narrower than the pill.
+    property <length> lead: max(0px, (root.pill-w - root.natural-w) / 2);
+    // The room for the sentence and its detail.
+    property <length> room: root.pill-w - 2 * root.lead - root.text-x - root.tail-w;
+    property <length> text-w: max(0px, min(text-line.preferred-width,
+        root.room - (root.has-sub ? root.sub-gap + min(sub-line.preferred-width, 48px) : 0px)));
+    property <length> sub-w: root.has-sub
+        ? max(0px, min(sub-line.preferred-width, root.room - root.text-w - root.sub-gap)) : 0px;
+    // Left to right, from the pill's left edge.
+    property <length> sub-x: root.lead + root.text-x + root.text-w + root.sub-gap;
+    property <length> tail-x: root.lead + root.text-x + root.text-w
+        + (root.has-sub ? root.sub-gap + root.sub-w : 0px);
+    property <length> bar-x: root.tail-x + 10px;
+    property <length> bar-end: root.tail-x + (root.has-bar ? 10px + root.bar-w : 0px);
+    property <length> count-x: root.bar-end + 8px;
+    property <length> count-end: root.bar-end + (root.has-count ? 8px + count-text.preferred-width : 0px);
+    property <length> ltr-chip-x: root.count-end + 8px;
+    property <length> ltr-button-x: root.pill-w - root.lead - 5px - root.button-w;
+    out property <length> chip-w: root.has-chip ? max(20px, chip-text.preferred-width + 14px) : 0px;
+    out property <length> button-w: root.has-button ? button-text.preferred-width + 24px : 0px;
+    out property <length> chip-x: root.mirror(root.ltr-chip-x, root.chip-w);
+    out property <length> button-x: root.mirror(root.ltr-button-x, root.button-w);
+    // Details and Change are grey; any other button is the accent.
+    property <bool> quiet-button: root.button == @tr("Details") || root.button == @tr("Change");
+
+    // The x of something `w` wide at `x` from the pill's left, left to
+    // right: as far from the right in a right-to-left language.
+    pure function mirror(x: length, w: length) -> length {
+        Theme.rtl ? root.pill-w - x - w : x
+    }
+
+    width: root.pill-w;
+    height: 34px;
+
+    // The mark.
+    Rectangle {
+        x: root.mirror(root.lead + 8px, 18px);
+        y: 8px;
+        width: 18px;
+        height: 18px;
+
+        // At work: an arc going round, once a second, only while it can be
+        // seen.
+        if root.stage == 1 && root.live: spinner := Path {
+            property <angle> turn: Math.mod(animation-tick() / 1ms, 1000) / 1000 * 360deg;
+            x: 2px;
+            y: 2px;
+            width: 14px;
+            height: 14px;
+            viewbox-width: 14;
+            viewbox-height: 14;
+            stroke: #ff6a1a;
+            stroke-width: 2px;
+
+            MoveTo {
+                x: 7 + 6 * Math.sin(spinner.turn);
+                y: 7 - 6 * Math.cos(spinner.turn);
+            }
+
+            ArcTo {
+                x: 7 + 6 * Math.sin(spinner.turn + 270deg);
+                y: 7 - 6 * Math.cos(spinner.turn + 270deg);
+                radius-x: 6;
+                radius-y: 6;
+                large-arc: true;
+                sweep: true;
+            }
+        }
+
+        // A result's mark on the tone's colour.
+        if root.stage == 2 && root.tone != 1: Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            background: root.tone == 0 ? #30d158 : root.tone == 2 ? #ff5f57 : #ffb340;
+
+            if root.tone == 0: Image {
+                source: @image-url("icons/check.svg");
+                colorize: black;
+                x: 3px;
+                y: 3px;
+                width: 12px;
+                height: 12px;
+            }
+
+            if root.tone != 0: Text {
+                x: 0px;
+                y: 0px;
+                width: 18px;
+                height: 18px;
+                text: root.tone == 2 ? "!" : "…";
+                color: black;
+                font-size: 12px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Information: the action's icon, or the orange dot without one.
+        if root.stage == 2 && root.tone == 1 && root.icon.width > 0: Image {
+            source: root.icon;
+            colorize: #ff6a1a;
+            x: 1px;
+            y: 1px;
+            width: 16px;
+            height: 16px;
+        }
+
+        if root.stage == 2 && root.tone == 1 && root.icon.width == 0: Rectangle {
+            x: 5px;
+            y: 5px;
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: #ff6a1a;
+        }
+    }
+
+    text-line := LineText {
+        x: root.mirror(root.lead + root.text-x, self.width);
+        y: 0px;
+        width: root.text-w;
+        height: parent.height;
+        text: root.text;
+        color: white;
+        font-size: 12.5px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    sub-line := LineText {
+        x: root.mirror(root.sub-x, self.width);
+        y: 0px;
+        width: root.sub-w;
+        height: parent.height;
+        visible: root.has-sub && self.width > 0;
+        text: root.sub;
+        color: #ffffff80;
+        font-size: 12.5px;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    // The job's bar: how much is done, filling from the start.
+    if root.has-bar: Rectangle {
+        x: root.mirror(root.bar-x, root.bar-w);
+        y: (parent.height - self.height) / 2;
+        width: root.bar-w;
+        height: 3px;
+        border-radius: 1.5px;
+        background: #ffffff26;
+
+        Rectangle {
+            width: parent.width * min(1, max(0, root.fraction));
+            x: Theme.rtl ? parent.width - self.width : 0px;
+            y: 0px;
+            height: parent.height;
+            border-radius: 1.5px;
+            background: #ff6a1a;
+        }
+    }
+
+    count-text := Text {
+        x: root.mirror(root.count-x, self.width);
+        y: 0px;
+        width: self.preferred-width;
+        height: parent.height;
+        visible: root.has-count;
+        text: root.count;
+        color: #ffffffb0;
+        font-size: 12px;
+        vertical-alignment: center;
+    }
+
+    // "+N": the other things going on. (`AccessibleRole.button` in full
+    // here: `button` alone is the button's label.)
+    Rectangle {
+        x: root.chip-x;
+        y: (parent.height - self.height) / 2;
+        width: root.chip-w;
+        height: 20px;
+        visible: root.has-chip;
+        border-radius: 10px;
+        background: chip-touch.has-hover ? #3a3a40 : #2c2c32;
+        accessible-role: AccessibleRole.button;
+        accessible-label: chip-text.text;
+        accessible-action-default => {
+            root.chip-clicked();
+        }
+
+        chip-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("+{n}" | "+{n}" % root.extra);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        chip-touch := TouchArea {
+            enabled: root.has-chip;
+            clicked => {
+                root.chip-clicked();
+            }
+        }
+    }
+
+    // The one button.
+    Rectangle {
+        x: root.button-x;
+        y: (parent.height - self.height) / 2;
+        width: root.button-w;
+        height: 26px;
+        visible: root.has-button;
+        border-radius: 13px;
+        background: root.quiet-button
+            ? (button-touch.has-hover ? #3a3a40 : #2c2c32)
+            : (button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : #ff6a1a);
+        animate background { duration: 140ms; }
+        accessible-role: AccessibleRole.button;
+        accessible-label: root.button;
+        accessible-action-default => {
+            root.button-clicked();
+        }
+
+        button-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.button;
+            color: white;
+            font-size: 12px;
+            font-weight: root.quiet-button ? 500 : 600;
+        }
+
+        button-touch := TouchArea {
+            enabled: root.has-button;
+            clicked => {
+                root.button-clicked();
+            }
+        }
+    }
+}
+
 export component PocketIsland inherits Window {
     default-font-family: Theme.font-family;
     no-frame: true;
@@ -2763,7 +3057,7 @@ export component PocketIsland inherits Window {
     in property <bool> card;
     in property <image> card-picture;
     in property <string> card-meta;
-    // The virtual island's news (not drawn yet): what shows (0 none, 1 a
+    // The virtual island's news: what shows (0 none, 1 a
     // job at work, 2 a result), how it reads (0 done, 1 info, 2 error,
     // 3 busy), the action's icon (empty for the tone's own mark), the
     // sentence and its detail, the one button's label (empty for none), how
@@ -2780,19 +3074,14 @@ export component PocketIsland inherits Window {
     in property <int> news-extra;
     in property <float> news-fraction: -1;
     in property <string> news-count;
-    // Where the news pill lies, for the clicks it takes: its width, its
-    // button's (0 for none), and its "+N" chip's (0 for none) and x from
-    // the pill's left. Estimated from the text until the pill is drawn: the
-    // mark and the text, then the chip, then the button 5 px in from the
-    // right end.
-    out property <length> news-button-w: root.news-button == "" ? 0px
-        : 24px + root.news-button.character-count * 7px;
-    out property <length> news-chip-w: root.news-extra == 0 ? 0px : 30px;
-    out property <length> news-pill-w: min(560px, max(120px, 36px
-        + max(root.news-text.character-count, root.news-sub.character-count) * 7px
-        + root.news-chip-w + 6px + root.news-button-w + 8px + 5px));
-    out property <length> news-chip-x: root.news-pill-w - 5px - root.news-button-w - 8px
-        - root.news-chip-w;
+    // Where the news pill lies, for the clicks it takes, as it is drawn: its
+    // width, and its button's and its "+N" chip's width (0 for none) and x
+    // from the pill's left.
+    out property <length> news-pill-w: news-body.pill-w;
+    out property <length> news-button-w: news-body.button-w;
+    out property <length> news-button-x: news-body.button-x;
+    out property <length> news-chip-w: news-body.chip-w;
+    out property <length> news-chip-x: news-body.chip-x;
 
     // A tile, by its item's place in the Pocket: `moved` offsets are
     // measured from the press point.
@@ -2903,6 +3192,48 @@ export component PocketIsland inherits Window {
         easing: root.resting ? ease : ease-out;
     }
     property <length> pill-r: root.notch-style ? 0px : 14px;
+    // The resting virtual island shows news: the pill wakes from its
+    // resting form, wider and solid. When the news ends (or the island
+    // opens) it goes back to the resting form, and the last news stays on
+    // it as it fades.
+    property <bool> news-on: root.resting && root.news-stage != 0;
+    // What the pill shows: the news, or the last while it fades.
+    property <int> news-shown-stage: root.news-stage != 0 ? root.news-stage : root.news-last-stage;
+    property <int> news-last-stage;
+    changed news-stage => {
+        if root.news-stage != 0 {
+            root.news-last-stage = root.news-stage;
+        }
+    }
+    // An error shakes the pill once, over 500 ms: three swings dying out.
+    property <bool> news-error: root.news-on && root.news-stage == 2 && root.news-tone == 2;
+    property <bool> shaking;
+    property <duration> shake-start;
+    property <float> shake-t: root.shaking ? min(1, (animation-tick() - root.shake-start) / 500ms) : 1;
+    property <length> shake-dx: root.shaking ? 6px * (1 - root.shake-t) * Math.sin(root.shake-t * 3 * 360deg) : 0px;
+    function shake() {
+        root.shake-start = animation-tick();
+        root.shaking = true;
+        shake-timer.restart();
+    }
+    changed news-error => {
+        if root.news-error {
+            root.shake();
+        }
+    }
+    // Another error in its place shakes it again.
+    changed news-text => {
+        if root.news-error {
+            root.shake();
+        }
+    }
+    shake-timer := Timer {
+        interval: 500ms;
+        running: root.shaking;
+        triggered => {
+            root.shaking = false;
+        }
+    }
     property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
     property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
     property <bool> shots-undo: root.undo-active && root.undo-kind == 3;
@@ -3457,16 +3788,66 @@ export component PocketIsland inherits Window {
         }
     }
 
+    // The virtual island's news pill, over its resting form: solid black,
+    // 34 pt high with its top at the pill's. It wakes from the resting
+    // form's size with a spring over 250 ms and goes back to it as it fades
+    // over 600 ms. Open, the island shows none. Its content keeps its own
+    // width as the pill grows and shrinks around it. At rest, clicks pass
+    // through it, except on its button and its chip.
+    news := Rectangle {
+        width: root.news-on ? news-body.pill-w : root.collapsed-w;
+        height: root.news-on ? 34px : root.collapsed-h;
+        x: (root.width - self.width) / 2 + root.shake-dx;
+        y: root.news-on ? root.top-h : root.collapsed-y;
+        animate width, height, y {
+            duration: root.news-on ? 250ms : 600ms;
+            easing: root.news-on ? ease-out-back : ease;
+        }
+        opacity: root.news-on ? 1 : 0;
+        animate opacity {
+            duration: root.news-on ? 120ms : 600ms;
+            easing: ease;
+        }
+        visible: root.virtual-style && !root.expanded && self.opacity > 0;
+        background: #000000;
+        border-width: 1px;
+        border-color: #ffffff22;
+        border-radius: self.height / 2;
+        clip: true;
+
+        news-body := NewsBody {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            stage: root.news-shown-stage;
+            tone: root.news-tone;
+            icon: root.news-icon;
+            text: root.news-text;
+            sub: root.news-sub;
+            button: root.news-button;
+            extra: root.news-extra;
+            fraction: root.news-fraction;
+            count: root.news-count;
+            max-w: root.panel-w - 40px;
+            live: news.visible;
+            button-clicked => {
+                root.news-button-clicked();
+            }
+            chip-clicked => {
+                root.news-chip-clicked();
+            }
+        }
+    }
+
     // A push against the top edge over the resting virtual island: an
-    // orange line under it fills from the middle out, and the island opens
-    // when it is full. Nothing shows at 0.
+    // orange line under it (or under its news) fills from the middle out,
+    // and the island opens when it is full. Nothing shows at 0.
     if root.resting: Rectangle {
         width: root.push-progress * 120px;
         // Fills smoothly between the 100 ms samples.
         animate width { duration: 100ms; easing: linear; }
         height: 3px;
         x: (root.width - self.width) / 2;
-        y: island.y + island.height + 2px;
+        y: max(island.y + island.height, news.visible ? news.y + news.height : 0px) + 2px;
         visible: root.push-progress > 0;
         border-radius: 1.5px;
         background: root.accent;

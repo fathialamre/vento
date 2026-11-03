@@ -27,6 +27,12 @@ msgstr "* per l'intero nome"
 msgid "+1 h"
 msgstr "+1 h"
 
+#: crates/vento/ui/pocket.slint:2895
+msgid "+{n}"
+msgid_plural "+{n}"
+msgstr[0] "+{n}"
+msgstr[1] "+{n}"
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr "+{n} altri"
@@ -607,7 +613,7 @@ msgstr "Impossibile sostituire Vento"
 msgid "Couldn't save settings: {error}"
 msgstr "Impossibile salvare le impostazioni: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2085
+#: crates/vento/src/pocket/mod.rs:2097
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Impossibile salvare la Tasca: {error}"
 
@@ -703,7 +709,7 @@ msgstr "Trascina un rettangolo sul testo che vuoi e rilascia."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Trascina una riga dalla maniglia per cambiare la posizione dell'azione."
 
-#: crates/vento/ui/pocket.slint:3399
+#: crates/vento/ui/pocket.slint:3743
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "Trascina tutti ({n})"
@@ -727,7 +733,7 @@ msgid_plural "Drag {n}"
 msgstr[0] "Trascina {n}"
 msgstr[1] "Trascina {n}"
 
-#: crates/vento/ui/pocket.slint:3181
+#: crates/vento/ui/pocket.slint:3525
 msgid "Drop to add"
 msgstr "Rilascia per aggiungere"
 
@@ -1467,7 +1473,7 @@ msgstr "Pillola semplice"
 msgid "Pocket"
 msgstr "Tasca"
 
-#: crates/vento/ui/pocket.slint:3150
+#: crates/vento/ui/pocket.slint:3494
 msgid "Pocket cleared"
 msgstr "Tasca svuotata"
 
@@ -2393,11 +2399,11 @@ msgstr "impossibile rimuovere dalla cartella di sola lettura {dir}"
 msgid "cannot start"
 msgstr "impossibile avviare"
 
-#: crates/vento/src/pocket/mod.rs:1771
+#: crates/vento/src/pocket/mod.rs:1783
 msgid "cannot start copying: {reason}"
 msgstr "impossibile avviare la copia: {reason}"
 
-#: crates/vento/src/exec.rs:1112
+#: crates/vento/src/exec.rs:1127
 msgid "cannot start: {reason}"
 msgstr "impossibile avviare: {reason}"
 
@@ -2429,7 +2435,7 @@ msgstr "vuoto"
 msgid "i/o error: {reason}"
 msgstr "errore di I/O: {reason}"
 
-#: crates/vento/src/exec.rs:1095
+#: crates/vento/src/exec.rs:1110
 msgid "internal error"
 msgstr "errore interno"
 
@@ -2609,7 +2615,7 @@ msgstr "{app} non c'è più"
 msgid "{app} is not installed"
 msgstr "{app} non è installata"
 
-#: crates/vento/src/pocket/news.rs:163
+#: crates/vento/src/pocket/news.rs:169
 msgid "{current} of {total}"
 msgstr "{current} di {total}"
 
@@ -2845,7 +2851,7 @@ msgid_plural "{} {n}"
 msgstr[0] "{} {n}"
 msgstr[1] "{} {n}"
 
-#: crates/vento/src/pocket/news.rs:170
+#: crates/vento/src/pocket/news.rs:176
 msgid "{}%"
 msgstr "{}%"
 

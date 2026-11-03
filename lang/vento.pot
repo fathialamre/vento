@@ -25,6 +25,12 @@ msgstr ""
 msgid "+1 h"
 msgstr ""
 
+#: crates/vento/ui/pocket.slint:2895
+msgid "+{n}"
+msgid_plural "+{n}"
+msgstr[0] ""
+msgstr[1] ""
+
 #: crates/vento/src/pocket/clip.rs:134
 msgid "+{n} more"
 msgstr ""
@@ -605,7 +611,7 @@ msgstr ""
 msgid "Couldn't save settings: {error}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:2085
+#: crates/vento/src/pocket/mod.rs:2097
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
@@ -701,7 +707,7 @@ msgstr ""
 msgid "Drag a row by its grip to change where the action sits."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:3399
+#: crates/vento/ui/pocket.slint:3743
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] ""
@@ -725,7 +731,7 @@ msgid_plural "Drag {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pocket.slint:3181
+#: crates/vento/ui/pocket.slint:3525
 msgid "Drop to add"
 msgstr ""
 
@@ -1465,7 +1471,7 @@ msgstr ""
 msgid "Pocket"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:3150
+#: crates/vento/ui/pocket.slint:3494
 msgid "Pocket cleared"
 msgstr ""
 
@@ -2391,11 +2397,11 @@ msgstr ""
 msgid "cannot start"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1771
+#: crates/vento/src/pocket/mod.rs:1783
 msgid "cannot start copying: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:1112
+#: crates/vento/src/exec.rs:1127
 msgid "cannot start: {reason}"
 msgstr ""
 
@@ -2427,7 +2433,7 @@ msgstr ""
 msgid "i/o error: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:1095
+#: crates/vento/src/exec.rs:1110
 msgid "internal error"
 msgstr ""
 
@@ -2607,7 +2613,7 @@ msgstr ""
 msgid "{app} is not installed"
 msgstr ""
 
-#: crates/vento/src/pocket/news.rs:163
+#: crates/vento/src/pocket/news.rs:169
 msgid "{current} of {total}"
 msgstr ""
 
@@ -2843,7 +2849,7 @@ msgid_plural "{} {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/pocket/news.rs:170
+#: crates/vento/src/pocket/news.rs:176
 msgid "{}%"
 msgstr ""
 
