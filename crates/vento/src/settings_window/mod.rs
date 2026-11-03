@@ -1337,7 +1337,7 @@ impl SettingsWindowController {
         let screens = IslandScreens::of(&*self.platform);
         let home = screens.primary;
         window.set_island_offered(home.is_some_and(|h| virtual_offered(&h, screens.supported)));
-        window.set_island_notch(home.is_some_and(|h| h.notch.is_some() || h.slot.is_some()));
+        window.set_island_notch(home.is_some_and(|h| notch_style_home(&h)));
         window.set_island_jobs(settings.island_jobs);
         if let Some(home) = home {
             let gnome_slot = home.slot.is_some() || self.platform.island_slot_seen();
@@ -1960,6 +1960,14 @@ impl IslandScreens {
     }
 }
 
+/// Whether the island at `home` is notch-style (a Mac notch, or the room
+/// GNOME's top bar keeps): it shows jobs and shimmers on its wings, so the
+/// Island page offers those rows, also under the Island menu where the
+/// other island is chosen.
+fn notch_style_home(home: &IslandHome) -> bool {
+    home.notch.is_some() || home.slot.is_some()
+}
+
 /// What the Island menu calls the island that is not the virtual one, by
 /// where it sits at `home`: by the taskbar's clock (Windows), in the top
 /// bar where GNOME's keeps room for it (`gnome_slot`), or else a pill at
@@ -2492,6 +2500,35 @@ mod tests {
         };
         s.island_screen = Some("1280x800+1280+0".to_owned());
         assert_eq!(unsupported.key(&s).as_deref(), Some("1280x800+0+0"));
+    }
+
+    #[test]
+    fn top_bar_room_is_notch_style_where_the_virtual_island_is_offered() {
+        // GNOME on X11 with the extension: the virtual island is offered,
+        // and the other island in the top bar room is notch-style, so the
+        // page shows its jobs and shimmer rows under the Island menu.
+        let slot = IslandHome {
+            slot: Some(Rect {
+                x: 560.0,
+                y: 0.0,
+                w: 160.0,
+                h: 24.0,
+            }),
+            ..plain_home()
+        };
+        assert!(virtual_offered(&slot, true));
+        assert!(notch_style_home(&slot));
+        let notch = IslandHome {
+            notch: Some(Rect {
+                x: 560.0,
+                y: 0.0,
+                w: 160.0,
+                h: 24.0,
+            }),
+            ..plain_home()
+        };
+        assert!(notch_style_home(&notch));
+        assert!(!notch_style_home(&plain_home()));
     }
 
     #[test]

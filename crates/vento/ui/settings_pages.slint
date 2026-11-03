@@ -1194,6 +1194,56 @@ component FollowReduceRow inherits VerticalLayout {
     }
 }
 
+// The rows of a notch-style island (a Mac notch or GNOME's top bar room):
+// whether it shows jobs, the shimmer on its wings while it does, and
+// whether it follows Reduce motion.
+component NotchRows inherits VerticalLayout {
+    in property <bool> jobs;
+    in property <int> shimmer;
+    in property <int> shimmer-every;
+    in property <bool> shimmer-needs-items;
+    in property <bool> follow-reduce;
+    in property <bool> reduce-motion;
+    callback jobs-toggled(bool);
+    callback shimmer-chosen(int);
+    callback shimmer-every-chosen(int);
+    callback shimmer-needs-items-toggled(bool);
+    callback follow-reduce-toggled(bool);
+
+    SettingRow {
+        label: @tr("Show jobs in the island");
+        description: @tr("Progress, results and errors appear in the island instead of separate windows");
+
+        Switch {
+            label: @tr("Show jobs in the island");
+            on: root.jobs;
+            toggled(on) => { root.jobs-toggled(on); }
+        }
+    }
+
+    if root.jobs: VerticalLayout {
+        RowSeparator { }
+
+        ShimmerRows {
+            shimmer: root.shimmer;
+            shimmer-every: root.shimmer-every;
+            shimmer-needs-items: root.shimmer-needs-items;
+            circle: false;
+            reduce-motion: root.reduce-motion;
+            shimmer-chosen(i) => { root.shimmer-chosen(i); }
+            shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+            shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+        }
+    }
+
+    RowSeparator { }
+
+    FollowReduceRow {
+        on: root.follow-reduce;
+        toggled(on) => { root.follow-reduce-toggled(on); }
+    }
+}
+
 // The island: which one the screen shows and, for the virtual island, its
 // place and Glass. Where the virtual island can't be chosen, a line says so.
 export component IslandPage inherits VerticalLayout {
@@ -1386,42 +1436,43 @@ export component IslandPage inherits VerticalLayout {
                 toggled(on) => { root.follow-reduce-toggled(on); }
             }
         }
+
+        // The other island in GNOME's top bar room is notch-style: it shows
+        // jobs and shimmers on its wings, as on a notch.
+        if !root.virtual && root.notch: VerticalLayout {
+            RowSeparator { }
+
+            NotchRows {
+                jobs: root.jobs;
+                shimmer: root.shimmer;
+                shimmer-every: root.shimmer-every;
+                shimmer-needs-items: root.shimmer-needs-items;
+                follow-reduce: root.follow-reduce;
+                reduce-motion: root.reduce-motion;
+                jobs-toggled(on) => { root.jobs-toggled(on); }
+                shimmer-chosen(i) => { root.shimmer-chosen(i); }
+                shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+                shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+                follow-reduce-toggled(on) => { root.follow-reduce-toggled(on); }
+            }
+        }
     }
 
     // On a notch the virtual island isn't offered, but the island there
     // shows jobs and plays the shimmer on its wings, so those rows stay.
     if !root.offered && root.notch: VerticalLayout {
-        SettingRow {
-            label: @tr("Show jobs in the island");
-            description: @tr("Progress, results and errors appear in the island instead of separate windows");
-
-            Switch {
-                label: @tr("Show jobs in the island");
-                on: root.jobs;
-                toggled(on) => { root.jobs-toggled(on); }
-            }
-        }
-
-        if root.jobs: VerticalLayout {
-            RowSeparator { }
-
-            ShimmerRows {
-                shimmer: root.shimmer;
-                shimmer-every: root.shimmer-every;
-                shimmer-needs-items: root.shimmer-needs-items;
-                circle: false;
-                reduce-motion: root.reduce-motion;
-                shimmer-chosen(i) => { root.shimmer-chosen(i); }
-                shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
-                shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
-            }
-        }
-
-        RowSeparator { }
-
-        FollowReduceRow {
-            on: root.follow-reduce;
-            toggled(on) => { root.follow-reduce-toggled(on); }
+        NotchRows {
+            jobs: root.jobs;
+            shimmer: root.shimmer;
+            shimmer-every: root.shimmer-every;
+            shimmer-needs-items: root.shimmer-needs-items;
+            follow-reduce: root.follow-reduce;
+            reduce-motion: root.reduce-motion;
+            jobs-toggled(on) => { root.jobs-toggled(on); }
+            shimmer-chosen(i) => { root.shimmer-chosen(i); }
+            shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+            shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+            follow-reduce-toggled(on) => { root.follow-reduce-toggled(on); }
         }
 
         RowSeparator { }
