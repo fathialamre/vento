@@ -316,6 +316,14 @@ pub(crate) fn island_screen_key(
     home_for(mode, homes, key, fallback, supported).map(|h| screen_key(&h.screen))
 }
 
+/// Whether the island is already saved in the middle of the screen whose
+/// key is `key`: its spot there is the centre (`spot`) and the settings
+/// have it on that screen (`stored`). A double-click of the grip then has
+/// nothing to save.
+fn centre_saved(spot: IslandSpot, stored: Option<&str>, key: &str) -> bool {
+    spot == IslandSpot::Side(IslandPlace::Centre) && stored == Some(key)
+}
+
 /// Whether the drop box is wanted: something is dragged (and not by the
 /// Pocket's own drag out) anywhere on the screen of the island in the
 /// corner by the clock, or near the virtual circle (`in_zone`, the drag in
@@ -586,6 +594,10 @@ pub struct PocketController {
     /// Moves the dragged island to the cursor at the next frame, while the
     /// grip's moves come in.
     drag_frame: Timer,
+    /// Whether the platform can read the cursor alone, for the dragged
+    /// island to follow it at every frame; elsewhere it follows at the
+    /// samples.
+    follows_frames: bool,
     /// Every screen's home, as last read (on a rehome and as a drag starts).
     homes: RefCell<Vec<IslandHome>>,
     /// What saves the island's place once it is dropped.
@@ -669,6 +681,7 @@ impl PocketController {
         let activity_model = Rc::new(VecModel::default());
         window.set_activity_rows(ModelRc::from(activity_model.clone()));
         let homes = platform.island_homes();
+        let follows_frames = platform.cursor().is_some();
         let (home, spot) = {
             let s = settings.borrow();
             let home = home_for(
@@ -733,6 +746,7 @@ impl PocketController {
             spot: Cell::new(spot),
             drag: Cell::new(None),
             drag_frame: Timer::default(),
+            follows_frames,
             homes: RefCell::new(homes),
             on_place_dropped: RefCell::new(None),
             saving_place: Cell::new(false),
@@ -1680,8 +1694,10 @@ impl PocketController {
             return;
         }
         // The grip held moves the island with the cursor; the button up
-        // drops it, whether or not the window saw the release.
+        // drops it where the cursor is, whether or not the window saw the
+        // release.
         if drag_ended(self.drag.get().is_some(), sample.left_down) {
+            self.follow_drag(sample.cursor);
             self.end_drag();
             // The window may not have seen the button go up: the grip would
             // keep the pointer grabbed.
@@ -2020,7 +2036,7 @@ impl PocketController {
         *self.homes.borrow_mut() = self.platform.island_homes();
         let spot = self.spot.get();
         self.drag.set(Some(GripDrag {
-            press_x: self.platform.sample_input().cursor.x,
+            press_x: self.cursor_now().x,
             start_mid: virtual_mid_x(&home, spot),
             from: (home, spot),
             moving: false,
@@ -2032,7 +2048,7 @@ impl PocketController {
     /// (once a frame, however many moves come in), where the platform can
     /// read the cursor alone; elsewhere it follows at the samples.
     fn grip_moved(&self) {
-        if self.drag.get().is_none() || self.drag_frame.running() {
+        if !self.follows_frames || self.drag.get().is_none() || self.drag_frame.running() {
             return;
         }
         let this = self.this.clone();
@@ -2046,12 +2062,22 @@ impl PocketController {
             });
     }
 
-    /// The grip is let go: the island stays where the cursor took it.
+    /// The grip is let go: the island stays where the cursor took it, a
+    /// move still waiting for its frame included.
     fn grip_released(&self) {
         if self.drag.get().is_some() {
-            self.follow_drag(self.platform.sample_input().cursor);
+            self.follow_drag(self.cursor_now());
             self.end_drag();
         }
+    }
+
+    /// Where the cursor is now: read alone where the platform can, else
+    /// at a sample.
+    fn cursor_now(&self) -> Point {
+        self.platform.cursor().map_or_else(
+            || self.platform.sample_input().cursor,
+            |(x, y)| Point { x, y },
+        )
     }
 
     /// The grip is double-clicked: the island goes back to the middle of
@@ -2063,10 +2089,18 @@ impl PocketController {
             return;
         };
         let spot = IslandSpot::Side(IslandPlace::Centre);
-        if self.spot.replace(spot) != spot {
+        let before = self.spot.replace(spot);
+        if before != spot {
             self.apply_home(&home);
         }
-        self.save_place(&home, spot);
+        let key = screen_key(&home.screen);
+        if !centre_saved(
+            before,
+            self.settings.borrow().island_screen.as_deref(),
+            &key,
+        ) {
+            self.save_place(&home, spot);
+        }
     }
 
     /// Moves the dragged island with the cursor at `cursor`, once it has
@@ -3557,6 +3591,22 @@ mod tests {
             island_screen_key(IslandMode::Virtual, &[], None, None, true),
             None
         );
+    }
+
+    #[test]
+    fn centre_saved_already_skips_the_save() {
+        let centre = IslandSpot::Side(IslandPlace::Centre);
+        let key = "1440x900+0+0";
+        assert!(centre_saved(centre, Some(key), key));
+        // Somewhere else, or saved for another screen (or none): saved.
+        assert!(!centre_saved(
+            IslandSpot::Side(IslandPlace::Left),
+            Some(key),
+            key
+        ));
+        assert!(!centre_saved(IslandSpot::Free(300), Some(key), key));
+        assert!(!centre_saved(centre, Some("1920x1080+1440+0"), key));
+        assert!(!centre_saved(centre, None, key));
     }
 
     #[test]
