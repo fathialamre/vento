@@ -285,14 +285,20 @@ fn drag_ended(dragging: bool, left_down: bool) -> bool {
 
 /// The island's home: for the virtual island, the notch-free home of the
 /// screen `key` names among `homes`; otherwise, or for a screen that is gone
-/// (or has a notch), `fallback`, the primary one.
+/// (or has a notch), `fallback`, the primary one. The key counts only where
+/// the virtual island is offered at `fallback` (`supported` says the
+/// platform can place it): a Mac with a notch keeps its notch island, and
+/// GNOME's top bar slot stays where it is.
 fn home_for(
     mode: IslandMode,
     homes: &[IslandHome],
     key: Option<&str>,
     fallback: Option<IslandHome>,
+    supported: bool,
 ) -> Option<IslandHome> {
-    key.filter(|_| mode == IslandMode::Virtual)
+    let virtual_here =
+        mode == IslandMode::Virtual && fallback.is_some_and(|h| virtual_offered(&h, supported));
+    key.filter(|_| virtual_here)
         .and_then(|key| geometry::home_by_key(homes, key))
         .or(fallback)
 }
@@ -657,6 +663,7 @@ impl PocketController {
                 &homes,
                 s.island_screen.as_deref(),
                 platform.pocket_home(),
+                platform.virtual_island_supported(),
             );
             let key = home.map(|h| screen_key(&h.screen));
             (home, s.island_spot(key.as_deref()))
@@ -1972,6 +1979,7 @@ impl PocketController {
             &homes,
             key.as_deref(),
             self.platform.pocket_home(),
+            self.platform.virtual_island_supported(),
         );
         *self.homes.borrow_mut() = homes;
         let Some(home) = home else {
@@ -3402,7 +3410,8 @@ mod tests {
                 IslandMode::Classic,
                 &homes,
                 Some("1920x1080+1440+0"),
-                Some(homes[0])
+                Some(homes[0]),
+                true
             ),
             Some(homes[0])
         );
@@ -3416,13 +3425,14 @@ mod tests {
                 IslandMode::Virtual,
                 &homes,
                 Some("1920x1080+1440+0"),
-                Some(homes[0])
+                Some(homes[0]),
+                true
             ),
             Some(homes[1])
         );
         // No key: the primary one.
         assert_eq!(
-            home_for(IslandMode::Virtual, &homes, None, Some(homes[0])),
+            home_for(IslandMode::Virtual, &homes, None, Some(homes[0]), true),
             Some(homes[0])
         );
     }
@@ -3435,7 +3445,8 @@ mod tests {
                 IslandMode::Virtual,
                 &homes,
                 Some("800x600+0+0"),
-                Some(homes[0])
+                Some(homes[0]),
+                true
             ),
             Some(homes[0])
         );
@@ -3454,11 +3465,58 @@ mod tests {
                 IslandMode::Virtual,
                 &[homes[0], notched],
                 Some("1920x1080+1440+0"),
-                Some(homes[0])
+                Some(homes[0]),
+                true
             ),
             Some(homes[0])
         );
-        assert_eq!(home_for(IslandMode::Virtual, &[], Some("x"), None), None);
+        assert_eq!(
+            home_for(IslandMode::Virtual, &[], Some("x"), None, true),
+            None
+        );
+    }
+
+    #[test]
+    fn notched_primary_ignores_screen_key() {
+        // A Mac with a notch keeps its notch island, external screens
+        // included: the key of a notch-free screen is not taken.
+        let [primary, second] = two_homes();
+        let notched = IslandHome {
+            notch: Some(Rect {
+                x: 630.0,
+                y: 0.0,
+                w: 180.0,
+                h: 32.0,
+            }),
+            ..primary
+        };
+        assert_eq!(
+            home_for(
+                IslandMode::Virtual,
+                &[notched, second],
+                Some("1920x1080+1440+0"),
+                Some(notched),
+                true
+            ),
+            Some(notched)
+        );
+    }
+
+    #[test]
+    fn unsupported_ignores_screen_key() {
+        // Where the platform can't place the virtual island (Wayland), the
+        // island stays in the primary's slot.
+        let homes = two_homes();
+        assert_eq!(
+            home_for(
+                IslandMode::Virtual,
+                &homes,
+                Some("1920x1080+1440+0"),
+                Some(homes[0]),
+                false
+            ),
+            Some(homes[0])
+        );
     }
 
     #[test]
