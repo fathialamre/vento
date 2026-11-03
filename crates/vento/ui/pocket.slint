@@ -3568,6 +3568,12 @@ export component PocketIsland inherits Window {
     in property <bool> lip;
     // How opaque its resting forms are, 0.1 to 1 (the settings' Glass).
     in property <float> glass;
+    // The shimmer the resting island plays now and then: its style (0 Off,
+    // 1 Sweep, 2 Edge run, 3 Halo, 4 Sparkle, 5 Liquid), a number that goes
+    // up to play one moment, and whether motion is reduced.
+    in property <int> shimmer-style: 0;
+    in property <int> shimmer-id: 0;
+    in property <bool> reduce-motion: false;
     // How far a push against the top edge has filled, 0 to 1.
     in property <float> push-progress;
     // The Pocket's count on the resting pill; 0 shows none.

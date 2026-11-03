@@ -55,7 +55,10 @@ use vento_core::i18n::{fill, tr, with_language};
 use vento_core::news::{Stage, Tone};
 use vento_core::pocket::{ItemSource, Pocket, PocketItem, pocket_dir, pocket_path};
 use vento_core::pocket_zone::{IslandState, Presence};
-use vento_core::settings::{IslandMode, IslandPlace, IslandShape, PocketView, Settings};
+use vento_core::settings::{
+    IslandMode, IslandPlace, IslandShape, PocketView, Settings, ShimmerEvery, ShimmerStyle,
+};
+use vento_core::shimmer::{MomentConditions, moment_allowed, motion_reduced};
 use vento_core::trigger::InputSample;
 use vento_platform::{
     CatcherEvent, DropCatcher, Dropped, IslandHome, Platform, PlatformError, RgbaImage,
@@ -119,6 +122,9 @@ const DROP_GRACE: Duration = Duration::from_secs(60);
 /// under it: often enough to follow a window that is maximized or moved,
 /// rarely enough to cost nothing on the wheel's samples.
 pub(super) const FRONT_CHECK: Duration = Duration::from_millis(250);
+/// How often the island asks the system whether it wants less motion: a
+/// system call on macOS and Windows, so not on every sample.
+const REDUCE_CHECK: Duration = Duration::from_secs(30);
 
 thread_local! {
     /// The controller on the main thread, for copy jobs finishing on a
@@ -282,6 +288,35 @@ fn news_round_next(last: bool, circle: bool, view: Option<&NewsView>, hovered: b
         (true, Some(v)) => news::circle_round(v, hovered),
         (true, None) => last,
     }
+}
+
+/// How the window numbers a shimmer style: its place in
+/// [`ShimmerStyle::ALL`], 0 for Off.
+fn shimmer_index(s: ShimmerStyle) -> i32 {
+    ShimmerStyle::ALL
+        .iter()
+        .position(|&x| x == s)
+        .map_or(0, |i| i as i32)
+}
+
+/// Whether the system's Reduce motion is read again at `now`, given when it
+/// was `last` read: never read yet, or [`REDUCE_CHECK`] ago.
+fn reduce_due(last: Option<Instant>, now: Instant) -> bool {
+    last.is_none_or(|t| now.saturating_duration_since(t) >= REDUCE_CHECK)
+}
+
+/// Whether the island shows a shimmer: only while it rests as the pill or the
+/// circle of the virtual island, with no news up and not open. The window
+/// draws the same rule, so a moment under way ends when news comes or the
+/// island opens.
+fn shimmer_on(virtual_resting: bool, news: bool, expanded: bool) -> bool {
+    virtual_resting && !news && !expanded
+}
+
+/// How long until the next shimmer moment with `style` and `every`: one
+/// period, or `None` for Off, which plays none.
+fn next_arm(style: ShimmerStyle, every: ShimmerEvery) -> Option<Duration> {
+    (style != ShimmerStyle::Off).then(|| every.period())
 }
 
 /// The Pocket's count on the circle's badge: nothing for none, the number up
@@ -460,6 +495,16 @@ pub struct PocketController {
     /// resting pill rest as the round disc.
     news_round: Cell<bool>,
     rest_round: Cell<bool>,
+    /// Plays the next shimmer moment, one period after the island starts
+    /// resting (and after every moment, played or not).
+    shimmer_timer: Timer,
+    /// When the cursor or a button last changed, for the shimmer to know
+    /// whether anyone is at the computer.
+    last_input: Cell<Instant>,
+    /// The cursor and the left button at the last sample.
+    last_seen: Cell<Option<(Point, bool)>>,
+    /// When the system's Reduce motion was last read, and what it said.
+    reduce_cache: Cell<(Option<Instant>, bool)>,
     /// The front window has a bar under the virtual island, which then
     /// rests as the lip; asked at most every [`FRONT_CHECK`].
     bar_under: Cell<bool>,
@@ -579,6 +624,10 @@ impl PocketController {
             shape: Cell::new(shape),
             news_round: Cell::new(false),
             rest_round: Cell::new(false),
+            shimmer_timer: Timer::default(),
+            last_input: Cell::new(Instant::now()),
+            last_seen: Cell::new(None),
+            reduce_cache: Cell::new((None, false)),
             bar_under: Cell::new(false),
             front_checked: Cell::new(None),
             laid_out: Cell::new(None),
@@ -1469,6 +1518,7 @@ impl PocketController {
         if let Some(copied) = self.clip.observe(sample.clip_change_count) {
             self.notify(copied);
         }
+        self.note_input(sample);
         if !self.warm.get() {
             return;
         }
@@ -1477,6 +1527,9 @@ impl PocketController {
             return;
         }
         let now = Instant::now();
+        if reduce_due(self.reduce_cache.get().0, now) {
+            self.refresh_reduce_motion(now);
+        }
         // A card that never got to show (the island could not open) goes
         // once its time is up.
         if self.card.is_up() && !self.expanded() && !self.card.holds_open(now) {
@@ -1894,10 +1947,14 @@ impl PocketController {
     fn apply_home(&self, home: &IslandHome) {
         let spot = self.virtual_spot(home);
         self.keep_slot(spot.is_none());
-        if self.laid_out.replace(spot).is_some() != spot.is_some()
-            && let Some(f) = self.on_virtual.borrow().as_ref()
-        {
-            f(spot.is_some());
+        let was_virtual = self.laid_out.replace(spot).is_some();
+        if was_virtual != spot.is_some() {
+            if let Some(f) = self.on_virtual.borrow().as_ref() {
+                f(spot.is_some());
+            }
+            // The first moment comes one period after the island starts
+            // resting; an island that stops being virtual plays none.
+            self.arm_shimmer();
         }
         let f = self.frames_of(home);
         let panel_h = (f.expanded.h - f.top_h) as f32;
@@ -2202,6 +2259,7 @@ impl PocketController {
             s.island_glass
         };
         self.window.set_glass(glass_alpha(glass));
+        self.refresh_reduce_motion(Instant::now());
         let now_virtual = is_virtual(self);
         if !was_virtual && !now_virtual {
             return;
@@ -2222,6 +2280,8 @@ impl PocketController {
             let after = self.settle_now();
             debug!("pocket island settings changed: {after:?}");
         }
+        // A new style or period starts the wait again; Off ends it.
+        self.arm_shimmer();
     }
 
     /// Follows the Pocket look of `s`: a change shows it at once.
@@ -2412,6 +2472,93 @@ impl PocketController {
     fn hide_window(&self) {
         if let Err(e) = self.window.hide() {
             warn!("cannot hide the pocket: {e}");
+        }
+    }
+
+    /// Notes that someone is at the computer when the cursor or the left
+    /// button differs from the last sample.
+    fn note_input(&self, sample: &InputSample) {
+        let seen = Some((sample.cursor, sample.left_down));
+        if self.last_seen.replace(seen) != seen {
+            self.last_input.set(Instant::now());
+        }
+    }
+
+    /// Reads the system's Reduce motion and tells the window whether motion
+    /// is reduced, only when that changes.
+    fn refresh_reduce_motion(&self, now: Instant) {
+        let system = self.platform.reduce_motion();
+        self.reduce_cache.set((Some(now), system));
+        let follow = self.settings.borrow().island_reduce_motion;
+        let reduced = motion_reduced(follow, system);
+        if self.window.get_reduce_motion() != reduced {
+            self.window.set_reduce_motion(reduced);
+        }
+    }
+
+    /// Waits one period for the next shimmer moment, or stops waiting: the
+    /// island is not the virtual one, or the style is Off. One one-shot
+    /// timer, never a repeating one.
+    fn arm_shimmer(&self) {
+        self.shimmer_timer.stop();
+        if self.laid_out.get().is_none() {
+            return;
+        }
+        let (style, every) = {
+            let s = self.settings.borrow();
+            (s.island_shimmer, s.island_shimmer_every)
+        };
+        let Some(wait) = next_arm(style, every) else {
+            return;
+        };
+        let this = self.this.clone();
+        self.shimmer_timer
+            .start(TimerMode::SingleShot, wait, move || {
+                if let Some(c) = this.upgrade() {
+                    c.shimmer_fired();
+                }
+            });
+    }
+
+    /// A shimmer moment is due: plays it if the rules allow it now, by
+    /// bumping the window's `shimmer-id`. Either way the next one waits a
+    /// whole period.
+    fn shimmer_fired(&self) {
+        let c = self.moment_conditions(Instant::now());
+        if moment_allowed(&c) {
+            debug!("pocket shimmer {:?}", c.style);
+            let w = &self.window;
+            w.set_shimmer_style(shimmer_index(c.style));
+            w.set_shimmer_id(w.get_shimmer_id().wrapping_add(1).max(1));
+        }
+        self.arm_shimmer();
+    }
+
+    /// What the shimmer rules look at, read at `now`. The system is asked
+    /// here, when a moment is due, not at every sample.
+    fn moment_conditions(&self, now: Instant) -> MomentConditions {
+        let (style, needs_items, follow_reduce) = {
+            let s = self.settings.borrow();
+            (
+                s.island_shimmer,
+                s.island_shimmer_needs_items,
+                s.island_reduce_motion,
+            )
+        };
+        // The pill or the circle, not the lip or the half-moon over a bar.
+        let in_form = self.warm.get() && self.laid_out.get().is_some_and(|s| !s.bar_under);
+        MomentConditions {
+            style,
+            virtual_resting: shimmer_on(in_form, false, self.expanded()),
+            news_or_job: self.news_view.borrow().is_some(),
+            paused: self.paused.get(),
+            pocket_items: self.item_count(),
+            needs_items,
+            follow_reduce,
+            system_reduce: self.platform.reduce_motion(),
+            quiet_time: self.platform.quiet_time(),
+            power_saving: self.platform.power_saving(),
+            idle_for: now.saturating_duration_since(self.last_input.get()),
         }
     }
 
@@ -2997,5 +3144,42 @@ mod tests {
         // Off the circle it is never round.
         assert!(!news_round_next(true, false, None, false));
         assert!(!news_round_next(true, false, Some(&error), false));
+    }
+
+    #[test]
+    fn shimmer_index_matches_all_order() {
+        for (i, s) in ShimmerStyle::ALL.into_iter().enumerate() {
+            assert_eq!(shimmer_index(s), i as i32, "{s:?}");
+        }
+        assert_eq!(shimmer_index(ShimmerStyle::Off), 0);
+        assert_eq!(shimmer_index(ShimmerStyle::Liquid), 5);
+    }
+
+    #[test]
+    fn reduce_due_every_30s() {
+        let now = Instant::now();
+        assert!(reduce_due(None, now));
+        assert!(!reduce_due(Some(now), now));
+        assert!(!reduce_due(Some(now - Duration::from_secs(29)), now));
+        assert!(reduce_due(Some(now - Duration::from_secs(30)), now));
+        assert!(reduce_due(Some(now - Duration::from_secs(300)), now));
+    }
+
+    #[test]
+    fn moment_ends_when_news_or_open() {
+        assert!(shimmer_on(true, false, false));
+        assert!(!shimmer_on(true, true, false));
+        assert!(!shimmer_on(true, false, true));
+        assert!(!shimmer_on(false, false, false));
+    }
+
+    #[test]
+    fn settings_change_rearms_or_stops() {
+        for every in ShimmerEvery::ALL {
+            assert_eq!(next_arm(ShimmerStyle::Off, every), None);
+            for style in ShimmerStyle::ALL.into_iter().skip(1) {
+                assert_eq!(next_arm(style, every), Some(every.period()));
+            }
+        }
     }
 }
