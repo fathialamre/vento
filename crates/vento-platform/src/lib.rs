@@ -398,6 +398,12 @@ pub trait Platform {
     /// Where the Pocket island sits: the first notched screen, otherwise the
     /// primary one. Main thread only.
     fn pocket_home(&self) -> Option<IslandHome>;
+    /// Every screen's home, the primary one first, in the same coordinates
+    /// as [`Platform::pocket_home`]. Where a platform keeps no list, the one
+    /// home of `pocket_home`. Main thread only.
+    fn island_homes(&self) -> Vec<IslandHome> {
+        self.pocket_home().into_iter().collect()
+    }
     /// The outer frame of the frontmost normal window of another app, in
     /// logical, top-left-origin global coordinates (as [`Platform::screens`]
     /// speaks). Never the frame of one of vento's own windows, the desktop

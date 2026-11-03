@@ -154,6 +154,22 @@ fn virtual_island_supported(wayland: bool) -> bool {
     !wayland
 }
 
+/// `monitor`'s home: no notch, the top bar as its menu bar, and `slot`
+/// only if the room the extension keeps for the island lies on it.
+fn monitor_home(monitor: shell::Monitor, slot: Option<Rect>) -> IslandHome {
+    let slot = slot.filter(|s| {
+        let f = monitor.frame;
+        s.x >= f.x && s.x + s.w <= f.x + f.w && s.y >= f.y && s.y < f.y + f.h
+    });
+    IslandHome {
+        screen: monitor.frame,
+        notch: None,
+        menu_bar_h: (monitor.work.y - monitor.frame.y).max(0.0),
+        slot,
+        tray_corner: None,
+    }
+}
+
 /// How long [`Platform::write_clipboard`] waits for GNOME to see the copy.
 const CLIP_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -283,17 +299,18 @@ impl Platform for LinuxPlatform {
     /// extension keeps for it in the top bar, when that is on this screen.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *self.shell.monitors().first()?;
-        let slot = self.shell.island_slot().filter(|s| {
-            let f = primary.frame;
-            s.x >= f.x && s.x + s.w <= f.x + f.w && s.y >= f.y && s.y < f.y + f.h
-        });
-        Some(IslandHome {
-            screen: primary.frame,
-            notch: None,
-            menu_bar_h: (primary.work.y - primary.frame.y).max(0.0),
-            slot,
-            tray_corner: None,
-        })
+        Some(monitor_home(primary, self.shell.island_slot()))
+    }
+
+    /// One home per screen, the primary first. The room in the top bar
+    /// belongs to the screen that holds it.
+    fn island_homes(&self) -> Vec<IslandHome> {
+        let slot = self.shell.island_slot();
+        self.shell
+            .monitors()
+            .into_iter()
+            .map(|m| monitor_home(m, slot))
+            .collect()
     }
 
     /// The active X11 window, in logical pixels as the extension reports
@@ -503,6 +520,23 @@ impl Platform for LinuxPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_island_slot_goes_only_to_the_screen_that_holds_it() {
+        let rect = |x, y, w, h| Rect { x, y, w, h };
+        let monitor = |x| shell::Monitor {
+            frame: rect(x, 0.0, 1000.0, 800.0),
+            work: rect(x, 30.0, 1000.0, 770.0),
+            scale: 1.0,
+        };
+        let slot = Some(rect(1400.0, 0.0, 100.0, 30.0));
+        let first = monitor_home(monitor(0.0), slot);
+        let second = monitor_home(monitor(1000.0), slot);
+        assert_eq!(first.slot, None);
+        assert_eq!(second.slot, slot);
+        assert_eq!(second.screen, rect(1000.0, 0.0, 1000.0, 800.0));
+        assert_eq!(second.menu_bar_h, 30.0);
+    }
 
     #[test]
     fn a_path_is_its_own_file_reference() {

@@ -202,6 +202,10 @@ impl Platform for MacPlatform {
         screens::pocket_home()
     }
 
+    fn island_homes(&self) -> Vec<IslandHome> {
+        screens::island_homes()
+    }
+
     /// The first normal window, front to back, of another app: vento's own
     /// windows and the menu bar, the Dock and panels sit at other layers.
     fn front_window_frame(&self) -> Option<Rect> {

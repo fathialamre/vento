@@ -255,6 +255,37 @@ fn is_shell_window(window: windows_sys::Win32::Foundation::HWND) -> bool {
     std::str::from_utf8(&name[..wide.len()]).is_ok_and(is_shell_class)
 }
 
+/// `monitor`'s home: its work area, with the island's corner by the clock.
+/// `area` is the taskbar's notification area: the corner is at the left
+/// only if the clock lies in this monitor's left half, so a monitor that
+/// does not hold it keeps its corner on the right.
+fn monitor_home(
+    monitor: &screens::Monitor,
+    area: Option<windows_sys::Win32::Foundation::RECT>,
+) -> IslandHome {
+    IslandHome {
+        screen: monitor.logical_frame(),
+        notch: None,
+        menu_bar_h: 0.0,
+        slot: None,
+        tray_corner: Some(TrayCorner {
+            work: monitor.logical_work(),
+            left: area.is_some_and(|r| clock_on_left_half(&monitor.frame, &r)),
+        }),
+    }
+}
+
+/// Whether the notification area `area` lies in the left half of the
+/// monitor frame `frame` (both in physical pixels).
+fn clock_on_left_half(
+    frame: &windows_sys::Win32::Foundation::RECT,
+    area: &windows_sys::Win32::Foundation::RECT,
+) -> bool {
+    let at = (area.left + area.right) / 2;
+    let mid = (frame.left + frame.right) / 2;
+    at >= frame.left && at < mid
+}
+
 /// The outer frame of `window` as it is drawn, without the invisible
 /// borders Windows 10 and later add for resizing, in physical pixels.
 fn drawn_frame(
@@ -423,19 +454,18 @@ impl Platform for WindowsPlatform {
     /// taskbar.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *screens::monitors().first()?;
-        let frame = primary.logical_frame();
-        let mid = (primary.frame.left + primary.frame.right) / 2;
-        let left = clicks::notification_area().is_some_and(|r| (r.left + r.right) / 2 < mid);
-        Some(IslandHome {
-            screen: frame,
-            notch: None,
-            menu_bar_h: 0.0,
-            slot: None,
-            tray_corner: Some(TrayCorner {
-                work: primary.logical_work(),
-                left,
-            }),
-        })
+        Some(monitor_home(&primary, clicks::notification_area()))
+    }
+
+    /// One home per monitor, the primary first, built as `pocket_home`
+    /// builds the primary's. The notification area is on one monitor only,
+    /// so the others keep their corner on the right.
+    fn island_homes(&self) -> Vec<IslandHome> {
+        let area = clicks::notification_area();
+        screens::monitors()
+            .iter()
+            .map(|m| monitor_home(m, area))
+            .collect()
     }
 
     /// The foreground window, unless it is vento's, the desktop's or a
@@ -700,6 +730,23 @@ mod tests {
         let corner = home.tray_corner.expect("a corner by the clock");
         assert!(corner.work.w > 0.0 && corner.work.h > 0.0);
         assert!(corner.work.x >= home.screen.x && corner.work.y >= home.screen.y);
+    }
+
+    #[test]
+    fn the_clock_is_left_only_on_the_monitor_that_holds_it() {
+        use windows_sys::Win32::Foundation::RECT;
+        let rect = |left, right| RECT {
+            left,
+            top: 0,
+            right,
+            bottom: 1080,
+        };
+        let area = rect(100, 300);
+        assert!(clock_on_left_half(&rect(0, 1920), &area));
+        // On the right half of the same monitor, or on another monitor.
+        assert!(!clock_on_left_half(&rect(0, 1920), &rect(1500, 1900)));
+        assert!(!clock_on_left_half(&rect(1920, 3840), &area));
+        assert!(!clock_on_left_half(&rect(-1920, 0), &area));
     }
 
     #[test]

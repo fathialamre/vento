@@ -196,7 +196,26 @@ pub(super) fn pocket_home() -> Option<IslandHome> {
         .iter()
         .find(|s| s.safeAreaInsets().top > 0.0)
         .or_else(|| all.firstObject())?;
+    Some(home_of(&screen, primary_height(mtm)))
+}
+
+/// Every screen's home, the primary one first, in the same coordinates as
+/// [`pocket_home`].
+pub(super) fn island_homes() -> Vec<IslandHome> {
+    let Some(mtm) = MainThreadMarker::new() else {
+        log::warn!("island_homes() called off the main thread; returning none");
+        return Vec::new();
+    };
     let primary_h = primary_height(mtm);
+    NSScreen::screens(mtm)
+        .iter()
+        .map(|s| home_of(&s, primary_h))
+        .collect()
+}
+
+/// `screen`'s notch and menu-bar height, in top-left-origin logical
+/// coordinates; `primary_h` is the primary screen's height.
+fn home_of(screen: &NSScreen, primary_h: f64) -> IslandHome {
     let flip = |r: objc2_foundation::NSRect| {
         flip_rect(
             primary_h,
@@ -218,13 +237,13 @@ pub(super) fn pocket_home() -> Option<IslandHome> {
         flip(screen.auxiliaryTopRightArea()),
         screen.safeAreaInsets().top,
     );
-    Some(IslandHome {
+    IslandHome {
         screen: screen_rect,
         notch,
         menu_bar_h,
         slot: None,
         tray_corner: None,
-    })
+    }
 }
 
 /// Whether a window at `layer`, of the process `pid`, is an app's normal
