@@ -27,7 +27,7 @@ msgstr "* adın tamamı için"
 msgid "+1 h"
 msgstr "+1 sa"
 
-#: crates/vento/ui/pocket.slint:2898
+#: crates/vento/ui/pocket.slint:2923
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] "+{n}"
@@ -93,11 +93,11 @@ msgstr "Klasör ekle…"
 msgid "Add to Notes"
 msgstr "Notlar'a ekle"
 
-#: crates/vento/ui/pocket.slint:885
+#: crates/vento/ui/pocket.slint:890
 msgid "Add to Pocket"
 msgstr "Cebe ekle"
 
-#: crates/vento/src/pocket/list_view.rs:383
+#: crates/vento/src/pocket/list_view.rs:389
 msgid "Added"
 msgstr "Eklenme"
 
@@ -125,7 +125,7 @@ msgstr "Açtıktan sonra macOS, Vento'yu yeniden açmanızı isteyebilir. Her Ve
 msgid "AirDrop"
 msgstr "AirDrop"
 
-#: crates/vento/src/pocket/list_view.rs:434
+#: crates/vento/src/pocket/list_view.rs:440
 msgid "All"
 msgstr "Tümü"
 
@@ -153,7 +153,7 @@ msgstr "Arşivle"
 msgid "Archives"
 msgstr "Arşivler"
 
-#: crates/vento/ui/pocket.slint:2567
+#: crates/vento/ui/pocket.slint:2572
 msgid "As a list"
 msgstr "Liste olarak"
 
@@ -169,7 +169,7 @@ msgstr "Ses"
 msgid "Automatic (system language)"
 msgstr "Otomatik (sistem dili)"
 
-#: crates/vento/src/main.rs:428
+#: crates/vento/src/main.rs:436
 msgid "Awake ends in 5 min"
 msgstr "Uyanık Tut 5 dk içinde bitiyor"
 
@@ -201,7 +201,7 @@ msgstr "Yarın {time} saatine kadar uyanık"
 msgid "Back"
 msgstr "Geri"
 
-#: crates/vento/ui/pocket.slint:1413
+#: crates/vento/ui/pocket.slint:1418
 msgid "Back to kinds"
 msgstr "Türlere dön"
 
@@ -225,7 +225,7 @@ msgstr "Her adı parçalardan oluşturur"
 msgid "Busy — still working"
 msgstr "Meşgul — hâlâ çalışıyor"
 
-#: crates/vento/ui/pocket.slint:2567
+#: crates/vento/ui/pocket.slint:2572
 msgid "By kind"
 msgstr "Türe göre"
 
@@ -341,7 +341,7 @@ msgstr "Bir görünüm seçin"
 msgid "Choose how Vento looks and works"
 msgstr "Vento'nun görünümünü ve çalışmasını seçin"
 
-#: crates/vento/ui/pocket.slint:332
+#: crates/vento/ui/pocket.slint:337
 msgid "Clear"
 msgstr "Temizle"
 
@@ -377,7 +377,7 @@ msgstr "Pano geçmişi"
 msgid "Clipboard shortcut"
 msgstr "Pano kısayolu"
 
-#: crates/vento/ui/pocket.slint:457
+#: crates/vento/ui/pocket.slint:462
 msgid "Close preview"
 msgstr "Önizlemeyi kapat"
 
@@ -411,7 +411,7 @@ msgstr "{name} sıkıştırılıyor…"
 msgid "Contains"
 msgstr "İçerik"
 
-#: crates/vento/ui/pocket.slint:2066
+#: crates/vento/ui/pocket.slint:2071
 msgid "Continue"
 msgstr "Devam"
 
@@ -445,7 +445,7 @@ msgstr "Dönüştürülüyor"
 msgid "Converting {name}…"
 msgstr "{name} dönüştürülüyor…"
 
-#: crates/vento/src/exec.rs:381
+#: crates/vento/src/exec.rs:382
 msgid "Copied"
 msgstr "Kopyalandı"
 
@@ -487,11 +487,11 @@ msgstr "Ekrandan kopyala bu kısayolu kullanıyor"
 msgid "Copy path"
 msgstr "Yolu kopyala"
 
-#: crates/vento/ui/pocket.slint:970
+#: crates/vento/ui/pocket.slint:975
 msgid "Copy something and it shows up here"
 msgstr "Bir şey kopyalayın, burada görünsün"
 
-#: crates/vento/ui/pocket.slint:1972
+#: crates/vento/ui/pocket.slint:1977
 msgid "Copy text"
 msgstr "Metni kopyala"
 
@@ -573,7 +573,7 @@ msgstr "PDF açılamadı: {reason}"
 msgid "Couldn't open the terminal: {reason}"
 msgstr "Terminal açılamadı: {reason}"
 
-#: crates/vento/src/pocket/mod.rs:140
+#: crates/vento/src/pocket/mod.rs:142
 msgid "Couldn't open: {reason}"
 msgstr "Açılamadı: {reason}"
 
@@ -589,7 +589,7 @@ msgstr "{name} geri alınamadı: {reason}. Şu öğeler geri alınamadı:"
 msgid "Couldn't read the items"
 msgstr "Öğeler okunamadı"
 
-#: crates/vento/src/pocket/shots_view.rs:926
+#: crates/vento/src/pocket/shots_view.rs:928
 msgid "Couldn't read the picture"
 msgstr "Resim okunamadı"
 
@@ -617,7 +617,7 @@ msgstr "Vento değiştirilemedi"
 msgid "Couldn't save settings: {error}"
 msgstr "Ayarlar kaydedilemedi: {error}"
 
-#: crates/vento/src/pocket/mod.rs:2157
+#: crates/vento/src/pocket/mod.rs:2228
 msgid "Couldn't save the Pocket: {error}"
 msgstr "Cep kaydedilemedi: {error}"
 
@@ -697,7 +697,7 @@ msgstr "Belgeler"
 msgid "Done"
 msgstr "Bitti"
 
-#: crates/vento/src/main.rs:640
+#: crates/vento/src/main.rs:646
 msgid "Downloading {v}…"
 msgstr "{v} indiriliyor…"
 
@@ -713,7 +713,7 @@ msgstr "İstediğiniz metnin üzerinde bir dikdörtgen çizip bırakın."
 msgid "Drag a row by its grip to change where the action sits."
 msgstr "Eylemin yerini değiştirmek için satırı tutamağından sürükleyin."
 
-#: crates/vento/ui/pocket.slint:3865
+#: crates/vento/ui/pocket.slint:4010
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] "{n} öğenin tümünü sürükle"
@@ -723,7 +723,7 @@ msgstr[1] "{n} öğenin tümünü sürükle"
 msgid "Drag items from the island into any folder or app. Removing one never deletes your file."
 msgstr "Öğeleri adadan herhangi bir klasöre ya da uygulamaya sürükleyin. Birini kaldırmak dosyanızı asla silmez."
 
-#: crates/vento/ui/pocket.slint:2431
+#: crates/vento/ui/pocket.slint:2436
 msgid "Drag the picture anywhere, or keep it for later."
 msgstr "Resmi istediğiniz yere sürükleyin ya da sonrası için saklayın."
 
@@ -731,13 +731,13 @@ msgstr "Resmi istediğiniz yere sürükleyin ya da sonrası için saklayın."
 msgid "Drag to reorder"
 msgstr "Sıralamak için sürükleyin"
 
-#: crates/vento/ui/pocket.slint:1088
+#: crates/vento/ui/pocket.slint:1093
 msgid "Drag {n}"
 msgid_plural "Drag {n}"
 msgstr[0] "{n} öğeyi sürükle"
 msgstr[1] "{n} öğeyi sürükle"
 
-#: crates/vento/ui/pocket.slint:3647
+#: crates/vento/ui/pocket.slint:3780
 msgid "Drop to add"
 msgstr "Eklemek için bırakın"
 
@@ -1015,7 +1015,7 @@ msgstr[1] "{n} öğe silinmedi: oluşturulduktan sonra değiştiler"
 msgid "Kind"
 msgstr "Tür"
 
-#: crates/vento/ui/pocket.slint:1437
+#: crates/vento/ui/pocket.slint:1442
 msgid "Kinds"
 msgstr "Türler"
 
@@ -1073,7 +1073,7 @@ msgstr "Açık, koyu ya da sistem ayarınıza göre"
 msgid "Link"
 msgstr "Bağlantı"
 
-#: crates/vento/ui/pocket.slint:701
+#: crates/vento/ui/pocket.slint:706
 msgid "Links"
 msgstr "Bağlantılar"
 
@@ -1145,7 +1145,7 @@ msgstr "Dosyaları sabitlenmiş ve son kullanılan klasörlere taşıyın ya da 
 msgid "Move to"
 msgstr "Şuraya taşı"
 
-#: crates/vento/ui/pocket.slint:1984
+#: crates/vento/ui/pocket.slint:1989
 msgid "Move to Trash"
 msgstr "Çöp Sepeti'ne taşı"
 
@@ -1229,7 +1229,7 @@ msgstr "Sabitlenmiş klasör yok"
 msgid "No recent folders"
 msgstr "Son kullanılan klasör yok"
 
-#: crates/vento/src/pocket/shots_view.rs:934
+#: crates/vento/src/pocket/shots_view.rs:936
 msgid "No text found"
 msgstr "Metin bulunamadı"
 
@@ -1253,7 +1253,7 @@ msgstr "Notlar bir klasörü dosyalarla birlikte alamaz. Klasörü tek başına 
 msgid "Nothing left to remove"
 msgstr "Kaldırılacak bir şey kalmadı"
 
-#: crates/vento/ui/pocket.slint:971
+#: crates/vento/ui/pocket.slint:976
 msgid "Nothing of this kind yet"
 msgstr "Bu türden henüz bir şey yok"
 
@@ -1265,11 +1265,11 @@ msgstr "Hiçbir şey seçilmedi"
 msgid "Nothing to convert: already {format}"
 msgstr "Dönüştürülecek bir şey yok: zaten {format}"
 
-#: crates/vento/src/exec.rs:959
+#: crates/vento/src/exec.rs:960
 msgid "Nothing to copy"
 msgstr "Kopyalanacak bir şey yok"
 
-#: crates/vento/src/exec.rs:924
+#: crates/vento/src/exec.rs:925
 msgid "Nothing to move"
 msgstr "Taşınacak bir şey yok"
 
@@ -1329,7 +1329,7 @@ msgstr "Birlikte Aç"
 msgid "Open clipboard history"
 msgstr "Pano geçmişini aç"
 
-#: crates/vento/ui/pocket.slint:936
+#: crates/vento/ui/pocket.slint:941
 msgid "Open in browser"
 msgstr "Tarayıcıda aç"
 
@@ -1341,7 +1341,7 @@ msgstr "Ekran görüntülerini aç"
 msgid "Open settings file"
 msgstr "Ayarlar dosyasını aç"
 
-#: crates/vento/src/main.rs:251
+#: crates/vento/src/main.rs:259
 msgid "Open the Pocket"
 msgstr "Cep'i aç"
 
@@ -1353,7 +1353,7 @@ msgstr "Son ekran görüntülerinizi görmek için adada Ekran görüntüleri se
 msgid "Open the Welcome setup"
 msgstr "Hoş geldin kurulumunu aç"
 
-#: crates/vento/src/main.rs:255
+#: crates/vento/src/main.rs:263
 msgid "Open the clipboard history"
 msgstr "Pano geçmişini aç"
 
@@ -1405,7 +1405,7 @@ msgstr[1] "Sayfa {pages}"
 msgid "Password"
 msgstr "Parola"
 
-#: crates/vento/src/exec.rs:396
+#: crates/vento/src/exec.rs:397
 msgid "Path copied"
 msgstr "Yol kopyalandı"
 
@@ -1433,11 +1433,11 @@ msgstr "Burada ayarlamak için bir araç ya da yukarıdan bir kural seçin"
 msgid "Pick how long under the tile, or leave it on until you stop it."
 msgstr "Süreyi kutucuğun altından seçin ya da siz durdurana kadar açık bırakın."
 
-#: crates/vento/ui/pocket.slint:875
+#: crates/vento/ui/pocket.slint:880
 msgid "Pin"
 msgstr "Sabitle"
 
-#: crates/vento/ui/pocket.slint:971
+#: crates/vento/ui/pocket.slint:976
 msgid "Pin a copy to keep it here"
 msgstr "Burada tutmak için bir kopyayı sabitleyin"
 
@@ -1445,7 +1445,7 @@ msgstr "Burada tutmak için bir kopyayı sabitleyin"
 msgid "Pin {}"
 msgstr "Sabitle: {}"
 
-#: crates/vento/ui/pocket.slint:701
+#: crates/vento/ui/pocket.slint:706
 msgid "Pinned"
 msgstr "Sabitlenmiş"
 
@@ -1477,7 +1477,7 @@ msgstr "Sade kapsül"
 msgid "Pocket"
 msgstr "Cep"
 
-#: crates/vento/ui/pocket.slint:3616
+#: crates/vento/ui/pocket.slint:3749
 msgid "Pocket cleared"
 msgstr "Cep temizlendi"
 
@@ -1505,7 +1505,7 @@ msgstr "Adayı istediğiniz an açmak için {} tuşlarına basın ve üzerine da
 msgid "Press {}: the screen dims."
 msgstr "{} tuşlarına basın: ekran kararır."
 
-#: crates/vento/ui/pocket.slint:457
+#: crates/vento/ui/pocket.slint:462
 msgid "Preview"
 msgstr "Önizleme"
 
@@ -1547,7 +1547,7 @@ msgstr "Son"
 msgid "Remember what you copy"
 msgstr "Kopyaladıklarını hatırla"
 
-#: crates/vento/ui/pocket.slint:657
+#: crates/vento/ui/pocket.slint:662
 msgid "Remove"
 msgstr "Kaldır"
 
@@ -1701,7 +1701,7 @@ msgstr[1] "{n} görüntü {folder} klasörüne kaydedildi"
 msgid "Screen"
 msgstr "Ekran"
 
-#: crates/vento/ui/pocket.slint:2406
+#: crates/vento/ui/pocket.slint:2411
 msgid "Screenshot saved"
 msgstr "Ekran görüntüsü kaydedildi"
 
@@ -1709,7 +1709,7 @@ msgstr "Ekran görüntüsü kaydedildi"
 msgid "Screenshots"
 msgstr "Ekran görüntüleri"
 
-#: crates/vento/ui/pocket.slint:2034
+#: crates/vento/ui/pocket.slint:2039
 msgid "Screenshots you take will show here."
 msgstr "Aldığınız ekran görüntüleri burada görünecek."
 
@@ -1793,7 +1793,7 @@ msgstr "Kısayol"
 msgid "Show a card when a screenshot is saved"
 msgstr "Ekran görüntüsü kaydedilince kart göster"
 
-#: crates/vento/ui/pocket.slint:1031
+#: crates/vento/ui/pocket.slint:1036
 msgid "Show all {}"
 msgstr "Tümünü göster: {}"
 
@@ -1833,7 +1833,7 @@ msgstr "Boyut"
 msgid "Skip setup"
 msgstr "Kurulumu atla"
 
-#: crates/vento/src/main.rs:438
+#: crates/vento/src/main.rs:446
 msgid "Sleep allowed again"
 msgstr "Uykuya yeniden izin verildi"
 
@@ -1919,7 +1919,7 @@ msgstr "Bu Mac'te şifrelenmeden saklanır. Parola yöneticilerinin özel olarak
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Bu bilgisayarda şifrelenmeden saklanır. Parola yöneticilerinin özel olarak işaretlediği kopyalar atlanır."
 
-#: crates/vento/src/main.rs:1082
+#: crates/vento/src/main.rs:1088
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ekrandan kopyala için Ekran Kaydı'nı yeniden açın"
 
@@ -2007,7 +2007,7 @@ msgstr "Tema"
 msgid "This shortcut can't be used"
 msgstr "Bu kısayol kullanılamaz"
 
-#: crates/vento/src/pocket/mod.rs:860
+#: crates/vento/src/pocket/mod.rs:895
 msgid "Those items are no longer there"
 msgstr "O öğeler artık orada değil"
 
@@ -2035,7 +2035,7 @@ msgstr "Bugün"
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr "Aynı anda yeniden adlandırmak için çok fazla öğe (en fazla 5.000)"
 
-#: crates/vento/ui/pocket.slint:2281
+#: crates/vento/ui/pocket.slint:2286
 msgid "Trash"
 msgstr "Çöp Sepeti"
 
@@ -2095,7 +2095,7 @@ msgstr "Son taşımayı geri al"
 msgid "Undo last rename"
 msgstr "Son yeniden adlandırmayı geri al"
 
-#: crates/vento/ui/pocket.slint:195
+#: crates/vento/ui/pocket.slint:200
 msgid "Undo {}s"
 msgstr "Geri al {}sn"
 
@@ -2103,7 +2103,7 @@ msgstr "Geri al {}sn"
 msgid "Unknown {tag}"
 msgstr "Bilinmeyen {tag}"
 
-#: crates/vento/ui/pocket.slint:875
+#: crates/vento/ui/pocket.slint:880
 msgid "Unpin"
 msgstr "Sabitlemeyi kaldır"
 
@@ -2131,7 +2131,7 @@ msgstr "En çok 7 klasör"
 msgid "Update"
 msgstr "Güncelle"
 
-#: crates/vento/src/main.rs:666
+#: crates/vento/src/main.rs:672
 msgid "Update ready"
 msgstr "Güncelleme hazır"
 
@@ -2203,11 +2203,11 @@ msgstr "Vento her dosyanın yalnızca bağlantısını değil, kendi kopyasını
 msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu."
 msgstr "Vento menü çubuğunda yaşar. Hızlı panel için simgesine tıklayın; menü için sağ tıklayın."
 
-#: crates/vento/ui/pocket.slint:2055
+#: crates/vento/ui/pocket.slint:2060
 msgid "Vento needs to see {} again after the update."
 msgstr "Vento'nun güncellemeden sonra {} klasörünü yeniden görmesi gerekiyor."
 
-#: crates/vento/ui/pocket.slint:3030
+#: crates/vento/ui/pocket.slint:3149
 msgid "Vento paused"
 msgstr "Vento duraklatıldı"
 
@@ -2219,7 +2219,7 @@ msgstr "Vento buradaydı."
 msgid "Vento will be back in a second"
 msgstr "Vento birazdan geri dönecek"
 
-#: crates/vento/src/main.rs:619
+#: crates/vento/src/main.rs:627
 msgid "Vento {version} is out"
 msgstr "Vento {version} çıktı"
 
@@ -2419,11 +2419,11 @@ msgstr "salt okunur klasörden kaldırılamaz: {dir}"
 msgid "cannot start"
 msgstr "başlatılamıyor"
 
-#: crates/vento/src/pocket/mod.rs:1843
+#: crates/vento/src/pocket/mod.rs:1913
 msgid "cannot start copying: {reason}"
 msgstr "kopyalama başlatılamıyor: {reason}"
 
-#: crates/vento/src/exec.rs:1131
+#: crates/vento/src/exec.rs:1132
 msgid "cannot start: {reason}"
 msgstr "başlatılamıyor: {reason}"
 
@@ -2455,7 +2455,7 @@ msgstr "boş"
 msgid "i/o error: {reason}"
 msgstr "G/Ç hatası: {reason}"
 
-#: crates/vento/src/exec.rs:1114
+#: crates/vento/src/exec.rs:1115
 msgid "internal error"
 msgstr "iç hata"
 
@@ -2535,7 +2535,7 @@ msgstr "kaydedilen öğe için boş ad yok"
 msgid "no free temporary name"
 msgstr "boş geçici ad yok"
 
-#: crates/vento/src/exec.rs:645
+#: crates/vento/src/exec.rs:646
 msgid "no images"
 msgstr "görüntü yok"
 
@@ -2635,7 +2635,7 @@ msgstr "{app} artık yok"
 msgid "{app} is not installed"
 msgstr "{app} yüklü değil"
 
-#: crates/vento/src/pocket/news.rs:192
+#: crates/vento/src/pocket/news.rs:328
 msgid "{current} of {total}"
 msgstr "{current}/{total}"
 
@@ -2693,11 +2693,11 @@ msgstr[1] "{name} + {n} tane daha"
 msgid "{name} is locked"
 msgstr "{name} kilitli"
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1132
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "{name} kısayolu kullanılamıyor: {reason}"
 
-#: crates/vento/src/pocket/list_view.rs:113
+#: crates/vento/src/pocket/list_view.rs:114
 msgid "{name} · {n} items"
 msgstr "{name} · {n} öğe"
 
@@ -2735,7 +2735,7 @@ msgid_plural "{n} files"
 msgstr[0] "{n} dosya"
 msgstr[1] "{n} dosya"
 
-#: crates/vento/src/exec.rs:383
+#: crates/vento/src/exec.rs:384
 msgid "{n} file ready to paste"
 msgid_plural "{n} files ready to paste"
 msgstr[0] "{n} dosya yapıştırılmaya hazır"
@@ -2865,13 +2865,13 @@ msgstr "{side} · {text}"
 msgid "{text} · "
 msgstr "{text} · "
 
-#: crates/vento/ui/pocket.slint:365
+#: crates/vento/ui/pocket.slint:370
 msgid "{} {n}"
 msgid_plural "{} {n}"
 msgstr[0] "{} {n}"
 msgstr[1] "{} {n}"
 
-#: crates/vento/src/pocket/news.rs:199
+#: crates/vento/src/pocket/news.rs:335
 msgid "{}%"
 msgstr "%{}"
 

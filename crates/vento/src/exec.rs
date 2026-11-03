@@ -375,9 +375,10 @@ fn undo_notice(
         .with_island_undo(island_undo)
 }
 
-/// The notice that Copy put `n` files on the clipboard. The classic toast
-/// has nothing to say, so only the island shows it.
-fn files_copied_notice(n: usize) -> Notice {
+/// The notice that Copy (or the Pocket menu's Copy) put `n` files on the
+/// clipboard. The classic toast has nothing to say, so only the island
+/// shows it.
+pub(crate) fn files_copied_notice(n: usize) -> Notice {
     Notice::done(tr("Copied"))
         .with_icon(ActionId::Copy)
         .with_sub(trn(
@@ -389,9 +390,9 @@ fn files_copied_notice(n: usize) -> Notice {
         .island_only()
 }
 
-/// The notice that Copy path put `copied` on the clipboard: the first line,
-/// cut to fit the island. Island only, like [`files_copied_notice`].
-fn path_copied_notice(copied: &str) -> Notice {
+/// The notice that Copy path (or the Pocket list's) put `copied` on the
+/// clipboard: the first line, cut to fit the island. Island only, like [`files_copied_notice`].
+pub(crate) fn path_copied_notice(copied: &str) -> Notice {
     let first = copied.lines().next().unwrap_or_default();
     Notice::done(tr("Path copied"))
         .with_icon(ActionId::CopyPath)

@@ -49,6 +49,11 @@ export struct ShotTile { index: int, time: string, size: string, picture: image,
 // screenshots it holds and their tiles, newest first.
 export struct ShotDay { label: string, count: int, tiles: [ShotTile] }
 
+// One row of Activity: a running job (`stage` 1) or a result (2), with its
+// `tone` and `icon` as the news pill marks them (see NewsMark), what it
+// says, how long ago, and its button's label (empty for none).
+export struct ActivityRow { stage: int, tone: int, icon: image, text: string, age: string, button: string }
+
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
 component DashedBox inherits Rectangle {
@@ -2648,6 +2653,102 @@ component DragButton inherits Rectangle {
     }
 }
 
+// A news mark, 18 pt square: at work, an arc going round (only while it
+// can be seen); a result's mark on its tone's colour (a tick when done,
+// "!" for an error, "…" busy); information, the action's icon, or the
+// orange dot without one.
+component NewsMark inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    // The arc may turn: the mark is in sight.
+    in property <bool> live;
+
+    width: 18px;
+    height: 18px;
+
+    // At work: an arc going round, once a second, only while it can be
+    // seen.
+    if root.stage == 1 && root.live: spinner := Path {
+        property <angle> turn: Math.mod(animation-tick() / 1ms, 1000) / 1000 * 360deg;
+        x: 2px;
+        y: 2px;
+        width: 14px;
+        height: 14px;
+        viewbox-width: 14;
+        viewbox-height: 14;
+        stroke: #ff6a1a;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: 7 + 6 * Math.sin(spinner.turn);
+            y: 7 - 6 * Math.cos(spinner.turn);
+        }
+
+        ArcTo {
+            x: 7 + 6 * Math.sin(spinner.turn + 270deg);
+            y: 7 - 6 * Math.cos(spinner.turn + 270deg);
+            radius-x: 6;
+            radius-y: 6;
+            large-arc: true;
+            sweep: true;
+        }
+    }
+
+    // A result's mark on the tone's colour.
+    if root.stage == 2 && root.tone != 1: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: root.tone == 0 ? #30d158 : root.tone == 2 ? #ff5f57 : #ffb340;
+
+        if root.tone == 0: Image {
+            source: @image-url("icons/check.svg");
+            colorize: black;
+            x: 3px;
+            y: 3px;
+            width: 12px;
+            height: 12px;
+        }
+
+        if root.tone != 0: Text {
+            x: 0px;
+            y: 0px;
+            width: 18px;
+            height: 18px;
+            text: root.tone == 2 ? "!" : "…";
+            color: black;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // Information: the action's icon, or the orange dot without one.
+    if root.stage == 2 && root.tone == 1 && root.icon.width > 0: Image {
+        source: root.icon;
+        colorize: #ff6a1a;
+        x: 1px;
+        y: 1px;
+        width: 16px;
+        height: 16px;
+    }
+
+    if root.stage == 2 && root.tone == 1 && root.icon.width == 0: Rectangle {
+        x: 5px;
+        y: 5px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: #ff6a1a;
+    }
+}
+
 // What the virtual island's news pill holds, 34 pt high and `pill-w` wide
 // (as wide as what it says, at least the resting pill's 120 and at most
 // `max-w`), laid out along the line from its start: the mark (a turning
@@ -2734,90 +2835,13 @@ component NewsBody inherits Rectangle {
     height: 34px;
 
     // The mark.
-    Rectangle {
+    NewsMark {
         x: root.mirror(root.lead + 8px, 18px);
         y: 8px;
-        width: 18px;
-        height: 18px;
-
-        // At work: an arc going round, once a second, only while it can be
-        // seen.
-        if root.stage == 1 && root.live: spinner := Path {
-            property <angle> turn: Math.mod(animation-tick() / 1ms, 1000) / 1000 * 360deg;
-            x: 2px;
-            y: 2px;
-            width: 14px;
-            height: 14px;
-            viewbox-width: 14;
-            viewbox-height: 14;
-            stroke: #ff6a1a;
-            stroke-width: 2px;
-
-            MoveTo {
-                x: 7 + 6 * Math.sin(spinner.turn);
-                y: 7 - 6 * Math.cos(spinner.turn);
-            }
-
-            ArcTo {
-                x: 7 + 6 * Math.sin(spinner.turn + 270deg);
-                y: 7 - 6 * Math.cos(spinner.turn + 270deg);
-                radius-x: 6;
-                radius-y: 6;
-                large-arc: true;
-                sweep: true;
-            }
-        }
-
-        // A result's mark on the tone's colour.
-        if root.stage == 2 && root.tone != 1: Rectangle {
-            x: 0px;
-            y: 0px;
-            width: 18px;
-            height: 18px;
-            border-radius: 9px;
-            background: root.tone == 0 ? #30d158 : root.tone == 2 ? #ff5f57 : #ffb340;
-
-            if root.tone == 0: Image {
-                source: @image-url("icons/check.svg");
-                colorize: black;
-                x: 3px;
-                y: 3px;
-                width: 12px;
-                height: 12px;
-            }
-
-            if root.tone != 0: Text {
-                x: 0px;
-                y: 0px;
-                width: 18px;
-                height: 18px;
-                text: root.tone == 2 ? "!" : "…";
-                color: black;
-                font-size: 12px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-
-        // Information: the action's icon, or the orange dot without one.
-        if root.stage == 2 && root.tone == 1 && root.icon.width > 0: Image {
-            source: root.icon;
-            colorize: #ff6a1a;
-            x: 1px;
-            y: 1px;
-            width: 16px;
-            height: 16px;
-        }
-
-        if root.stage == 2 && root.tone == 1 && root.icon.width == 0: Rectangle {
-            x: 5px;
-            y: 5px;
-            width: 8px;
-            height: 8px;
-            border-radius: 4px;
-            background: #ff6a1a;
-        }
+        stage: root.stage;
+        tone: root.tone;
+        icon: root.icon;
+        live: root.live;
     }
 
     text-line := LineText {
@@ -2941,6 +2965,100 @@ component NewsBody inherits Rectangle {
             enabled: root.has-button;
             clicked => {
                 root.button-clicked();
+            }
+        }
+    }
+}
+
+// Activity: today's jobs and results under a title, newest first (the
+// running jobs on top), one 48 pt row each: the mark, what it says, how
+// long ago, and the row's button at the end. The other way round in a
+// right-to-left language.
+component ActivityPanel inherits Rectangle {
+    in property <[ActivityRow]> rows;
+    // A row's button, by the row's place.
+    callback button-clicked(int);
+
+    property <length> pad: 16px;
+
+    // The x of something `w` wide at `x` from the left, left to right: as
+    // far from the right in a right-to-left language.
+    pure function mirror(x: length, w: length) -> length {
+        Theme.rtl ? root.width - x - w : x
+    }
+
+    LineText {
+        x: root.pad;
+        y: 16px;
+        width: root.width - 2 * root.pad;
+        height: 24px;
+        text: @tr("Today");
+        color: #ffffffb0;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    for row[i] in root.rows: Rectangle {
+        x: 0px;
+        y: 56px + i * 48px;
+        width: root.width;
+        height: 48px;
+
+        // Room the age and the button take at the end.
+        property <length> end-x: root.width - root.pad - (row.button != "" ? button.width + 10px : 0px);
+        property <length> text-x: root.pad + 18px + 10px;
+
+        Rectangle {
+            x: root.pad;
+            y: 0px;
+            width: root.width - 2 * root.pad;
+            height: 1px;
+            background: #ffffff14;
+        }
+
+        NewsMark {
+            x: root.mirror(root.pad, 18px);
+            y: (parent.height - self.height) / 2;
+            stage: row.stage;
+            tone: row.tone;
+            icon: row.icon;
+            live: true;
+        }
+
+        LineText {
+            x: root.mirror(parent.text-x, self.width);
+            y: 0px;
+            width: max(0px, parent.end-x - age.width - 10px - parent.text-x);
+            height: parent.height;
+            text: row.text;
+            color: white;
+            font-size: 12.5px;
+            font-weight: 500;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+        }
+
+        age := Text {
+            x: root.mirror(parent.end-x - self.width, self.width);
+            y: 0px;
+            width: self.preferred-width;
+            height: parent.height;
+            text: row.age;
+            color: #ffffff80;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+
+        button := PillButton {
+            x: root.mirror(root.width - root.pad - self.width, self.width);
+            y: (parent.height - self.height) / 2;
+            visible: row.button != "";
+            text: row.button;
+            primary: true;
+            clicked => {
+                root.button-clicked(i);
             }
         }
     }
@@ -3236,6 +3354,12 @@ export component PocketIsland inherits Window {
     in property <int> news-extra;
     in property <float> news-fraction: -1;
     in property <string> news-count;
+    // The board's id of the news shown, to tell a new error from the same
+    // one shown again.
+    in property <int> news-id;
+    // Activity is up over the view, with no bar: today's jobs and results.
+    in property <bool> activity;
+    in property <[ActivityRow]> activity-rows;
     // Where the news pill lies, for the clicks it takes, as it is drawn: its
     // width, and its button's and its "+N" chip's width (0 for none) and x
     // from the pill's left.
@@ -3326,6 +3450,8 @@ export component PocketIsland inherits Window {
     callback news-chip-clicked();
     // The paused resting pill's Resume.
     callback rest-button-clicked();
+    // A button on Activity's row, by the row's place.
+    callback activity-button-clicked(int);
 
     width: root.panel-w;
     height: root.top-h + root.window-h;
@@ -3380,16 +3506,21 @@ export component PocketIsland inherits Window {
         root.shaking = true;
         shake-timer.restart();
     }
-    changed news-error => {
-        if root.news-error {
+    // Once for each error: the same one shown again (as the island
+    // closes over it) does not shake.
+    property <int> shaken-id: -1;
+    function shake-new-error() {
+        if root.news-error && root.news-id != root.shaken-id {
+            root.shaken-id = root.news-id;
             root.shake();
         }
     }
+    changed news-error => {
+        root.shake-new-error();
+    }
     // Another error in its place shakes it again.
-    changed news-text => {
-        if root.news-error {
-            root.shake();
-        }
+    changed news-id => {
+        root.shake-new-error();
     }
     shake-timer := Timer {
         interval: 500ms;
@@ -3401,11 +3532,12 @@ export component PocketIsland inherits Window {
     property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
     property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
     property <bool> shots-undo: root.undo-active && root.undo-kind == 3;
-    // While the card is up, no view is in sight.
-    property <bool> on-clip: root.view == 1 && !root.card;
+    // While the card or Activity is up, no view is in sight.
+    property <bool> covered: root.card || root.activity;
+    property <bool> on-clip: root.view == 1 && !root.covered;
     property <bool> on-list: root.view == 2;
-    property <bool> on-pocket: (root.view == 0 || root.view == 2) && !root.card;
-    property <bool> on-shots: root.view == 3 && !root.card;
+    property <bool> on-pocket: (root.view == 0 || root.view == 2) && !root.covered;
+    property <bool> on-shots: root.view == 3 && !root.covered;
     // The wings show an icon alone, no count.
     property <bool> icon-wing: root.clip-wing || root.shot-wing;
     // What "Drag" takes: every item, or the kind the list shows.
@@ -3514,7 +3646,7 @@ export component PocketIsland inherits Window {
             width: root.width;
             height: max(0px, parent.height - self.y);
 
-            property <length> view-h: max(0px, self.height - (root.drop-box || root.card ? 0px : root.bar-h));
+            property <length> view-h: max(0px, self.height - (root.drop-box || root.covered ? 0px : root.bar-h));
 
             // The Clipboard view, sliding and fading in from the start of the
             // line as the Pocket goes.
@@ -3790,11 +3922,23 @@ export component PocketIsland inherits Window {
                 }
             }
 
+            // Activity, over the whole panel; a card that comes up, over it.
+            if root.activity && !root.card: ActivityPanel {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.view-h;
+                rows: root.activity-rows;
+                button-clicked(i) => {
+                    root.activity-button-clicked(i);
+                }
+            }
+
             // Under every view: a tab for each view that is on (with two or
             // more), and at the end the shown view's controls: the Pocket's
             // look, "Drag" and Clear (or Undo), the Clipboard's Clear (or
             // Undo), or the Screenshots' Undo.
-            if !root.drop-box && !root.card: Rectangle {
+            if !root.drop-box && !root.covered: Rectangle {
                 y: parent.view-h;
                 width: parent.width;
                 height: root.bar-h;

@@ -64,6 +64,13 @@ const PUSH_DEPTH: f64 = 2.0;
 /// count as a bar under the island.
 const BAR_TOLERANCE: f64 = 8.0;
 
+/// Activity: the room above its title and below its rows, the title's
+/// line, and one row; at most [`ACTIVITY_ROWS`] rows are listed.
+const ACTIVITY_PAD: f64 = 16.0;
+const ACTIVITY_TITLE_H: f64 = 40.0;
+const ACTIVITY_ROW_H: f64 = 48.0;
+pub(super) const ACTIVITY_ROWS: usize = 6;
+
 /// The news pill: its height, and its one button's and "+N" chip's.
 const NEWS_H: f64 = 34.0;
 const NEWS_BUTTON_H: f64 = 26.0;
@@ -96,6 +103,8 @@ pub(super) enum Panel {
     Drop,
     /// The card of a screenshot just saved, with no bar.
     Card,
+    /// Today's jobs and results, `rows` of them, with no bar.
+    Activity { rows: usize },
 }
 
 /// What the virtual island needs to know besides its home: where on the top
@@ -366,6 +375,11 @@ fn panel_h(panel: Panel) -> f64 {
         Panel::List | Panel::Clipboard | Panel::Screenshots => LIST_H,
         Panel::Drop => return DROP_H,
         Panel::Card => return CARD_H,
+        Panel::Activity { rows } => {
+            return ACTIVITY_PAD
+                + ACTIVITY_TITLE_H
+                + rows.min(ACTIVITY_ROWS) as f64 * ACTIVITY_ROW_H;
+        }
     };
     view + BAR_H
 }
@@ -820,6 +834,22 @@ mod tests {
             frames(&small, Panel::List).expanded,
             rect(20.0, 0.0, 460.0, 24.0 + 408.0 + 44.0)
         );
+    }
+
+    #[test]
+    fn activity_height_follows_its_rows() {
+        assert_eq!(panel_h(Panel::Activity { rows: 3 }), 16.0 + 40.0 + 144.0);
+        assert_eq!(panel_h(Panel::Activity { rows: 1 }), 16.0 + 40.0 + 48.0);
+        // More than six are not listed.
+        assert_eq!(
+            panel_h(Panel::Activity { rows: 9 }),
+            panel_h(Panel::Activity { rows: 6 })
+        );
+        // No bar under it, and as wide as every other view.
+        let home = plain(24.0);
+        let activity = frames(&home, Panel::Activity { rows: 3 });
+        assert_eq!(activity.expanded.h, activity.top_h + 200.0);
+        assert_eq!(activity.expanded.w, frames(&home, TWO).expanded.w);
     }
 
     #[test]

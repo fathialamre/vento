@@ -25,7 +25,7 @@ msgstr ""
 msgid "+1 h"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2898
+#: crates/vento/ui/pocket.slint:2923
 msgid "+{n}"
 msgid_plural "+{n}"
 msgstr[0] ""
@@ -91,11 +91,11 @@ msgstr ""
 msgid "Add to Notes"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:885
+#: crates/vento/ui/pocket.slint:890
 msgid "Add to Pocket"
 msgstr ""
 
-#: crates/vento/src/pocket/list_view.rs:383
+#: crates/vento/src/pocket/list_view.rs:389
 msgid "Added"
 msgstr ""
 
@@ -123,7 +123,7 @@ msgstr ""
 msgid "AirDrop"
 msgstr ""
 
-#: crates/vento/src/pocket/list_view.rs:434
+#: crates/vento/src/pocket/list_view.rs:440
 msgid "All"
 msgstr ""
 
@@ -151,7 +151,7 @@ msgstr ""
 msgid "Archives"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2567
+#: crates/vento/ui/pocket.slint:2572
 msgid "As a list"
 msgstr ""
 
@@ -167,7 +167,7 @@ msgstr ""
 msgid "Automatic (system language)"
 msgstr ""
 
-#: crates/vento/src/main.rs:428
+#: crates/vento/src/main.rs:436
 msgid "Awake ends in 5 min"
 msgstr ""
 
@@ -199,7 +199,7 @@ msgstr ""
 msgid "Back"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:1413
+#: crates/vento/ui/pocket.slint:1418
 msgid "Back to kinds"
 msgstr ""
 
@@ -223,7 +223,7 @@ msgstr ""
 msgid "Busy — still working"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2567
+#: crates/vento/ui/pocket.slint:2572
 msgid "By kind"
 msgstr ""
 
@@ -339,7 +339,7 @@ msgstr ""
 msgid "Choose how Vento looks and works"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:332
+#: crates/vento/ui/pocket.slint:337
 msgid "Clear"
 msgstr ""
 
@@ -375,7 +375,7 @@ msgstr ""
 msgid "Clipboard shortcut"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:457
+#: crates/vento/ui/pocket.slint:462
 msgid "Close preview"
 msgstr ""
 
@@ -409,7 +409,7 @@ msgstr ""
 msgid "Contains"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2066
+#: crates/vento/ui/pocket.slint:2071
 msgid "Continue"
 msgstr ""
 
@@ -443,7 +443,7 @@ msgstr ""
 msgid "Converting {name}…"
 msgstr ""
 
-#: crates/vento/src/exec.rs:381
+#: crates/vento/src/exec.rs:382
 msgid "Copied"
 msgstr ""
 
@@ -485,11 +485,11 @@ msgstr ""
 msgid "Copy path"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:970
+#: crates/vento/ui/pocket.slint:975
 msgid "Copy something and it shows up here"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:1972
+#: crates/vento/ui/pocket.slint:1977
 msgid "Copy text"
 msgstr ""
 
@@ -571,7 +571,7 @@ msgstr ""
 msgid "Couldn't open the terminal: {reason}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:140
+#: crates/vento/src/pocket/mod.rs:142
 msgid "Couldn't open: {reason}"
 msgstr ""
 
@@ -587,7 +587,7 @@ msgstr ""
 msgid "Couldn't read the items"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:926
+#: crates/vento/src/pocket/shots_view.rs:928
 msgid "Couldn't read the picture"
 msgstr ""
 
@@ -615,7 +615,7 @@ msgstr ""
 msgid "Couldn't save settings: {error}"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:2157
+#: crates/vento/src/pocket/mod.rs:2228
 msgid "Couldn't save the Pocket: {error}"
 msgstr ""
 
@@ -695,7 +695,7 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
-#: crates/vento/src/main.rs:640
+#: crates/vento/src/main.rs:646
 msgid "Downloading {v}…"
 msgstr ""
 
@@ -711,7 +711,7 @@ msgstr ""
 msgid "Drag a row by its grip to change where the action sits."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:3865
+#: crates/vento/ui/pocket.slint:4010
 msgid "Drag all {n}"
 msgid_plural "Drag all {n}"
 msgstr[0] ""
@@ -721,7 +721,7 @@ msgstr[1] ""
 msgid "Drag items from the island into any folder or app. Removing one never deletes your file."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2431
+#: crates/vento/ui/pocket.slint:2436
 msgid "Drag the picture anywhere, or keep it for later."
 msgstr ""
 
@@ -729,13 +729,13 @@ msgstr ""
 msgid "Drag to reorder"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:1088
+#: crates/vento/ui/pocket.slint:1093
 msgid "Drag {n}"
 msgid_plural "Drag {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pocket.slint:3647
+#: crates/vento/ui/pocket.slint:3780
 msgid "Drop to add"
 msgstr ""
 
@@ -1013,7 +1013,7 @@ msgstr[1] ""
 msgid "Kind"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:1437
+#: crates/vento/ui/pocket.slint:1442
 msgid "Kinds"
 msgstr ""
 
@@ -1071,7 +1071,7 @@ msgstr ""
 msgid "Link"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:701
+#: crates/vento/ui/pocket.slint:706
 msgid "Links"
 msgstr ""
 
@@ -1143,7 +1143,7 @@ msgstr ""
 msgid "Move to"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:1984
+#: crates/vento/ui/pocket.slint:1989
 msgid "Move to Trash"
 msgstr ""
 
@@ -1227,7 +1227,7 @@ msgstr ""
 msgid "No recent folders"
 msgstr ""
 
-#: crates/vento/src/pocket/shots_view.rs:934
+#: crates/vento/src/pocket/shots_view.rs:936
 msgid "No text found"
 msgstr ""
 
@@ -1251,7 +1251,7 @@ msgstr ""
 msgid "Nothing left to remove"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:971
+#: crates/vento/ui/pocket.slint:976
 msgid "Nothing of this kind yet"
 msgstr ""
 
@@ -1263,11 +1263,11 @@ msgstr ""
 msgid "Nothing to convert: already {format}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:959
+#: crates/vento/src/exec.rs:960
 msgid "Nothing to copy"
 msgstr ""
 
-#: crates/vento/src/exec.rs:924
+#: crates/vento/src/exec.rs:925
 msgid "Nothing to move"
 msgstr ""
 
@@ -1327,7 +1327,7 @@ msgstr ""
 msgid "Open clipboard history"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:936
+#: crates/vento/ui/pocket.slint:941
 msgid "Open in browser"
 msgstr ""
 
@@ -1339,7 +1339,7 @@ msgstr ""
 msgid "Open settings file"
 msgstr ""
 
-#: crates/vento/src/main.rs:251
+#: crates/vento/src/main.rs:259
 msgid "Open the Pocket"
 msgstr ""
 
@@ -1351,7 +1351,7 @@ msgstr ""
 msgid "Open the Welcome setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:255
+#: crates/vento/src/main.rs:263
 msgid "Open the clipboard history"
 msgstr ""
 
@@ -1403,7 +1403,7 @@ msgstr[1] ""
 msgid "Password"
 msgstr ""
 
-#: crates/vento/src/exec.rs:396
+#: crates/vento/src/exec.rs:397
 msgid "Path copied"
 msgstr ""
 
@@ -1431,11 +1431,11 @@ msgstr ""
 msgid "Pick how long under the tile, or leave it on until you stop it."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:875
+#: crates/vento/ui/pocket.slint:880
 msgid "Pin"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:971
+#: crates/vento/ui/pocket.slint:976
 msgid "Pin a copy to keep it here"
 msgstr ""
 
@@ -1443,7 +1443,7 @@ msgstr ""
 msgid "Pin {}"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:701
+#: crates/vento/ui/pocket.slint:706
 msgid "Pinned"
 msgstr ""
 
@@ -1475,7 +1475,7 @@ msgstr ""
 msgid "Pocket"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:3616
+#: crates/vento/ui/pocket.slint:3749
 msgid "Pocket cleared"
 msgstr ""
 
@@ -1503,7 +1503,7 @@ msgstr ""
 msgid "Press {}: the screen dims."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:457
+#: crates/vento/ui/pocket.slint:462
 msgid "Preview"
 msgstr ""
 
@@ -1545,7 +1545,7 @@ msgstr ""
 msgid "Remember what you copy"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:657
+#: crates/vento/ui/pocket.slint:662
 msgid "Remove"
 msgstr ""
 
@@ -1699,7 +1699,7 @@ msgstr[1] ""
 msgid "Screen"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2406
+#: crates/vento/ui/pocket.slint:2411
 msgid "Screenshot saved"
 msgstr ""
 
@@ -1707,7 +1707,7 @@ msgstr ""
 msgid "Screenshots"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2034
+#: crates/vento/ui/pocket.slint:2039
 msgid "Screenshots you take will show here."
 msgstr ""
 
@@ -1791,7 +1791,7 @@ msgstr ""
 msgid "Show a card when a screenshot is saved"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:1031
+#: crates/vento/ui/pocket.slint:1036
 msgid "Show all {}"
 msgstr ""
 
@@ -1831,7 +1831,7 @@ msgstr ""
 msgid "Skip setup"
 msgstr ""
 
-#: crates/vento/src/main.rs:438
+#: crates/vento/src/main.rs:446
 msgid "Sleep allowed again"
 msgstr ""
 
@@ -1917,7 +1917,7 @@ msgstr ""
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr ""
 
-#: crates/vento/src/main.rs:1082
+#: crates/vento/src/main.rs:1088
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr ""
 
@@ -2005,7 +2005,7 @@ msgstr ""
 msgid "This shortcut can't be used"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:860
+#: crates/vento/src/pocket/mod.rs:895
 msgid "Those items are no longer there"
 msgstr ""
 
@@ -2033,7 +2033,7 @@ msgstr ""
 msgid "Too many items to rename at once (5,000 at most)"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2281
+#: crates/vento/ui/pocket.slint:2286
 msgid "Trash"
 msgstr ""
 
@@ -2093,7 +2093,7 @@ msgstr ""
 msgid "Undo last rename"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:195
+#: crates/vento/ui/pocket.slint:200
 msgid "Undo {}s"
 msgstr ""
 
@@ -2101,7 +2101,7 @@ msgstr ""
 msgid "Unknown {tag}"
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:875
+#: crates/vento/ui/pocket.slint:880
 msgid "Unpin"
 msgstr ""
 
@@ -2129,7 +2129,7 @@ msgstr ""
 msgid "Update"
 msgstr ""
 
-#: crates/vento/src/main.rs:666
+#: crates/vento/src/main.rs:672
 msgid "Update ready"
 msgstr ""
 
@@ -2201,11 +2201,11 @@ msgstr ""
 msgid "Vento lives in the menu bar. Click its icon for the Quick panel; right-click for the menu."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:2055
+#: crates/vento/ui/pocket.slint:2060
 msgid "Vento needs to see {} again after the update."
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:3030
+#: crates/vento/ui/pocket.slint:3149
 msgid "Vento paused"
 msgstr ""
 
@@ -2217,7 +2217,7 @@ msgstr ""
 msgid "Vento will be back in a second"
 msgstr ""
 
-#: crates/vento/src/main.rs:619
+#: crates/vento/src/main.rs:627
 msgid "Vento {version} is out"
 msgstr ""
 
@@ -2417,11 +2417,11 @@ msgstr ""
 msgid "cannot start"
 msgstr ""
 
-#: crates/vento/src/pocket/mod.rs:1843
+#: crates/vento/src/pocket/mod.rs:1913
 msgid "cannot start copying: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:1131
+#: crates/vento/src/exec.rs:1132
 msgid "cannot start: {reason}"
 msgstr ""
 
@@ -2453,7 +2453,7 @@ msgstr ""
 msgid "i/o error: {reason}"
 msgstr ""
 
-#: crates/vento/src/exec.rs:1114
+#: crates/vento/src/exec.rs:1115
 msgid "internal error"
 msgstr ""
 
@@ -2533,7 +2533,7 @@ msgstr ""
 msgid "no free temporary name"
 msgstr ""
 
-#: crates/vento/src/exec.rs:645
+#: crates/vento/src/exec.rs:646
 msgid "no images"
 msgstr ""
 
@@ -2633,7 +2633,7 @@ msgstr ""
 msgid "{app} is not installed"
 msgstr ""
 
-#: crates/vento/src/pocket/news.rs:192
+#: crates/vento/src/pocket/news.rs:328
 msgid "{current} of {total}"
 msgstr ""
 
@@ -2691,11 +2691,11 @@ msgstr[1] ""
 msgid "{name} is locked"
 msgstr ""
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1132
 msgid "{name} shortcut unavailable: {reason}"
 msgstr ""
 
-#: crates/vento/src/pocket/list_view.rs:113
+#: crates/vento/src/pocket/list_view.rs:114
 msgid "{name} · {n} items"
 msgstr ""
 
@@ -2733,7 +2733,7 @@ msgid_plural "{n} files"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/exec.rs:383
+#: crates/vento/src/exec.rs:384
 msgid "{n} file ready to paste"
 msgid_plural "{n} files ready to paste"
 msgstr[0] ""
@@ -2863,13 +2863,13 @@ msgstr ""
 msgid "{text} · "
 msgstr ""
 
-#: crates/vento/ui/pocket.slint:365
+#: crates/vento/ui/pocket.slint:370
 msgid "{} {n}"
 msgid_plural "{} {n}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/src/pocket/news.rs:199
+#: crates/vento/src/pocket/news.rs:335
 msgid "{}%"
 msgstr ""
 

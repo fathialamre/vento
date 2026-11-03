@@ -82,9 +82,8 @@ pub struct Notice {
     pub island_only: bool,
     /// Stays until it has been hovered.
     pub sticky: bool,
-    /// The executor's undo serial this notice offers to undo, if any.
-    // Activity reads it, in a later step.
-    #[allow(dead_code)]
+    /// The executor's undo serial this notice offers to undo, if any:
+    /// Activity offers its Undo only while it is still the last.
     pub undo_serial: Option<u64>,
     /// What the island's Undo runs instead of the button's own: the island
     /// can hold a result while newer work happens, so it undoes only the

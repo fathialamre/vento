@@ -44,7 +44,8 @@ use raw_window_handle::HasWindowHandle;
 use slint::platform::{PointerEventButton, WindowEvent};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{
-    ComponentHandle, Image, LogicalPosition, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode,
+    ComponentHandle, Image, LogicalPosition, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
+    TimerMode, VecModel,
 };
 use vento_core::actions::ActionId;
 use vento_core::clip_history::ClipEntry;
@@ -61,15 +62,16 @@ use vento_platform::{
 };
 
 use crate::appearance;
-use crate::notice::{JobNotice, Notice, NoticeSink};
+use crate::exec::files_copied_notice;
+use crate::notice::{ButtonLabel, JobNotice, Notice, NoticeSink};
 use crate::toast::Toaster;
-use crate::ui::{Icons, PocketIsland};
+use crate::ui::{ActivityRow, Icons, PocketIsland};
 
 #[cfg(target_os = "linux")]
 use crate::drag;
 use add::{AddPlan, Entry, Failure, Print, SavedPrints, plan_new, saved_content, store};
 use clip::ClipController;
-use clip_view::{ClipView, view_index};
+use clip_view::{ClipView, set_rows_in_place, view_index};
 use geometry::{
     Frames, NewsRects, VirtualSpot, frames, hits, hover_event, interactive_rects, island_inputs,
     virtual_frames, virtual_mid_x, window_frame,
@@ -77,7 +79,7 @@ use geometry::{
 use kinds::Kinds;
 use list_view::ListView;
 use menu::{ItemMenu, MenuAction, apps_source, menu_targets, opens_menu};
-use news::{News, NewsView};
+use news::{ActivityRowData, News, NewsView, today_start, with_details};
 use out::{
     Press, PressLatch, drag_end_events, drag_ids, drop_point, placeholder_icon, preview_png,
     removes_after_drop,
@@ -284,6 +286,9 @@ pub(crate) fn to_image(icon: &RgbaImage) -> Option<Image> {
     Some(Image::from_rgba8(buffer))
 }
 
+/// Asks the executor for the serial of the operation Undo would undo now.
+type LastSerial = Box<dyn Fn() -> Option<u64>>;
+
 /// Shows the Pocket as an island at the top of the screen: hidden while
 /// empty, collapsed while it holds items, expanded on hover or as a drag
 /// approaches.
@@ -402,6 +407,14 @@ pub struct PocketController {
     news_view: RefCell<Option<NewsView>>,
     /// What the paused pill's Resume runs: vento resumes.
     on_resume: RefCell<Option<Box<dyn Fn()>>>,
+    /// The island is open on Activity, today's jobs and results, over the
+    /// view.
+    activity: Cell<bool>,
+    /// The rows Activity shows, and the window's copy of them.
+    activity_rows: RefCell<Vec<ActivityRowData>>,
+    activity_model: Rc<VecModel<ActivityRow>>,
+    /// The executor's undo serial now, for Activity's Undo.
+    last_serial: RefCell<Option<LastSerial>>,
     this: Weak<Self>,
 }
 
@@ -431,6 +444,8 @@ impl PocketController {
         };
         window.set_glass(glass_alpha(glass));
         let list = ListView::new(&window, pocket_view);
+        let activity_model = Rc::new(VecModel::default());
+        window.set_activity_rows(ModelRc::from(activity_model.clone()));
         let home = platform.pocket_home();
         let (clip_platform, clip_settings) = (platform.clone(), settings.clone());
         let controller = Rc::new_cyclic(|this| Self {
@@ -489,6 +504,10 @@ impl PocketController {
             news: RefCell::new(News::default()),
             news_view: RefCell::new(None),
             on_resume: RefCell::new(None),
+            activity: Cell::new(false),
+            activity_rows: RefCell::new(Vec::new()),
+            activity_model,
+            last_serial: RefCell::new(None),
             this: this.clone(),
         });
         if let Some(home) = home {
@@ -550,6 +569,18 @@ impl PocketController {
         w.on_news_button_clicked(move || {
             if let Some(c) = c() {
                 c.news_button_clicked();
+            }
+        });
+        let c = with.clone();
+        w.on_news_chip_clicked(move || {
+            if let Some(c) = c() {
+                c.open_activity();
+            }
+        });
+        let c = with.clone();
+        w.on_activity_button_clicked(move |i| {
+            if let (Some(c), Ok(i)) = (c(), usize::try_from(i)) {
+                c.activity_button_clicked(i);
             }
         });
         let c = with.clone();
@@ -818,6 +849,10 @@ impl PocketController {
             MenuAction::Copy => self
                 .platform
                 .copy_files(paths)
+                .map(|()| {
+                    self.toast
+                        .notify(files_copied_notice(paths.len()), self.toast_at());
+                })
                 .map_err(|e| (MenuFailure::Copy, e)),
             // As the cell's x does, for one item or many.
             MenuAction::Remove => {
@@ -1147,6 +1182,12 @@ impl PocketController {
         debug!("pocket paused: {after:?}");
     }
 
+    /// Sets how Activity asks the executor for its undo serial now (see
+    /// `Executor::last_serial`).
+    pub fn set_last_serial(&self, f: LastSerial) {
+        *self.last_serial.borrow_mut() = Some(f);
+    }
+
     /// Sets what the paused pill's Resume runs.
     pub fn set_on_resume(&self, f: Box<dyn Fn()>) {
         *self.on_resume.borrow_mut() = Some(f);
@@ -1355,9 +1396,11 @@ impl PocketController {
             self.rehome();
         }
         self.was_dragging.set(dragging);
-        // A drag from elsewhere takes the island for a drop: the card goes.
+        // A drag from elsewhere takes the island for a drop: the card and
+        // Activity go.
         if dragging && !self.latch.running() {
             self.close_card();
+            self.close_activity();
         }
         let Some(home) = self.home.get() else {
             return;
@@ -1378,6 +1421,9 @@ impl PocketController {
             .is_some_and(|n| geometry::contains(&n.pill, sample.cursor));
         let view = self.news.borrow_mut().tick(now, hovered);
         self.show_news(view.filter(|_| spot.is_some()));
+        if self.activity.get() {
+            self.refresh_activity();
+        }
         // The virtual island lives on top even where the taskbar's clock
         // has a corner for the island.
         let corner = home.tray_corner.is_some() && spot.is_none();
@@ -1427,14 +1473,23 @@ impl PocketController {
             hits(&f, after, news.as_ref(), None, sample.cursor),
             now,
         );
-        // Opened by resting on it: with an empty Pocket, on the view the
-        // wings show.
+        // Opened by resting on it (by a push, on the virtual island): with
+        // an empty Pocket, on the view the wings show. A push while a result
+        // shows opens Activity instead.
         if before != Presence::Expanded
             && after == Presence::Expanded
             && !dragging
             && !pinned
             && !self.card.is_up()
         {
+            let result_up = self
+                .news_view
+                .borrow()
+                .as_ref()
+                .is_some_and(|v| v.stage == Stage::Result);
+            if result_up {
+                self.open_activity();
+            }
             let last = self.shown_view();
             let undo_view = self.undo.borrow().as_ref().map(|(u, _)| u.view());
             let v = hover_view(
@@ -1444,7 +1499,7 @@ impl PocketController {
                 undo_view,
                 last,
             );
-            if v != last {
+            if v != last && !self.activity.get() {
                 self.set_view(v);
             }
         }
@@ -1685,6 +1740,10 @@ impl PocketController {
         if after != Presence::Expanded && !self.latch.running() {
             self.reset_look();
         }
+        // Activity closes with the island, like any open view.
+        if after != Presence::Expanded {
+            self.close_activity();
+        }
         self.window.set_expanded(after == Presence::Expanded);
         self.run_undo_timer();
         if after == Presence::Hidden {
@@ -1921,6 +1980,7 @@ impl PocketController {
     /// lets it close if it already shows `v`.
     pub fn open_view(&self, v: View) {
         self.close_card();
+        self.close_activity();
         let current = self.pinned.get().then(|| self.shown_view());
         let next = next_open(current, v);
         self.pinned.set(next.is_some());
@@ -2239,22 +2299,11 @@ impl PocketController {
         let w = &self.window;
         match &view {
             Some(v) => {
-                w.set_news_stage(match v.stage {
-                    Stage::Work => 1,
-                    Stage::Result => 2,
-                });
-                w.set_news_tone(match v.tone {
-                    Tone::Done => 0,
-                    Tone::Info => 1,
-                    Tone::Error => 2,
-                    Tone::Busy => 3,
-                });
-                let icons = w.global::<Icons>();
-                w.set_news_icon(
-                    v.icon
-                        .map(|a| crate::wheel::action_icon(&icons, a))
-                        .unwrap_or_default(),
-                );
+                w.set_news_stage(stage_index(v.stage));
+                w.set_news_tone(tone_index(v.tone));
+                w.set_news_icon(self.action_icon(v.icon));
+                // Only to tell a new error from the same one shown again.
+                w.set_news_id((v.id % i32::MAX as u64) as i32);
                 w.set_news_text(v.text.as_str().into());
                 w.set_news_sub(v.sub.as_str().into());
                 w.set_news_button(v.button_text.as_deref().unwrap_or_default().into());
@@ -2323,6 +2372,113 @@ impl PocketController {
             on();
         }
     }
+
+    /// Opens the virtual island on Activity: today's jobs and results, over
+    /// the view. The "+N" chip, an error's Details and a push while a result
+    /// shows open it, never hover; with nothing to list it stays shut. It
+    /// closes with the island.
+    pub fn open_activity(&self) {
+        if !self.takes_news() {
+            return;
+        }
+        let rows = self.activity_now();
+        if rows.is_empty() {
+            return;
+        }
+        self.close_card();
+        self.activity.set(true);
+        self.window.set_activity(true);
+        self.show_activity(rows);
+        // Clicked on the resting pill: the island opens at the next sample.
+        self.hold_open_briefly();
+    }
+
+    /// Takes Activity down, back to the view.
+    fn close_activity(&self) {
+        if !self.activity.replace(false) {
+            return;
+        }
+        self.window.set_activity(false);
+        self.show_activity(Vec::new());
+    }
+
+    /// Activity's rows now: what the island took today, and the executor's
+    /// undo serial for its Undo.
+    fn activity_now(&self) -> Vec<ActivityRowData> {
+        let now = Instant::now();
+        let today = today_start(now, jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
+        let last_serial = self.last_serial.borrow().as_ref().and_then(|f| f());
+        self.news.borrow_mut().activity(now, today, last_serial)
+    }
+
+    /// Follows what changed in Activity while it is open: the ages, jobs
+    /// ending, new posts and buttons pressed.
+    fn refresh_activity(&self) {
+        let rows = self.activity_now();
+        if *self.activity_rows.borrow() != rows {
+            self.show_activity(rows);
+        }
+    }
+
+    /// Gives Activity's `rows` to the window, and fits the island to them.
+    fn show_activity(&self, rows: Vec<ActivityRowData>) {
+        let shown = rows
+            .iter()
+            .map(|r| ActivityRow {
+                stage: stage_index(r.stage),
+                tone: tone_index(r.tone),
+                icon: self.action_icon(r.icon),
+                text: r.text.as_str().into(),
+                age: r.age.as_str().into(),
+                button: r.button.map(ButtonLabel::text).unwrap_or_default().into(),
+            })
+            .collect();
+        set_rows_in_place(&self.activity_model, shown);
+        *self.activity_rows.borrow_mut() = rows;
+        self.fit_panel();
+    }
+
+    /// A button of Activity's row `index`: runs what it does once, outside
+    /// the borrow (an Undo posts news of its own); the button goes at once.
+    fn activity_button_clicked(&self, index: usize) {
+        let Some(id) = self.activity_rows.borrow().get(index).map(|r| r.id) else {
+            return;
+        };
+        let last_serial = self.last_serial.borrow().as_ref().and_then(|f| f());
+        let on = self.news.borrow_mut().press_row(id, last_serial);
+        if let Some(on) = on {
+            on();
+        }
+        if self.activity.get() {
+            self.refresh_activity();
+        }
+    }
+
+    /// The icon of `action` in the window, or none.
+    fn action_icon(&self, action: Option<ActionId>) -> Image {
+        let icons = self.window.global::<Icons>();
+        action
+            .map(|a| crate::wheel::action_icon(&icons, a))
+            .unwrap_or_default()
+    }
+}
+
+/// How the window numbers a news stage: 1 at work, 2 a result.
+fn stage_index(stage: Stage) -> i32 {
+    match stage {
+        Stage::Work => 1,
+        Stage::Result => 2,
+    }
+}
+
+/// How the window numbers a tone: 0 done, 1 info, 2 error, 3 busy.
+fn tone_index(tone: Tone) -> i32 {
+    match tone {
+        Tone::Done => 0,
+        Tone::Info => 1,
+        Tone::Error => 2,
+        Tone::Busy => 3,
+    }
 }
 
 /// The virtual island takes every notice and job; the other modes, and the
@@ -2333,6 +2489,12 @@ impl NoticeSink for PocketController {
         if !self.takes_news() {
             return Err(n);
         }
+        let this = self.this.clone();
+        let n = with_details(n, move || {
+            if let Some(c) = this.upgrade() {
+                c.open_activity();
+            }
+        });
         self.news.borrow_mut().post(n, Instant::now());
         Ok(())
     }

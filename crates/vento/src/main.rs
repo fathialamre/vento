@@ -159,6 +159,14 @@ fn main() -> Result<(), slint::PlatformError> {
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
     let sink: Rc<dyn notice::NoticeSink> = pocket.clone();
     toaster.set_sink(Rc::downgrade(&sink));
+    // Activity offers the newest Undo while it still undoes the last
+    // operation.
+    {
+        let executor = Rc::downgrade(&executor);
+        pocket.set_last_serial(Box::new(move || {
+            executor.upgrade().and_then(|e| e.last_serial())
+        }));
+    }
     // Slint can switch its translation only once a component exists: the
     // Pocket's window is the first. Text made before this is English.
     appearance::apply_language(language_code(&hub.current().language));
