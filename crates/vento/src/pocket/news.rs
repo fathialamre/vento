@@ -127,6 +127,11 @@ impl News {
         self.pressed.remove(&id);
     }
 
+    /// Whether a job the island took still runs.
+    pub fn has_jobs(&self) -> bool {
+        !self.jobs.is_empty()
+    }
+
     /// What the island shows at `now`, with the pointer on the pill or not.
     pub fn tick(&mut self, now: Instant, hovered: bool) -> Option<NewsView> {
         self.board.set_hover(hovered, now);

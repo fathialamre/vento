@@ -3786,6 +3786,12 @@ export component PocketIsland inherits Window {
     // The island's screen has a notch: collapsed, it grows wings beside it.
     in property <bool> notch-style;
     in property <length> notch-w;
+    // The notch island draws the news on its wings now (with Show jobs in
+    // the island on, news up, and not open).
+    in property <bool> notch-news: false;
+    // How wide each wing is with the news, as drawn, for the clicks it
+    // takes (the plain wing's width without it).
+    out property <length> news-wing-w: 44px;
     // Height of the menu bar (or the notch, if taller).
     in property <length> top-h;
     // The island lives in the corner by the taskbar's clock (Windows): it

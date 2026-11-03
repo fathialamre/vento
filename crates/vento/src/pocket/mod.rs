@@ -382,6 +382,79 @@ fn virtual_resting(warm: bool, spot: Option<VirtualSpot>, expanded: bool) -> boo
     warm && spot.is_some_and(|s| !s.bar_under) && !expanded
 }
 
+/// Which island shows the notices and jobs it takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NewsTarget {
+    /// The virtual island's news pill.
+    Virtual,
+    /// The notch island's wings (beside the Mac's notch or in GNOME's top
+    /// bar slot).
+    Notch,
+    /// None: they stay toasts and progress windows.
+    None,
+}
+
+/// Which island shows the news: the virtual one always (`virtual_spot`, it
+/// is laid out); the notch island (`notch_style`) only with Show jobs in
+/// the island on (`jobs_on`); the classic pill and the island by the clock
+/// never.
+fn news_target(virtual_spot: bool, notch_style: bool, jobs_on: bool) -> NewsTarget {
+    if virtual_spot {
+        NewsTarget::Virtual
+    } else if notch_style && jobs_on {
+        NewsTarget::Notch
+    } else {
+        NewsTarget::None
+    }
+}
+
+/// Whether the notch island takes notices and jobs: it is ready, vento is
+/// not paused, it is the notch island (`notch_style`) and Show jobs in the
+/// island is on (`jobs_on`).
+fn notch_takes(warm: bool, paused: bool, notch_style: bool, jobs_on: bool) -> bool {
+    warm && !paused && news_target(false, notch_style, jobs_on) == NewsTarget::Notch
+}
+
+/// Whether the notch island still shows news with Show jobs in the island
+/// as `jobs_on`: on, or off while a job it took still runs (`running`) or
+/// news it took still shows (`shown`). Turned off, it takes nothing new,
+/// but what it took keeps its place until it ends.
+fn notch_keeps(jobs_on: bool, running: bool, shown: bool) -> bool {
+    jobs_on || running || shown
+}
+
+/// Whether the island's window is in sight when not open: it has something
+/// to show (`has_content`), or it is the notch island (`notch_style`) with
+/// news up (`news_up`), even with an empty Pocket. (The virtual island
+/// rests in sight anyway.)
+fn shows_window(has_content: bool, news_up: bool, notch_style: bool) -> bool {
+    has_content || notch_style && news_up
+}
+
+/// Whether the notch island draws the news on its wings: they are where
+/// the news shows (`target`), news is up (`news_up`), and the island is not
+/// open (`expanded`), where its panel lies over them; the news waits until
+/// it closes.
+fn notch_news_on(target: NewsTarget, news_up: bool, expanded: bool) -> bool {
+    target == NewsTarget::Notch && news_up && !expanded
+}
+
+/// Whether the island rests in its form, where a shimmer may play: the
+/// virtual island as [`virtual_resting`] says, whatever the switch; or the
+/// notch island (`notch_style`) in sight and collapsed, as it takes news
+/// ([`notch_takes`], so only with Show jobs in the island on, `jobs_on`).
+fn resting_in_form(
+    warm: bool,
+    paused: bool,
+    spot: Option<VirtualSpot>,
+    presence: Presence,
+    notch_style: bool,
+    jobs_on: bool,
+) -> bool {
+    virtual_resting(warm, spot, presence == Presence::Expanded)
+        || presence == Presence::Collapsed && notch_takes(warm, paused, notch_style, jobs_on)
+}
+
 /// Whether the pointer moving again after `idle_before` without any starts
 /// the wait for the next shimmer moment again: after [`AWAY_AFTER`] away,
 /// the next one waits a whole period from the return.
@@ -607,6 +680,9 @@ pub struct PocketController {
     saving_place: Cell<bool>,
     /// The virtual island's shape in the settings: the island, or the circle.
     shape: Cell<IslandShape>,
+    /// Show jobs in the island, in the settings: the notch island takes
+    /// notices and jobs, and shimmers. The virtual island takes them anyway.
+    jobs_on: Cell<bool>,
     /// What the window was last told of the circle: the news pill and the
     /// resting pill rest as the round disc.
     news_round: Cell<bool>,
@@ -672,9 +748,15 @@ impl PocketController {
         let kinds = Kinds::new(&window);
         let clip_view = ClipView::new(&window);
         let shots_view = ShotsView::new(&window);
-        let (pocket_view, mode, shape, glass) = {
+        let (pocket_view, mode, shape, glass, jobs_on) = {
             let s = settings.borrow();
-            (s.pocket_view, s.island_mode, s.island_shape, s.island_glass)
+            (
+                s.pocket_view,
+                s.island_mode,
+                s.island_shape,
+                s.island_glass,
+                s.island_jobs,
+            )
         };
         window.set_glass(glass_alpha(glass));
         let list = ListView::new(&window, pocket_view);
@@ -751,6 +833,7 @@ impl PocketController {
             on_place_dropped: RefCell::new(None),
             saving_place: Cell::new(false),
             shape: Cell::new(shape),
+            jobs_on: Cell::new(jobs_on),
             news_round: Cell::new(false),
             rest_round: Cell::new(false),
             shimmer_timer: Timer::default(),
@@ -1506,7 +1589,7 @@ impl PocketController {
         w.set_rest_awake_fraction(left.unwrap_or(-1.0));
     }
 
-    /// Shows `n` in the virtual island; where it does not take it, as a
+    /// Shows `n` in the island that takes news; where none does, as a
     /// toast under the island (none for a notice for the island only).
     pub fn notify(&self, n: Notice) {
         self.toast.notify(n, self.toast_at());
@@ -1534,7 +1617,10 @@ impl PocketController {
             self.drag_frame.stop();
             self.rehome();
         }
-        let visible = self.has_content() || self.island_frames().is_some_and(|f| f.virtual_island);
+        let news_up = self.news_view.borrow().is_some();
+        let visible = self.island_frames().map_or(self.has_content(), |f| {
+            f.virtual_island || shows_window(self.has_content(), news_up, f.notch_style)
+        });
         let before = self.island.borrow().presence();
         let after = self.island.borrow_mut().settle(visible);
         self.pin_until.set(None);
@@ -1749,16 +1835,18 @@ impl PocketController {
         if spot != self.laid_out.get() {
             self.apply_home(&home);
         }
-        // Only the virtual island shows the news. The pointer on the pill
-        // holds a result, though only its button and chip take clicks; on
-        // the open island it is on the panel, not the news.
+        // The virtual island shows the news, and the notch island with Show
+        // jobs in the island on. The pointer on the pill (the widened wings)
+        // holds a result, though on the virtual one only its button and chip
+        // take clicks; on the open island it is on the panel, not the news.
+        let target = self.news_home(&home);
         let hovered = geometry::news_hovered(
             self.island.borrow().presence(),
             self.news_rects(&self.frames_of(&home)).as_ref(),
             sample.cursor,
         );
         let view = self.news.borrow_mut().tick(now, hovered);
-        self.show_news(view.filter(|_| spot.is_some()));
+        self.show_news(view.filter(|_| target != NewsTarget::None));
         self.show_news_round(&home, hovered);
         self.show_rest_round(
             &self.frames_of(&home),
@@ -1795,6 +1883,9 @@ impl PocketController {
         let f = self.frames_of(&home);
         let before = self.island.borrow().presence();
         let has_items = self.has_content();
+        // The notch island with news up shows, even with an empty Pocket
+        // (which still doesn't open on a rest).
+        let news_up = self.news_view.borrow().is_some();
         let pinned = self.pinned_open(now);
         // The Pocket's own drag out leaves the island by the clock open only
         // while the pointer is over it, as on top, not wherever it goes.
@@ -1806,6 +1897,7 @@ impl PocketController {
             self.hover_blocked.set(false);
         }
         let mut inputs = island_inputs(&f, has_items, drag_in, sample.cursor, pinned);
+        inputs.rest_visible |= shows_window(has_items, news_up, f.notch_style);
         if self.hover_blocked.get() {
             inputs.hover = geometry::NOWHERE;
         }
@@ -1815,7 +1907,11 @@ impl PocketController {
         if after != Presence::Expanded && self.card.is_up() {
             self.close_card_into_disc();
             if !self.has_content() {
-                after = self.island.borrow_mut().settle(f.virtual_island);
+                let news_up = self.news_view.borrow().is_some();
+                after = self
+                    .island
+                    .borrow_mut()
+                    .settle(f.virtual_island || shows_window(false, news_up, f.notch_style));
             }
         }
         // Not paused: there is no Resume to click.
@@ -1888,6 +1984,11 @@ impl PocketController {
                 && after == Presence::Collapsed
                 && geometry::contains(&f.collapsed, sample.cursor),
         );
+        self.show_notch_news(notch_news_on(
+            target,
+            self.news_view.borrow().is_some(),
+            after == Presence::Expanded,
+        ));
         // The push against the top edge fills under the resting island; set
         // only when it moves, so nothing redraws at rest.
         if f.virtual_island {
@@ -2309,15 +2410,19 @@ impl PocketController {
         let spot = self.virtual_spot(home);
         self.keep_slot(spot.is_none());
         let was_virtual = self.laid_out.replace(spot).is_some();
-        if was_virtual != spot.is_some() {
-            if let Some(f) = self.on_virtual.borrow().as_ref() {
-                f(spot.is_some());
-            }
-            // The first moment comes one period after the island starts
-            // resting; an island that stops being virtual plays none.
+        let f = self.frames_of(home);
+        let was_notch = self.window.get_notch_style();
+        if was_virtual != spot.is_some()
+            && let Some(on) = self.on_virtual.borrow().as_ref()
+        {
+            on(spot.is_some());
+        }
+        // The first moment comes one period after the island starts
+        // resting; an island that stops being virtual (or the notch island)
+        // plays none.
+        if was_virtual != spot.is_some() || was_notch != f.notch_style {
             self.arm_shimmer();
         }
-        let f = self.frames_of(home);
         let panel_h = (f.expanded.h - f.top_h) as f32;
         self.window.set_panel_w(f.expanded.w as f32);
         self.window.set_panel_h(panel_h);
@@ -2612,7 +2717,8 @@ impl PocketController {
     /// in its top bar is kept only for an island that is not the virtual
     /// one.
     /// An island that is not the virtual one before or after is left as it
-    /// is.
+    /// is, but for its shimmer's wait (the notch island shimmers with Show
+    /// jobs in the island on).
     pub fn island_settings_changed(&self) {
         let is_virtual = |c: &Self| c.home.get().is_some_and(|h| c.virtual_spot(&h).is_some());
         let was_virtual = is_virtual(self);
@@ -2620,6 +2726,7 @@ impl PocketController {
             let s = self.settings.borrow();
             self.mode.set(s.island_mode);
             self.shape.set(s.island_shape);
+            self.jobs_on.set(s.island_jobs);
             s.island_glass
         };
         self.window.set_glass(glass_alpha(glass));
@@ -2628,6 +2735,10 @@ impl PocketController {
         self.rehome();
         let now_virtual = is_virtual(self);
         if !was_virtual && !now_virtual {
+            // The notch island shimmers with Show jobs in the island on, in
+            // the style and at the period the settings say: the wait starts
+            // again (or ends).
+            self.arm_shimmer();
             return;
         }
         self.keep_slot(!now_virtual);
@@ -2885,11 +2996,13 @@ impl PocketController {
     }
 
     /// Waits one period for the next shimmer moment, or stops waiting: the
-    /// island is not the virtual one, or the style is Off. One one-shot
-    /// timer, never a repeating one.
+    /// island is neither the virtual one nor the notch island with Show jobs
+    /// in the island on, or the style is Off. One one-shot timer, never a
+    /// repeating one.
     fn arm_shimmer(&self) {
         self.shimmer_timer.stop();
-        if self.laid_out.get().is_none() {
+        let notch = self.jobs_on.get() && self.island_frames().is_some_and(|f| f.notch_style);
+        if self.laid_out.get().is_none() && !notch {
             return;
         }
         let (style, every) = {
@@ -2935,7 +3048,14 @@ impl PocketController {
         };
         MomentConditions {
             style,
-            virtual_resting: virtual_resting(self.warm.get(), self.laid_out.get(), self.expanded()),
+            virtual_resting: resting_in_form(
+                self.warm.get(),
+                self.paused.get(),
+                self.laid_out.get(),
+                self.island.borrow().presence(),
+                self.island_frames().is_some_and(|f| f.notch_style),
+                self.jobs_on.get(),
+            ),
             news_or_job: self.news_view.borrow().is_some(),
             paused: self.paused.get(),
             pocket_items: self.item_count(),
@@ -2948,15 +3068,43 @@ impl PocketController {
         }
     }
 
-    /// Whether the island takes notices and jobs now: it is the virtual one,
-    /// ready and not paused (each sample shows the news then).
+    /// Whether the island takes notices and jobs now: it is ready, not
+    /// paused, and the virtual one, or the notch island with Show jobs in
+    /// the island on (each sample shows the news then).
     fn takes_news(&self) -> bool {
         self.warm.get()
             && !self.paused.get()
-            && self
-                .home
-                .get()
-                .is_some_and(|home| self.virtual_spot(&home).is_some())
+            && self.home.get().is_some_and(|home| {
+                news_target(
+                    self.virtual_spot(&home).is_some(),
+                    self.frames_of(&home).notch_style,
+                    self.jobs_on.get(),
+                ) != NewsTarget::None
+            })
+    }
+
+    /// Which island at `home` shows the news it holds: as [`news_target`]
+    /// says, with the notch island keeping what it took after Show jobs in
+    /// the island goes off ([`notch_keeps`]).
+    fn news_home(&self, home: &IslandHome) -> NewsTarget {
+        let keeps = notch_keeps(
+            self.jobs_on.get(),
+            self.news.borrow().has_jobs(),
+            self.news_view.borrow().is_some(),
+        );
+        news_target(
+            self.virtual_spot(home).is_some(),
+            self.frames_of(home).notch_style,
+            keeps,
+        )
+    }
+
+    /// Tells the window whether the notch island draws the news on its
+    /// wings, only when that changes.
+    fn show_notch_news(&self, on: bool) {
+        if self.window.get_notch_news() != on {
+            self.window.set_notch_news(on);
+        }
     }
 
     /// Tells the window whether the circle's news pill rests as the round
@@ -3014,7 +3162,10 @@ impl PocketController {
                 w.set_news_short(v.short_count.as_str().into());
             }
             // The rest stays, for the pill to fade out with.
-            None => w.set_news_stage(0),
+            None => {
+                w.set_news_stage(0);
+                self.show_notch_news(false);
+            }
         }
         let now_shown = view.is_some();
         let was_shown = self.news_view.replace(view).is_some();
@@ -3027,7 +3178,7 @@ impl PocketController {
     /// Where the news the window shows lies with `f`, as the window lays it
     /// out; `None` while it shows none.
     fn news_rects(&self, f: &Frames) -> Option<NewsRects> {
-        if !f.virtual_island || self.news_view.borrow().is_none() {
+        if !(f.virtual_island || f.notch_style) || self.news_view.borrow().is_none() {
             return None;
         }
         let w = &self.window;
@@ -3041,7 +3192,7 @@ impl PocketController {
             button_w.map(|_| f64::from(w.get_news_button_x())),
             chip_w,
             chip_w.map(|_| f64::from(w.get_news_chip_x())),
-            geometry::WING_W,
+            f64::from(w.get_news_wing_w()),
         ))
     }
 
@@ -3080,12 +3231,19 @@ impl PocketController {
         }
     }
 
-    /// Opens the virtual island on Activity: today's jobs and results, over
-    /// the view. The "+N" chip, an error's Details and a push while a result
-    /// shows open it, never hover; with nothing to list it stays shut. It
-    /// closes with the island.
+    /// Opens the island that shows the news (the virtual one, or the notch
+    /// island) on Activity: today's jobs and results, over the view. The
+    /// "+N" chip, an error's Details and the island opening while a result
+    /// shows open it; with nothing to list it stays shut. It closes with the
+    /// island.
     pub fn open_activity(&self) {
-        if !self.takes_news() {
+        let shows_news = self.warm.get()
+            && !self.paused.get()
+            && self
+                .home
+                .get()
+                .is_some_and(|home| self.news_home(&home) != NewsTarget::None);
+        if !shows_news {
             return;
         }
         let rows = self.activity_now();
@@ -3189,9 +3347,10 @@ fn tone_index(tone: Tone) -> i32 {
     }
 }
 
-/// The virtual island takes every notice and job; the other modes, and the
-/// island before it is ready or while paused, leave them toasts and progress
-/// windows.
+/// The virtual island takes every notice and job, and the notch island with
+/// Show jobs in the island on; the other islands, and the island before it
+/// is ready or while paused, leave them toasts and progress windows. A job
+/// it took always hears of its end, even once it takes no more.
 impl NoticeSink for PocketController {
     fn notice(&self, n: Notice) -> Result<(), Notice> {
         if !self.takes_news() {
@@ -3780,6 +3939,89 @@ mod tests {
         assert!(!virtual_resting(true, circle, true));
         assert!(!virtual_resting(false, pill, false));
         assert!(!virtual_resting(true, None, false));
+    }
+
+    #[test]
+    fn notch_takes_news_follows_switch() {
+        assert!(notch_takes(true, false, true, true));
+        // The switch off, the notch island is as before: toasts.
+        assert!(!notch_takes(true, false, true, false));
+        // Not ready, paused, or no notch (nor top bar slot).
+        assert!(!notch_takes(false, false, true, true));
+        assert!(!notch_takes(true, true, true, true));
+        assert!(!notch_takes(true, false, false, true));
+    }
+
+    #[test]
+    fn classic_and_corner_never_take_news() {
+        // Neither the virtual island nor a notch: the classic pill on a
+        // screen with no notch, and the island by the clock.
+        for jobs_on in [false, true] {
+            assert_eq!(news_target(false, false, jobs_on), NewsTarget::None);
+        }
+        // The virtual island takes news whatever the switch says.
+        assert_eq!(news_target(true, false, false), NewsTarget::Virtual);
+        assert_eq!(news_target(true, false, true), NewsTarget::Virtual);
+        // The notch island only with it on.
+        assert_eq!(news_target(false, true, true), NewsTarget::Notch);
+        assert_eq!(news_target(false, true, false), NewsTarget::None);
+    }
+
+    #[test]
+    fn notch_visible_while_news() {
+        // With an empty Pocket the notch island shows while news is up, and
+        // hides once it is over.
+        assert!(shows_window(false, true, true));
+        assert!(!shows_window(false, false, true));
+        // Something to show: in sight, news or not.
+        assert!(shows_window(true, false, true));
+        assert!(shows_window(true, true, false));
+        // The classic pill and the corner show no news, so it doesn't count.
+        assert!(!shows_window(false, true, false));
+    }
+
+    #[test]
+    fn notch_news_waits_while_open() {
+        assert!(notch_news_on(NewsTarget::Notch, true, false));
+        // Open, the panel lies where the wings were: the news waits.
+        assert!(!notch_news_on(NewsTarget::Notch, true, true));
+        // No news up, or not the notch island's.
+        assert!(!notch_news_on(NewsTarget::Notch, false, false));
+        assert!(!notch_news_on(NewsTarget::Virtual, true, false));
+        assert!(!notch_news_on(NewsTarget::None, true, false));
+    }
+
+    #[test]
+    fn switch_off_keeps_what_the_notch_took() {
+        assert!(notch_keeps(true, false, false));
+        // Off: a job it took runs on in the island, and news it shows stays
+        // until it ends.
+        assert!(notch_keeps(false, true, false));
+        assert!(notch_keeps(false, false, true));
+        // Off with nothing taken: nothing shows.
+        assert!(!notch_keeps(false, false, false));
+    }
+
+    #[test]
+    fn shimmer_rests_on_the_notch_with_jobs() {
+        use Presence::{Collapsed, Expanded, Hidden};
+        let pill = Some(VirtualSpot {
+            place: IslandSpot::Side(IslandPlace::Centre),
+            bar_under: false,
+            shape: IslandShape::Island,
+        });
+        // The virtual island as before, whatever the switch.
+        assert!(resting_in_form(true, false, pill, Collapsed, false, false));
+        assert!(!resting_in_form(true, false, pill, Expanded, false, true));
+        // The notch island collapsed and ready, with jobs in the island.
+        assert!(resting_in_form(true, false, None, Collapsed, true, true));
+        assert!(!resting_in_form(true, false, None, Collapsed, true, false));
+        assert!(!resting_in_form(true, false, None, Expanded, true, true));
+        assert!(!resting_in_form(true, false, None, Hidden, true, true));
+        assert!(!resting_in_form(false, false, None, Collapsed, true, true));
+        assert!(!resting_in_form(true, true, None, Collapsed, true, true));
+        // The classic pill and the corner never.
+        assert!(!resting_in_form(true, false, None, Collapsed, false, true));
     }
 
     #[test]

@@ -989,6 +989,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     || old.island_shimmer_every != new.island_shimmer_every
                     || old.island_shimmer_needs_items != new.island_shimmer_needs_items
                     || old.island_reduce_motion != new.island_reduce_motion
+                    || old.island_jobs != new.island_jobs
                 {
                     pocket.island_settings_changed();
                 }
