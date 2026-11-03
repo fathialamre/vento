@@ -1429,10 +1429,13 @@ impl PocketController {
             self.apply_home(&home);
         }
         // Only the virtual island shows the news. The pointer on the pill
-        // holds a result, though only its button and chip take clicks.
-        let hovered = self
-            .news_rects(&self.frames_of(&home))
-            .is_some_and(|n| geometry::contains(&n.pill, sample.cursor));
+        // holds a result, though only its button and chip take clicks; on
+        // the open island it is on the panel, not the news.
+        let hovered = geometry::news_hovered(
+            self.island.borrow().presence(),
+            self.news_rects(&self.frames_of(&home)).as_ref(),
+            sample.cursor,
+        );
         let view = self.news.borrow_mut().tick(now, hovered);
         self.show_news(view.filter(|_| spot.is_some()));
         if self.activity.get() {

@@ -60,7 +60,10 @@ struct Job {
 #[derive(Clone, Copy, Debug)]
 struct Posted {
     id: u64,
-    /// Whether the result has been hovered, or was posted under the pointer.
+    /// Whether it stays up until seen (every error does).
+    sticky: bool,
+    /// Whether the result has been hovered while shown, or was posted under
+    /// the pointer.
     seen: bool,
     /// When the hold ends (exclusive). `None` while a sticky result waits to
     /// be seen, or while the pointer is on the island.
@@ -117,6 +120,7 @@ impl NewsBoard {
         };
         self.results.push(Posted {
             id,
+            sticky,
             seen,
             hold_until,
         });
@@ -127,20 +131,24 @@ impl NewsBoard {
     }
 
     /// The pointer entered or left the island. Results up when it enters are
-    /// held until [`RESULT_HOLD`] after it leaves.
+    /// held while it stays, and until [`RESULT_HOLD`] after it leaves. Only
+    /// the shown one (the newest) is seen: a sticky result behind it, only a
+    /// "+N" so far, waits again once the pointer leaves.
     pub fn set_hover(&mut self, hovered: bool, now: Instant) {
         if hovered == self.hovered {
             return;
         }
         self.hovered = hovered;
         self.results.retain(|r| r.live(now));
+        if hovered && let Some(shown) = self.results.last_mut() {
+            shown.seen = true;
+        }
         for r in &mut self.results {
-            if hovered {
-                r.seen = true;
-                r.hold_until = None;
-            } else if r.seen {
-                r.hold_until = Some(now + RESULT_HOLD);
-            }
+            r.hold_until = if hovered || r.sticky && !r.seen {
+                None
+            } else {
+                Some(now + RESULT_HOLD)
+            };
         }
     }
 
@@ -312,6 +320,55 @@ mod tests {
         b.set_hover(false, t0 + secs(2));
         assert!(b.current(t0 + ms(5499)).is_some());
         assert_eq!(b.current(t0 + ms(5500)), None);
+    }
+
+    #[test]
+    fn hovering_a_newer_result_does_not_dismiss_an_older_error() {
+        let t0 = Instant::now();
+        let mut b = NewsBoard::new();
+        b.post(1, Tone::Error, false, t0);
+        b.post(2, Tone::Done, false, t0 + secs(1));
+        // B shows, A is only its "+1".
+        assert_eq!(
+            b.current(t0 + secs(1)),
+            Some(Shown {
+                id: 2,
+                stage: Stage::Result,
+                extra: 1
+            })
+        );
+        b.set_hover(true, t0 + secs(2));
+        b.set_hover(false, t0 + secs(3));
+        // B goes 3.5 s after the pointer left; A, never shown, stays.
+        assert_eq!(b.current(t0 + ms(6499)).map(|s| s.id), Some(2));
+        assert_eq!(
+            b.current(t0 + ms(6500)),
+            Some(Shown {
+                id: 1,
+                stage: Stage::Result,
+                extra: 0
+            })
+        );
+        assert_eq!(b.current(t0 + secs(600)).map(|s| s.id), Some(1));
+        // Hovered now it is shown, it goes like any seen result.
+        b.set_hover(true, t0 + secs(600));
+        b.set_hover(false, t0 + secs(601));
+        assert!(b.current(t0 + ms(604_499)).is_some());
+        assert_eq!(b.current(t0 + ms(604_500)), None);
+    }
+
+    #[test]
+    fn hover_holds_the_results_behind_the_shown_one() {
+        let t0 = Instant::now();
+        let mut b = NewsBoard::new();
+        b.post(1, Tone::Done, false, t0);
+        b.post(2, Tone::Done, false, t0 + secs(1));
+        b.set_hover(true, t0 + secs(2));
+        // Result 1's own hold would have ended at 3.5 s.
+        assert_eq!(b.current(t0 + secs(10)).map(|s| s.extra), Some(1));
+        b.set_hover(false, t0 + secs(10));
+        assert_eq!(b.current(t0 + ms(13_499)).map(|s| s.extra), Some(1));
+        assert_eq!(b.current(t0 + ms(13_500)), None);
     }
 
     #[test]

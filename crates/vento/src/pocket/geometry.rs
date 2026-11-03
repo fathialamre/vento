@@ -546,6 +546,13 @@ pub(super) fn hits(
         .any(|r| contains(r, cursor))
 }
 
+/// Whether the pointer at `cursor` is on the news pill `news` (`None` while
+/// none shows), which holds its result. Open, the island's panel lies where
+/// the pill was: the pointer there sees no news.
+pub(super) fn news_hovered(presence: Presence, news: Option<&NewsRects>, cursor: Point) -> bool {
+    presence != Presence::Expanded && news.is_some_and(|n| contains(&n.pill, cursor))
+}
+
 /// The global point `p` in the coordinates of the window whose frame is
 /// `window`.
 pub(super) fn window_pos(window: &Rect, p: Point) -> LogicalPosition {
@@ -1067,6 +1074,20 @@ mod tests {
         // A width without its x is no chip, nor button.
         let news = news_rects(&f, 300.0, Some(60.0), None, Some(28.0), None);
         assert_eq!((news.button, news.chip), (None, None));
+    }
+
+    #[test]
+    fn the_news_pill_is_hovered_only_while_the_island_rests() {
+        let f = virtual_frames(&by_the_clock(false), spot(IslandPlace::Centre, false), TWO);
+        let news = news_with(&f, true, false);
+        let text = Point { x: 550.0, y: 23.0 };
+        assert!(news_hovered(Presence::Collapsed, Some(&news), text));
+        assert!(!news_hovered(Presence::Collapsed, None, text));
+        let below = Point { x: 550.0, y: 60.0 };
+        assert!(!news_hovered(Presence::Collapsed, Some(&news), below));
+        // Open, the band where the pill was is the panel's top: crossing it
+        // sees no news.
+        assert!(!news_hovered(Presence::Expanded, Some(&news), text));
     }
 
     #[test]
