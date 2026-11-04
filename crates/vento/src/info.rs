@@ -18,6 +18,7 @@ use log::{debug, warn};
 use slint::winit_030::winit::event::{ElementState, WindowEvent};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{CloseRequestResponse, ComponentHandle, LogicalPosition, ModelRc, Timer, VecModel};
+use vento_core::actions::ActionId;
 use vento_core::geometry::{Point, Rect};
 use vento_core::i18n::tr;
 use vento_core::info::{Facts, Subject, ViewContext, subject_of, view};
@@ -25,6 +26,7 @@ use vento_core::sizes::{self, CountOptions, Progress, Tally, count};
 use vento_platform::Platform;
 
 use crate::appearance;
+use crate::notice::Notice;
 use crate::panel::set_rows;
 use crate::pocket::to_image;
 use crate::toast::{Toaster, position_below};
@@ -143,7 +145,8 @@ impl InfoController {
             } else {
                 tr("Info: item not found")
             };
-            self.toaster.show(&text, None, at);
+            self.toaster
+                .notify(Notice::info(text).with_icon(ActionId::Info), at);
             return;
         }
         if let Some(before_open) = self.before_open.borrow().as_ref() {
@@ -358,7 +361,10 @@ impl InfoController {
             let at = self.shown.borrow().as_ref().map(|s| s.at);
             self.close();
             if let Some(at) = at {
-                self.toaster.show(&tr("Info: cannot count"), None, at);
+                self.toaster.notify(
+                    Notice::error(tr("Info: cannot count")).with_icon(ActionId::Info),
+                    at,
+                );
             }
         }
     }

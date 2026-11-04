@@ -21,6 +21,8 @@ mod info;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod lazy_window;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+mod notice;
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod panel;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod pause;
@@ -155,6 +157,16 @@ fn main() -> Result<(), slint::PlatformError> {
         archive_ui::PasswordView::new(platform.clone()),
     );
     let pocket = pocket::PocketController::new(platform.clone(), shared.clone(), toaster.clone());
+    let sink: Rc<dyn notice::NoticeSink> = pocket.clone();
+    toaster.set_sink(Rc::downgrade(&sink));
+    // Activity offers the newest Undo while it still undoes the last
+    // operation.
+    {
+        let executor = Rc::downgrade(&executor);
+        pocket.set_last_serial(Box::new(move || {
+            executor.upgrade().and_then(|e| e.last_serial())
+        }));
+    }
     // Slint can switch its translation only once a component exists: the
     // Pocket's window is the first. Text made before this is English.
     appearance::apply_language(language_code(&hub.current().language));
@@ -220,6 +232,40 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }));
     }
+    // The virtual island's paused pill resumes: while paused, the wheel's
+    // poll keeps sampling for it.
+    {
+        let wheel = Rc::downgrade(&controller);
+        pocket.set_on_virtual(Box::new(move |on| {
+            if let Some(wheel) = wheel.upgrade() {
+                wheel.set_island_virtual(on);
+            }
+        }));
+    }
+    // The virtual island dragged by its grip (or put back in the middle)
+    // saves its screen and its place there.
+    {
+        let hub = Rc::downgrade(&hub);
+        pocket.on_place_dropped(Box::new(move |key, spot| {
+            let Some(hub) = hub.upgrade() else {
+                return;
+            };
+            if let Err(e) = hub.update(|s| {
+                s.island_screen = key.clone();
+                s.set_island_spot(key.as_deref(), spot);
+            }) {
+                log::warn!("cannot save the island's place: {e}");
+            }
+        }));
+    }
+    {
+        let pause = Rc::downgrade(&pause);
+        pocket.set_on_resume(Box::new(move || {
+            if let Some(pause) = pause.upgrade() {
+                pause.set(false);
+            }
+        }));
+    }
     // The Pocket shortcut opens the island on the Pocket, the Clipboard
     // shortcut on the history, and the Copy from screen shortcut starts
     // that. Each is registered at startup (the Clipboard one only while the
@@ -258,7 +304,7 @@ fn main() -> Result<(), slint::PlatformError> {
             is_paused: Box::new(move || pause.is_paused()),
             read: Box::new(screen_text::read_on_worker),
             copy: Box::new(move |text| copier.copy_text(text)),
-            notify: Box::new(move |text, at| toaster.show(text, None, at)),
+            notify: Box::new(move |notice, at| toaster.notify(notice, at)),
             ask_access: Box::new(move || access.show()),
             hide_access: Box::new(move || hider.hide_if_shown()),
         })
@@ -390,6 +436,45 @@ fn main() -> Result<(), slint::PlatformError> {
             Box::new(move |paused| pause.set(paused)),
         )
     };
+    // Keep Awake in the virtual island: the resting pill shows a cup and
+    // the time left, and the island says when a session ends soon (with
+    // +1 h) and when the computer may sleep again.
+    {
+        let keep = panel.keep_awake();
+        let (watched, island) = (Rc::downgrade(&keep), Rc::downgrade(&pocket));
+        let watch = RefCell::new(awake::AwakeWatch::default());
+        keep.on_change(Box::new(move || {
+            let (Some(keep), Some(pocket)) = (watched.upgrade(), island.upgrade()) else {
+                return;
+            };
+            let (session, now) = (keep.session(), jiff::Timestamp::now());
+            let tz = jiff::tz::TimeZone::system();
+            pocket.set_awake(
+                session.map(|s| awake::rest_status(s, now, &tz)),
+                session.is_some_and(|s| awake::ends_soon(s, now)),
+                session.and_then(|s| awake::left_fraction(s, now)),
+            );
+            let news = watch.borrow_mut().changed(session, now);
+            match news {
+                Some(awake::AwakeNews::EndsSoon) => {
+                    let keep = Rc::downgrade(&keep);
+                    pocket.notify(
+                        notice::Notice::busy(tr("Awake ends in 5 min"))
+                            .with_button(notice::ButtonLabel::AddHour, move || {
+                                if let Some(keep) = keep.upgrade() {
+                                    keep.add_hour();
+                                }
+                            })
+                            .island_only(),
+                    );
+                }
+                Some(awake::AwakeNews::Stopped) => {
+                    pocket.notify(notice::Notice::info(tr("Sleep allowed again")).island_only());
+                }
+                None => {}
+            }
+        }));
+    }
     // The menu-bar icon needs the running event loop, and lives as long as the app.
     let tray_handle: Rc<RefCell<Option<tray::TrayHandle>>> = Rc::new(RefCell::new(None));
     // Updates (macOS): the daily check, the download and the restart. Its
@@ -538,6 +623,91 @@ fn main() -> Result<(), slint::PlatformError> {
         });
         // The row shows the state at once, not only after the first change.
         show_now();
+    }
+    // The update in the virtual island: a new version, its download as a
+    // job with Cancel, and the update ready to restart. Get it and Restart
+    // do what the panel's card does.
+    #[cfg(target_os = "macos")]
+    if let Some(updates) = &updates {
+        use vento_core::i18n::fill;
+
+        let (watched, island, jobs) = (
+            Rc::downgrade(updates),
+            Rc::downgrade(&pocket),
+            toaster.clone(),
+        );
+        let watch = RefCell::new(updater::island::UpdateWatch::default());
+        let job: RefCell<Option<(u64, std::sync::Arc<vento_core::archive::Progress>)>> =
+            RefCell::new(None);
+        updates.on_change(Box::new(move |state| {
+            let Some(pocket) = island.upgrade() else {
+                return;
+            };
+            let steps = watch.borrow_mut().changed(state);
+            for step in steps {
+                match step {
+                    updater::island::IslandStep::Out(version) => {
+                        let updates = watched.clone();
+                        pocket.notify(
+                            notice::Notice::info(fill(
+                                &tr("Vento {version} is out"),
+                                &[("version", &version.to_string())],
+                            ))
+                            .with_button(notice::ButtonLabel::GetIt, move || {
+                                if let Some(updates) = updates.upgrade() {
+                                    updates.update();
+                                }
+                            })
+                            .island_only(),
+                        );
+                    }
+                    updater::island::IslandStep::DownloadStarted(version) => {
+                        let (id, progress) =
+                            (notice::next_job_id(), updater::island::download_progress());
+                        let updates = watched.clone();
+                        jobs.job_started(notice::JobNotice {
+                            id,
+                            icon: None,
+                            text: fill(
+                                &tr("Downloading {v}\u{2026}"),
+                                &[("v", &version.to_string())],
+                            ),
+                            progress: Some(progress.clone()),
+                            cancel: Some(Rc::new(move || {
+                                if let Some(updates) = updates.upgrade() {
+                                    updates.cancel();
+                                }
+                            })),
+                        });
+                        *job.borrow_mut() = Some((id, progress));
+                    }
+                    updater::island::IslandStep::Downloaded(fraction) => {
+                        if let Some((_, progress)) = job.borrow().as_ref() {
+                            updater::island::set_downloaded(progress, fraction);
+                        }
+                    }
+                    updater::island::IslandStep::DownloadEnded => {
+                        let ended = job.borrow_mut().take();
+                        if let Some((id, _)) = ended {
+                            jobs.job_ended(id);
+                        }
+                    }
+                    updater::island::IslandStep::Ready => {
+                        let updates = watched.clone();
+                        pocket.notify(
+                            notice::Notice::done(tr("Update ready"))
+                                .with_button(notice::ButtonLabel::Restart, move || {
+                                    if let Some(updates) = updates.upgrade() {
+                                        updates.restart();
+                                    }
+                                })
+                                .sticky()
+                                .island_only(),
+                        );
+                    }
+                }
+            }
+        }));
     }
     if let Some(controller) = screen_text.clone() {
         panel.set_on_copy_from_screen(Box::new(move || controller.start()));
@@ -738,6 +908,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let try_slot = {
         let toaster = toaster.clone();
         let platform = platform.clone();
+        let settings = Rc::downgrade(&settings);
         move |slot: &ShortcutSlot, name: &str, shown: String, spec: &str| {
             if let Err(reason) = slot.register(spec) {
                 log::warn!(
@@ -745,9 +916,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     in_english_text(reason.clone())
                 );
                 let at = platform.sample_input().cursor;
-                toaster.show(
-                    &shortcut_unavailable_text(&shown, &reason.to_string()),
-                    None,
+                let settings = settings.clone();
+                toaster.notify(
+                    shortcut_unavailable_notice(&shown, &reason.to_string(), move || {
+                        if let Some(settings) = settings.upgrade() {
+                            settings.open();
+                        }
+                    }),
                     at,
                 );
             }
@@ -802,6 +977,22 @@ fn main() -> Result<(), slint::PlatformError> {
                 pocket.apply_clip_settings(new);
                 pocket.apply_shot_settings(new);
                 pocket.apply_pocket_settings(new);
+                if old.island_mode != new.island_mode
+                    || old.island_place != new.island_place
+                    || old.island_place_free != new.island_place_free
+                    || old.island_place_each_screen != new.island_place_each_screen
+                    || old.island_screen != new.island_screen
+                    || old.island_places != new.island_places
+                    || old.island_shape != new.island_shape
+                    || old.island_glass != new.island_glass
+                    || old.island_shimmer != new.island_shimmer
+                    || old.island_shimmer_every != new.island_shimmer_every
+                    || old.island_shimmer_needs_items != new.island_shimmer_needs_items
+                    || old.island_reduce_motion != new.island_reduce_motion
+                    || old.island_jobs != new.island_jobs
+                {
+                    pocket.island_settings_changed();
+                }
                 // The first listener has switched the language by now.
                 if old.language != new.language {
                     pocket.apply_language();
@@ -835,6 +1026,7 @@ fn main() -> Result<(), slint::PlatformError> {
     #[cfg(target_os = "macos")]
     let start_updates = updates.clone();
     let start_whats_new = whats_new.clone();
+    let (hint_hub, hint_platform, hint_toaster) = (hub.clone(), platform.clone(), toaster.clone());
     slint::Timer::single_shot(Duration::ZERO, move || {
         let settings = hub.current();
         apply_pocket_shortcut(&settings);
@@ -885,6 +1077,7 @@ fn main() -> Result<(), slint::PlatformError> {
             remove_old_copy_later(old);
         }
         show_whats_new_on_start(&start_whats_new, fresh);
+        show_island_hint_once(&hint_hub, hint_platform.as_ref(), &hint_toaster);
         #[cfg(target_os = "macos")]
         if let Some(updates) = start_updates {
             if let Some(tray) = keep.borrow().as_ref() {
@@ -943,6 +1136,37 @@ fn show_whats_new_on_start(whats_new: &whats_new_window::WhatsNewController, fre
     }
 }
 
+/// At start, tells someone on the classic island, where the virtual one can
+/// be chosen, about it: one toast, then `island_hint_shown` is saved so it
+/// never comes again. Nothing happens while the settings file is broken, as
+/// saving would write the defaults over it. The toast waits for the save,
+/// so a settings file that cannot be written does not bring it back at
+/// every start.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn show_island_hint_once(
+    hub: &settings_hub::SettingsHub,
+    platform: &dyn vento_platform::Platform,
+    toaster: &toast::Toaster,
+) {
+    let offered = platform
+        .pocket_home()
+        .is_some_and(|home| pocket::virtual_offered(&home, platform.virtual_island_supported()));
+    let loaded = hub.load_error().is_none();
+    if !vento_core::settings::should_show_island_hint(&hub.current(), offered, loaded) {
+        return;
+    }
+    if let Err(e) = hub.update(|s| s.island_hint_shown = true) {
+        log::warn!("cannot save that the island hint was shown: {e}");
+        return;
+    }
+    toaster.notify(
+        notice::Notice::info(vento_core::i18n::tr(
+            "New: try the Virtual island in Settings › Island",
+        )),
+        platform.sample_input().cursor,
+    );
+}
+
 /// Deletes `old`, the old copy an update left beside the bundle
 /// (`Vento.app.old`), 60 seconds from now and off the main thread.
 #[cfg(target_os = "macos")]
@@ -977,6 +1201,18 @@ fn shortcut_unavailable_text(name: &str, reason: &str) -> String {
         &vento_core::i18n::tr("{name} shortcut unavailable: {reason}"),
         &[("name", name), ("reason", reason)],
     )
+}
+
+/// The notice for a shortcut of the feature `name` that cannot be registered,
+/// for `reason`; its Change button runs `change`, which opens the settings.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn shortcut_unavailable_notice(
+    name: &str,
+    reason: &str,
+    change: impl Fn() + 'static,
+) -> notice::Notice {
+    notice::Notice::error(shortcut_unavailable_text(name, reason))
+        .with_button(notice::ButtonLabel::Change, change)
 }
 
 /// Why a shortcut failed, in English: for log lines.

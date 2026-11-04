@@ -8,8 +8,8 @@ use vento_core::geometry::Rect;
 use x11rb::connection::Connection;
 use x11rb::protocol::shape::{self, ConnectionExt as _};
 use x11rb::protocol::xproto::{
-    ChangeWindowAttributesAux, ClipOrdering, ConnectionExt, CreateGCAux, ImageFormat, MapState,
-    Rectangle,
+    AtomEnum, ChangeWindowAttributesAux, ClipOrdering, ConnectionExt, CreateGCAux, ImageFormat,
+    MapState, Rectangle,
 };
 use x11rb::rust_connection::RustConnection;
 
@@ -25,6 +25,8 @@ const RECOMMIT_AFTER: [Duration; 2] = [Duration::from_millis(60), Duration::from
 thread_local! {
     /// A connection of our own to the X server the windows live on.
     static CONN: OnceCell<Option<RustConnection>> = const { OnceCell::new() };
+    /// The atoms [`front_window`] reads, interned on first use.
+    static FRONT_ATOMS: OnceCell<Option<FrontAtoms>> = const { OnceCell::new() };
 }
 
 /// The X11 window id of `handle`; `Unsupported` for a window that is not
@@ -112,6 +114,179 @@ pub(super) fn make_override_redirect(handle: RawWindowHandle) -> Result<(), Plat
     })
 }
 
+/// The window types that are not an app's own window: a panel and the
+/// desktop.
+const SHELL_TYPES: [&str; 2] = ["_NET_WM_WINDOW_TYPE_DOCK", "_NET_WM_WINDOW_TYPE_DESKTOP"];
+
+/// Whether a window of the `_NET_WM_WINDOW_TYPE`s `types` is an app's own
+/// window; one with none set is a normal window.
+pub(super) fn counts_as_front(types: &[&str]) -> bool {
+    !types.iter().any(|t| SHELL_TYPES.contains(t))
+}
+
+/// What [`front_window`] asks the X server about.
+#[derive(Debug, Clone, Copy)]
+struct FrontAtoms {
+    active: u32,
+    wm_type: u32,
+    dock: u32,
+    desktop: u32,
+    pid: u32,
+    /// The window manager's frame around a window.
+    frame_extents: u32,
+    /// The shadow a client-side decorated (GTK) window draws inside its
+    /// own window.
+    gtk_frame_extents: u32,
+}
+
+impl FrontAtoms {
+    /// All at once, in one round trip.
+    fn intern(conn: &RustConnection) -> Result<Self, PlatformError> {
+        let names = [
+            "_NET_ACTIVE_WINDOW",
+            "_NET_WM_WINDOW_TYPE",
+            SHELL_TYPES[0],
+            SHELL_TYPES[1],
+            "_NET_WM_PID",
+            "_NET_FRAME_EXTENTS",
+            "_GTK_FRAME_EXTENTS",
+        ];
+        let mut cookies = Vec::with_capacity(names.len());
+        for name in names {
+            cookies.push(
+                conn.intern_atom(false, name.as_bytes())
+                    .map_err(|e| failed(&e))?,
+            );
+        }
+        let mut atoms = [0; 7];
+        for (atom, cookie) in atoms.iter_mut().zip(cookies) {
+            *atom = cookie.reply().map_err(|e| failed(&e))?.atom;
+        }
+        let [
+            active,
+            wm_type,
+            dock,
+            desktop,
+            pid,
+            frame_extents,
+            gtk_frame_extents,
+        ] = atoms;
+        Ok(Self {
+            active,
+            wm_type,
+            dock,
+            desktop,
+            pid,
+            frame_extents,
+            gtk_frame_extents,
+        })
+    }
+
+    /// The name of the window type `atom`, as far as [`counts_as_front`]
+    /// tells them apart.
+    fn type_name(&self, atom: u32) -> &'static str {
+        if atom == self.dock {
+            SHELL_TYPES[0]
+        } else if atom == self.desktop {
+            SHELL_TYPES[1]
+        } else {
+            ""
+        }
+    }
+}
+
+/// The frame of the active window as the user sees it, in X11 pixels of
+/// the root window, and the root window's width; `None` when no window is
+/// active, or it is vento's own, a panel or the desktop. Two round trips.
+pub(super) fn front_window() -> Option<(Rect, u16)> {
+    let atoms = FRONT_ATOMS.with(|cell| {
+        *cell.get_or_init(|| {
+            with_conn(FrontAtoms::intern)
+                .inspect_err(|e| log::debug!("no atoms for the front window: {e}"))
+                .ok()
+        })
+    })?;
+    with_conn(|conn| Ok(front_window_on(conn, &atoms)))
+        .ok()
+        .flatten()
+}
+
+fn front_window_on(conn: &RustConnection, atoms: &FrontAtoms) -> Option<(Rect, u16)> {
+    let root = conn.setup().roots.first()?;
+    let window = conn
+        .get_property(false, root.root, atoms.active, AtomEnum::WINDOW, 0, 1)
+        .ok()?
+        .reply()
+        .ok()?
+        .value32()?
+        .next()
+        .filter(|&w| w != 0)?;
+    // Everything asked at once, then the answers read.
+    let types = conn
+        .get_property(false, window, atoms.wm_type, AtomEnum::ATOM, 0, 32)
+        .ok()?;
+    let pid = conn
+        .get_property(false, window, atoms.pid, AtomEnum::CARDINAL, 0, 1)
+        .ok()?;
+    let frame = conn
+        .get_property(false, window, atoms.frame_extents, AtomEnum::CARDINAL, 0, 4)
+        .ok()?;
+    let shadow = conn
+        .get_property(
+            false,
+            window,
+            atoms.gtk_frame_extents,
+            AtomEnum::CARDINAL,
+            0,
+            4,
+        )
+        .ok()?;
+    let size = conn.get_geometry(window).ok()?;
+    let origin = conn.translate_coordinates(window, root.root, 0, 0).ok()?;
+
+    let types = types.reply().ok()?;
+    let normal = types
+        .value32()
+        .is_none_or(|mut t| t.all(|t| counts_as_front(&[atoms.type_name(t)])));
+    let pid = pid.reply().ok()?.value32().and_then(|mut v| v.next());
+    let extents = |reply: x11rb::protocol::xproto::GetPropertyReply| {
+        let mut v = reply.value32()?;
+        let mut next = || v.next().map(f64::from);
+        // Left, right, top, bottom.
+        Some([next()?, next()?, next()?, next()?])
+    };
+    let frame = frame.reply().ok().and_then(extents);
+    let shadow = shadow.reply().ok().and_then(extents);
+    let size = size.reply().ok()?;
+    let origin = origin.reply().ok()?;
+    if !normal || pid == Some(std::process::id()) {
+        return None;
+    }
+    let mut r = Rect {
+        x: f64::from(origin.dst_x),
+        y: f64::from(origin.dst_y),
+        w: f64::from(size.width),
+        h: f64::from(size.height),
+    };
+    if let Some([left, right, top, bottom]) = frame {
+        r = Rect {
+            x: r.x - left,
+            y: r.y - top,
+            w: r.w + left + right,
+            h: r.h + top + bottom,
+        };
+    }
+    if let Some([left, right, top, bottom]) = shadow {
+        r = Rect {
+            x: r.x + left,
+            y: r.y + top,
+            w: (r.w - left - right).max(0.0),
+            h: (r.h - top - bottom).max(0.0),
+        };
+    }
+    Some((r, root.width_in_pixels))
+}
+
 /// The X11 rectangle covering `rect`, rounded out to whole pixels.
 fn pixel_rect(rect: &Rect) -> Rectangle {
     let x = rect.x.floor();
@@ -124,13 +299,14 @@ fn pixel_rect(rect: &Rect) -> Rectangle {
     }
 }
 
-/// Sets the input shape of the window of `handle` to `rect`, or to nothing.
-pub(super) fn set_input_rect(
+/// Sets the input shape of the window of `handle` to `rects`, or to
+/// nothing when there are none.
+pub(super) fn set_input_rects(
     handle: RawWindowHandle,
-    rect: Option<Rect>,
+    rects: &[Rect],
 ) -> Result<(), PlatformError> {
     let window = window_id(handle)?;
-    let rects: Vec<Rectangle> = rect.iter().map(pixel_rect).collect();
+    let rects: Vec<Rectangle> = rects.iter().map(pixel_rect).collect();
     with_conn(|conn| {
         conn.shape_rectangles(
             shape::SO::SET,
@@ -224,6 +400,14 @@ mod tests {
             window_id(WaylandWindowHandle::new(surface).into()),
             Err(PlatformError::Unsupported)
         ));
+    }
+
+    #[test]
+    fn docks_and_desktops_are_not_front_windows() {
+        assert!(!counts_as_front(&["_NET_WM_WINDOW_TYPE_DOCK"]));
+        assert!(!counts_as_front(&["_NET_WM_WINDOW_TYPE_DESKTOP"]));
+        assert!(counts_as_front(&["_NET_WM_WINDOW_TYPE_NORMAL"]));
+        assert!(counts_as_front(&[]));
     }
 
     #[test]

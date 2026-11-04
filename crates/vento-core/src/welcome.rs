@@ -9,7 +9,7 @@ use directories::ProjectDirs;
 use crate::actions::ActionId;
 use crate::i18n::{self, tr};
 use crate::paths::PathFormat;
-use crate::settings::Settings;
+use crate::settings::{IslandMode, Settings};
 
 /// Vento's data folder (`ProjectDirs::data_dir()`); `None` when the system
 /// gives no home folder.
@@ -25,11 +25,18 @@ pub fn is_fresh_install(settings_file: &Path, data_dir: Option<&Path>) -> bool {
 }
 
 /// The settings a fresh install starts with: the defaults, the Welcome setup
-/// still to do, and the interface language set to the one that `"auto"`
-/// picks from the system's `preferred` languages.
+/// still to do, the virtual island (so with no hint to give about it), and
+/// the interface language set to the one that `"auto"` picks from the
+/// system's `preferred` languages.
+///
+/// This is the only place a new install gets the virtual island: anything
+/// else without a settings file (v0.1 and v0.2 never wrote one at startup)
+/// keeps the classic one, see [`Settings::default`].
 pub fn first_settings(preferred: &[String]) -> Settings {
     Settings {
         welcome_done: false,
+        island_mode: IslandMode::Virtual,
+        island_hint_shown: true,
         language: i18n::resolve("auto", preferred).code.to_owned(),
         ..Settings::default()
     }
@@ -192,10 +199,13 @@ mod tests {
         assert!(!s.welcome_done);
         let s = first_settings(&["de-DE".into()]);
         assert_eq!(s.language, "en");
+        assert_eq!(s.island_mode, IslandMode::Virtual);
         assert_eq!(
             s,
             Settings {
                 welcome_done: false,
+                island_mode: IslandMode::Virtual,
+                island_hint_shown: true,
                 ..Settings::default()
             }
         );

@@ -6,7 +6,8 @@ import { LineText, Theme, ThemeColors } from "theme.slint";
 import { Icons } from "wheel.slint";
 import {
     PanelIcons, RowSeparator, Switch, Segmented, MenuField, TextButton, IconButton, Stepper,
-    ShortcutField, ReorderRow, DragGrip, WrapText, SettingRow, RowBody, RowError, RowButton,
+    ShortcutField, ReorderRow, DragGrip, WrapText, SettingRow, RowBody, RowError, RowButton, Chip,
+    Slider, SweepBand,
 } from "controls.slint";
 
 // One action in the Wheel page's list, shown on the wheel or not.
@@ -293,6 +294,315 @@ component LookPicker inherits HorizontalLayout {
         label: @tr("System");
         chosen: root.current == 0;
         clicked => { root.chosen(0); }
+    }
+}
+
+// One shape the resting virtual island can take, drawn small on the
+// island's dark with its name under it, ringed in the accent while chosen.
+component ShapeTile inherits VerticalLayout {
+    in property <string> label;
+    in property <bool> chosen;
+    // 0 the island's pill, 1 a circle, as the setting counts them.
+    in property <int> kind;
+    callback clicked();
+
+    spacing: 6px;
+    width: 120px;
+    accessible-role: radio-button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    Rectangle {
+        height: 64px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: root.chosen ? Theme.accent : touch.has-hover ? Theme.panel-line : transparent;
+
+        Rectangle {
+            x: 2px;
+            y: 2px;
+            width: parent.width - 4px;
+            height: parent.height - 4px;
+            border-radius: 8px;
+            background: #1c1c1e;
+
+            // The shape itself: black, with a faint edge and the orange dot.
+            Rectangle {
+                width: root.kind == 0 ? 60px : 18px;
+                height: root.kind == 0 ? 14px : 18px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                background: #000000;
+                border-width: 1px;
+                border-color: #ffffff22;
+
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: #ff6a1a;
+                    x: root.kind == 0
+                        ? (Theme.rtl ? parent.width - self.width - 8px : 8px)
+                        : (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.label;
+        font-size: 12px;
+        font-weight: root.chosen ? 500 : 400;
+        color: root.chosen ? Theme.text : Theme.muted;
+    }
+}
+
+// The Shape setting's two shapes, side by side.
+component ShapePicker inherits HorizontalLayout {
+    // 0 Island, 1 Circle.
+    in property <int> current;
+    callback chosen(int);
+
+    spacing: 8px;
+    alignment: Theme.rtl ? end : start;
+    accessible-role: radio-group;
+    accessible-label: @tr("Shape");
+
+    ShapeTile {
+        layout-order: Theme.rtl ? 1 : 0;
+        kind: 0;
+        label: @tr("Island");
+        chosen: root.current == 0;
+        clicked => { root.chosen(0); }
+    }
+
+    ShapeTile {
+        layout-order: Theme.rtl ? 0 : 1;
+        kind: 1;
+        label: @tr("Circle");
+        chosen: root.current == 1;
+        clicked => { root.chosen(1); }
+    }
+}
+
+// One shimmer style, drawn on a still island over its name, ringed in the
+// accent while chosen. Hovering it or choosing it plays the style once
+// over 1.2 s (never when Reduce motion is on); nothing else moves.
+component ShimmerTile inherits VerticalLayout {
+    in property <string> label;
+    in property <bool> chosen;
+    // The style as the setting counts them: 0 Off, 1 Sweep, 2 Edge run,
+    // 3 Halo, 4 Sparkle, 5 Liquid.
+    in property <int> kind;
+    // Whether the island is drawn as the circle rather than the pill.
+    in property <bool> circle;
+    // Whether the previews stay still.
+    in property <bool> reduce-motion;
+    callback clicked();
+
+    // How far the moment has played, 0 to 1; 0 while it is not playing.
+    property <bool> playing;
+    property <duration> start;
+    property <float> t: root.playing ? min(1, (animation-tick() - root.start) / 1200ms) : 0;
+    // The island drawn, its width growing for Liquid, and where it sits.
+    property <length> base-w: root.circle ? 18px : 56px;
+    property <length> base-h: root.circle ? 18px : 14px;
+    property <length> grow: root.kind == 5 ? 4px * (0.5 + 0.5 * Math.cos(root.t * 720deg)) : 0px;
+    property <length> w: root.base-w + root.grow;
+    property <length> h: root.base-h;
+    function play() {
+        if !root.reduce-motion && root.kind != 0 && !root.playing {
+            root.start = animation-tick();
+            root.playing = true;
+            play-timer.restart();
+        }
+    }
+    changed chosen => {
+        if root.chosen {
+            root.play();
+        }
+    }
+    play-timer := Timer {
+        interval: 1200ms;
+        running: root.playing;
+        triggered => {
+            root.playing = false;
+        }
+    }
+
+    spacing: 6px;
+    width: 96px;
+    accessible-role: radio-button;
+    accessible-label: self.label;
+    accessible-checkable: true;
+    accessible-checked: self.chosen;
+    accessible-action-default => { self.clicked(); }
+
+    Rectangle {
+        height: 64px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: root.chosen ? Theme.accent : touch.has-hover ? Theme.panel-line : transparent;
+
+        Rectangle {
+            x: 2px;
+            y: 2px;
+            width: parent.width - 4px;
+            height: parent.height - 4px;
+            border-radius: 8px;
+            background: #1c1c1e;
+
+            // Halo: a faint orange ring just outside the edge, lit and
+            // faded, like the island's own.
+            if root.kind == 3: Rectangle {
+                width: root.w + 8px;
+                height: root.h + 8px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                border-width: 2px;
+                border-color: #ff6a1a;
+                opacity: root.playing ? 0.15 + 0.6 * Math.sin(root.t * 180deg) : 0.15;
+            }
+
+            // The island, black with a faint edge; Sweep and Edge run
+            // are drawn on it, kept within its shape (the renderer clips
+            // only to rectangles, so they are cut to it by hand).
+            island := Rectangle {
+                width: root.w;
+                height: root.h;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                background: #000000;
+                border-width: 1px;
+                border-color: #ffffff22;
+                clip: true;
+
+                // Sweep: a band of light crossing from side to side.
+                if root.kind == 1: SweepBand {
+                    x: 0px;
+                    y: 0px;
+                    w: root.w;
+                    h: root.h;
+                    band: 10px;
+                    left: root.playing ? -10px + root.t * (root.w + 10px) : (root.w - 10px) / 2;
+                    slices: 5;
+                    peak: 0.4;
+                }
+
+                // Edge run: a short bright segment on the edge; played, it
+                // runs along the top, then back along the bottom, showing
+                // only on the straight run between the round ends. On the
+                // circle, a dot runs round just inside the edge.
+                if root.kind == 2 && !root.circle: Rectangle {
+                    property <bool> top: root.t < 0.5;
+                    // Where the segment would be, and the straight run it
+                    // shows on.
+                    property <length> at: !root.playing ? (root.w - 12px) / 2
+                        : self.top ? -12px + root.t * 2 * (root.w + 12px)
+                        : root.w - (root.t - 0.5) * 2 * (root.w + 12px);
+                    property <length> from: max(root.h / 2, self.at);
+                    property <length> to: min(root.w - root.h / 2, self.at + 12px);
+                    width: max(0px, self.to - self.from);
+                    height: 2px;
+                    background: #ffffffdd;
+                    x: self.from;
+                    y: !root.playing || self.top ? 0px : root.h - 2px;
+                }
+
+                if root.kind == 2 && root.circle: Rectangle {
+                    width: 4px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: #ffffffdd;
+                    x: (root.w - self.width) / 2 + (root.playing ? 6.5px * Math.sin(root.t * 360deg) : 0px);
+                    y: (root.h - self.height) / 2 - (root.playing ? 6.5px * Math.cos(root.t * 360deg) : 6.5px);
+                }
+            }
+
+            // Sparkle: three tiny four-point stars, each twinkling in turn.
+            for pos[i] in [{ fx: 0.2, fy: 0.15 }, { fx: 0.5, fy: 0.8 }, { fx: 0.8, fy: 0.2 }]: Path {
+                width: 5px;
+                height: 5px;
+                x: island.x + pos.fx * (root.w - 5px);
+                y: island.y + pos.fy * (root.h - 5px);
+                viewbox-width: 5;
+                viewbox-height: 5;
+                commands: "M 2.5 0 L 3 2 L 5 2.5 L 3 3 L 2.5 5 L 2 3 L 0 2.5 L 2 2 Z";
+                fill: #ffffff;
+                visible: root.kind == 4;
+                opacity: root.playing
+                    ? 0.2 + 0.8 * Math.max(0, Math.sin(Math.clamp((root.t - 0.2 * i) / 0.6, 0, 1) * 180deg))
+                    : 0.85;
+            }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+            changed has-hover => {
+                if self.has-hover {
+                    root.play();
+                }
+            }
+        }
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.label;
+        font-size: 12px;
+        font-weight: root.chosen ? 500 : 400;
+        color: root.chosen ? Theme.text : Theme.muted;
+    }
+}
+
+// The Shimmer setting's styles, Off first, in rows as wide as the page
+// allows.
+component ShimmerPicker inherits Rectangle {
+    in property <int> current;
+    in property <bool> circle;
+    in property <bool> reduce-motion;
+    callback chosen(int);
+
+    property <[string]> names: [
+        @tr("Off"), @tr("Sweep"), @tr("Edge run"), @tr("Halo"), @tr("Sparkle"), @tr("Liquid"),
+    ];
+    property <length> gap: 8px;
+    property <length> cell-w: 96px;
+    property <length> cell-h: 88px;
+    property <int> columns: max(1, floor((self.width + self.gap) / (self.cell-w + self.gap)));
+
+    height: ceil(self.names.length / self.columns) * (self.cell-h + self.gap) - self.gap;
+    accessible-role: radio-group;
+    accessible-label: @tr("Shimmer");
+
+    for name[i] in root.names: ShimmerTile {
+        property <int> column: mod(i, root.columns);
+
+        // Each row starts at the page's start edge: the right one in a
+        // right-to-left language.
+        x: Theme.rtl ? root.width - root.cell-w - self.column * (root.cell-w + root.gap)
+            : self.column * (root.cell-w + root.gap);
+        y: floor(i / root.columns) * (root.cell-h + root.gap);
+        height: root.cell-h;
+        kind: i;
+        label: name;
+        circle: root.circle;
+        reduce-motion: root.reduce-motion;
+        chosen: root.current == i;
+        clicked => { root.chosen(i); }
     }
 }
 
@@ -808,6 +1118,374 @@ export component PocketPage inherits VerticalLayout {
             current: root.pocket-view;
             chosen(i) => { root.pocket-view-chosen(i); }
         }
+    }
+}
+
+// The shimmer's rows: its style with previews, how often it plays and
+// whether it waits for items in the Pocket. The virtual island and the
+// island on a notch share them.
+component ShimmerRows inherits VerticalLayout {
+    in property <int> shimmer;
+    in property <int> shimmer-every;
+    in property <bool> shimmer-needs-items;
+    // Whether the previews draw the circle, and whether they stay still.
+    in property <bool> circle;
+    in property <bool> reduce-motion;
+    callback shimmer-chosen(int);
+    callback shimmer-every-chosen(int);
+    callback shimmer-needs-items-toggled(bool);
+
+    SettingRow {
+        label: @tr("Shimmer");
+        description: @tr("A small moment of light while the island rests");
+    }
+
+    RowBody {
+        ShimmerPicker {
+            current: root.shimmer;
+            circle: root.circle;
+            reduce-motion: root.reduce-motion;
+            chosen(i) => { root.shimmer-chosen(i); }
+        }
+    }
+
+    if root.shimmer != 0: VerticalLayout {
+        RowSeparator { }
+
+        SettingRow {
+            label: @tr("How often");
+
+            Segmented {
+                width: 210px;
+                items: [@tr("Rarely"), @tr("Sometimes"), @tr("Often")];
+                current: root.shimmer-every;
+                chosen(i) => { root.shimmer-every-chosen(i); }
+            }
+        }
+
+        RowSeparator { }
+
+        SettingRow {
+            label: @tr("Only while the Pocket holds items");
+
+            Switch {
+                label: @tr("Only while the Pocket holds items");
+                on: root.shimmer-needs-items;
+                toggled(on) => { root.shimmer-needs-items-toggled(on); }
+            }
+        }
+    }
+}
+
+// Whether the island follows the system's Reduce motion.
+component FollowReduceRow inherits VerticalLayout {
+    in property <bool> on;
+    callback toggled(bool);
+
+    SettingRow {
+        label: @tr("Follow Reduce motion");
+        description: @tr("No shimmer, no shake, plain fades when the system asks for less motion");
+
+        Switch {
+            label: @tr("Follow Reduce motion");
+            on: root.on;
+            toggled(on) => { root.toggled(on); }
+        }
+    }
+}
+
+// The rows of a notch-style island (a Mac notch or GNOME's top bar room):
+// whether it shows jobs, the shimmer on its wings while it does, and
+// whether it follows Reduce motion.
+component NotchRows inherits VerticalLayout {
+    in property <bool> jobs;
+    in property <int> shimmer;
+    in property <int> shimmer-every;
+    in property <bool> shimmer-needs-items;
+    in property <bool> follow-reduce;
+    in property <bool> reduce-motion;
+    callback jobs-toggled(bool);
+    callback shimmer-chosen(int);
+    callback shimmer-every-chosen(int);
+    callback shimmer-needs-items-toggled(bool);
+    callback follow-reduce-toggled(bool);
+
+    SettingRow {
+        label: @tr("Show jobs in the island");
+        description: @tr("Progress, results and errors appear in the island instead of separate windows");
+
+        Switch {
+            label: @tr("Show jobs in the island");
+            on: root.jobs;
+            toggled(on) => { root.jobs-toggled(on); }
+        }
+    }
+
+    if root.jobs: VerticalLayout {
+        RowSeparator { }
+
+        ShimmerRows {
+            shimmer: root.shimmer;
+            shimmer-every: root.shimmer-every;
+            shimmer-needs-items: root.shimmer-needs-items;
+            circle: false;
+            reduce-motion: root.reduce-motion;
+            shimmer-chosen(i) => { root.shimmer-chosen(i); }
+            shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+            shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+        }
+    }
+
+    RowSeparator { }
+
+    FollowReduceRow {
+        on: root.follow-reduce;
+        toggled(on) => { root.follow-reduce-toggled(on); }
+    }
+}
+
+// The island: which one the screen shows and, for the virtual island, its
+// place and Glass. Where the virtual island can't be chosen, a line says so.
+export component IslandPage inherits VerticalLayout {
+    // Whether the virtual island can be chosen on the island's screen (it
+    // has no notch, and the platform can place it), and whether it is.
+    in property <bool> offered;
+    in property <bool> virtual;
+    // What the other island is called there: where it sits today.
+    in property <string> classic-label;
+    // Where the virtual island sits: 0 Left, 1 Centre, 2 Right, -1 a free
+    // spot between them. Left is always the physical left.
+    in property <int> place;
+    // Whether each screen keeps its own place.
+    in property <bool> each-screen;
+    // How it looks while resting: 0 Island, 1 Circle.
+    in property <int> shape;
+    // How solid it is while resting, in percent (100 = solid).
+    in property <int> glass;
+    // The shimmer style (an index of `ShimmerStyle::ALL`, 0 Off), how often
+    // it plays (of `ShimmerEvery::ALL`), whether it waits for items in the
+    // Pocket and whether Reduce motion is followed.
+    in property <int> shimmer;
+    in property <int> shimmer-every;
+    in property <bool> shimmer-needs-items;
+    in property <bool> follow-reduce;
+    // Whether motion is reduced (Reduce motion is followed and the system
+    // asks for it; the previews stay still), and whether the shape chosen
+    // is the circle (the previews draw it).
+    in property <bool> reduce-motion;
+    in property <bool> circle;
+    // Whether the island here is notch-style (a Mac notch or GNOME's top
+    // bar room), and whether it shows jobs.
+    in property <bool> notch;
+    in property <bool> jobs;
+    // 0 the virtual island, 1 the other one.
+    callback mode-chosen(int);
+    callback shape-chosen(int);
+    callback place-chosen(int);
+    callback each-screen-toggled(bool);
+    callback glass-changed(int);
+    callback shimmer-chosen(int);
+    callback shimmer-every-chosen(int);
+    callback shimmer-needs-items-toggled(bool);
+    callback follow-reduce-toggled(bool);
+    callback jobs-toggled(bool);
+
+    if root.offered: VerticalLayout {
+        SettingRow {
+            label: @tr("Island");
+            description: @tr("Where the Pocket, Clipboard and Screenshots live on this screen");
+
+            MenuField {
+                width: 190px;
+                label: @tr("Island");
+                items: [@tr("Virtual island"), root.classic-label];
+                current: root.virtual ? 0 : 1;
+                chosen(i) => { root.mode-chosen(i); }
+            }
+        }
+
+        if root.virtual: VerticalLayout {
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Shape");
+                description: @tr("How the island looks while resting");
+            }
+
+            RowBody {
+                ShapePicker {
+                    current: root.shape;
+                    chosen(i) => { root.shape-chosen(i); }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Place");
+                description: @tr("Along the top edge, or drag the open island's top bar");
+
+                // The control puts its first item at the start of the line,
+                // so in right-to-left the items run Right to Left and each
+                // button still sits on the side it names.
+                Segmented {
+                    width: 210px;
+                    items: Theme.rtl
+                        ? [@tr("Right"), @tr("Centre"), @tr("Left")]
+                        : [@tr("Left"), @tr("Centre"), @tr("Right")];
+                    current: root.place < 0 ? -1 : (Theme.rtl ? 2 - root.place : root.place);
+                    chosen(i) => { root.place-chosen(Theme.rtl ? 2 - i : i); }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("A place for each screen");
+                description: @tr("The island remembers where it sits on every screen");
+
+                Switch {
+                    label: @tr("A place for each screen");
+                    on: root.each-screen;
+                    toggled(on) => { root.each-screen-toggled(on); }
+                }
+            }
+
+            RowSeparator { }
+
+            SettingRow {
+                label: @tr("Glass");
+                description: @tr("How solid the island is while resting");
+                padding-bottom: 6px;
+
+                Text {
+                    min-width: 40px;
+                    text: @tr("{}%", root.glass);
+                    font-size: 13px;
+                    color: Theme.text;
+                    horizontal-alignment: Theme.rtl ? left : right;
+                    vertical-alignment: center;
+                }
+            }
+
+            RowBody {
+                HorizontalLayout {
+                    spacing: 6px;
+
+                    VerticalLayout {
+                        layout-order: Theme.rtl ? 4 : 0;
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        // The bounds and step of the settings' Glass, and
+                        // its presets below (`GLASS_*` in vento-core).
+                        Slider {
+                            minimum: 10;
+                            maximum: 100;
+                            step: 5;
+                            value: root.glass;
+                            label: @tr("Glass");
+                            changed(v) => { root.glass-changed(round(v)); }
+                        }
+                    }
+
+                    // The presets, from the most see-through.
+                    Chip {
+                        layout-order: Theme.rtl ? 3 : 0;
+                        width: 64px;
+                        label: @tr("Ghost");
+                        chosen: root.glass == 25;
+                        clicked => { root.glass-changed(25); }
+                    }
+
+                    Chip {
+                        layout-order: Theme.rtl ? 2 : 0;
+                        width: 64px;
+                        label: @tr("Glass");
+                        chosen: root.glass == 55;
+                        clicked => { root.glass-changed(55); }
+                    }
+
+                    Chip {
+                        layout-order: Theme.rtl ? 1 : 0;
+                        width: 64px;
+                        label: @tr("Solid");
+                        chosen: root.glass == 100;
+                        clicked => { root.glass-changed(100); }
+                    }
+                }
+            }
+
+            RowSeparator { }
+
+            ShimmerRows {
+                shimmer: root.shimmer;
+                shimmer-every: root.shimmer-every;
+                shimmer-needs-items: root.shimmer-needs-items;
+                circle: root.circle;
+                reduce-motion: root.reduce-motion;
+                shimmer-chosen(i) => { root.shimmer-chosen(i); }
+                shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+                shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+            }
+
+            RowSeparator { }
+
+            FollowReduceRow {
+                on: root.follow-reduce;
+                toggled(on) => { root.follow-reduce-toggled(on); }
+            }
+        }
+
+        // The other island in GNOME's top bar room is notch-style: it shows
+        // jobs and shimmers on its wings, as on a notch.
+        if !root.virtual && root.notch: VerticalLayout {
+            RowSeparator { }
+
+            NotchRows {
+                jobs: root.jobs;
+                shimmer: root.shimmer;
+                shimmer-every: root.shimmer-every;
+                shimmer-needs-items: root.shimmer-needs-items;
+                follow-reduce: root.follow-reduce;
+                reduce-motion: root.reduce-motion;
+                jobs-toggled(on) => { root.jobs-toggled(on); }
+                shimmer-chosen(i) => { root.shimmer-chosen(i); }
+                shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+                shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+                follow-reduce-toggled(on) => { root.follow-reduce-toggled(on); }
+            }
+        }
+    }
+
+    // On a notch the virtual island isn't offered, but the island there
+    // shows jobs and plays the shimmer on its wings, so those rows stay.
+    if !root.offered && root.notch: VerticalLayout {
+        NotchRows {
+            jobs: root.jobs;
+            shimmer: root.shimmer;
+            shimmer-every: root.shimmer-every;
+            shimmer-needs-items: root.shimmer-needs-items;
+            follow-reduce: root.follow-reduce;
+            reduce-motion: root.reduce-motion;
+            jobs-toggled(on) => { root.jobs-toggled(on); }
+            shimmer-chosen(i) => { root.shimmer-chosen(i); }
+            shimmer-every-chosen(i) => { root.shimmer-every-chosen(i); }
+            shimmer-needs-items-toggled(on) => { root.shimmer-needs-items-toggled(on); }
+            follow-reduce-toggled(on) => { root.follow-reduce-toggled(on); }
+        }
+
+        RowSeparator { }
+
+        SettingRow {
+            label: @tr("Virtual island");
+            description: @tr("Not available on this screen");
+        }
+    }
+
+    if !root.offered && !root.notch: SettingRow {
+        label: @tr("Virtual island");
+        description: @tr("Not available on this screen");
     }
 }
 

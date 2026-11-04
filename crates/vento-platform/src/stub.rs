@@ -403,6 +403,7 @@ mod tests {
     fn stub_has_no_pocket_home() {
         let p = StubPlatform;
         assert!(p.pocket_home().is_none());
+        assert!(p.island_homes().is_empty());
         assert!(p.file_icon(Path::new("/"), 32).is_none());
         assert!(p.kind_description(Path::new("/")).is_none());
         assert!(!is_package(Path::new("/")));

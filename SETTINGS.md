@@ -113,6 +113,84 @@ pocket_keep_copies = false
 #   "list"  - every item, one row each
 pocket_view = "kinds"
 
+# Island: "virtual" (a drawn island at the top of the screen) or "classic" (the
+# island that grows out of the notch). A new install starts on "virtual"
+# through the Welcome setup; anything else without this key (a settings file
+# written before it existed, or no settings file at all) keeps "classic" until
+# you change it
+island_mode = "virtual"
+
+# Island: where the virtual island sits along the top edge: "left", "centre" or
+# "right" ("center" is read as "centre")
+island_place = "centre"
+
+# Island: a free spot for the virtual island along the top edge, as a fraction
+# of the screen's width (0 = the left end, 1 = the right end). Vento writes it
+# when you drag the island and leave it between the left, centre and right
+# snaps; while it is set, it wins over island_place. A value outside 0 to 1 is
+# kept inside it; a value that is not a number counts as not set. Leave it out
+# for no free spot
+# island_place_free = 0.35
+
+# Island: whether each screen keeps its own place for the virtual island (its
+# own island_places entry below). With false, one place (island_place and
+# island_place_free) holds on every screen
+island_place_each_screen = true
+
+# Island: the screen the virtual island is on, by its key: the screen's frame
+# as "{width}x{height}+{x}+{y}" in whole pixels, as in the keys of
+# island_places. Vento writes it when you drag the island onto another screen.
+# Leave it out for the main screen (also used when this screen is not
+# connected)
+# island_screen = "2560x1440+1920+0"
+
+# Island: the place of each screen is the [island_places] table at the end of
+# this file (a table header must come after all the plain keys)
+
+# Island: the virtual island's shape: "island" (a pill) or "circle" (a disc
+# that stretches into a pill only to say something). Any other value is read
+# as "island"
+island_shape = "island"
+
+# Island: how solid the virtual island is while resting, in percent (100 =
+# solid). Other values are rounded to the nearest 5 and kept between 10 and 100
+island_glass = 55
+
+# Island: the shimmer the virtual island plays now and then while it rests:
+# "off", "sweep" (a band of light crossing it), "edge_run" (a bright spot
+# running round its edge), "halo" (the edge glowing softly), "sparkle" (a few
+# tiny sparks) or "liquid" (the island stretches and settles). It never plays
+# on the lip or the half-moon, or while the island is open, busy with a job or
+# the news, paused, on battery saver, or after five minutes without the pointer
+# moving or a click; after those, the next one waits a whole period. Nor in Do
+# Not Disturb where Vento can tell (Windows: Focus assist, a presentation, a
+# full-screen game; GNOME: notification banners off; a Mac's Focus is not
+# read). Any other value is read as "sweep"
+island_shimmer = "sweep"
+
+# Island: how often the shimmer plays: "rarely" (every 10 minutes), "sometimes"
+# (every 2 minutes) or "often" (every 30 seconds). Any other value is read as
+# "sometimes"
+island_shimmer_every = "sometimes"
+
+# Island: play the shimmer only while the Pocket holds items
+island_shimmer_needs_items = true
+
+# Island: follow the system's Reduce motion setting. While it is on in the
+# system, the island plays no shimmer and no shake, and uses plain fades
+island_reduce_motion = true
+
+# Island: show jobs in the island. On a Mac with a notch, and on GNOME, the
+# island beside the notch (or in the top bar) shows a job running, its result
+# and the news in its wings. With false the island stays as it was, and those
+# notices appear as classic toasts. The virtual island ignores this
+island_jobs = true
+
+# Island: whether the one-time toast about the virtual island has been shown.
+# Vento shows it once, on the classic island, where the virtual one can be
+# chosen, then sets this to true; a new install never sees it
+island_hint_shown = false
+
 # Global shortcut that shows the Pocket: one or more of ctrl, alt, shift, meta
 # (or cmd) joined with "+", then a single letter or digit, e.g. "cmd+shift+9"
 pocket_shortcut = "ctrl+alt+p"
@@ -184,6 +262,19 @@ check_for_updates = true
 last_rules = []
 order = "name"
 reverse = false
+
+# Island: the place of each screen, by its key (see island_screen). Each entry
+# has a "place" ("left", "centre" or "right") and, for a free spot, a "free"
+# fraction as in island_place_free. Vento writes these when you drag the
+# island; the entry of a screen that is not connected is kept. An entry that
+# cannot be read is skipped. A table header must come after all the plain
+# keys above: every key after it would belong to that table
+# [island_places."1920x1080+0+0"]
+# place = "left"
+#
+# [island_places."2560x1440+1920+0"]
+# place = "centre"
+# free = 0.25
 ```
 
 Copy from screen needs macOS 14 or later; on macOS 13 the menu item and the

@@ -31,6 +31,7 @@ mod image_io;
 mod info;
 mod input;
 mod menu;
+mod motion;
 mod notify;
 mod open_panel;
 mod overlay;
@@ -124,6 +125,10 @@ impl Platform for MacPlatform {
         input::sample(&self.drag)
     }
 
+    fn cursor(&self) -> Option<(f64, f64)> {
+        input::cursor().map(|p| (p.x, p.y))
+    }
+
     fn drag_paths(&self) -> Vec<PathBuf> {
         input::drag_paths()
     }
@@ -197,6 +202,24 @@ impl Platform for MacPlatform {
 
     fn pocket_home(&self) -> Option<IslandHome> {
         screens::pocket_home()
+    }
+
+    fn island_homes(&self) -> Vec<IslandHome> {
+        screens::island_homes()
+    }
+
+    /// The first normal window, front to back, of another app: vento's own
+    /// windows and the menu bar, the Dock and panels sit at other layers.
+    fn front_window_frame(&self) -> Option<Rect> {
+        screens::front_window_frame()
+    }
+
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    fn power_saving(&self) -> bool {
+        motion::power_saving()
     }
 
     fn make_overlay(

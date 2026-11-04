@@ -13,9 +13,11 @@ export global PanelIcons {
     out property <image> grip: @image-url("icons/grip-vertical.svg");
     out property <image> add: @image-url("icons/plus.svg");
     out property <image> folder: @image-url("icons/folder.svg");
-    // Drawn in Tabler's style (a coffee cup; text in a scan frame).
+    // Drawn in Tabler's style (a coffee cup; text in a scan frame; a
+    // screen with the island along its top).
     out property <image> awake: @image-url("icons/coffee.svg");
     out property <image> scan-text: @image-url("icons/scan-text.svg");
+    out property <image> island: @image-url("icons/island.svg");
     // An open How to card.
     out property <image> open-down: @image-url("icons/chevron-down.svg");
 }
@@ -282,7 +284,8 @@ export component Switch inherits Rectangle {
 }
 
 // A row-height segmented control: a rounded track with the chosen item
-// raised on a pill. The first item is at the start of the line.
+// raised on a pill. The first item is at the start of the line. A `current`
+// of -1 chooses none: no pill is raised.
 export component Segmented inherits Rectangle {
     in property <[string]> items;
     in property <int> current;
@@ -302,6 +305,7 @@ export component Segmented inherits Rectangle {
     accessible-role: radio-group;
 
     Rectangle {
+        visible: root.current >= 0;
         x: root.pad + root.slot(root.current) * root.item-w;
         y: root.pad;
         width: root.item-w;
@@ -661,6 +665,122 @@ export component Stepper inherits HorizontalLayout {
         label: @tr("More {}", root.label);
         enabled: root.can-increase;
         clicked => { root.increase(); }
+    }
+}
+
+// A value on a track, `minimum` at the start of the line and `maximum` at
+// its end (the left and the right, the other way round in a right-to-left
+// language), in steps of `step`. It shows `value` as given and asks for
+// another one, a whole step, when clicked or dragged, or with the arrow
+// keys once clicked; whoever uses it decides.
+export component Slider inherits Rectangle {
+    in property <float> minimum;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <float> value;
+    in property <string> label;
+    callback changed(float);
+
+    property <length> knob: 14px;
+    property <float> span: max(1, root.maximum - root.minimum);
+    // How far along the line `value` is, 0 to 1, and so from the left.
+    property <float> along: clamp((root.value - root.minimum) / root.span, 0, 1);
+    property <float> from-left: Theme.rtl ? 1 - root.along : root.along;
+
+    // Asks for `v`, on a step and within the bounds, unless shown already.
+    function ask(v: float) {
+        let stepped = clamp(
+            root.minimum + round((v - root.minimum) / root.step) * root.step,
+            root.minimum, root.maximum);
+        if stepped != root.value {
+            root.changed(stepped);
+        }
+    }
+
+    // The value under the pointer at `x`, from the left.
+    function value-at(x: length) -> float {
+        let f = clamp((x - root.knob / 2) / max(1px, root.width - root.knob), 0, 1);
+        return root.minimum + (Theme.rtl ? 1 - f : f) * root.span;
+    }
+
+    height: 20px;
+    accessible-role: slider;
+    accessible-label: self.label;
+    accessible-value: round(self.value);
+    accessible-value-minimum: self.minimum;
+    accessible-value-maximum: self.maximum;
+    accessible-value-step: self.step;
+    accessible-action-increment => { root.ask(root.value + root.step); }
+    accessible-action-decrement => { root.ask(root.value - root.step); }
+    accessible-action-set-value(v) => {
+        if v.is-float() {
+            root.ask(v.to-float());
+        }
+    }
+
+    // The track, filled up to the knob from the start of the line.
+    Rectangle {
+        x: root.knob / 2;
+        y: (root.height - self.height) / 2;
+        width: root.width - root.knob;
+        height: 4px;
+        border-radius: self.height / 2;
+        background: Theme.switch-off;
+
+        Rectangle {
+            x: Theme.rtl ? root.from-left * parent.width : 0;
+            y: 0;
+            width: (Theme.rtl ? 1 - root.from-left : root.from-left) * parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+
+    Rectangle {
+        x: root.from-left * (root.width - root.knob);
+        y: (root.height - self.height) / 2;
+        width: root.knob;
+        height: root.knob;
+        border-radius: self.height / 2;
+        background: white;
+        border-width: scope.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+        drop-shadow-blur: 2px;
+        drop-shadow-color: #00000040;
+    }
+
+    scope := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        // The arrow keys move the knob the way they point.
+        key-pressed(event) => {
+            if event.text == Key.RightArrow {
+                root.ask(root.value + (Theme.rtl ? -root.step : root.step));
+                return accept;
+            }
+            if event.text == Key.LeftArrow {
+                root.ask(root.value + (Theme.rtl ? root.step : -root.step));
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea {
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                scope.focus();
+                root.ask(root.value-at(self.mouse-x));
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.ask(root.value-at(self.mouse-x));
+            }
+        }
     }
 }
 
@@ -1096,4 +1216,63 @@ export component PanelOutline inherits Path {
         sweep: true;
     }
     Close { }
+}
+
+// A band of light `band` wide on a pill or a circle `w` by `h` (its ends
+// half circles), its left edge at `left`: `slices` upright slices, clearest
+// at the band's sides and up to `peak` white in its middle. The software
+// renderer clips only to rectangles, so the band is never clipped: each
+// slice is cut to the shape itself, as tall as the shape is at the slice's
+// outer side and nothing outside it. With `square-top` the shape is instead
+// a rectangle hanging from its top edge (the notch island's wings): its top
+// corners square, its bottom ones round by `bottom-r`.
+export component SweepBand inherits Rectangle {
+    in property <length> w;
+    in property <length> h;
+    in property <length> band;
+    in property <length> left;
+    in property <int> slices: 10;
+    in property <float> peak: 0.18;
+    in property <bool> square-top;
+    in property <length> bottom-r: 10px;
+
+    // In points.
+    property <float> sw: root.w / 1px;
+    property <float> sh: root.h / 1px;
+    property <float> step: root.band / 1px / max(1, root.slices);
+
+    // Half the shape's height at `x`: all of it along the straight run,
+    // less in the half circles at its ends.
+    pure function half-at(x: float) -> float {
+        let r = min(root.sw, root.sh) / 2;
+        let d = max(0, max(r - x, x - (root.sw - r)));
+        Math.sqrt(max(0, r * r - d * d))
+    }
+
+    // With `square-top`, how far down the shape reaches at `x`: all the way
+    // between its bottom corners, less in them.
+    pure function depth-at(x: float) -> float {
+        let r = min(root.bottom-r / 1px, root.sw / 2, root.sh);
+        let d = max(0, max(r - x, x - (root.sw - r)));
+        root.sh - r + Math.sqrt(max(0, r * r - d * d))
+    }
+
+    width: root.w;
+    height: root.h;
+
+    for i in root.slices: Rectangle {
+        property <float> a: root.left / 1px + i * root.step;
+        property <float> x0: max(0, self.a);
+        property <float> x1: min(root.sw, self.a + root.step);
+        // The slice's side farther from the middle, where the shape is
+        // lowest.
+        property <float> outer: abs(self.x0 - root.sw / 2) > abs(self.x1 - root.sw / 2) ? self.x0 : self.x1;
+        property <float> half: self.x1 > self.x0 && !root.square-top ? root.half-at(self.outer) : 0;
+        property <float> depth: self.x1 > self.x0 && root.square-top ? root.depth-at(self.outer) : 0;
+        x: self.x0 * 1px;
+        y: root.square-top ? 0px : (root.sh / 2 - self.half) * 1px;
+        width: max(0, self.x1 - self.x0) * 1px;
+        height: (root.square-top ? self.depth : 2 * self.half) * 1px;
+        background: #ffffff.with-alpha(root.peak * (1 - abs((i + 0.5) * 2 / root.slices - 1)));
+    }
 }

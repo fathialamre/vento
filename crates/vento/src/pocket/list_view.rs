@@ -12,12 +12,15 @@ use std::rc::Rc;
 
 use log::{debug, warn};
 use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
+use vento_core::actions::ActionId;
 use vento_core::destinations::display_path;
 use vento_core::i18n::{fill, tr};
 use vento_core::pocket::{Pocket, PocketItem};
 use vento_core::pocket_kind::{PocketKind, kind_of};
 use vento_core::settings::PocketView;
 
+use crate::exec::path_copied_notice;
+use crate::notice::Notice;
 use crate::ui::{Icons, PeekLine, PocketChip, PocketIsland, PocketRow};
 
 use super::clip::age_label_now;
@@ -336,13 +339,21 @@ impl PocketController {
     fn copy_item_path(&self, path: &Path) {
         let format = self.settings.borrow().copy_path_format;
         let text = vento_core::paths::format_paths(&[path.to_path_buf()], format);
-        if let Err(e) = self.platform.copy_text(&text) {
-            warn!("cannot copy the path of a pocket item: {e}");
-            let text = fill(
-                &tr("Couldn't copy: {reason}"),
-                &[("reason", &e.to_string())],
-            );
-            self.toast.show(&text, None, self.toast_at());
+        match self.platform.copy_text(&text) {
+            Ok(()) => self
+                .toast
+                .notify(path_copied_notice(&text), self.toast_at()),
+            Err(e) => {
+                warn!("cannot copy the path of a pocket item: {e}");
+                let text = fill(
+                    &tr("Couldn't copy: {reason}"),
+                    &[("reason", &e.to_string())],
+                );
+                self.toast.notify(
+                    Notice::error(text).with_icon(ActionId::Pocket),
+                    self.toast_at(),
+                );
+            }
         }
     }
 
