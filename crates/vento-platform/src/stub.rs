@@ -288,8 +288,8 @@ impl Platform for StubPlatform {
         Err(PlatformError::Unsupported)
     }
 
-    fn pick_folder(&self, _start: Option<&Path>) -> Option<PathBuf> {
-        None
+    fn pick_folder(&self, _start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
+        done(None)
     }
 
     fn pocket_home(&self) -> Option<IslandHome> {
@@ -441,7 +441,10 @@ mod tests {
             Err(PlatformError::Unsupported)
         ));
         assert!(p.terminals().is_empty());
-        assert!(p.pick_folder(None).is_none());
+        let picked = Rc::new(std::cell::Cell::new(Some(PathBuf::from("/unset"))));
+        let answer = picked.clone();
+        p.pick_folder(None, Box::new(move |dest| answer.set(dest)));
+        assert_eq!(picked.take(), None, "the stub answers at once, with None");
         assert!(matches!(
             p.trash(Path::new("/tmp/vento-stub-never")),
             Err(PlatformError::Unsupported)

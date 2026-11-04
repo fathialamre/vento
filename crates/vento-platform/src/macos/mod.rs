@@ -32,6 +32,7 @@ mod info;
 mod input;
 mod menu;
 mod notify;
+mod open_panel;
 mod overlay;
 mod patch;
 mod pdf;
@@ -184,17 +185,14 @@ impl Platform for MacPlatform {
         terminal::open(terminal, dir, on_error)
     }
 
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
         let Some(mtm) = MainThreadMarker::new() else {
             log::warn!("pick_folder called off the main thread; ignored");
-            return None;
+            return done(None);
         };
-        screens::activate_app(mtm);
-        let mut dialog = rfd::FileDialog::new();
-        if let Some(start) = start {
-            dialog = dialog.set_directory(start);
-        }
-        dialog.pick_folder()
+        open_panel::open(mtm, open_panel::Ask::Folder, start, move |paths| {
+            done(paths.into_iter().next())
+        });
     }
 
     fn pocket_home(&self) -> Option<IslandHome> {
