@@ -16,6 +16,8 @@ use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
 mod motion;
+#[cfg(windows)]
+mod pdf_write;
 mod screenshot_dir;
 mod stub;
 mod watch;
@@ -30,7 +32,7 @@ mod webp;
 pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
 #[cfg(target_os = "macos")]
 pub use macos::{PdfRenderer, SystemPdf};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub use stub::{PdfRenderer, SystemPdf};
 
 #[cfg(target_os = "linux")]
@@ -43,6 +45,8 @@ pub use linux::{
 
 #[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+pub use windows::{PdfRenderer, SystemPdf};
 #[cfg(windows)]
 pub use windows::{WindowsPlatform, claim_instance, taskbar_is_light};
 

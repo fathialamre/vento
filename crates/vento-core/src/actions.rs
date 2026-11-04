@@ -6,6 +6,9 @@ use crate::i18n::tr;
 /// services some actions need.
 const ON_MACOS: bool = cfg!(target_os = "macos");
 
+/// Whether this build is for Windows, whose PDF engine the PDF action uses.
+const ON_WINDOWS: bool = cfg!(windows);
+
 /// An action that can be placed on the wheel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionId {
@@ -54,10 +57,15 @@ impl ActionId {
     ];
 
     /// Whether this platform can run the action. PDF pages need the system's
-    /// PDF engine and sharing needs its sharing services, which only macOS has
-    /// so far; the other platforms never offer those actions.
+    /// PDF engine, which macOS and Windows have, and sharing needs its
+    /// sharing services, which only macOS has so far; the other platforms
+    /// never offer those actions.
     pub fn available(self) -> bool {
-        ON_MACOS || !matches!(self, ActionId::Pdf | ActionId::Share)
+        match self {
+            ActionId::Pdf => ON_MACOS || ON_WINDOWS,
+            ActionId::Share => ON_MACOS,
+            _ => true,
+        }
     }
 
     /// Whether the action opens the folder ring when the pointer rests on its
@@ -215,10 +223,12 @@ mod tests {
     }
 
     #[test]
-    fn macos_only_actions() {
-        for a in [ActionId::Pdf, ActionId::Share] {
-            assert_eq!(a.available(), cfg!(target_os = "macos"));
-        }
+    fn platform_actions() {
+        assert_eq!(
+            ActionId::Pdf.available(),
+            cfg!(any(target_os = "macos", windows))
+        );
+        assert_eq!(ActionId::Share.available(), cfg!(target_os = "macos"));
         assert!(
             ActionId::ALL
                 .iter()

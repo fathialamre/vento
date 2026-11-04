@@ -35,7 +35,7 @@ msgstr[1] ""
 msgid "+{n} more"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:283
+#: crates/vento-platform/src/lib.rs:287
 msgid ", "
 msgstr ""
 
@@ -83,7 +83,7 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:643
+#: crates/vento/ui/pdf.slint:645
 msgid "Add PDF"
 msgstr ""
 
@@ -151,7 +151,7 @@ msgstr ""
 msgid "Appearance"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:99
+#: crates/vento-core/src/actions.rs:107
 msgid "Archive"
 msgstr ""
 
@@ -163,7 +163,7 @@ msgstr ""
 msgid "As a list"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1173
+#: crates/vento/ui/pdf.slint:1175
 msgid "At my cuts"
 msgstr ""
 
@@ -425,7 +425,7 @@ msgstr ""
 msgid "Continue"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:109
 msgid "Convert"
 msgstr ""
 
@@ -469,7 +469,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento-core/src/actions.rs:94
+#: crates/vento-core/src/actions.rs:102
 msgid "Copy"
 msgstr ""
 
@@ -493,7 +493,7 @@ msgstr ""
 msgid "Copy from screen uses this shortcut"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:96
+#: crates/vento-core/src/actions.rs:104
 msgid "Copy path"
 msgstr ""
 
@@ -509,7 +509,7 @@ msgstr ""
 msgid "Copy the text from any part of the screen"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:98
+#: crates/vento-core/src/actions.rs:106
 msgid "Copy to"
 msgstr ""
 
@@ -671,7 +671,7 @@ msgstr ""
 msgid "Date modified"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:686
+#: crates/vento/ui/pdf.slint:688
 msgid "Delete"
 msgstr ""
 
@@ -695,7 +695,7 @@ msgstr ""
 msgid "Dims the screen so you can pick the text to copy"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1364
+#: crates/vento/ui/pdf.slint:1366
 msgid "Discard"
 msgstr ""
 
@@ -779,7 +779,7 @@ msgstr ""
 msgid "Every action"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1139
+#: crates/vento/ui/pdf.slint:1141
 msgid "Every page"
 msgstr ""
 
@@ -827,7 +827,7 @@ msgstr ""
 msgid "Extracting {name}…"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1157
+#: crates/vento/ui/pdf.slint:1159
 msgid "Fewer pages"
 msgstr ""
 
@@ -835,7 +835,7 @@ msgstr ""
 msgid "File"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:624
+#: crates/vento/ui/pdf.slint:626
 msgid "Files"
 msgstr ""
 
@@ -867,7 +867,7 @@ msgstr ""
 msgid "Follow Reduce motion"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1233
+#: crates/vento/ui/pdf.slint:1235
 msgid "Format"
 msgstr ""
 
@@ -907,7 +907,7 @@ msgstr ""
 msgid "Halo"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:625
+#: crates/vento/ui/pdf.slint:627
 msgid "Hide files"
 msgstr ""
 
@@ -979,7 +979,7 @@ msgstr ""
 msgid "In the top bar"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:100
+#: crates/vento-core/src/actions.rs:108
 msgid "Info"
 msgstr ""
 
@@ -1119,7 +1119,7 @@ msgstr ""
 msgid "List"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1238
+#: crates/vento/ui/pdf.slint:1240
 msgid "Lossless"
 msgstr ""
 
@@ -1151,7 +1151,7 @@ msgstr ""
 msgid "Modified"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1165
+#: crates/vento/ui/pdf.slint:1167
 msgid "More pages"
 msgstr ""
 
@@ -1167,7 +1167,7 @@ msgstr ""
 msgid "More…"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:95
+#: crates/vento-core/src/actions.rs:103
 msgid "Move"
 msgstr ""
 
@@ -1445,7 +1445,7 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:110
 msgid "PDF"
 msgstr ""
 
@@ -1531,7 +1531,7 @@ msgstr ""
 msgid "Plain pill"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:93
+#: crates/vento-core/src/actions.rs:101
 msgid "Pocket"
 msgstr ""
 
@@ -1567,7 +1567,7 @@ msgstr ""
 msgid "Preview"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1254
+#: crates/vento/ui/pdf.slint:1256
 msgid "Print"
 msgstr ""
 
@@ -1581,7 +1581,7 @@ msgid_plural "Put back {n} names"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1248
+#: crates/vento/ui/pdf.slint:1250
 msgid "Quality"
 msgstr ""
 
@@ -1641,7 +1641,7 @@ msgid_plural "Removing {n} copies…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:112
 msgid "Rename"
 msgstr ""
 
@@ -1713,11 +1713,11 @@ msgstr ""
 msgid "Right"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:669
+#: crates/vento/ui/pdf.slint:671
 msgid "Rotate left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:678
+#: crates/vento/ui/pdf.slint:680
 msgid "Rotate right"
 msgstr ""
 
@@ -1729,11 +1729,11 @@ msgstr ""
 msgid "Same name as another item"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1357
+#: crates/vento/ui/pdf.slint:1359
 msgid "Save"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1009
+#: crates/vento/ui/pdf.slint:1011
 msgid "Save as new PDF"
 msgstr ""
 
@@ -1743,7 +1743,7 @@ msgid_plural "Save images"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1337
+#: crates/vento/ui/pdf.slint:1339
 msgid "Save your changes as a new PDF?"
 msgstr ""
 
@@ -1763,7 +1763,7 @@ msgid_plural "Saved {n} images in {folder}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento/ui/pdf.slint:1252
+#: crates/vento/ui/pdf.slint:1254
 msgid "Screen"
 msgstr ""
 
@@ -1787,7 +1787,7 @@ msgstr ""
 msgid "See what's new"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:651
+#: crates/vento/ui/pdf.slint:653
 msgid "Select all"
 msgstr ""
 
@@ -1839,7 +1839,7 @@ msgstr ""
 msgid "Shape"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:111
 msgid "Share"
 msgstr ""
 
@@ -1871,7 +1871,7 @@ msgstr ""
 msgid "Show all {}"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:625
+#: crates/vento/ui/pdf.slint:627
 msgid "Show files"
 msgstr ""
 
@@ -1915,7 +1915,7 @@ msgstr ""
 msgid "Sleep allowed again"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1240
+#: crates/vento/ui/pdf.slint:1242
 msgid "Smaller file"
 msgstr ""
 
@@ -1961,7 +1961,7 @@ msgstr[1] ""
 msgid "Split {name}"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:720
+#: crates/vento/ui/pdf.slint:722
 msgid "Split…"
 msgstr ""
 
@@ -2037,7 +2037,7 @@ msgstr ""
 msgid "Template"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:97
+#: crates/vento-core/src/actions.rs:105
 msgid "Terminal"
 msgstr ""
 
@@ -2073,7 +2073,7 @@ msgstr ""
 msgid "The new version didn't start."
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1346
+#: crates/vento/ui/pdf.slint:1348
 msgid "The original stays as it is."
 msgstr ""
 
@@ -2117,7 +2117,7 @@ msgstr ""
 msgid "Title Case"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:710
+#: crates/vento/ui/pdf.slint:712
 msgid "To images"
 msgstr ""
 
@@ -2433,7 +2433,7 @@ msgstr ""
 msgid "You can pick each action in Settings → Wheel."
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:1174
+#: crates/vento/ui/pdf.slint:1176
 msgid "You pick where to cut"
 msgstr ""
 
@@ -2481,7 +2481,7 @@ msgstr ""
 msgid "already exists"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:272
+#: crates/vento-platform/src/lib.rs:276
 msgid "another share is still open"
 msgstr ""
 
@@ -2525,11 +2525,11 @@ msgstr ""
 msgid "cannot start: {reason}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:253
 msgid "clipboard rejected the files"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:245
+#: crates/vento-platform/src/lib.rs:249
 msgid "clipboard rejected the text"
 msgstr ""
 
@@ -2537,7 +2537,7 @@ msgstr ""
 msgid "copy could not be verified; source left untouched"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:297
+#: crates/vento-platform/src/lib.rs:301
 msgid "could not run {program}: {reason}"
 msgstr ""
 
@@ -2613,11 +2613,11 @@ msgstr ""
 msgid "name"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:282
+#: crates/vento-platform/src/lib.rs:286
 msgid "no app opened {names}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:342
+#: crates/vento-platform/src/lib.rs:346
 msgid "no folder to open"
 msgstr ""
 
@@ -2637,7 +2637,7 @@ msgstr ""
 msgid "no images"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:337
+#: crates/vento-platform/src/lib.rs:341
 msgid "no terminal is installed"
 msgstr ""
 
@@ -2725,11 +2725,11 @@ msgstr ""
 msgid "{app} (default)"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:290
+#: crates/vento-platform/src/lib.rs:294
 msgid "{app} is no longer there"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:330
+#: crates/vento-platform/src/lib.rs:334
 msgid "{app} is not installed"
 msgstr ""
 
@@ -2777,7 +2777,7 @@ msgstr ""
 msgid "{m} min"
 msgstr ""
 
-#: crates/vento/src/pdf/window.rs:688
+#: crates/vento/src/pdf/window.rs:689
 msgid "{names} — {meta}"
 msgstr ""
 
@@ -2943,15 +2943,15 @@ msgstr ""
 msgid "{pages} · edited"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:307
+#: crates/vento-platform/src/lib.rs:311
 msgid "{program} exited with code {code}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:315
 msgid "{program} was stopped by a signal"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:322
+#: crates/vento-platform/src/lib.rs:326
 msgid "{program}: {reason}"
 msgstr ""
 
@@ -3008,22 +3008,22 @@ msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:701
+#: crates/vento/ui/pdf.slint:703
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:642
+#: crates/vento/ui/pdf.slint:644
 msgctxt "PDF window"
 msgid "Add"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:668
+#: crates/vento/ui/pdf.slint:670
 msgctxt "Rotate"
 msgid "Left"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:677
+#: crates/vento/ui/pdf.slint:679
 msgctxt "Rotate"
 msgid "Right"
 msgstr ""

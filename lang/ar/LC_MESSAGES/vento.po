@@ -41,7 +41,7 @@ msgstr[5] "+{n}"
 msgid "+{n} more"
 msgstr "+{n} أخرى"
 
-#: crates/vento-platform/src/lib.rs:283
+#: crates/vento-platform/src/lib.rs:287
 msgid ", "
 msgstr "، "
 
@@ -89,7 +89,7 @@ msgstr "الإجراءات"
 msgid "Add"
 msgstr "إضافة"
 
-#: crates/vento/ui/pdf.slint:643
+#: crates/vento/ui/pdf.slint:645
 msgid "Add PDF"
 msgstr "إضافة PDF"
 
@@ -157,7 +157,7 @@ msgstr "يخرج العنصر من الجيب بعد أن تُسقطه في مك
 msgid "Appearance"
 msgstr "المظهر"
 
-#: crates/vento-core/src/actions.rs:99
+#: crates/vento-core/src/actions.rs:107
 msgid "Archive"
 msgstr "أرشفة"
 
@@ -169,7 +169,7 @@ msgstr "أرشيفات"
 msgid "As a list"
 msgstr "كقائمة"
 
-#: crates/vento/ui/pdf.slint:1173
+#: crates/vento/ui/pdf.slint:1175
 msgid "At my cuts"
 msgstr "عند علامات القطع"
 
@@ -435,7 +435,7 @@ msgstr "يحتوي"
 msgid "Continue"
 msgstr "متابعة"
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:109
 msgid "Convert"
 msgstr "تحويل"
 
@@ -487,7 +487,7 @@ msgstr[3] "تم نسخ {n} عناصر إلى {dest}"
 msgstr[4] "تم نسخ {n} عنصراً إلى {dest}"
 msgstr[5] "تم نسخ {n} عنصر إلى {dest}"
 
-#: crates/vento-core/src/actions.rs:94
+#: crates/vento-core/src/actions.rs:102
 msgid "Copy"
 msgstr "نسخ"
 
@@ -511,7 +511,7 @@ msgstr "اختصار النسخ من الشاشة"
 msgid "Copy from screen uses this shortcut"
 msgstr "النسخ من الشاشة يستخدم هذا الاختصار"
 
-#: crates/vento-core/src/actions.rs:96
+#: crates/vento-core/src/actions.rs:104
 msgid "Copy path"
 msgstr "نسخ المسار"
 
@@ -527,7 +527,7 @@ msgstr "نسخ النص"
 msgid "Copy the text from any part of the screen"
 msgstr "انسخ النص من أي جزء من الشاشة"
 
-#: crates/vento-core/src/actions.rs:98
+#: crates/vento-core/src/actions.rs:106
 msgid "Copy to"
 msgstr "نسخ إلى"
 
@@ -701,7 +701,7 @@ msgstr "التاريخ"
 msgid "Date modified"
 msgstr "تاريخ التعديل"
 
-#: crates/vento/ui/pdf.slint:686
+#: crates/vento/ui/pdf.slint:688
 msgid "Delete"
 msgstr "حذف"
 
@@ -725,7 +725,7 @@ msgstr "الخانات"
 msgid "Dims the screen so you can pick the text to copy"
 msgstr "يُعتّم الشاشة لتختار النص الذي تنسخه"
 
-#: crates/vento/ui/pdf.slint:1364
+#: crates/vento/ui/pdf.slint:1366
 msgid "Discard"
 msgstr "تجاهل"
 
@@ -817,7 +817,7 @@ msgstr "الأساسي"
 msgid "Every action"
 msgstr "كل الإجراءات"
 
-#: crates/vento/ui/pdf.slint:1139
+#: crates/vento/ui/pdf.slint:1141
 msgid "Every page"
 msgstr "كل صفحة"
 
@@ -873,7 +873,7 @@ msgstr "جارٍ فك الضغط"
 msgid "Extracting {name}…"
 msgstr "جارٍ فك ضغط {name}…"
 
-#: crates/vento/ui/pdf.slint:1157
+#: crates/vento/ui/pdf.slint:1159
 msgid "Fewer pages"
 msgstr "صفحات أقل"
 
@@ -881,7 +881,7 @@ msgstr "صفحات أقل"
 msgid "File"
 msgstr "ملف"
 
-#: crates/vento/ui/pdf.slint:624
+#: crates/vento/ui/pdf.slint:626
 msgid "Files"
 msgstr "ملفات"
 
@@ -913,7 +913,7 @@ msgstr "مجلدات تستخدمها كثيراً"
 msgid "Follow Reduce motion"
 msgstr "اتّباع تقليل الحركة"
 
-#: crates/vento/ui/pdf.slint:1233
+#: crates/vento/ui/pdf.slint:1235
 msgid "Format"
 msgstr "الصيغة"
 
@@ -953,7 +953,7 @@ msgstr "زجاج"
 msgid "Halo"
 msgstr "هالة"
 
-#: crates/vento/ui/pdf.slint:625
+#: crates/vento/ui/pdf.slint:627
 msgid "Hide files"
 msgstr "إخفاء الملفات"
 
@@ -1025,7 +1025,7 @@ msgstr "تحسينات"
 msgid "In the top bar"
 msgstr "في الشريط العلوي"
 
-#: crates/vento-core/src/actions.rs:100
+#: crates/vento-core/src/actions.rs:108
 msgid "Info"
 msgstr "معلومات"
 
@@ -1173,7 +1173,7 @@ msgstr "سائل"
 msgid "List"
 msgstr "قائمة"
 
-#: crates/vento/ui/pdf.slint:1238
+#: crates/vento/ui/pdf.slint:1240
 msgid "Lossless"
 msgstr "بدون فقد"
 
@@ -1205,7 +1205,7 @@ msgstr "غير موجود"
 msgid "Modified"
 msgstr "آخر تعديل"
 
-#: crates/vento/ui/pdf.slint:1165
+#: crates/vento/ui/pdf.slint:1167
 msgid "More pages"
 msgstr "صفحات أكثر"
 
@@ -1221,7 +1221,7 @@ msgstr "أكثر: {}"
 msgid "More…"
 msgstr "المزيد…"
 
-#: crates/vento-core/src/actions.rs:95
+#: crates/vento-core/src/actions.rs:103
 msgid "Move"
 msgstr "نقل"
 
@@ -1519,7 +1519,7 @@ msgstr "الترتيب"
 msgid "Other"
 msgstr "أخرى"
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:110
 msgid "PDF"
 msgstr "‏PDF"
 
@@ -1609,7 +1609,7 @@ msgstr "عادي"
 msgid "Plain pill"
 msgstr "كبسولة بسيطة"
 
-#: crates/vento-core/src/actions.rs:93
+#: crates/vento-core/src/actions.rs:101
 msgid "Pocket"
 msgstr "الجيب"
 
@@ -1645,7 +1645,7 @@ msgstr "اضغط ‎{}: تُعتّم الشاشة."
 msgid "Preview"
 msgstr "معاينة"
 
-#: crates/vento/ui/pdf.slint:1254
+#: crates/vento/ui/pdf.slint:1256
 msgid "Print"
 msgstr "طباعة"
 
@@ -1663,7 +1663,7 @@ msgstr[3] "أُعيدت {n} أسماء"
 msgstr[4] "أُعيد {n} اسماً"
 msgstr[5] "أُعيد {n} اسم"
 
-#: crates/vento/ui/pdf.slint:1248
+#: crates/vento/ui/pdf.slint:1250
 msgid "Quality"
 msgstr "الجودة"
 
@@ -1731,7 +1731,7 @@ msgstr[3] "جارٍ إزالة {n} نسخ…"
 msgstr[4] "جارٍ إزالة {n} نسخة…"
 msgstr[5] "جارٍ إزالة {n} نسخة…"
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:112
 msgid "Rename"
 msgstr "إعادة تسمية"
 
@@ -1819,11 +1819,11 @@ msgstr "عكس الترتيب"
 msgid "Right"
 msgstr "يمين"
 
-#: crates/vento/ui/pdf.slint:669
+#: crates/vento/ui/pdf.slint:671
 msgid "Rotate left"
 msgstr "تدوير لليسار"
 
-#: crates/vento/ui/pdf.slint:678
+#: crates/vento/ui/pdf.slint:680
 msgid "Rotate right"
 msgstr "تدوير لليمين"
 
@@ -1835,11 +1835,11 @@ msgstr "القواعد"
 msgid "Same name as another item"
 msgstr "نفس اسم عنصر آخر"
 
-#: crates/vento/ui/pdf.slint:1357
+#: crates/vento/ui/pdf.slint:1359
 msgid "Save"
 msgstr "حفظ"
 
-#: crates/vento/ui/pdf.slint:1009
+#: crates/vento/ui/pdf.slint:1011
 msgid "Save as new PDF"
 msgstr "حفظ كملف PDF جديد"
 
@@ -1853,7 +1853,7 @@ msgstr[3] "حفظ الصور"
 msgstr[4] "حفظ الصور"
 msgstr[5] "حفظ الصور"
 
-#: crates/vento/ui/pdf.slint:1337
+#: crates/vento/ui/pdf.slint:1339
 msgid "Save your changes as a new PDF?"
 msgstr "هل تريد حفظ تغييراتك كملف PDF جديد؟"
 
@@ -1881,7 +1881,7 @@ msgstr[3] "تم حفظ {n} صور في {folder}"
 msgstr[4] "تم حفظ {n} صورة في {folder}"
 msgstr[5] "تم حفظ {n} صورة في {folder}"
 
-#: crates/vento/ui/pdf.slint:1252
+#: crates/vento/ui/pdf.slint:1254
 msgid "Screen"
 msgstr "شاشة"
 
@@ -1905,7 +1905,7 @@ msgstr "اطّلع على تفاصيل الملفات والمجلدات"
 msgid "See what's new"
 msgstr "عرض الجديد"
 
-#: crates/vento/ui/pdf.slint:651
+#: crates/vento/ui/pdf.slint:653
 msgid "Select all"
 msgstr "تحديد الكل"
 
@@ -1957,7 +1957,7 @@ msgstr "الهز للفتح"
 msgid "Shape"
 msgstr "الشكل"
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:111
 msgid "Share"
 msgstr "مشاركة"
 
@@ -1989,7 +1989,7 @@ msgstr "إظهار بطاقة عند حفظ لقطة شاشة"
 msgid "Show all {}"
 msgstr "إظهار كل {}"
 
-#: crates/vento/ui/pdf.slint:625
+#: crates/vento/ui/pdf.slint:627
 msgid "Show files"
 msgstr "إظهار الملفات"
 
@@ -2033,7 +2033,7 @@ msgstr "تخطي الإعداد"
 msgid "Sleep allowed again"
 msgstr "يُسمح بالسكون مجدداً"
 
-#: crates/vento/ui/pdf.slint:1240
+#: crates/vento/ui/pdf.slint:1242
 msgid "Smaller file"
 msgstr "حجم أصغر"
 
@@ -2083,7 +2083,7 @@ msgstr[5] "تقسيم إلى {n} ملف"
 msgid "Split {name}"
 msgstr "تقسيم {name}"
 
-#: crates/vento/ui/pdf.slint:720
+#: crates/vento/ui/pdf.slint:722
 msgid "Split…"
 msgstr "تقسيم…"
 
@@ -2159,7 +2159,7 @@ msgstr "التقط لقطة شاشة بمفتاح لقطة الشاشة في ن�
 msgid "Template"
 msgstr "قالب"
 
-#: crates/vento-core/src/actions.rs:97
+#: crates/vento-core/src/actions.rs:105
 msgid "Terminal"
 msgstr "الطرفية"
 
@@ -2195,7 +2195,7 @@ msgstr "تتبعه القائمة والأرقام"
 msgid "The new version didn't start."
 msgstr "لم يبدأ تشغيل الإصدار الجديد."
 
-#: crates/vento/ui/pdf.slint:1346
+#: crates/vento/ui/pdf.slint:1348
 msgid "The original stays as it is."
 msgstr "يبقى الملف الأصلي كما هو."
 
@@ -2239,7 +2239,7 @@ msgstr "الأوقات في اللوحة"
 msgid "Title Case"
 msgstr "‏Title Case"
 
-#: crates/vento/ui/pdf.slint:710
+#: crates/vento/ui/pdf.slint:712
 msgid "To images"
 msgstr "تحويل لصور"
 
@@ -2555,7 +2555,7 @@ msgstr "أمس"
 msgid "You can pick each action in Settings → Wheel."
 msgstr "يمكنك اختيار كل إجراء من الإعدادات ← العجلة."
 
-#: crates/vento/ui/pdf.slint:1174
+#: crates/vento/ui/pdf.slint:1176
 msgid "You pick where to cut"
 msgstr "تختار أنت أماكن القطع"
 
@@ -2603,7 +2603,7 @@ msgstr "بعد"
 msgid "already exists"
 msgstr "موجود مسبقاً"
 
-#: crates/vento-platform/src/lib.rs:272
+#: crates/vento-platform/src/lib.rs:276
 msgid "another share is still open"
 msgstr "هناك مشاركة أخرى مفتوحة"
 
@@ -2647,11 +2647,11 @@ msgstr "تعذّر بدء النسخ: {reason}"
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:253
 msgid "clipboard rejected the files"
 msgstr "رفضت الحافظة الملفات"
 
-#: crates/vento-platform/src/lib.rs:245
+#: crates/vento-platform/src/lib.rs:249
 msgid "clipboard rejected the text"
 msgstr "رفضت الحافظة النص"
 
@@ -2659,7 +2659,7 @@ msgstr "رفضت الحافظة النص"
 msgid "copy could not be verified; source left untouched"
 msgstr "تعذّر التحقق من النسخة؛ لم يُلمس الأصل"
 
-#: crates/vento-platform/src/lib.rs:297
+#: crates/vento-platform/src/lib.rs:301
 msgid "could not run {program}: {reason}"
 msgstr "تعذّر تشغيل {program}: {reason}"
 
@@ -2743,11 +2743,11 @@ msgstr "نُقل إلى {copy}، لكن تعذّرت إزالة الأصل با�
 msgid "name"
 msgstr "الاسم"
 
-#: crates/vento-platform/src/lib.rs:282
+#: crates/vento-platform/src/lib.rs:286
 msgid "no app opened {names}"
 msgstr "لا يوجد تطبيق يفتح {names}"
 
-#: crates/vento-platform/src/lib.rs:342
+#: crates/vento-platform/src/lib.rs:346
 msgid "no folder to open"
 msgstr "لا يوجد مجلد لفتحه"
 
@@ -2767,7 +2767,7 @@ msgstr "لا يوجد اسم مؤقت متاح"
 msgid "no images"
 msgstr "لا توجد صور"
 
-#: crates/vento-platform/src/lib.rs:337
+#: crates/vento-platform/src/lib.rs:341
 msgid "no terminal is installed"
 msgstr "لا توجد طرفية مثبّتة"
 
@@ -2855,11 +2855,11 @@ msgstr "كلمة السر خاطئة"
 msgid "{app} (default)"
 msgstr "‏{app} (افتراضي)"
 
-#: crates/vento-platform/src/lib.rs:290
+#: crates/vento-platform/src/lib.rs:294
 msgid "{app} is no longer there"
 msgstr "‏{app} لم يعد موجوداً"
 
-#: crates/vento-platform/src/lib.rs:330
+#: crates/vento-platform/src/lib.rs:334
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
@@ -2907,7 +2907,7 @@ msgstr "{ms} م.ث"
 msgid "{m} min"
 msgstr "{m} د"
 
-#: crates/vento/src/pdf/window.rs:688
+#: crates/vento/src/pdf/window.rs:689
 msgid "{names} — {meta}"
 msgstr "‏{names} — ‏{meta}"
 
@@ -3157,15 +3157,15 @@ msgstr "{n} د"
 msgid "{pages} · edited"
 msgstr "‏{pages} · معدّل"
 
-#: crates/vento-platform/src/lib.rs:307
+#: crates/vento-platform/src/lib.rs:311
 msgid "{program} exited with code {code}"
 msgstr "‏{program} انتهى برمز الخروج {code}"
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:315
 msgid "{program} was stopped by a signal"
 msgstr "‏{program} أوقفته إشارة"
 
-#: crates/vento-platform/src/lib.rs:322
+#: crates/vento-platform/src/lib.rs:326
 msgid "{program}: {reason}"
 msgstr "‏{program}: {reason}"
 
@@ -3230,22 +3230,22 @@ msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr "‏my_trip_photo"
 
-#: crates/vento/ui/pdf.slint:701
+#: crates/vento/ui/pdf.slint:703
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr "قص"
 
-#: crates/vento/ui/pdf.slint:642
+#: crates/vento/ui/pdf.slint:644
 msgctxt "PDF window"
 msgid "Add"
 msgstr "إضافة"
 
-#: crates/vento/ui/pdf.slint:668
+#: crates/vento/ui/pdf.slint:670
 msgctxt "Rotate"
 msgid "Left"
 msgstr "يسار"
 
-#: crates/vento/ui/pdf.slint:677
+#: crates/vento/ui/pdf.slint:679
 msgctxt "Rotate"
 msgid "Right"
 msgstr "يمين"
