@@ -50,15 +50,17 @@ the Dock. Copy it to `/Applications` to keep it.
 scripts/release-macos.sh
 ```
 
-This builds the app and zips it with the licence files into
-`target/release-zip/vento-<version>-macos-arm64.zip`, the file published on the
-Releases page. It needs `cargo-about` for the third-party notices:
+This builds the app and packs it with the licence files twice: into
+`target/release-zip/vento-<version>-macos-arm64.zip`, which the in-app updater
+downloads, and into `vento-<version>-macos-arm64.dmg`, the disk image people
+download, with a link to Applications to drag the app onto. Both are published
+on the Releases page. It needs `cargo-about` for the third-party notices:
 
 ```sh
 cargo install cargo-about --locked --features cli
 ```
 
-It also writes `target/release-zip/SHA256SUMS.txt` next to the zip. The in-app
+It also writes `target/release-zip/SHA256SUMS.txt` next to them. The in-app
 updater checks the download against it, so each release uploads both files.
 
 To publish a release:
@@ -70,7 +72,7 @@ To publish a release:
 3. Build the Windows setup on a Windows PC (see [Windows](#windows)) and copy
    `target\release-setup\vento-X.Y.Z-windows-setup.exe` and its
    `SHA256SUMS.txt` to `target/release-setup/` on the Mac.
-4. Build the zip, put both checksum lists in one `SHA256SUMS.txt` (the updater
+4. Build the zip and the disk image, put both checksum lists in one `SHA256SUMS.txt` (the updater
    on each system looks for its own file's line), then create the release
    from the tag, with the changelog section as its notes:
 
@@ -78,7 +80,7 @@ To publish a release:
 scripts/release-macos.sh
 cat target/release-zip/SHA256SUMS.txt target/release-setup/SHA256SUMS.txt >target/SHA256SUMS.txt
 gh release create vX.Y.Z --verify-tag --notes-file <(scripts/release-notes.sh X.Y.Z) \
-  target/release-zip/vento-X.Y.Z-macos-arm64.zip \
+  target/release-zip/vento-X.Y.Z-macos-arm64.zip target/release-zip/vento-X.Y.Z-macos-arm64.dmg \
   target/release-setup/vento-X.Y.Z-windows-setup.exe target/SHA256SUMS.txt
 ```
 
