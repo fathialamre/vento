@@ -1016,19 +1016,27 @@ impl SettingsWindowController {
         if self.hub.current().pinned_folders.len() >= MAX_PINNED {
             return;
         }
-        // The modal picker takes the key focus. Its focus changes may still
-        // be on their way when it returns, so the window takes the focus
-        // back on the next turn of the event loop.
-        let picked = self.platform.pick_folder(None);
         let this = self.this.clone();
-        Timer::single_shot(Duration::ZERO, move || {
-            if let Some(controller) = this.upgrade() {
-                controller.regain_focus();
-            }
-        });
-        if let Some(folder) = picked {
-            self.apply(|s| pin_folder(s, &folder));
-        }
+        self.platform.pick_folder(
+            None,
+            Box::new(move |picked| {
+                let Some(controller) = this.upgrade() else {
+                    return;
+                };
+                // The picker had the key focus. Its focus changes may still
+                // be on their way when it closes, so the window takes the
+                // focus back on the next turn of the event loop.
+                let again = controller.this.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(controller) = again.upgrade() {
+                        controller.regain_focus();
+                    }
+                });
+                if let Some(folder) = picked {
+                    controller.apply(|s| pin_folder(s, &folder));
+                }
+            }),
+        );
     }
 
     /// Tells main the user turned to the window, at once for `Turn::Now`,

@@ -331,18 +331,29 @@ impl PdfView {
             .borrow()
             .first()
             .and_then(|s| s.path.parent().map(Path::to_path_buf));
-        let paths = vento_platform::pick_pdfs(start.as_deref());
-        // The modal panel had the key focus; its focus changes may still
-        // be on their way, so the window takes it back on the next turn.
         let this = self.this.clone();
-        Timer::single_shot(Duration::ZERO, move || {
-            if let Some(view) = this.upgrade() {
-                view.window.window().with_winit_window(|w| w.focus_window());
-            }
-        });
-        if !paths.is_empty() {
-            self.add_files(paths);
-        }
+        vento_platform::pick_pdfs(
+            start.as_deref(),
+            Box::new(move |paths| {
+                let Some(view) = this.upgrade() else {
+                    return;
+                };
+                // The panel had the key focus; its focus changes may still
+                // be on their way, so the window takes it back on the next
+                // turn.
+                let again = view.this.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(view) = again.upgrade() {
+                        view.window.window().with_winit_window(|w| w.focus_window());
+                    }
+                });
+                // The window may have closed, or a write begun, while the
+                // panel was up.
+                if !paths.is_empty() && !view.closed.get() && view.can_edit() {
+                    view.add_files(paths);
+                }
+            }),
+        );
     }
 
     /// A file dropped on the window: collected with the rest of its drop.

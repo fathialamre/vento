@@ -254,8 +254,8 @@ impl Platform for LinuxPlatform {
         terminal::open(terminal, dir, on_error)
     }
 
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
-        portal::pick_folder(start)
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
+        done(portal::pick_folder(start))
     }
 
     /// The primary screen: GNOME screens have no notch, and the top bar

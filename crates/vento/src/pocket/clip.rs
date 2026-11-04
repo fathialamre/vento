@@ -1183,7 +1183,7 @@ mod tests {
         ) -> Result<(), PlatformError> {
             unreachable!()
         }
-        fn pick_folder(&self, _: Option<&Path>) -> Option<PathBuf> {
+        fn pick_folder(&self, _: Option<&Path>, _: Box<dyn FnOnce(Option<PathBuf>)>) {
             unreachable!()
         }
         fn pocket_home(&self) -> Option<IslandHome> {

@@ -364,8 +364,8 @@ impl Platform for WindowsPlatform {
         terminal::open(terminal, dir, on_error)
     }
 
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
-        pick_folder(start)
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
+        done(pick_folder(start))
     }
 
     /// The primary monitor's bottom corner by the taskbar's clock: the top

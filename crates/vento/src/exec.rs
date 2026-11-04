@@ -760,12 +760,23 @@ impl Executor {
     }
 
     fn transfer_with_picker(&self, action: ActionId, paths: Vec<PathBuf>, at: Point) {
-        let start = paths.first().and_then(|p| p.parent());
-        let Some(dest) = self.platform.pick_folder(start) else {
-            debug!("{action:?} cancelled");
-            return;
-        };
-        self.transfer(action, paths, dest, at);
+        let start = paths
+            .first()
+            .and_then(|p| p.parent())
+            .map(Path::to_path_buf);
+        let this = self.this.clone();
+        self.platform.pick_folder(
+            start.as_deref(),
+            Box::new(move |dest| {
+                let Some(dest) = dest else {
+                    debug!("{action:?} cancelled");
+                    return;
+                };
+                if let Some(executor) = this.upgrade() {
+                    executor.transfer(action, paths, dest, at);
+                }
+            }),
+        );
     }
 
     /// Moves or copies `paths` into `dest` (`action` is `Move` or `CopyTo`)

@@ -392,8 +392,12 @@ pub trait Platform {
         dir: &Path,
         on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError>;
-    /// Show a modal folder picker, optionally starting in `start`.
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf>;
+    /// Show the folder picker, optionally starting in `start`, and hand
+    /// `done` the chosen folder, `None` when cancelled. Main thread only.
+    /// On macOS the panel is modeless: this returns at once and `done` runs
+    /// when it closes; while a panel is up, another call brings it forward
+    /// and drops its `done`. Elsewhere `done` runs before this returns.
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>);
     /// Where the Pocket island sits: the first notched screen, otherwise the
     /// primary one. Main thread only.
     fn pocket_home(&self) -> Option<IslandHome>;
@@ -934,20 +938,21 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
 }
 
 /// Asks the user for PDF files with the system's open panel, starting in
-/// `start`; several can be chosen. Empty when cancelled. Main thread only.
-/// Always empty where unsupported.
-pub fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+/// `start`; several can be chosen. `done` gets them, empty when cancelled,
+/// and when the open panel is unsupported. Main thread only. When `done`
+/// runs is as for [`Platform::pick_folder`].
+pub fn pick_pdfs(start: Option<&Path>, done: Box<dyn FnOnce(Vec<PathBuf>)>) {
     #[cfg(target_os = "macos")]
     {
-        macos::pick_pdfs(start)
+        macos::pick_pdfs(start, done)
     }
     #[cfg(windows)]
     {
-        windows::pick_pdfs(start)
+        done(windows::pick_pdfs(start))
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
-        stub::pick_pdfs(start)
+        done(stub::pick_pdfs(start))
     }
 }
 
