@@ -2361,12 +2361,14 @@ mod tests {
             write_temp("actions = [\"copy\"]\nhidden_actions = [\"pdf\", \"share\"]\n");
         let hidden = Settings::load(&hidden_p);
         // PDF where macOS or Windows reads PDFs, Share on macOS only.
+        let pdf = cfg!(any(target_os = "macos", windows));
+        let share = cfg!(target_os = "macos");
         let offered = |list: &[ActionId]| {
             list.iter()
                 .copied()
                 .filter(|a| match a {
-                    ActionId::Pdf => cfg!(any(target_os = "macos", windows)),
-                    ActionId::Share => cfg!(target_os = "macos"),
+                    ActionId::Pdf => pdf,
+                    ActionId::Share => share,
                     _ => true,
                 })
                 .collect::<Vec<_>>()
