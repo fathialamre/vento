@@ -293,23 +293,25 @@ scripts/install-linux.sh
 </script>
 <script>
 // The OS buttons switch every system-specific bit of the page; the download
-// buttons point at that system's file in the latest release, and on Linux,
-// or before a Windows setup is published, at the build instructions.
+// buttons point at that system's file in the latest release (the Mac's disk
+// image, or its zip in releases before it), and at the build instructions
+// while a release has no file for that system.
 (() => {
   const root = document.documentElement;
   const BUILD = 'https://github.com/fathialamre/vento/blob/main/BUILDING.md';
-  const files = { mac: /macos-arm64\.zip$/, win: /windows-setup\.exe$/, lin: /linux/ };
+  const files = { mac: [/macos-arm64\.dmg$/, /macos-arm64\.zip$/], win: [/windows-setup\.exe$/], lin: [/linux.*\.(deb|AppImage)$/] };
+  const find = os => files[os].map(re => assets.find(a => re.test(a.name))).find(Boolean);
   const label = { mac: 'Download for Mac', win: 'Download for Windows', lin: 'Install on Linux' };
   let assets = [];
   const update = () => {
     const os = root.dataset.os;
-    const file = assets.find(a => files[os].test(a.name));
+    const file = find(os);
     document.querySelectorAll('[data-download]').forEach(a => {
       a.href = file ? file.browser_download_url : os === 'mac' ? 'https://github.com/fathialamre/vento/releases/latest' : BUILD + (os === 'win' ? '#windows' : '#linux');
       a.querySelector('span').textContent = file ? file.name : os === 'win' && !file ? 'Build for Windows' : label[os];
       a.querySelector('i').className = 'ti ' + (file || os === 'mac' ? 'ti-download' : 'ti-code');
     });
-    document.querySelectorAll('[data-no-setup]').forEach(p => { p.hidden = assets.some(a => files.win.test(a.name)); });
+    document.querySelectorAll('[data-no-setup]').forEach(p => { p.hidden = !!find('win'); });
     document.querySelectorAll('.os-pick button').forEach(b => b.setAttribute('aria-pressed', b.dataset.os === os));
   };
   document.querySelectorAll('.os-pick button').forEach(b => b.addEventListener('click', () => {
