@@ -288,6 +288,7 @@ impl PdfView {
         window.set_cell_height(CELL_H);
         window.set_gap(GAP);
         window.set_pad(PAD);
+        window.set_reveal_label(crate::info::reveal_label().into());
         window.set_pages(ModelRc::from(self.rows.clone()));
         self.connect();
         // The Settings window's page rather than the panel's tint.

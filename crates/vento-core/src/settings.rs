@@ -2350,7 +2350,7 @@ mod tests {
     }
 
     #[test]
-    fn macos_only_actions_are_dropped_elsewhere() {
+    fn unavailable_actions_are_dropped() {
         let (_dir, p) = write_temp(
             "actions = [\"copy\", \"pdf\", \"share\"]\naction_order = [\"pdf\", \"share\", \"copy\"]\n",
         );
@@ -2360,28 +2360,36 @@ mod tests {
         let (_hidden_dir, hidden_p) =
             write_temp("actions = [\"copy\"]\nhidden_actions = [\"pdf\", \"share\"]\n");
         let hidden = Settings::load(&hidden_p);
-        if cfg!(target_os = "macos") {
-            assert_eq!(
-                shown.actions,
-                [ActionId::Copy, ActionId::Pdf, ActionId::Share]
-            );
-            assert_eq!(
-                shown.action_order,
-                [ActionId::Pdf, ActionId::Share, ActionId::Copy]
-            );
-            assert_eq!(hidden.hidden_actions, [ActionId::Pdf, ActionId::Share]);
-        } else {
-            assert_eq!(shown.actions, [ActionId::Copy]);
-            assert_eq!(shown.action_order, [ActionId::Copy]);
-            assert!(hidden.hidden_actions.is_empty());
-        }
+        // PDF where macOS or Windows reads PDFs, Share on macOS only.
+        let offered = |list: &[ActionId]| {
+            list.iter()
+                .copied()
+                .filter(|a| match a {
+                    ActionId::Pdf => cfg!(any(target_os = "macos", windows)),
+                    ActionId::Share => cfg!(target_os = "macos"),
+                    _ => true,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shown.actions,
+            offered(&[ActionId::Copy, ActionId::Pdf, ActionId::Share])
+        );
+        assert_eq!(
+            shown.action_order,
+            offered(&[ActionId::Pdf, ActionId::Share, ActionId::Copy])
+        );
+        assert_eq!(
+            hidden.hidden_actions,
+            offered(&[ActionId::Pdf, ActionId::Share])
+        );
     }
 
     #[test]
     fn not_yet_placed_actions_are_only_available_ones() {
         let rows = Settings::default().action_rows();
         let has_pdf = rows.iter().any(|(a, _)| *a == ActionId::Pdf);
-        assert_eq!(has_pdf, cfg!(target_os = "macos"));
+        assert_eq!(has_pdf, cfg!(any(target_os = "macos", windows)));
         assert!(rows.iter().all(|(a, _)| a.available()));
     }
 

@@ -43,6 +43,7 @@ mod instance;
 mod menu;
 mod motion;
 mod overlay;
+mod pdf;
 mod screens;
 mod shell;
 mod terminal;
@@ -51,6 +52,7 @@ mod terminal;
 mod thumbs;
 
 pub use instance::claim_instance;
+pub use pdf::{PdfRenderer, SystemPdf};
 pub(crate) use thumbs::{picture_data_thumbnail, picture_thumbnail};
 
 /// [`Platform::file_icon`] at `scale`, for a worker thread.

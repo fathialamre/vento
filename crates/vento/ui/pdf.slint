@@ -439,6 +439,8 @@ export component PdfWindow inherits Window {
     in-out property <bool> files-shown;
     // The footer's text: the selection, or a hint.
     in property <string> footer;
+    // The note's reveal button: the platform's file manager.
+    in property <string> reveal-label: @tr("Show in Finder");
     // Whether any page is selected: the tools that act on a selection work.
     in property <bool> has-selection;
     // Whether the grid has pages.
@@ -1090,7 +1092,7 @@ export component PdfWindow inherits Window {
 
                             PlainButton {
                                 height: 28px;
-                                label: @tr("Show in Finder");
+                                label: root.reveal-label;
                                 clicked => { root.note-reveal(); }
                             }
                         }

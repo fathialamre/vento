@@ -37,7 +37,7 @@ msgstr[1] "+{n}"
 msgid "+{n} more"
 msgstr "+{n} outros"
 
-#: crates/vento-platform/src/lib.rs:283
+#: crates/vento-platform/src/lib.rs:287
 msgid ", "
 msgstr ", "
 
@@ -85,7 +85,7 @@ msgstr "Ações"
 msgid "Add"
 msgstr "Adicionar"
 
-#: crates/vento/ui/pdf.slint:643
+#: crates/vento/ui/pdf.slint:645
 msgid "Add PDF"
 msgstr "Adicionar PDF"
 
@@ -153,7 +153,7 @@ msgstr "Um item sai do Bolso assim que você o solta em algum lugar"
 msgid "Appearance"
 msgstr "Aparência"
 
-#: crates/vento-core/src/actions.rs:99
+#: crates/vento-core/src/actions.rs:107
 msgid "Archive"
 msgstr "Compactar"
 
@@ -165,7 +165,7 @@ msgstr "Compactados"
 msgid "As a list"
 msgstr "Em lista"
 
-#: crates/vento/ui/pdf.slint:1173
+#: crates/vento/ui/pdf.slint:1175
 msgid "At my cuts"
 msgstr "Nos meus cortes"
 
@@ -173,7 +173,7 @@ msgstr "Nos meus cortes"
 msgid "Audio"
 msgstr "Áudio"
 
-#: crates/vento/src/settings_window/mod.rs:1798
+#: crates/vento/src/settings_window/mod.rs:1806
 msgid "Automatic (system language)"
 msgstr "Automático (idioma do sistema)"
 
@@ -237,7 +237,7 @@ msgstr "Ocupado — ainda trabalhando"
 msgid "By kind"
 msgstr "Por tipo"
 
-#: crates/vento/src/settings_window/mod.rs:1977
+#: crates/vento/src/settings_window/mod.rs:1985
 msgid "By the clock"
 msgstr "Junto ao relógio"
 
@@ -381,7 +381,7 @@ msgstr "Clique no ícone do Vento e depois no bloco Manter acordado para ativar 
 msgid "Clipboard"
 msgstr "Área de transferência"
 
-#: crates/vento/src/welcome_window/mod.rs:792
+#: crates/vento/src/welcome_window/mod.rs:800
 msgid "Clipboard history"
 msgstr "Histórico de cópias"
 
@@ -427,7 +427,7 @@ msgstr "Contém"
 msgid "Continue"
 msgstr "Continuar"
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:109
 msgid "Convert"
 msgstr "Converter"
 
@@ -471,7 +471,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} item copiado para {dest}"
 msgstr[1] "{n} itens copiados para {dest}"
 
-#: crates/vento-core/src/actions.rs:94
+#: crates/vento-core/src/actions.rs:102
 msgid "Copy"
 msgstr "Copiar"
 
@@ -491,11 +491,11 @@ msgstr "Copiar da tela precisa de Gravação de Tela"
 msgid "Copy from screen shortcut"
 msgstr "Atalho de Copiar da tela"
 
-#: crates/vento/src/settings_window/mod.rs:1783
+#: crates/vento/src/settings_window/mod.rs:1791
 msgid "Copy from screen uses this shortcut"
 msgstr "Copiar da tela usa este atalho"
 
-#: crates/vento-core/src/actions.rs:96
+#: crates/vento-core/src/actions.rs:104
 msgid "Copy path"
 msgstr "Copiar caminho"
 
@@ -511,7 +511,7 @@ msgstr "Copiar texto"
 msgid "Copy the text from any part of the screen"
 msgstr "Copie o texto de qualquer parte da tela"
 
-#: crates/vento-core/src/actions.rs:98
+#: crates/vento-core/src/actions.rs:106
 msgid "Copy to"
 msgstr "Copiar para"
 
@@ -625,7 +625,7 @@ msgstr "Não foi possível renomear: {reason}"
 msgid "Couldn't replace Vento"
 msgstr "Não foi possível substituir o Vento"
 
-#: crates/vento/src/settings_window/mod.rs:1764
+#: crates/vento/src/settings_window/mod.rs:1772
 msgid "Couldn't save settings: {error}"
 msgstr "Não foi possível salvar os ajustes: {error}"
 
@@ -673,7 +673,7 @@ msgstr "Data"
 msgid "Date modified"
 msgstr "Data de modificação"
 
-#: crates/vento/ui/pdf.slint:686
+#: crates/vento/ui/pdf.slint:688
 msgid "Delete"
 msgstr "Apagar"
 
@@ -697,7 +697,7 @@ msgstr "Dígitos"
 msgid "Dims the screen so you can pick the text to copy"
 msgstr "Escurece a tela para você escolher o texto a copiar"
 
-#: crates/vento/ui/pdf.slint:1364
+#: crates/vento/ui/pdf.slint:1366
 msgid "Discard"
 msgstr "Descartar"
 
@@ -713,7 +713,7 @@ msgstr "Concluído"
 msgid "Downloading {v}…"
 msgstr "Baixando {v}…"
 
-#: crates/vento/src/welcome_window/mod.rs:784
+#: crates/vento/src/welcome_window/mod.rs:792
 msgid "Drag a file, press {key}"
 msgstr "Arraste um arquivo e pressione {key}"
 
@@ -781,7 +781,7 @@ msgstr "Essenciais"
 msgid "Every action"
 msgstr "Todas as ações"
 
-#: crates/vento/ui/pdf.slint:1139
+#: crates/vento/ui/pdf.slint:1141
 msgid "Every page"
 msgstr "Cada página"
 
@@ -829,7 +829,7 @@ msgstr "Extraindo"
 msgid "Extracting {name}…"
 msgstr "Extraindo {name}…"
 
-#: crates/vento/ui/pdf.slint:1157
+#: crates/vento/ui/pdf.slint:1159
 msgid "Fewer pages"
 msgstr "Menos páginas"
 
@@ -837,7 +837,7 @@ msgstr "Menos páginas"
 msgid "File"
 msgstr "Arquivo"
 
-#: crates/vento/ui/pdf.slint:624
+#: crates/vento/ui/pdf.slint:626
 msgid "Files"
 msgstr "Arquivos"
 
@@ -869,7 +869,7 @@ msgstr "Pastas que você usa com frequência"
 msgid "Follow Reduce motion"
 msgstr "Seguir Reduzir movimento"
 
-#: crates/vento/ui/pdf.slint:1233
+#: crates/vento/ui/pdf.slint:1235
 msgid "Format"
 msgstr "Formato"
 
@@ -909,7 +909,7 @@ msgstr "Vidro"
 msgid "Halo"
 msgstr "Halo"
 
-#: crates/vento/ui/pdf.slint:625
+#: crates/vento/ui/pdf.slint:627
 msgid "Hide files"
 msgstr "Ocultar arquivos"
 
@@ -977,11 +977,11 @@ msgstr "Imagens"
 msgid "Improved"
 msgstr "Melhorado"
 
-#: crates/vento/src/settings_window/mod.rs:1979
+#: crates/vento/src/settings_window/mod.rs:1987
 msgid "In the top bar"
 msgstr "Na barra superior"
 
-#: crates/vento-core/src/actions.rs:100
+#: crates/vento-core/src/actions.rs:108
 msgid "Info"
 msgstr "Info"
 
@@ -1117,7 +1117,7 @@ msgstr "Líquido"
 msgid "List"
 msgstr "Lista"
 
-#: crates/vento/ui/pdf.slint:1238
+#: crates/vento/ui/pdf.slint:1240
 msgid "Lossless"
 msgstr "Sem perdas"
 
@@ -1149,7 +1149,7 @@ msgstr "Ausente"
 msgid "Modified"
 msgstr "Modificado"
 
-#: crates/vento/ui/pdf.slint:1165
+#: crates/vento/ui/pdf.slint:1167
 msgid "More pages"
 msgstr "Mais páginas"
 
@@ -1165,7 +1165,7 @@ msgstr "Mais {}"
 msgid "More…"
 msgstr "Mais…"
 
-#: crates/vento-core/src/actions.rs:95
+#: crates/vento-core/src/actions.rs:103
 msgid "Move"
 msgstr "Mover"
 
@@ -1313,11 +1313,11 @@ msgstr "Nada selecionado"
 msgid "Nothing to convert: already {format}"
 msgstr "Nada para converter: já está em {format}"
 
-#: crates/vento/src/exec.rs:960
+#: crates/vento/src/exec.rs:971
 msgid "Nothing to copy"
 msgstr "Nada para copiar"
 
-#: crates/vento/src/exec.rs:925
+#: crates/vento/src/exec.rs:936
 msgid "Nothing to move"
 msgstr "Nada para mover"
 
@@ -1443,7 +1443,7 @@ msgstr "Ordem"
 msgid "Other"
 msgstr "Outros"
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:110
 msgid "PDF"
 msgstr "PDF"
 
@@ -1525,11 +1525,11 @@ msgstr "Marcar cortes"
 msgid "Plain"
 msgstr "Simples"
 
-#: crates/vento/src/settings_window/mod.rs:1981
+#: crates/vento/src/settings_window/mod.rs:1989
 msgid "Plain pill"
 msgstr "Pílula simples"
 
-#: crates/vento-core/src/actions.rs:93
+#: crates/vento-core/src/actions.rs:101
 msgid "Pocket"
 msgstr "Bolso"
 
@@ -1565,7 +1565,7 @@ msgstr "Pressione {}: a tela escurece."
 msgid "Preview"
 msgstr "Visualizar"
 
-#: crates/vento/ui/pdf.slint:1254
+#: crates/vento/ui/pdf.slint:1256
 msgid "Print"
 msgstr "Impressão"
 
@@ -1579,7 +1579,7 @@ msgid_plural "Put back {n} names"
 msgstr[0] "{n} nome restaurado"
 msgstr[1] "{n} nomes restaurados"
 
-#: crates/vento/ui/pdf.slint:1248
+#: crates/vento/ui/pdf.slint:1250
 msgid "Quality"
 msgstr "Qualidade"
 
@@ -1639,7 +1639,7 @@ msgid_plural "Removing {n} copies…"
 msgstr[0] "Removendo {n} cópia…"
 msgstr[1] "Removendo {n} cópias…"
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:112
 msgid "Rename"
 msgstr "Renomear"
 
@@ -1711,11 +1711,11 @@ msgstr "Inverter"
 msgid "Right"
 msgstr "Direita"
 
-#: crates/vento/ui/pdf.slint:669
+#: crates/vento/ui/pdf.slint:671
 msgid "Rotate left"
 msgstr "Girar à esquerda"
 
-#: crates/vento/ui/pdf.slint:678
+#: crates/vento/ui/pdf.slint:680
 msgid "Rotate right"
 msgstr "Girar à direita"
 
@@ -1727,11 +1727,11 @@ msgstr "Regras"
 msgid "Same name as another item"
 msgstr "Mesmo nome de outro item"
 
-#: crates/vento/ui/pdf.slint:1357
+#: crates/vento/ui/pdf.slint:1359
 msgid "Save"
 msgstr "Salvar"
 
-#: crates/vento/ui/pdf.slint:1009
+#: crates/vento/ui/pdf.slint:1011
 msgid "Save as new PDF"
 msgstr "Salvar como novo PDF"
 
@@ -1741,7 +1741,7 @@ msgid_plural "Save images"
 msgstr[0] "Salvar imagem"
 msgstr[1] "Salvar imagens"
 
-#: crates/vento/ui/pdf.slint:1337
+#: crates/vento/ui/pdf.slint:1339
 msgid "Save your changes as a new PDF?"
 msgstr "Salvar as alterações como um novo PDF?"
 
@@ -1761,7 +1761,7 @@ msgid_plural "Saved {n} images in {folder}"
 msgstr[0] "{n} imagem salva em {folder}"
 msgstr[1] "{n} imagens salvas em {folder}"
 
-#: crates/vento/ui/pdf.slint:1252
+#: crates/vento/ui/pdf.slint:1254
 msgid "Screen"
 msgstr "Tela"
 
@@ -1785,7 +1785,7 @@ msgstr "Veja os detalhes de arquivos e pastas"
 msgid "See what's new"
 msgstr "Ver novidades"
 
-#: crates/vento/ui/pdf.slint:651
+#: crates/vento/ui/pdf.slint:653
 msgid "Select all"
 msgstr "Selecionar tudo"
 
@@ -1837,7 +1837,7 @@ msgstr "Sacudir para abrir"
 msgid "Shape"
 msgstr "Forma"
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:111
 msgid "Share"
 msgstr "Compartilhar"
 
@@ -1869,7 +1869,7 @@ msgstr "Mostrar um cartão quando uma captura de tela for salva"
 msgid "Show all {}"
 msgstr "Mostrar tudo em {}"
 
-#: crates/vento/ui/pdf.slint:625
+#: crates/vento/ui/pdf.slint:627
 msgid "Show files"
 msgstr "Mostrar arquivos"
 
@@ -1913,7 +1913,7 @@ msgstr "Pular configuração"
 msgid "Sleep allowed again"
 msgstr "Repouso permitido novamente"
 
-#: crates/vento/ui/pdf.slint:1240
+#: crates/vento/ui/pdf.slint:1242
 msgid "Smaller file"
 msgstr "Arquivo menor"
 
@@ -1959,7 +1959,7 @@ msgstr[1] "Dividir em {n}"
 msgid "Split {name}"
 msgstr "Dividir {name}"
 
-#: crates/vento/ui/pdf.slint:720
+#: crates/vento/ui/pdf.slint:722
 msgid "Split…"
 msgstr "Dividir…"
 
@@ -1995,11 +1995,11 @@ msgstr "Desativar Manter acordado"
 msgid "Stop the computer from going to sleep for a while"
 msgstr "Impeça o computador de entrar em repouso por um tempo"
 
-#: crates/vento/src/welcome_window/mod.rs:711
+#: crates/vento/src/welcome_window/mod.rs:719
 msgid "Stored on this Mac without encryption. Copies that password managers mark as private are skipped."
 msgstr "Armazenado neste Mac sem criptografia. Cópias que gerenciadores de senhas marcam como privadas são ignoradas."
 
-#: crates/vento/src/welcome_window/mod.rs:715
+#: crates/vento/src/welcome_window/mod.rs:723
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Armazenado neste computador sem criptografia. Cópias que gerenciadores de senhas marcam como privadas são ignoradas."
 
@@ -2035,7 +2035,7 @@ msgstr "Faça uma captura de tela com a tecla de captura do sistema."
 msgid "Template"
 msgstr "Modelo"
 
-#: crates/vento-core/src/actions.rs:97
+#: crates/vento-core/src/actions.rs:105
 msgid "Terminal"
 msgstr "Terminal"
 
@@ -2043,11 +2043,11 @@ msgstr "Terminal"
 msgid "Text"
 msgstr "Texto"
 
-#: crates/vento/src/settings_window/mod.rs:1782
+#: crates/vento/src/settings_window/mod.rs:1790
 msgid "The Clipboard uses this shortcut"
 msgstr "O histórico de cópias usa este atalho"
 
-#: crates/vento/src/settings_window/mod.rs:1781
+#: crates/vento/src/settings_window/mod.rs:1789
 msgid "The Pocket uses this shortcut"
 msgstr "O Bolso usa este atalho"
 
@@ -2071,7 +2071,7 @@ msgstr "A lista e os números seguem esta ordem"
 msgid "The new version didn't start."
 msgstr "A nova versão não iniciou."
 
-#: crates/vento/ui/pdf.slint:1346
+#: crates/vento/ui/pdf.slint:1348
 msgid "The original stays as it is."
 msgstr "O original continua como está."
 
@@ -2095,7 +2095,7 @@ msgstr "O endereço de atualização não é seguro"
 msgid "Theme"
 msgstr "Tema"
 
-#: crates/vento/src/settings_window/mod.rs:1780
+#: crates/vento/src/settings_window/mod.rs:1788
 msgid "This shortcut can't be used"
 msgstr "Este atalho não pode ser usado"
 
@@ -2111,7 +2111,7 @@ msgstr "Durações no painel"
 msgid "Title Case"
 msgstr "Iniciais Maiúsculas"
 
-#: crates/vento/ui/pdf.slint:710
+#: crates/vento/ui/pdf.slint:712
 msgid "To images"
 msgstr "Para imagens"
 
@@ -2203,7 +2203,7 @@ msgstr "Desafixar"
 msgid "Unpin {}"
 msgstr "Desafixar {}"
 
-#: crates/vento/src/settings_window/mod.rs:1386
+#: crates/vento/src/settings_window/mod.rs:1394
 msgid "Until stopped"
 msgstr "Até desativar"
 
@@ -2235,7 +2235,7 @@ msgstr "Atualizado da versão {v}"
 msgid "Updates"
 msgstr "Atualizações"
 
-#: crates/vento/src/settings_window/mod.rs:1778
+#: crates/vento/src/settings_window/mod.rs:1786
 msgid "Use a modifier with a letter or digit"
 msgstr "Use uma tecla modificadora com uma letra ou um dígito"
 
@@ -2427,7 +2427,7 @@ msgstr "Ontem"
 msgid "You can pick each action in Settings → Wheel."
 msgstr "Você pode escolher cada ação em Ajustes → Roda."
 
-#: crates/vento/ui/pdf.slint:1174
+#: crates/vento/ui/pdf.slint:1176
 msgid "You pick where to cut"
 msgstr "Você escolhe onde cortar"
 
@@ -2455,11 +2455,11 @@ msgstr "Seu Mac segue os ajustes de energia de sempre"
 msgid "Your computer follows its usual energy settings"
 msgstr "Seu computador segue os ajustes de energia de sempre"
 
-#: crates/vento/src/settings_window/mod.rs:1756
+#: crates/vento/src/settings_window/mod.rs:1764
 msgid "Your settings file can't be read ({error}); changing a setting here will replace it"
 msgstr "Não é possível ler seu arquivo de ajustes ({error}); mudar um ajuste aqui vai substituí-lo"
 
-#: crates/vento/src/settings_window/mod.rs:1740
+#: crates/vento/src/settings_window/mod.rs:1748
 msgid "Your settings file has an error on line {line}: {message}; changing a setting here will replace it"
 msgstr "Seu arquivo de ajustes tem um erro na linha {line}: {message}; mudar um ajuste aqui vai substituí-lo"
 
@@ -2475,7 +2475,7 @@ msgstr "depois"
 msgid "already exists"
 msgstr "já existe"
 
-#: crates/vento-platform/src/lib.rs:272
+#: crates/vento-platform/src/lib.rs:276
 msgid "another share is still open"
 msgstr "outro compartilhamento ainda está aberto"
 
@@ -2515,15 +2515,15 @@ msgstr "não foi possível iniciar"
 msgid "cannot start copying: {reason}"
 msgstr "não foi possível começar a copiar: {reason}"
 
-#: crates/vento/src/exec.rs:1132
+#: crates/vento/src/exec.rs:1143
 msgid "cannot start: {reason}"
 msgstr "não foi possível iniciar: {reason}"
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:253
 msgid "clipboard rejected the files"
 msgstr "a área de transferência recusou os arquivos"
 
-#: crates/vento-platform/src/lib.rs:245
+#: crates/vento-platform/src/lib.rs:249
 msgid "clipboard rejected the text"
 msgstr "a área de transferência recusou o texto"
 
@@ -2531,7 +2531,7 @@ msgstr "a área de transferência recusou o texto"
 msgid "copy could not be verified; source left untouched"
 msgstr "não foi possível verificar a cópia; a origem não foi alterada"
 
-#: crates/vento-platform/src/lib.rs:297
+#: crates/vento-platform/src/lib.rs:301
 msgid "could not run {program}: {reason}"
 msgstr "não foi possível executar {program}: {reason}"
 
@@ -2547,7 +2547,7 @@ msgstr "vazio"
 msgid "i/o error: {reason}"
 msgstr "erro de E/S: {reason}"
 
-#: crates/vento/src/exec.rs:1115
+#: crates/vento/src/exec.rs:1126
 msgid "internal error"
 msgstr "erro interno"
 
@@ -2595,7 +2595,7 @@ msgstr "minúsculas"
 msgid "macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options."
 msgstr "O macOS salva a captura de tela uns 5 segundos depois enquanto a miniatura flutuante está ativada. Para ver o cartão na hora, desative Mostrar Miniatura Flutuante no app Captura de Tela (⇧⌘5) → Opções."
 
-#: crates/vento/src/settings_window/mod.rs:1779
+#: crates/vento/src/settings_window/mod.rs:1787
 msgid "macOS uses this shortcut"
 msgstr "O macOS usa este atalho"
 
@@ -2607,11 +2607,11 @@ msgstr "movido para {copy}, mas o original não pôde ser removido totalmente: {
 msgid "name"
 msgstr "nome"
 
-#: crates/vento-platform/src/lib.rs:282
+#: crates/vento-platform/src/lib.rs:286
 msgid "no app opened {names}"
 msgstr "nenhum app abriu {names}"
 
-#: crates/vento-platform/src/lib.rs:342
+#: crates/vento-platform/src/lib.rs:346
 msgid "no folder to open"
 msgstr "nenhuma pasta para abrir"
 
@@ -2631,7 +2631,7 @@ msgstr "nenhum nome temporário livre"
 msgid "no images"
 msgstr "nenhuma imagem"
 
-#: crates/vento-platform/src/lib.rs:337
+#: crates/vento-platform/src/lib.rs:341
 msgid "no terminal is installed"
 msgstr "nenhum terminal instalado"
 
@@ -2719,11 +2719,11 @@ msgstr "senha incorreta"
 msgid "{app} (default)"
 msgstr "{app} (padrão)"
 
-#: crates/vento-platform/src/lib.rs:290
+#: crates/vento-platform/src/lib.rs:294
 msgid "{app} is no longer there"
 msgstr "{app} não está mais lá"
 
-#: crates/vento-platform/src/lib.rs:330
+#: crates/vento-platform/src/lib.rs:334
 msgid "{app} is not installed"
 msgstr "{app} não está instalado"
 
@@ -2763,7 +2763,7 @@ msgstr "{h} h {m} min"
 msgid "{items} · {changes}"
 msgstr "{items} · {changes}"
 
-#: crates/vento/src/settings_window/mod.rs:1771
+#: crates/vento/src/settings_window/mod.rs:1779
 msgid "{ms} ms"
 msgstr "{ms} ms"
 
@@ -2771,7 +2771,7 @@ msgstr "{ms} ms"
 msgid "{m} min"
 msgstr "{m} min"
 
-#: crates/vento/src/pdf/window.rs:688
+#: crates/vento/src/pdf/window.rs:689
 msgid "{names} — {meta}"
 msgstr "{names} — {meta}"
 
@@ -2897,7 +2897,7 @@ msgid_plural "{n} problems"
 msgstr[0] "{n} problema"
 msgstr[1] "{n} problemas"
 
-#: crates/vento/src/settings_window/mod.rs:2009
+#: crates/vento/src/settings_window/mod.rs:2017
 msgid "{n} s"
 msgstr "{n} s"
 
@@ -2937,15 +2937,15 @@ msgstr "{n} min"
 msgid "{pages} · edited"
 msgstr "{pages} · editado"
 
-#: crates/vento-platform/src/lib.rs:307
+#: crates/vento-platform/src/lib.rs:311
 msgid "{program} exited with code {code}"
 msgstr "{program} saiu com o código {code}"
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:315
 msgid "{program} was stopped by a signal"
 msgstr "{program} foi interrompido por um sinal"
 
-#: crates/vento-platform/src/lib.rs:322
+#: crates/vento-platform/src/lib.rs:326
 msgid "{program}: {reason}"
 msgstr "{program}: {reason}"
 
@@ -3002,22 +3002,22 @@ msgctxt "Case example"
 msgid "my_trip_photo"
 msgstr "foto_da_viagem"
 
-#: crates/vento/ui/pdf.slint:701
+#: crates/vento/ui/pdf.slint:703
 msgctxt "PDF pages"
 msgid "Extract"
 msgstr "Extrair"
 
-#: crates/vento/ui/pdf.slint:642
+#: crates/vento/ui/pdf.slint:644
 msgctxt "PDF window"
 msgid "Add"
 msgstr "Adicionar"
 
-#: crates/vento/ui/pdf.slint:668
+#: crates/vento/ui/pdf.slint:670
 msgctxt "Rotate"
 msgid "Left"
 msgstr "Esquerda"
 
-#: crates/vento/ui/pdf.slint:677
+#: crates/vento/ui/pdf.slint:679
 msgctxt "Rotate"
 msgid "Right"
 msgstr "Direita"
