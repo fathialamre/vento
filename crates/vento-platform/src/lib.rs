@@ -15,6 +15,7 @@ use vento_core::screen_text::{Selection, TextBox};
 use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
+mod motion;
 mod screenshot_dir;
 mod stub;
 mod watch;
@@ -352,6 +353,14 @@ pub trait Platform {
     fn prepare_app(&self);
     /// Snapshot of global input state. Main thread only.
     fn sample_input(&self) -> InputSample;
+    /// Where the cursor is, `(x, y)` in logical, top-left-origin global
+    /// coordinates (as [`InputSample::cursor`]), read with no other effect:
+    /// cheap enough to follow a drag at every frame. `None` where it can't be
+    /// read alone (Linux, whose sampling also feeds the drop catcher). Main
+    /// thread only.
+    fn cursor(&self) -> Option<(f64, f64)> {
+        None
+    }
     /// The local files in the drag in progress (empty when none, or when
     /// the drag carries no files). Main thread only.
     fn drag_paths(&self) -> Vec<PathBuf>;
@@ -392,11 +401,64 @@ pub trait Platform {
         dir: &Path,
         on_error: Box<dyn Fn(PlatformError) + Send>,
     ) -> Result<(), PlatformError>;
-    /// Show a modal folder picker, optionally starting in `start`.
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf>;
+    /// Show the folder picker, optionally starting in `start`, and hand
+    /// `done` the chosen folder, `None` when cancelled. Main thread only.
+    /// On macOS the panel is modeless: this returns at once and `done` runs
+    /// when it closes; while a panel is up, another call brings it forward
+    /// and drops its `done`. Elsewhere `done` runs before this returns.
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>);
     /// Where the Pocket island sits: the first notched screen, otherwise the
     /// primary one. Main thread only.
     fn pocket_home(&self) -> Option<IslandHome>;
+    /// Every screen's home, the primary one first, in the same coordinates
+    /// as [`Platform::pocket_home`]. Where a platform keeps no list, the one
+    /// home of `pocket_home`. Main thread only.
+    fn island_homes(&self) -> Vec<IslandHome> {
+        self.pocket_home().into_iter().collect()
+    }
+    /// The outer frame of the frontmost normal window of another app, in
+    /// logical, top-left-origin global coordinates (as [`Platform::screens`]
+    /// speaks). Never the frame of one of vento's own windows, the desktop
+    /// or a shell surface (taskbar, panel, dock): `None` when such a window
+    /// has the focus where only the focused one is known (Windows, X11), or
+    /// where unsupported. Asked a few times a second, so cheap. Main thread
+    /// only.
+    fn front_window_frame(&self) -> Option<Rect> {
+        None
+    }
+    /// Whether the island can be a virtual one here: placed anywhere along
+    /// the top edge and let clicks through while it rests.
+    fn virtual_island_supported(&self) -> bool {
+        true
+    }
+    /// Whether the system asks for less motion (Reduce motion, animations
+    /// off). Main thread only.
+    fn reduce_motion(&self) -> bool {
+        false
+    }
+    /// Whether the system holds notifications back (Do Not Disturb, a
+    /// presentation, a full-screen game); false where it cannot be known.
+    /// Main thread only.
+    fn quiet_time(&self) -> bool {
+        false
+    }
+    /// Whether the system is saving power (Low Power Mode, Battery Saver).
+    /// Main thread only.
+    fn power_saving(&self) -> bool {
+        false
+    }
+    /// Whether the desktop keeps room for the collapsed island in its top
+    /// bar (GNOME's, through the Vento extension); kept until called again.
+    /// Nothing happens where there is no such room. Main thread only.
+    fn reserve_island_slot(&self, on: bool) {
+        let _ = on;
+    }
+    /// Whether the desktop has kept room for the island in its top bar at
+    /// any time (GNOME's, through the Vento extension), even if given back
+    /// since. Main thread only.
+    fn island_slot_seen(&self) -> bool {
+        false
+    }
     /// Float this window above the menu bar on every Space (including
     /// full-screen ones), out of the window cycle and without a shadow.
     /// Main thread only.
@@ -425,6 +487,27 @@ pub trait Platform {
     ) -> Result<(), PlatformError> {
         let _ = (window, rect);
         Err(PlatformError::Unsupported)
+    }
+    /// Let this window take the pointer only inside `rects`, in physical
+    /// pixels from its top-left corner, or nowhere when there are none.
+    /// Where the platform takes one rectangle only, it takes the smallest
+    /// holding them all, through [`set_input_rect`](Self::set_input_rect).
+    /// Main thread only.
+    fn set_input_rects(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rects: &[Rect],
+    ) -> Result<(), PlatformError> {
+        let union = rects.iter().copied().reduce(|a, b| {
+            let (x, y) = (a.x.min(b.x), a.y.min(b.y));
+            Rect {
+                x,
+                y,
+                w: (a.x + a.w).max(b.x + b.w) - x,
+                h: (a.y + a.h).max(b.y + b.h) - y,
+            }
+        });
+        self.set_input_rect(window, union)
     }
     /// The Finder icon of `path`, rendered at `px`×`px` points times the
     /// main screen's backing scale. `None` if `path` doesn't exist or the
@@ -934,20 +1017,21 @@ pub fn write_image(src: &Path, dst: &Path, format: ImageFormat) -> Result<(), Co
 }
 
 /// Asks the user for PDF files with the system's open panel, starting in
-/// `start`; several can be chosen. Empty when cancelled. Main thread only.
-/// Always empty where unsupported.
-pub fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+/// `start`; several can be chosen. `done` gets them, empty when cancelled,
+/// and when the open panel is unsupported. Main thread only. When `done`
+/// runs is as for [`Platform::pick_folder`].
+pub fn pick_pdfs(start: Option<&Path>, done: Box<dyn FnOnce(Vec<PathBuf>)>) {
     #[cfg(target_os = "macos")]
     {
-        macos::pick_pdfs(start)
+        macos::pick_pdfs(start, done)
     }
     #[cfg(windows)]
     {
-        windows::pick_pdfs(start)
+        done(windows::pick_pdfs(start))
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
-        stub::pick_pdfs(start)
+        done(stub::pick_pdfs(start))
     }
 }
 

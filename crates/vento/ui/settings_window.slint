@@ -4,12 +4,13 @@
 
 import { LineText, Theme } from "theme.slint";
 import { Panel, RowSeparator, ScrollBar } from "controls.slint";
-import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, ClipboardPage, GeneralPage,
+import { ActionRow, FolderRow, Notice, HowTo, WheelPage, MovePage, PocketPage, IslandPage, ClipboardPage, GeneralPage,
     CopyFromScreenPage, ScreenshotsPage, KeepAwakePage, AboutPage } from "settings_pages.slint";
 
 // One row of the sidebar. `id` names the page whatever its label says:
-// 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Clipboard, 5 Copy from screen,
-// 6 Screenshots, 7 Keep Awake, 8 About (the order of `Page` in `settings_window/mod.rs`).
+// 0 General, 1 Wheel, 2 Move, 3 Pocket, 4 Island, 5 Clipboard, 6 Copy from
+// screen, 7 Screenshots, 8 Keep Awake, 9 About (the order of `Page` in
+// `settings_window/mod.rs`).
 export struct PageItem { icon: image, label: string, id: int }
 
 // A sidebar row: the page's icon and name, in the accent on its faint tint
@@ -92,6 +93,31 @@ export component SettingsWindow inherits Window {
     in property <int> wheel-layout;
     // What the Pocket view opens on: 0 its kinds, 1 the list.
     in property <int> pocket-view;
+    // The Island page: whether the virtual island can be chosen here;
+    // whether it is, what the other island is called, and the
+    // virtual one's shape (0 Island, 1 Circle), place (0 Left, 1 Centre,
+    // 2 Right, -1 a free spot), whether each screen keeps its own place and
+    // Glass in percent.
+    in property <bool> island-offered;
+    in property <bool> island-virtual;
+    in property <string> classic-label;
+    in property <int> island-shape;
+    in property <int> island-place;
+    in property <bool> island-each-screen;
+    in property <int> island-glass;
+    // The virtual island's shimmer: its style and how often (as the
+    // settings list them), whether it waits for items in the Pocket,
+    // whether Reduce motion is followed and whether motion is reduced (it
+    // is followed and the system asks for it), which keeps the previews
+    // still.
+    in property <int> island-shimmer;
+    in property <int> island-shimmer-every;
+    in property <bool> island-shimmer-needs-items;
+    in property <bool> island-follow-reduce;
+    in property <bool> island-reduce-motion;
+    // Whether the island here is notch-style, and whether it shows jobs.
+    in property <bool> island-notch;
+    in property <bool> island-jobs;
     // The wheel's actions, the shown ones first, and how many are shown.
     in property <[ActionRow]> actions;
     in property <int> shown-actions;
@@ -188,6 +214,17 @@ export component SettingsWindow inherits Window {
     callback theme-chosen(int);
     callback layout-chosen(int);
     callback pocket-view-chosen(int);
+    // 0 the virtual island, 1 the other one.
+    callback island-mode-chosen(int);
+    callback island-shape-chosen(int);
+    callback island-place-chosen(int);
+    callback island-each-screen-toggled(bool);
+    callback island-glass-changed(int);
+    callback island-shimmer-chosen(int);
+    callback island-shimmer-every-chosen(int);
+    callback island-shimmer-needs-items-toggled(bool);
+    callback island-follow-reduce-toggled(bool);
+    callback island-jobs-toggled(bool);
     callback action-toggled(int, bool);
     // A row of the Wheel page's list dragged from one place to another.
     callback action-moved(int, int);
@@ -289,21 +326,21 @@ export component SettingsWindow inherits Window {
                 @tr("Drag items from the island into any folder or app. Removing one never deletes your file."),
             ];
         }
-        if id == 4 {
+        if id == 5 {
             return [
                 @tr("Copy as usual: Vento remembers what you copy."),
                 @tr("Press {} to open the history.", root.clip-shortcut),
                 @tr("Click a copy to put it back on the clipboard, then paste it anywhere."),
             ];
         }
-        if id == 5 {
+        if id == 6 {
             return [
                 @tr("Press {}: the screen dims.", root.screen-shortcut),
                 @tr("Drag a rectangle over the text you want and let go."),
                 @tr("The text is on your clipboard, ready to paste. Esc cancels."),
             ];
         }
-        if id == 6 {
+        if id == 7 {
             return [
                 @tr("Turn on Show screenshots in the island."),
                 root.shots-macos
@@ -312,7 +349,7 @@ export component SettingsWindow inherits Window {
                 @tr("Open the Screenshots tab in the island to see your recent screenshots."),
             ];
         }
-        if id == 7 {
+        if id == 8 {
             return [
                 @tr("Click the Vento icon, then the Keep Awake tile, to start or stop it."),
                 @tr("Pick how long under the tile, or leave it on until you stop it."),
@@ -465,7 +502,34 @@ export component SettingsWindow inherits Window {
                                 keep-copies-toggled(on) => { root.keep-copies-toggled(on); }
                                 pocket-view-chosen(i) => { root.pocket-view-chosen(i); }
                             }
-                            if root.page-id == 4: ClipboardPage {
+                            if root.page-id == 4: IslandPage {
+                                offered: root.island-offered;
+                                virtual: root.island-virtual;
+                                classic-label: root.classic-label;
+                                shape: root.island-shape;
+                                place: root.island-place;
+                                each-screen: root.island-each-screen;
+                                glass: root.island-glass;
+                                shimmer: root.island-shimmer;
+                                shimmer-every: root.island-shimmer-every;
+                                shimmer-needs-items: root.island-shimmer-needs-items;
+                                follow-reduce: root.island-follow-reduce;
+                                reduce-motion: root.island-reduce-motion;
+                                circle: root.island-shape == 1;
+                                notch: root.island-notch;
+                                jobs: root.island-jobs;
+                                mode-chosen(i) => { root.island-mode-chosen(i); }
+                                shape-chosen(i) => { root.island-shape-chosen(i); }
+                                place-chosen(i) => { root.island-place-chosen(i); }
+                                each-screen-toggled(on) => { root.island-each-screen-toggled(on); }
+                                glass-changed(v) => { root.island-glass-changed(v); }
+                                shimmer-chosen(i) => { root.island-shimmer-chosen(i); }
+                                shimmer-every-chosen(i) => { root.island-shimmer-every-chosen(i); }
+                                shimmer-needs-items-toggled(on) => { root.island-shimmer-needs-items-toggled(on); }
+                                follow-reduce-toggled(on) => { root.island-follow-reduce-toggled(on); }
+                                jobs-toggled(on) => { root.island-jobs-toggled(on); }
+                            }
+                            if root.page-id == 5: ClipboardPage {
                                 history: root.clip-history;
                                 shortcut: root.clip-shortcut;
                                 shortcut-error <=> root.clip-shortcut-error;
@@ -475,14 +539,14 @@ export component SettingsWindow inherits Window {
                                 recording-cancelled => { root.stop-recording(); }
                                 history-cleared => { root.clip-history-cleared(); }
                             }
-                            if root.page-id == 5 && root.screen-text-supported: CopyFromScreenPage {
+                            if root.page-id == 6 && root.screen-text-supported: CopyFromScreenPage {
                                 shortcut: root.screen-shortcut;
                                 shortcut-error <=> root.screen-shortcut-error;
                                 recording <=> root.screen-shortcut-recording;
                                 recording-started => { root.screen-shortcut-recording-started(); }
                                 recording-cancelled => { root.stop-recording(); }
                             }
-                            if root.page-id == 6: ScreenshotsPage {
+                            if root.page-id == 7: ScreenshotsPage {
                                 on: root.shots-on;
                                 card-on: root.shot-card-on;
                                 card-secs: root.shot-card-secs;
@@ -498,7 +562,7 @@ export component SettingsWindow inherits Window {
                                 show-folder => { root.shots-show-folder(); }
                                 open-privacy => { root.shots-open-privacy(); }
                             }
-                            if root.page-id == 7: KeepAwakePage {
+                            if root.page-id == 8: KeepAwakePage {
                                 screen-off: root.awake-screen-off;
                                 times: root.awake-times;
                                 times-full: root.awake-times-full;
@@ -516,7 +580,7 @@ export component SettingsWindow inherits Window {
                                 time-added => { root.awake-time-added(); }
                                 start-chosen(i) => { root.awake-start-chosen(i); }
                             }
-                            if root.page-id == 8: AboutPage {
+                            if root.page-id == 9: AboutPage {
                                 version: root.version;
                                 updates-supported: root.updates-supported;
                                 update-kind: root.update-kind;

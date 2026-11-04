@@ -41,6 +41,7 @@ mod heif;
 pub(crate) mod image_io;
 mod instance;
 mod menu;
+mod motion;
 mod overlay;
 mod screens;
 mod shell;
@@ -227,6 +228,85 @@ fn is_vento(window: windows_sys::Win32::Foundation::HWND) -> bool {
     }
 }
 
+/// Whether a window of class `class` is the desktop or the taskbar's,
+/// which never count as an app's window in front.
+fn is_shell_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW"
+    )
+}
+
+/// Whether `window` is the desktop or a taskbar (see [`is_shell_class`]).
+/// Reads the class into a buffer on the stack.
+fn is_shell_window(window: windows_sys::Win32::Foundation::HWND) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+
+    // Class names are at most 256 characters; the shell's are short ASCII.
+    let mut wide = [0u16; 32];
+    // SAFETY: the buffer's length is passed with it.
+    let len = unsafe { GetClassNameW(window, wide.as_mut_ptr(), wide.len() as i32) };
+    let wide = &wide[..len.max(0) as usize];
+    let mut name = [0u8; 32];
+    for (b, &c) in name.iter_mut().zip(wide) {
+        // Past Latin-1 no shell class, and 0xFF fails the UTF-8 check.
+        *b = u8::try_from(c).unwrap_or(0xFF);
+    }
+    std::str::from_utf8(&name[..wide.len()]).is_ok_and(is_shell_class)
+}
+
+/// `monitor`'s home: its work area, with the island's corner by the clock.
+/// `area` is the taskbar's notification area: the corner is at the left
+/// only if the clock lies in this monitor's left half, so a monitor that
+/// does not hold it keeps its corner on the right.
+fn monitor_home(
+    monitor: &screens::Monitor,
+    area: Option<windows_sys::Win32::Foundation::RECT>,
+) -> IslandHome {
+    IslandHome {
+        screen: monitor.logical_frame(),
+        notch: None,
+        menu_bar_h: 0.0,
+        slot: None,
+        tray_corner: Some(TrayCorner {
+            work: monitor.logical_work(),
+            left: area.is_some_and(|r| clock_on_left_half(&monitor.frame, &r)),
+        }),
+    }
+}
+
+/// Whether the notification area `area` lies in the left half of the
+/// monitor frame `frame` (both in physical pixels).
+fn clock_on_left_half(
+    frame: &windows_sys::Win32::Foundation::RECT,
+    area: &windows_sys::Win32::Foundation::RECT,
+) -> bool {
+    let at = (area.left + area.right) / 2;
+    let mid = (frame.left + frame.right) / 2;
+    at >= frame.left && at < mid
+}
+
+/// The outer frame of `window` as it is drawn, without the invisible
+/// borders Windows 10 and later add for resizing, in physical pixels.
+fn drawn_frame(
+    window: windows_sys::Win32::Foundation::HWND,
+) -> Option<windows_sys::Win32::Foundation::RECT> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
+
+    let mut frame = RECT::default();
+    // SAFETY: `frame` is a live local of the size passed.
+    let read = unsafe {
+        DwmGetWindowAttribute(
+            window,
+            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+            (&raw mut frame).cast(),
+            size_of::<RECT>() as u32,
+        )
+    };
+    (read == 0).then_some(frame)
+}
+
 /// Whether the key `vk` is down now.
 fn key_down(vk: VIRTUAL_KEY) -> bool {
     // SAFETY: plain call. The high bit is set while the key is down.
@@ -244,8 +324,23 @@ fn primary_button() -> VIRTUAL_KEY {
     }
 }
 
+/// Where the cursor is, in physical pixels; `None` when Windows can't say.
+fn cursor_pos() -> Option<POINT> {
+    let mut cursor = POINT::default();
+    // SAFETY: `cursor` is a live local.
+    (unsafe { GetCursorPos(&mut cursor) } != 0).then_some(cursor)
+}
+
 impl Platform for WindowsPlatform {
     fn prepare_app(&self) {}
+
+    fn cursor(&self) -> Option<(f64, f64)> {
+        // Asks only the monitor under the cursor: read at every frame of a
+        // drag.
+        cursor_pos()
+            .map(screens::point_to_logical)
+            .map(|p| (p.x, p.y))
+    }
 
     fn sample_input(&self) -> InputSample {
         if instance::asked_to_end() {
@@ -261,13 +356,9 @@ impl Platform for WindowsPlatform {
         {
             (handler.0)();
         }
-        let mut cursor = POINT::default();
-        // SAFETY: `cursor` is a live local.
-        let cursor = if unsafe { GetCursorPos(&mut cursor) } != 0 {
-            screens::to_logical(&screens::monitors(), cursor)
-        } else {
-            Point { x: 0.0, y: 0.0 }
-        };
+        let cursor = cursor_pos().map_or(Point { x: 0.0, y: 0.0 }, |p| {
+            screens::to_logical(&screens::monitors(), p)
+        });
         let dragging = drag::active();
         InputSample {
             left_down: key_down(primary_button()),
@@ -364,8 +455,8 @@ impl Platform for WindowsPlatform {
         terminal::open(terminal, dir, on_error)
     }
 
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
-        pick_folder(start)
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
+        done(pick_folder(start))
     }
 
     /// The primary monitor's bottom corner by the taskbar's clock: the top
@@ -374,19 +465,42 @@ impl Platform for WindowsPlatform {
     /// taskbar.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *screens::monitors().first()?;
-        let frame = primary.logical_frame();
-        let mid = (primary.frame.left + primary.frame.right) / 2;
-        let left = clicks::notification_area().is_some_and(|r| (r.left + r.right) / 2 < mid);
-        Some(IslandHome {
-            screen: frame,
-            notch: None,
-            menu_bar_h: 0.0,
-            slot: None,
-            tray_corner: Some(TrayCorner {
-                work: primary.logical_work(),
-                left,
-            }),
-        })
+        Some(monitor_home(&primary, clicks::notification_area()))
+    }
+
+    /// One home per monitor, the primary first, built as `pocket_home`
+    /// builds the primary's. The notification area is on one monitor only,
+    /// so the others keep their corner on the right.
+    fn island_homes(&self) -> Vec<IslandHome> {
+        let area = clicks::notification_area();
+        screens::monitors()
+            .iter()
+            .map(|m| monitor_home(m, area))
+            .collect()
+    }
+
+    /// The foreground window, unless it is vento's, the desktop's or a
+    /// taskbar's; divided by its monitor's scale.
+    fn front_window_frame(&self) -> Option<Rect> {
+        // SAFETY: plain call.
+        let front = unsafe { GetForegroundWindow() };
+        if front.is_null() || is_vento(front) || is_shell_window(front) {
+            return None;
+        }
+        let frame = drawn_frame(front)?;
+        Some(screens::window_to_logical(front, &frame))
+    }
+
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    fn quiet_time(&self) -> bool {
+        motion::quiet_time()
+    }
+
+    fn power_saving(&self) -> bool {
+        motion::power_saving()
     }
 
     /// Off the taskbar and out of Alt+Tab; above the others it already is,
@@ -627,6 +741,36 @@ mod tests {
         let corner = home.tray_corner.expect("a corner by the clock");
         assert!(corner.work.w > 0.0 && corner.work.h > 0.0);
         assert!(corner.work.x >= home.screen.x && corner.work.y >= home.screen.y);
+    }
+
+    #[test]
+    fn the_clock_is_left_only_on_the_monitor_that_holds_it() {
+        use windows_sys::Win32::Foundation::RECT;
+        let rect = |left, right| RECT {
+            left,
+            top: 0,
+            right,
+            bottom: 1080,
+        };
+        let area = rect(100, 300);
+        assert!(clock_on_left_half(&rect(0, 1920), &area));
+        // On the right half of the same monitor, or on another monitor.
+        assert!(!clock_on_left_half(&rect(0, 1920), &rect(1500, 1900)));
+        assert!(!clock_on_left_half(&rect(1920, 3840), &area));
+        assert!(!clock_on_left_half(&rect(-1920, 0), &area));
+    }
+
+    #[test]
+    fn shell_windows_are_not_front_windows() {
+        for class in [
+            "Shell_TrayWnd",
+            "Shell_SecondaryTrayWnd",
+            "Progman",
+            "WorkerW",
+        ] {
+            assert!(is_shell_class(class));
+        }
+        assert!(!is_shell_class("Chrome_WidgetWin_1"));
     }
 
     #[test]

@@ -36,6 +36,7 @@ use vento_platform::{Dropped, Platform, RgbaImage};
 
 use super::clip_thumb::{THUMB_FILE, write_file_thumb, write_thumb};
 use super::display_name;
+use crate::notice::{CopySource, Notice, middle_cut};
 
 thread_local! {
     /// The controller on the main thread, for blob writes finishing on the
@@ -296,51 +297,54 @@ impl ClipController {
     /// Takes the clipboard's change count from an input sample. While off
     /// or paused, and on the first sample after either, it only becomes the
     /// baseline; otherwise a count that moved, and is not vento's own write,
-    /// is a copy to record.
-    pub(super) fn observe(&self, count: i64) {
+    /// is a copy to record. Returns the island's notice of a copy recorded
+    /// (or of a secret one, which is not).
+    pub(super) fn observe(&self, count: i64) -> Option<Notice> {
         let before = self.baseline.replace(count);
         if !self.enabled() || self.paused.get() || !self.primed.replace(true) {
-            return;
+            return None;
         }
         if count == before || self.own_write.get() == Some(count) {
-            return;
+            return None;
         }
-        self.record_clipboard(count);
+        self.record_clipboard(count)
     }
 
     /// Reads the clipboard, whose change count was `count` when sampled,
     /// and records it, unless it is secret, too big or holds nothing worth
-    /// showing.
-    fn record_clipboard(&self, count: i64) {
+    /// showing. Returns the island's notice of the copy, when recorded or
+    /// secret.
+    fn record_clipboard(&self, count: i64) -> Option<Notice> {
         // Type names only: a secret's data is never read.
-        if is_secret(&self.platform.clipboard_types()) {
+        let types = self.platform.clipboard_types();
+        if is_secret(&types) {
             debug!("clipboard: secret copy not recorded");
-            return;
+            return Some(copied_notice(&types, None));
         }
         let read = self.platform.read_clipboard();
         // The two reads are not one: a copy landing in between, or an app
         // adding its marker after its text, must not slip through.
         if self.platform.clipboard_change_count() != count {
             debug!("clipboard: changed while read, left to the next sample");
-            return;
+            return None;
         }
         let types: Vec<String> = read.items.iter().flatten().map(|r| r.ty.clone()).collect();
         if is_secret(&types) {
             debug!("clipboard: secret copy not recorded");
-            return;
+            return Some(copied_notice(&types, None));
         }
         // The read already leaves out a copy too big to keep.
         if read.items.is_empty() {
             debug!("clipboard: copy too big or unreadable, not recorded");
-            return;
+            return None;
         }
         let Some(snapshot) = fit(read, MAX_SNAPSHOT_BYTES) else {
             debug!("clipboard: copy too big, not recorded");
-            return;
+            return None;
         };
         let Some(summary) = summarize(&snapshot) else {
             debug!("clipboard: nothing to show in the copy, not recorded");
-            return;
+            return None;
         };
         // Finder copies files as references: keep their real paths, which
         // the list names and the Pocket takes.
@@ -350,6 +354,7 @@ impl ClipController {
             },
             other => other,
         };
+        let notice = copied_notice(&types, Some(&summary));
         let picture = match &summary {
             Summary::Image { .. } => Some(Picture::Pasted),
             other => shown_picture(other).map(|p| Picture::File(p.to_path_buf())),
@@ -370,6 +375,7 @@ impl ClipController {
         self.pending.borrow_mut().insert(id, snapshot.clone());
         self.store_blobs(id, snapshot, evicted, picture);
         (self.on_change)();
+        Some(notice)
     }
 
     /// Has the store worker hash entry `id`'s snapshot and write its blobs,
@@ -1053,6 +1059,51 @@ fn link_label(url: &str) -> String {
         .to_owned()
 }
 
+/// Longest detail, in characters with its "…", the island shows under
+/// "Copied".
+const COPIED_SUB_CHARS: usize = 24;
+
+/// The island's notice of a copy the watcher saw, whose type names are
+/// `types` and which shows as `summary`: "Copied", over the first words of a
+/// text or a link, a picture's size, a file's name or how many files. A copy
+/// whose types mark it secret shows nothing of itself. Only the island
+/// tells of other apps' copies.
+pub(super) fn copied_notice(types: &[String], summary: Option<&Summary>) -> Notice {
+    let sub = match summary {
+        _ if is_secret(types) => String::new(),
+        None => String::new(),
+        Some(Summary::Text { preview }) => first_words(preview, COPIED_SUB_CHARS),
+        Some(Summary::Link { url }) => first_words(&link_label(url), COPIED_SUB_CHARS),
+        // Digits and a sign, the same in every language.
+        Some(Summary::Image { width, height, .. }) if *width > 0 && *height > 0 => {
+            format!("{width}×{height}")
+        }
+        Some(Summary::Image { .. }) => String::new(),
+        Some(Summary::Files { paths }) => match paths.as_slice() {
+            [] => String::new(),
+            [one] => middle_cut(&display_name(one), COPIED_SUB_CHARS),
+            many => fill(&tr("{n} files"), &[("n", &many.len().to_string())]),
+        },
+    };
+    Notice::done(tr("Copied"))
+        .with_sub(sub)
+        .with_copy(CopySource::Watched)
+        .island_only()
+}
+
+/// `text` on one line, its runs of spaces and line breaks made single
+/// spaces, cut after at most `max_chars` characters with an "…" at the end.
+fn first_words(text: &str, max_chars: usize) -> String {
+    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() <= max_chars {
+        return line;
+    }
+    let mut cut: String = line.chars().take(max_chars.saturating_sub(1)).collect();
+    cut.truncate(cut.trim_end().len());
+    cut.push('…');
+    cut
+}
+
 /// How long ago `unix` is now, as [`age_label`] words it in the system's
 /// time zone.
 pub(super) fn age_label_now(unix: u64) -> String {
@@ -1183,7 +1234,7 @@ mod tests {
         ) -> Result<(), PlatformError> {
             unreachable!()
         }
-        fn pick_folder(&self, _: Option<&Path>) -> Option<PathBuf> {
+        fn pick_folder(&self, _: Option<&Path>, _: Box<dyn FnOnce(Option<PathBuf>)>) {
             unreachable!()
         }
         fn pocket_home(&self) -> Option<IslandHome> {
@@ -1395,6 +1446,82 @@ mod tests {
         assert!(c.is_empty());
         // Decided from the type names alone: the data is never read.
         assert_eq!(fake.data_reads.get(), 0);
+    }
+
+    fn types(names: &[&str]) -> Vec<String> {
+        names.iter().map(|t| (*t).to_owned()).collect()
+    }
+
+    #[test]
+    fn secret_copies_show_no_text() {
+        let secret = types(&[TYPE_TEXT, "org.nspasteboard.ConcealedType"]);
+        let summary = Summary::Text {
+            preview: "hunter2".into(),
+        };
+        let n = copied_notice(&secret, Some(&summary));
+        assert_eq!((n.text.as_str(), n.sub.as_str()), ("Copied", ""));
+        assert_eq!(n.copy, Some(CopySource::Watched));
+        assert!(n.island_only);
+        // Seen by the watcher: it says so, and shows none of it.
+        let (_tmp, fake, c) = setup(true);
+        fake.set(text("hunter2"), &["org.nspasteboard.ConcealedType"]);
+        tick(&fake, &c, 1);
+        fake.live.set(2);
+        let n = c.observe(2).expect("a copy to tell of");
+        assert_eq!((n.text.as_str(), n.sub.as_str()), ("Copied", ""));
+    }
+
+    #[test]
+    fn text_copies_show_their_first_words() {
+        let summary = |s: &str| Summary::Text { preview: s.into() };
+        let sub = |s: &str| copied_notice(&types(&[TYPE_TEXT]), Some(&summary(s))).sub;
+        assert_eq!(
+            sub("Meeting at 3 in the big room"),
+            "Meeting at 3 in the big…"
+        );
+        assert_eq!(sub("Short note"), "Short note");
+        assert_eq!(sub("  spaced\tout   words "), "spaced out words");
+        assert_eq!(sub("Twenty-four characters!!").chars().count(), 24);
+        let link = Summary::Link {
+            url: "https://example.com/a/very/long/address".into(),
+        };
+        assert_eq!(
+            copied_notice(&types(&[TYPE_URL]), Some(&link)).sub,
+            "example.com/a/very/long…"
+        );
+        // Recorded by the watcher, it says so.
+        let (_tmp, fake, c) = setup(true);
+        fake.set(text("Meeting at 3 in the big room"), &[]);
+        tick(&fake, &c, 1);
+        fake.live.set(2);
+        let n = c.observe(2).expect("a copy to tell of");
+        assert_eq!(n.text, "Copied");
+        assert_eq!(n.sub, "Meeting at 3 in the big…");
+        // Nothing new, nothing to tell.
+        assert!(c.observe(2).is_none());
+    }
+
+    #[test]
+    fn picture_copies_show_their_size() {
+        let image = |width, height| Summary::Image {
+            ext: "png".into(),
+            width,
+            height,
+        };
+        let sub = |s: Summary| copied_notice(&types(&[TYPE_PNG]), Some(&s)).sub;
+        assert_eq!(sub(image(1280, 720)), "1280×720");
+        // A size that could not be read is not shown.
+        assert_eq!(sub(image(0, 0)), "");
+    }
+
+    #[test]
+    fn file_copies_show_a_name_or_how_many() {
+        let files = |paths: &[&str]| Summary::Files {
+            paths: paths.iter().map(PathBuf::from).collect(),
+        };
+        let sub = |s: Summary| copied_notice(&types(&[TYPE_FILE_URL]), Some(&s)).sub;
+        assert_eq!(sub(files(&["/a/report.pdf"])), "report.pdf");
+        assert_eq!(sub(files(&["/a/x.txt", "/a/y.txt", "/a/z.txt"])), "3 files");
     }
 
     #[test]

@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use jiff::tz::TimeZone;
 use log::{debug, info, warn};
 use slint::{ComponentHandle, Image, ModelRc, Timer, VecModel};
+use vento_core::actions::ActionId;
 use vento_core::clip::{ClipRep, ClipSnapshot, TYPE_FILE_URL, TYPE_PNG, path_to_file_url};
 use vento_core::destinations::display_path;
 use vento_core::i18n::{fill, tr, trc, with_language};
@@ -29,6 +30,7 @@ use vento_core::screenshots::{
 };
 use vento_platform::{Dropped, PlatformError, RgbaImage};
 
+use crate::notice::{CopySource, Notice};
 use crate::screen_text::ReadResult;
 use crate::ui::{PocketIsland, ShotDay, ShotTile};
 
@@ -615,7 +617,10 @@ impl PocketController {
                         &tr("Couldn't open: {reason}"),
                         &[("reason", &e.to_string())],
                     );
-                    c.toast.show(&text, None, c.toast_at());
+                    c.toast.notify(
+                        Notice::error(text).with_icon(ActionId::Pocket),
+                        c.toast_at(),
+                    );
                 }
             }
         });
@@ -855,7 +860,10 @@ impl PocketController {
                         &tr("Couldn't copy: {reason}"),
                         &[("reason", &vento_core::i18n::errors::io_reason(&e))],
                     );
-                    self.toast.show(&text, None, self.toast_at());
+                    self.toast.notify(
+                        Notice::error(text).with_icon(ActionId::Pocket),
+                        self.toast_at(),
+                    );
                     return;
                 }
             }
@@ -865,7 +873,10 @@ impl PocketController {
         match self.platform.write_clipboard(&shot_snapshot(path, png)) {
             Ok(_) => {
                 info!("screenshot copied");
-                self.toast.show(&tr("Copied"), None, self.toast_at());
+                self.toast.notify(
+                    Notice::done(tr("Copied")).with_copy(CopySource::Own),
+                    self.toast_at(),
+                );
             }
             Err(e) => self.copy_failed(&e),
         }
@@ -881,7 +892,10 @@ impl PocketController {
             &tr("Couldn't copy: {reason}"),
             &[("reason", &e.to_string())],
         );
-        self.toast.show(&text, None, self.toast_at());
+        self.toast.notify(
+            Notice::error(text).with_icon(ActionId::Pocket),
+            self.toast_at(),
+        );
     }
 
     /// Copy text: reads the text in the picture on a worker thread with
@@ -910,17 +924,23 @@ impl PocketController {
                     "cannot read the text in a screenshot: {}",
                     with_language("en", || e.to_string())
                 );
-                self.toast
-                    .show(&tr("Couldn't read the picture"), None, self.toast_at());
+                self.toast.notify(
+                    Notice::error(tr("Couldn't read the picture")).with_icon(ActionId::Pocket),
+                    self.toast_at(),
+                );
                 return;
             }
         };
         if text.is_empty() {
-            self.toast.show(&tr("No text found"), None, self.toast_at());
+            self.toast
+                .notify(Notice::info(tr("No text found")), self.toast_at());
             return;
         }
         match self.platform.copy_text(&text) {
-            Ok(()) => self.toast.show(&tr("Copied text"), None, self.toast_at()),
+            Ok(()) => self.toast.notify(
+                Notice::done(tr("Copied text")).with_copy(CopySource::Own),
+                self.toast_at(),
+            ),
             Err(e) => self.copy_failed(&e),
         }
     }
@@ -1109,6 +1129,28 @@ impl PocketController {
         self.run_undo_timer();
     }
 
+    /// Takes the card down as the island leaves it: on the circle, the
+    /// shot's picture shrinks into the disc.
+    pub(super) fn close_card_into_disc(&self) {
+        let picture = self.card.picture.borrow().clone();
+        self.close_card();
+        if let Some(picture) = picture {
+            self.shot_into_circle(picture);
+        }
+    }
+
+    /// The shot of a card that just ended shrinks into the circle: the
+    /// window shows `picture` on the disc and starts the shrink, a new id
+    /// for each. Only the virtual circle does; every other island ignores it.
+    pub(super) fn shot_into_circle(&self, picture: Image) {
+        if !self.home.get().is_some_and(|h| self.circle_virtual(&h)) {
+            return;
+        }
+        let w = &self.window;
+        w.set_shot_disc(picture);
+        w.set_shot_disc_id(w.get_shot_disc_id().wrapping_add(1));
+    }
+
     /// After an action on the card: on the next turn of the event loop,
     /// once the window has finished with the click, the card closes, `then`
     /// runs, and the island goes back to rest.
@@ -1162,8 +1204,10 @@ impl PocketController {
                     c.undo_shot_trash(&path);
                 }
             };
-            c.toast
-                .show(&tr("Moved to Trash"), Some(Box::new(undo)), at);
+            c.toast.notify(
+                Notice::done(tr("Moved to Trash")).with_undo(Some(Box::new(undo))),
+                at,
+            );
         });
     }
 

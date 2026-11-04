@@ -10,13 +10,14 @@ use std::time::Duration;
 use log::{debug, warn};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Image, Model, Timer, TimerMode};
+use vento_core::actions::ActionId;
 use vento_core::geometry::Point;
-use vento_core::i18n::{fill, tr};
+use vento_core::i18n::tr;
 use vento_core::pdf::{PageList, PageRef, PdfError, Selection, Source, open_sources};
 use vento_platform::SystemPdf;
 
 use super::{BANNER_TIME, DROP_BATCH, PdfView, SCROLL_TICK, live_view, spawn_worker};
-use crate::exec::pdf_open_toast_text;
+use crate::exec::{action_error_notice, pdf_open_notice, pdf_open_toast_text};
 use crate::pdf::logic::{
     DragAction, DragEvent, DragPhase, auto_scroll_step, cell_origin, drag_step, dragged_pages,
     follow_selection, insert_point, insertion_bar, max_scroll, removed_text, turned_pages,
@@ -331,18 +332,29 @@ impl PdfView {
             .borrow()
             .first()
             .and_then(|s| s.path.parent().map(Path::to_path_buf));
-        let paths = vento_platform::pick_pdfs(start.as_deref());
-        // The modal panel had the key focus; its focus changes may still
-        // be on their way, so the window takes it back on the next turn.
         let this = self.this.clone();
-        Timer::single_shot(Duration::ZERO, move || {
-            if let Some(view) = this.upgrade() {
-                view.window.window().with_winit_window(|w| w.focus_window());
-            }
-        });
-        if !paths.is_empty() {
-            self.add_files(paths);
-        }
+        vento_platform::pick_pdfs(
+            start.as_deref(),
+            Box::new(move |paths| {
+                let Some(view) = this.upgrade() else {
+                    return;
+                };
+                // The panel had the key focus; its focus changes may still
+                // be on their way, so the window takes it back on the next
+                // turn.
+                let again = view.this.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(view) = again.upgrade() {
+                        view.window.window().with_winit_window(|w| w.focus_window());
+                    }
+                });
+                // The window may have closed, or a write begun, while the
+                // panel was up.
+                if !paths.is_empty() && !view.closed.get() && view.can_edit() {
+                    view.add_files(paths);
+                }
+            }),
+        );
     }
 
     /// A file dropped on the window: collected with the rest of its drop.
@@ -385,11 +397,10 @@ impl PdfView {
         }
         if let Err(e) = spawned {
             warn!("cannot start opening the added PDFs: {e}");
-            let text = fill(
-                &tr("Couldn't open the PDF: {reason}"),
-                &[("reason", &e.to_string())],
+            self.ctx.toaster.notify(
+                action_error_notice(ActionId::Pdf, &e.to_string()),
+                self.centre(),
             );
-            self.ctx.toaster.show(&text, None, self.centre());
         }
     }
 
@@ -439,7 +450,9 @@ impl PdfView {
             debug!("added PDF skipped: {}: {error:?}", path.display());
         }
         if let Some(text) = pdf_open_toast_text(opened.len(), &skipped) {
-            self.ctx.toaster.show(&text, None, self.centre());
+            self.ctx
+                .toaster
+                .notify(pdf_open_notice(text), self.centre());
         }
         if opened.is_empty() {
             return;

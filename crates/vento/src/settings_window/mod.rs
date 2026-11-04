@@ -37,19 +37,21 @@ use vento_core::i18n::errors::io_reason;
 use vento_core::i18n::{LANGUAGES, fill, lookup, tr, trc};
 use vento_core::paths::PathFormat;
 use vento_core::settings::{
-    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS,
-    MOVE_HOLD_STEP_MS, PocketView, Settings, SettingsError, ThemeName, is_reserved_shortcut,
+    Appearance, CARD_SECS_MAX, CARD_SECS_MIN, IslandMode, IslandPlace, IslandShape, IslandSpot,
+    MAX_MOVE_HOLD_MS, MAX_PINNED, MIN_MOVE_HOLD_MS, MOVE_HOLD_STEP_MS, PocketView, Settings,
+    SettingsError, ShimmerEvery, ShimmerStyle, ThemeName, clamp_glass, is_reserved_shortcut,
     move_row, parse_shortcut,
 };
+use vento_core::shimmer::motion_reduced;
 use vento_core::trigger::{Modifier, Modifiers};
 use vento_core::update::state::UpdateState;
 use vento_core::update::version::Version;
-use vento_platform::{Platform, TerminalApp};
+use vento_platform::{IslandHome, Platform, TerminalApp};
 
 use crate::appearance::{self, show_menu_colors};
 use crate::lazy_window::LazyWindow;
 use crate::panel::{UpdateView, set_rows, update_view};
-use crate::pocket::{Access, display_name, to_image};
+use crate::pocket::{Access, display_name, island_screen_key, to_image, virtual_offered};
 use crate::settings_hub::SettingsHub;
 use crate::ui::{ActionRow, FolderRow, Icons, PageItem, PanelIcons, SettingsWindow, Theme};
 use crate::wheel::action_icon;
@@ -160,6 +162,7 @@ pub enum Page {
     Wheel,
     Move,
     Pocket,
+    Island,
     Clipboard,
     CopyFromScreen,
     Screenshots,
@@ -188,6 +191,7 @@ impl Page {
             Self::Wheel => "wheel",
             Self::Move => "move",
             Self::Pocket => "pocket",
+            Self::Island => "island",
             Self::Clipboard => "clipboard",
             Self::CopyFromScreen => "copy_from_screen",
             Self::Screenshots => "screenshots",
@@ -205,6 +209,7 @@ impl Page {
             // The wheel's action "Move" is a verb: "نقل"; the page is "النقل".
             Self::Move => trc("page", "Move"),
             Self::Pocket => tr("Pocket"),
+            Self::Island => tr("Island"),
             Self::Clipboard => tr("Clipboard"),
             Self::CopyFromScreen => tr("Copy from screen"),
             Self::Screenshots => tr("Screenshots"),
@@ -222,6 +227,7 @@ impl Page {
             Self::Wheel => panel.get_wheel(),
             Self::Move => icons.get_move(),
             Self::Pocket => icons.get_pocket(),
+            Self::Island => panel.get_island(),
             Self::Clipboard => icons.get_clipboard(),
             Self::CopyFromScreen => panel.get_scan_text(),
             Self::Screenshots => icons.get_photo(),
@@ -240,6 +246,7 @@ pub fn pages(screen_text_supported: bool) -> Vec<Page> {
         Wheel,
         Move,
         Pocket,
+        Island,
         Clipboard,
         CopyFromScreen,
         Screenshots,
@@ -732,6 +739,76 @@ impl SettingsWindowController {
             }
         });
         let this = self.this.clone();
+        window.on_island_mode_chosen(move |i| {
+            if let (Some(controller), Some(mode)) = (this.upgrade(), choice(&IslandMode::ALL, i)) {
+                controller.apply(|s| s.island_mode = mode);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_shape_chosen(move |i| {
+            if let (Some(controller), Some(shape)) = (this.upgrade(), choice(&IslandShape::ALL, i))
+            {
+                controller.apply(|s| s.island_shape = shape);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_place_chosen(move |i| {
+            if let (Some(controller), Some(place)) = (this.upgrade(), choice(&IslandPlace::ALL, i))
+            {
+                // The screen the island is on now, or the global place.
+                let screens = IslandScreens::of(&*controller.platform);
+                controller.apply(|s| {
+                    let screen = screens.key(s);
+                    s.set_island_spot(screen.as_deref(), IslandSpot::Side(place));
+                });
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_each_screen_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_place_each_screen = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_glass_changed(move |v| {
+            if let Some(controller) = this.upgrade() {
+                let v = u32::try_from(v).unwrap_or(0);
+                controller.apply(|s| apply_glass(s, v));
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_shimmer_chosen(move |i| {
+            if let (Some(controller), Some(style)) = (this.upgrade(), choice(&ShimmerStyle::ALL, i))
+            {
+                controller.apply(|s| s.island_shimmer = style);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_shimmer_every_chosen(move |i| {
+            if let (Some(controller), Some(every)) = (this.upgrade(), choice(&ShimmerEvery::ALL, i))
+            {
+                controller.apply(|s| s.island_shimmer_every = every);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_shimmer_needs_items_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_shimmer_needs_items = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_follow_reduce_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_reduce_motion = on);
+            }
+        });
+        let this = self.this.clone();
+        window.on_island_jobs_toggled(move |on| {
+            if let Some(controller) = this.upgrade() {
+                controller.apply(|s| s.island_jobs = on);
+            }
+        });
+        let this = self.this.clone();
         window.on_shake_to_open_toggled(move |on| {
             if let Some(controller) = this.upgrade() {
                 controller.apply(|s| s.shake_to_open = on);
@@ -1016,19 +1093,27 @@ impl SettingsWindowController {
         if self.hub.current().pinned_folders.len() >= MAX_PINNED {
             return;
         }
-        // The modal picker takes the key focus. Its focus changes may still
-        // be on their way when it returns, so the window takes the focus
-        // back on the next turn of the event loop.
-        let picked = self.platform.pick_folder(None);
         let this = self.this.clone();
-        Timer::single_shot(Duration::ZERO, move || {
-            if let Some(controller) = this.upgrade() {
-                controller.regain_focus();
-            }
-        });
-        if let Some(folder) = picked {
-            self.apply(|s| pin_folder(s, &folder));
-        }
+        self.platform.pick_folder(
+            None,
+            Box::new(move |picked| {
+                let Some(controller) = this.upgrade() else {
+                    return;
+                };
+                // The picker had the key focus. Its focus changes may still
+                // be on their way when it closes, so the window takes the
+                // focus back on the next turn of the event loop.
+                let again = controller.this.clone();
+                Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(controller) = again.upgrade() {
+                        controller.regain_focus();
+                    }
+                });
+                if let Some(folder) = picked {
+                    controller.apply(|s| pin_folder(s, &folder));
+                }
+            }),
+        );
     }
 
     /// Tells main the user turned to the window, at once for `Turn::Now`,
@@ -1232,6 +1317,7 @@ impl SettingsWindowController {
         window.set_remove_after_drop(settings.pocket_remove_after_drop);
         window.set_keep_copies(settings.pocket_keep_copies);
         window.set_pocket_view(choice_index(&PocketView::ALL, settings.pocket_view));
+        self.show_island(&window, &settings);
         window.set_clip_history(settings.clipboard_history);
         window.set_shots_on(settings.screenshots);
         window.set_shot_card_on(settings.screenshot_card);
@@ -1249,6 +1335,44 @@ impl SettingsWindowController {
         window.set_how_to_closed(ModelRc::from(closed.as_slice()));
         window.set_clip_shortcut(symbols(&settings.clipboard_shortcut).into());
         window.set_screen_shortcut(symbols(&settings.screen_text_shortcut).into());
+    }
+
+    /// Shows the Island page's rows, offered where the virtual
+    /// island can be chosen at the island's home. The other island is named
+    /// by where it sits there; GNOME's top bar room counts once the
+    /// extension has kept it, as the virtual island gives it back.
+    fn show_island(&self, window: &SettingsWindow, settings: &Settings) {
+        let screens = IslandScreens::of(&*self.platform);
+        let home = screens.primary;
+        window.set_island_offered(home.is_some_and(|h| virtual_offered(&h, screens.supported)));
+        window.set_island_notch(home.is_some_and(|h| notch_style_home(&h)));
+        window.set_island_jobs(settings.island_jobs);
+        if let Some(home) = home {
+            let gnome_slot = home.slot.is_some() || self.platform.island_slot_seen();
+            window.set_classic_label(classic_label(&home, gnome_slot).into());
+        }
+        window.set_island_virtual(settings.island_mode == IslandMode::Virtual);
+        window.set_island_shape(choice_index(&IslandShape::ALL, settings.island_shape));
+        // A free spot has no segment chosen.
+        window.set_island_place(
+            match settings.island_spot(screens.key(settings).as_deref()) {
+                IslandSpot::Side(place) => choice_index(&IslandPlace::ALL, place),
+                IslandSpot::Free(_) => -1,
+            },
+        );
+        window.set_island_each_screen(settings.island_place_each_screen);
+        window.set_island_glass(i32::try_from(settings.island_glass).unwrap_or(0));
+        window.set_island_shimmer(choice_index(&ShimmerStyle::ALL, settings.island_shimmer));
+        window.set_island_shimmer_every(choice_index(
+            &ShimmerEvery::ALL,
+            settings.island_shimmer_every,
+        ));
+        window.set_island_shimmer_needs_items(settings.island_shimmer_needs_items);
+        window.set_island_follow_reduce(settings.island_reduce_motion);
+        window.set_island_reduce_motion(motion_reduced(
+            settings.island_reduce_motion,
+            self.platform.reduce_motion(),
+        ));
     }
 
     /// Shows Keep Awake's times, the time Add adds and what the tile
@@ -1813,6 +1937,65 @@ fn awake_start_index(settings: &Settings) -> i32 {
         .map_or(0, |i| i32::try_from(i + 1).unwrap_or(0))
 }
 
+/// The island's homes as the platform has them: every screen's, the
+/// primary one, and whether the virtual island can be placed.
+struct IslandScreens {
+    homes: Vec<IslandHome>,
+    primary: Option<IslandHome>,
+    supported: bool,
+}
+
+impl IslandScreens {
+    fn of(platform: &dyn Platform) -> Self {
+        Self {
+            homes: platform.island_homes(),
+            primary: platform.pocket_home(),
+            supported: platform.virtual_island_supported(),
+        }
+    }
+
+    /// The key of the screen the island is on with `settings`, found as
+    /// the island finds it: the screen whose place the Place row shows and
+    /// sets. A screen in the settings that is gone gives the primary's.
+    fn key(&self, settings: &Settings) -> Option<String> {
+        island_screen_key(
+            settings.island_mode,
+            &self.homes,
+            settings.island_screen.as_deref(),
+            self.primary,
+            self.supported,
+        )
+    }
+}
+
+/// Whether the island at `home` is notch-style (a Mac notch, or the room
+/// GNOME's top bar keeps): it shows jobs and shimmers on its wings, so the
+/// Island page offers those rows, also under the Island menu where the
+/// other island is chosen.
+fn notch_style_home(home: &IslandHome) -> bool {
+    home.notch.is_some() || home.slot.is_some()
+}
+
+/// What the Island menu calls the island that is not the virtual one, by
+/// where it sits at `home`: by the taskbar's clock (Windows), in the top
+/// bar where GNOME's keeps room for it (`gnome_slot`), or else a pill at
+/// the top of the screen.
+pub(crate) fn classic_label(home: &IslandHome, gnome_slot: bool) -> String {
+    if home.tray_corner.is_some() {
+        tr("By the clock")
+    } else if gnome_slot {
+        tr("In the top bar")
+    } else {
+        tr("Plain pill")
+    }
+}
+
+/// Sets the Glass level the slider or a preset asks for, `v` percent, kept
+/// within its bounds and on a step.
+fn apply_glass(settings: &mut Settings, v: u32) {
+    settings.island_glass = clamp_glass(v);
+}
+
 /// Moves the hold delay `steps` steps up (or down, when negative), within
 /// its bounds.
 fn step_hold(settings: &mut Settings, steps: i32) {
@@ -2020,6 +2203,8 @@ fn apply_shortcut(
 mod tests {
     use super::*;
     use vento_core::i18n::with_language;
+    use vento_core::settings::ScreenPlace;
+    use vento_platform::TrayCorner;
 
     #[test]
     fn page_keys_round_trip() {
@@ -2256,6 +2441,130 @@ mod tests {
         assert_eq!(s.move_hold_ms, MIN_MOVE_HOLD_MS);
         step_hold(&mut s, 20);
         assert_eq!(s.move_hold_ms, MAX_MOVE_HOLD_MS);
+    }
+
+    /// A screen with no notch, no top bar room and no taskbar corner.
+    fn plain_home() -> IslandHome {
+        IslandHome {
+            screen: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 1280.0,
+                h: 800.0,
+            },
+            notch: None,
+            menu_bar_h: 24.0,
+            slot: None,
+            tray_corner: None,
+        }
+    }
+
+    #[test]
+    fn place_row_follows_the_screen_the_island_is_on() {
+        let primary = plain_home();
+        let second = IslandHome {
+            screen: Rect {
+                x: 1280.0,
+                ..primary.screen
+            },
+            ..primary
+        };
+        let screens = IslandScreens {
+            homes: vec![primary, second],
+            primary: Some(primary),
+            supported: true,
+        };
+        let mut s = Settings {
+            island_mode: IslandMode::Virtual,
+            island_screen: Some("1280x800+1280+0".to_owned()),
+            ..Settings::default()
+        };
+        assert_eq!(screens.key(&s).as_deref(), Some("1280x800+1280+0"));
+        // The screen in the settings is gone: the island is on the primary,
+        // and the row sets the primary's place; the gone screen's is kept.
+        s.island_screen = Some("1920x1080+2560+0".to_owned());
+        s.island_places.insert(
+            "1920x1080+2560+0".to_owned(),
+            ScreenPlace {
+                place: IslandPlace::Right,
+                free: None,
+            },
+        );
+        let key = screens.key(&s);
+        assert_eq!(key.as_deref(), Some("1280x800+0+0"));
+        s.set_island_spot(key.as_deref(), IslandSpot::Side(IslandPlace::Left));
+        assert_eq!(
+            s.island_spot(Some("1280x800+0+0")),
+            IslandSpot::Side(IslandPlace::Left)
+        );
+        assert_eq!(
+            s.island_spot(Some("1920x1080+2560+0")),
+            IslandSpot::Side(IslandPlace::Right)
+        );
+        // Where the virtual island is not offered, the primary's.
+        let unsupported = IslandScreens {
+            supported: false,
+            ..screens
+        };
+        s.island_screen = Some("1280x800+1280+0".to_owned());
+        assert_eq!(unsupported.key(&s).as_deref(), Some("1280x800+0+0"));
+    }
+
+    #[test]
+    fn top_bar_room_is_notch_style_where_the_virtual_island_is_offered() {
+        // GNOME on X11 with the extension: the virtual island is offered,
+        // and the other island in the top bar room is notch-style, so the
+        // page shows its jobs and shimmer rows under the Island menu.
+        let slot = IslandHome {
+            slot: Some(Rect {
+                x: 560.0,
+                y: 0.0,
+                w: 160.0,
+                h: 24.0,
+            }),
+            ..plain_home()
+        };
+        assert!(virtual_offered(&slot, true));
+        assert!(notch_style_home(&slot));
+        let notch = IslandHome {
+            notch: Some(Rect {
+                x: 560.0,
+                y: 0.0,
+                w: 160.0,
+                h: 24.0,
+            }),
+            ..plain_home()
+        };
+        assert!(notch_style_home(&notch));
+        assert!(!notch_style_home(&plain_home()));
+    }
+
+    #[test]
+    fn classic_label_names_todays_place() {
+        let windows = IslandHome {
+            tray_corner: Some(TrayCorner {
+                work: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 1280.0,
+                    h: 752.0,
+                },
+                left: false,
+            }),
+            ..plain_home()
+        };
+        assert_eq!(classic_label(&windows, false), "By the clock");
+        assert_eq!(classic_label(&plain_home(), true), "In the top bar");
+        assert_eq!(classic_label(&plain_home(), false), "Plain pill");
+    }
+
+    #[test]
+    fn glass_presets_and_slider_store_stepped_values() {
+        let mut s = Settings::default();
+        apply_glass(&mut s, 58);
+        assert_eq!(s.island_glass, 60);
+        apply_glass(&mut s, 3);
+        assert_eq!(s.island_glass, 10);
     }
 
     #[test]
@@ -2639,6 +2948,7 @@ mod tests {
                     "العجلة",
                     "النقل",
                     "الجيب",
+                    "الجزيرة",
                     "الحافظة",
                     "النسخ من الشاشة",
                     "لقطات الشاشة",
@@ -2666,6 +2976,7 @@ mod tests {
                 Wheel,
                 Move,
                 Pocket,
+                Island,
                 Clipboard,
                 CopyFromScreen,
                 Screenshots,
@@ -2675,7 +2986,7 @@ mod tests {
         );
         assert!(!pages(false).contains(&CopyFromScreen));
         assert!(pages(false).contains(&Screenshots));
-        assert_eq!(pages(false).len(), 8);
+        assert_eq!(pages(false).len(), 9);
     }
 
     #[test]
@@ -2694,14 +3005,15 @@ mod tests {
         use Page::*;
         let all = pages(true);
         let ids: Vec<i32> = all.iter().map(|p| p.id()).collect();
-        assert_eq!(ids, (0..9).collect::<Vec<_>>());
+        assert_eq!(ids, (0..10).collect::<Vec<_>>());
         assert_eq!(General.id(), 0);
-        assert_eq!(CopyFromScreen.id(), 5);
-        assert_eq!(Screenshots.id(), 6);
-        assert_eq!(About.id(), 8);
+        assert_eq!(Island.id(), 4);
+        assert_eq!(CopyFromScreen.id(), 6);
+        assert_eq!(Screenshots.id(), 7);
+        assert_eq!(About.id(), 9);
         // A page left out does not shift the ids of the others.
         let ids: Vec<i32> = pages(false).iter().map(|p| p.id()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4, 6, 7, 8]);
+        assert_eq!(ids, vec![0, 1, 2, 3, 4, 5, 7, 8, 9]);
     }
 
     #[test]

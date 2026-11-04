@@ -69,6 +69,10 @@ objc2-app-kit = { version = "0.3", features = [
     "NSTrackingArea",
     # The Share action: AirDrop, Messages, Mail, Notes and the share popover.
     "NSSharingService",
+    # The folder and PDF pickers, shown modeless.
+    "NSOpenPanel",
+    "NSSavePanel",
+    "block2",
 ] }
 objc2-core-graphics = { version = "0.3", features = [
     "CGEventSource",
@@ -87,6 +91,8 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
     "std",
     "CFURL",
     "CFDictionary",
+    # The front window's frame, from the window list.
+    "CFArray",
     "CFString",
     "CFNumber",
     "CFData",
@@ -129,7 +135,6 @@ objc2-pdf-kit = { version = "0.3", default-features = false, features = [
 # Encodes WebP for the Convert action; ImageIO reads WebP but can't write it.
 # Builds the bundled C library with cc (no bindgen by default).
 libwebp-sys = "0.14"
-rfd = "0.17"
 # Reads and copies the quarantine attribute of extracted files.
 xattr = "1"
 
@@ -185,6 +190,8 @@ windows-core = "0.62"
 # Already in the app through winit; only the Win32 parts vento calls itself.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    # The front window's drawn frame.
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Storage_FileSystem",

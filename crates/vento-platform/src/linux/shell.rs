@@ -350,7 +350,7 @@ fn parse_color(text: &str) -> Option<[u8; 4]> {
 /// X11 pixels per logical pixel, given both widths of the screens. GNOME
 /// that scales X11 apps natively has XWayland draw at one whole scale for
 /// all screens (2 at 133 %); otherwise X11 and logical pixels are the same.
-fn scale_between(x11_width: f64, logical_width: f64) -> f64 {
+pub(super) fn scale_between(x11_width: f64, logical_width: f64) -> f64 {
     if logical_width > 0.0 && x11_width > 0.0 {
         (x11_width / logical_width).round().max(1.0)
     } else {
@@ -410,6 +410,11 @@ struct Latest {
     monitors_serial: Option<u32>,
     /// The room in the top bar for the Pocket island, read with the monitors.
     island_slot: Option<Rect>,
+    /// Whether the extension has ever kept that room.
+    island_slot_seen: bool,
+    /// Whether the room was given back ([`Shell::reserve_island`] with
+    /// false): asked for again with the monitors unless so.
+    island_released: bool,
 }
 
 fn call(
@@ -483,7 +488,8 @@ fn refresh(bus: &gio::DBusConnection, latest: &Mutex<Latest>, reported_missing: 
     // Asked again with the monitors: the extension forgets it when GNOME
     // turns extensions off (the lock screen does), and starts over.
     let slot = stale.then(|| {
-        let _ = call(bus, "ReserveIsland", Some(&(true,).to_variant()));
+        let reserve = !latest.lock().unwrap().island_released;
+        let _ = call(bus, "ReserveIsland", Some(&(reserve,).to_variant()));
         call(bus, "IslandSlot", None)
             .ok()
             .and_then(|r| parse_slot(&r))
@@ -494,6 +500,7 @@ fn refresh(bus: &gio::DBusConnection, latest: &Mutex<Latest>, reported_missing: 
         l.monitors = Some(m);
         l.monitors_serial = Some(s.monitors_serial);
         l.island_slot = slot.flatten();
+        l.island_slot_seen |= l.island_slot.is_some();
     }
 }
 
@@ -570,6 +577,42 @@ impl Shell {
     /// The room the extension keeps for the Pocket island in the top bar.
     pub fn island_slot(&self) -> Option<Rect> {
         self.latest.lock().unwrap().island_slot
+    }
+
+    /// Whether the extension has kept room for the island at any time.
+    pub fn island_slot_seen(&self) -> bool {
+        self.latest.lock().unwrap().island_slot_seen
+    }
+
+    /// Has the extension keep the room for the island in the top bar, or
+    /// give it back, and reads the room again. Blocks for two short calls.
+    pub fn reserve_island(&self, on: bool) {
+        self.latest.lock().unwrap().island_released = !on;
+        let Some(bus) = &self.bus else {
+            return;
+        };
+        if let Err(e) = call(bus, "ReserveIsland", Some(&(on,).to_variant())) {
+            log::debug!("ReserveIsland({on}) failed: {e}");
+        }
+        let slot = call(bus, "IslandSlot", None)
+            .ok()
+            .and_then(|r| parse_slot(&r));
+        let mut l = self.latest.lock().unwrap();
+        l.island_slot = slot;
+        l.island_slot_seen |= slot.is_some();
+    }
+
+    /// The width of all screens together, in logical pixels (as far as
+    /// their right-most edge); 0 until the extension has answered.
+    pub fn screens_width(&self) -> f64 {
+        self.latest
+            .lock()
+            .unwrap()
+            .monitors
+            .iter()
+            .flatten()
+            .map(|m| m.frame.x + m.frame.w)
+            .fold(0.0, f64::max)
     }
 
     /// The serial the current monitors were read at.

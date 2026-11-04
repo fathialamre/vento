@@ -14,7 +14,8 @@ use vento_core::rename::{
     failed_text, undo, undo_text,
 };
 
-use super::{Executor, LastOp};
+use super::{Executor, LastOp, error_notice, result_notice};
+use crate::notice::Notice;
 
 /// Callback told, on the main thread, how a rename ended, so the Rename
 /// window can close or show the problem.
@@ -32,6 +33,18 @@ fn rename_toast_text(outcome: &RenameOutcome) -> String {
             reason,
             stuck,
         } => failed_text(path, reason, stuck),
+    }
+}
+
+/// The notice for a finished rename that put nothing in the Undo slot, `text`
+/// being what [`rename_toast_text`] said: a folder that changed is something
+/// to know, a failure is a failure, and names changed without a way back
+/// are done.
+fn rename_done_notice(outcome: &RenameOutcome, text: String) -> Notice {
+    match outcome {
+        RenameOutcome::Done(_) => result_notice(ActionId::Rename, text),
+        RenameOutcome::Changed => Notice::info(text).with_icon(ActionId::Rename),
+        RenameOutcome::Failed { .. } => error_notice(ActionId::Rename, text),
     }
 }
 
@@ -70,6 +83,7 @@ impl Executor {
             move || execute(&steps, &RealDisk, Os::HOST, &progress),
             move |executor, outcome| executor.rename_finished(outcome, at),
             None,
+            None,
             at,
         );
         if !self.busy.get() {
@@ -90,7 +104,7 @@ impl Executor {
     /// Tells the window first (it closes on success), then toasts and,
     /// when names changed that can be put back, records Undo.
     fn rename_finished(&self, outcome: RenameOutcome, at: Point) {
-        let text = rename_toast_text(&outcome);
+        let notice = rename_done_notice(&outcome, rename_toast_text(&outcome));
         // Taken first, so no borrow is held while `done` runs (it may start
         // another job).
         let done = self.rename_done.borrow_mut().take();
@@ -108,19 +122,19 @@ impl Executor {
                 );
                 if record.items.is_empty() {
                     // No print could be read, so nothing can be put back.
-                    self.toast.show(&text, None, at);
+                    self.toast.notify(notice, at);
                 } else {
-                    self.record_undo(LastOp::Rename(record), text, at);
+                    self.record_undo(LastOp::Rename(record), notice.text, at);
                 }
             }
             RenameOutcome::Changed => {
                 info!("rename: the folder changed, nothing renamed");
-                self.toast.show(&text, None, at);
+                self.toast.notify(notice, at);
             }
             RenameOutcome::Failed { path, stuck, .. } => {
                 warn!("rename failed at {}, reversed", path.display());
                 log_stuck(&stuck);
-                self.toast.show(&text, None, at);
+                self.toast.notify(notice, at);
             }
         }
     }
@@ -131,6 +145,7 @@ impl Executor {
             ActionId::Rename,
             move || undo(&record, &RealDisk, Os::HOST),
             move |executor, outcome| executor.rename_undo_finished(&outcome, at),
+            None,
             None,
             at,
         );
@@ -149,7 +164,8 @@ impl Executor {
             outcome.put_back, outcome.skipped
         );
         self.notify_undo_changed();
-        self.toast.show(&undo_text(outcome), None, at);
+        self.toast
+            .notify(result_notice(ActionId::Rename, undo_text(outcome)), at);
     }
 }
 
@@ -198,5 +214,30 @@ mod tests {
              .vento-rename-0123abcd-0 should be a.jpg\n\
              b2.jpg should be b.jpg"
         );
+    }
+
+    #[test]
+    fn rename_notices_follow_how_the_rename_ended() {
+        use vento_core::news::Tone;
+        let notice = |o: &RenameOutcome| rename_done_notice(o, rename_toast_text(o));
+        let n = notice(&RenameOutcome::Changed);
+        assert_eq!((n.tone, n.icon), (Tone::Info, Some(ActionId::Rename)));
+        assert_eq!(
+            n.text,
+            "Something changed in the folder. Check the list and try again."
+        );
+        let failed = RenameOutcome::Failed {
+            path: p("/d/a.jpg"),
+            reason: "permission denied".into(),
+            stuck: Vec::new(),
+        };
+        let n = notice(&failed);
+        assert_eq!((n.tone, n.icon), (Tone::Error, Some(ActionId::Rename)));
+        assert!(n.text.starts_with("Couldn't rename a.jpg"));
+        let done = RenameOutcome::Done(RenameRecord {
+            renamed: vec![p("/d/b.jpg")],
+            items: Vec::new(),
+        });
+        assert_eq!(notice(&done).tone, Tone::Done);
     }
 }

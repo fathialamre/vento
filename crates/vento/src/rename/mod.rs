@@ -27,6 +27,7 @@ use slint::{
     CloseRequestResponse, ComponentHandle, LogicalPosition, LogicalSize, ModelRc, Timer, TimerMode,
     VecModel,
 };
+use vento_core::actions::ActionId;
 use vento_core::geometry::{Point, screen_for};
 use vento_core::i18n::{fill, tr};
 use vento_core::rename::{
@@ -39,6 +40,7 @@ use vento_platform::Platform;
 use crate::appearance;
 use crate::exec::Executor;
 use crate::lazy_window::LazyWindow;
+use crate::notice::Notice;
 use crate::panel::set_rows;
 use crate::settings_hub::SettingsHub;
 use crate::settings_window::{centred_on, show_title_bar};
@@ -153,7 +155,10 @@ impl RenameController {
     /// its rules.
     pub fn open(&self, paths: Vec<PathBuf>, at: Point) {
         if paths.len() > MAX_ITEMS {
-            self.toaster.show(&too_many_text(), None, at);
+            self.toaster.notify(
+                Notice::info(too_many_text()).with_icon(ActionId::Rename),
+                at,
+            );
             return;
         }
         let load = self.loads.get() + 1;
@@ -174,7 +179,10 @@ impl RenameController {
             });
         if let Err(e) = spawned {
             warn!("cannot start reading the items to rename: {e}");
-            self.toaster.show(&tr("Couldn't read the items"), None, at);
+            self.toaster.notify(
+                Notice::error(tr("Couldn't read the items")).with_icon(ActionId::Rename),
+                at,
+            );
         }
     }
 
@@ -185,7 +193,7 @@ impl RenameController {
             return;
         }
         if batch.items.is_empty() {
-            self.toaster.show(&tr("Nothing to rename"), None, at);
+            self.toaster.notify(nothing_to_rename_notice(), at);
             return;
         }
         let kept = self
@@ -704,7 +712,7 @@ impl RenameController {
             let at = self.shown.borrow().as_ref().map(|shown| shown.at);
             self.hide();
             if let Some(at) = at {
-                self.toaster.show(&tr("Nothing to rename"), None, at);
+                self.toaster.notify(nothing_to_rename_notice(), at);
             }
             return;
         }
@@ -752,6 +760,11 @@ impl RenameController {
         });
         debug!("rename window closed");
     }
+}
+
+/// The notice that a rename has nothing to work on.
+fn nothing_to_rename_notice() -> Notice {
+    Notice::info(tr("Nothing to rename")).with_icon(ActionId::Rename)
 }
 
 /// Puts `before` (the rules before a change) in the history, unless the

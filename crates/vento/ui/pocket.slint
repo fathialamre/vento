@@ -8,7 +8,7 @@
 
 import { LineText, Theme } from "theme.slint";
 import { Icons } from "wheel.slint";
-import { PanelIcons } from "controls.slint";
+import { PanelIcons, SweepBand } from "controls.slint";
 
 // One entry of the clipboard history. `kind`: 0 text, 1 files, 2 link,
 // 3 image; `thumb` is an image's thumbnail, empty when it can't be shown;
@@ -48,6 +48,11 @@ export struct ShotTile { index: int, time: string, size: string, picture: image,
 // One day's section of the Screenshots view: its heading, how many
 // screenshots it holds and their tiles, newest first.
 export struct ShotDay { label: string, count: int, tiles: [ShotTile] }
+
+// One row of Activity: a running job (`stage` 1) or a result (2), with its
+// `tone` and `icon` as the news pill marks them (see NewsMark), what it
+// says, how long ago, and its button's label (empty for none).
+export struct ActivityRow { stage: int, tone: int, icon: image, text: string, age: string, button: string }
 
 // A rounded rectangle outlined in dashes (Slint draws only solid borders):
 // solid quarter arcs at the corners, dashes along the straight edges.
@@ -2648,6 +2653,1449 @@ component DragButton inherits Rectangle {
     }
 }
 
+// A news mark, 18 pt square: at work, an arc going round (only while it
+// can be seen); a result's mark on its tone's colour (a tick when done,
+// "!" for an error, "…" busy); information, the action's icon, or the
+// orange dot without one.
+component NewsMark inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    // The arc may turn: the mark is in sight.
+    in property <bool> live;
+
+    width: 18px;
+    height: 18px;
+
+    // At work: an arc going round, once a second, only while it can be
+    // seen.
+    if root.stage == 1 && root.live: spinner := Path {
+        property <angle> turn: Math.mod(animation-tick() / 1ms, 1000) / 1000 * 360deg;
+        x: 2px;
+        y: 2px;
+        width: 14px;
+        height: 14px;
+        viewbox-width: 14;
+        viewbox-height: 14;
+        stroke: #ff6a1a;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: 7 + 6 * Math.sin(spinner.turn);
+            y: 7 - 6 * Math.cos(spinner.turn);
+        }
+
+        ArcTo {
+            x: 7 + 6 * Math.sin(spinner.turn + 270deg);
+            y: 7 - 6 * Math.cos(spinner.turn + 270deg);
+            radius-x: 6;
+            radius-y: 6;
+            large-arc: true;
+            sweep: true;
+        }
+    }
+
+    // A result's mark on the tone's colour.
+    if root.stage == 2 && root.tone != 1: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: root.tone == 0 ? #30d158 : root.tone == 2 ? #ff5f57 : #ffb340;
+
+        if root.tone == 0: Image {
+            source: @image-url("icons/check.svg");
+            colorize: black;
+            x: 3px;
+            y: 3px;
+            width: 12px;
+            height: 12px;
+        }
+
+        if root.tone != 0: Text {
+            x: 0px;
+            y: 0px;
+            width: 18px;
+            height: 18px;
+            text: root.tone == 2 ? "!" : "…";
+            color: black;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // Information: the action's icon, or the orange dot without one.
+    if root.stage == 2 && root.tone == 1 && root.icon.width > 0: Image {
+        source: root.icon;
+        colorize: #ff6a1a;
+        x: 1px;
+        y: 1px;
+        width: 16px;
+        height: 16px;
+    }
+
+    if root.stage == 2 && root.tone == 1 && root.icon.width == 0: Rectangle {
+        x: 5px;
+        y: 5px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: #ff6a1a;
+    }
+}
+
+// What the virtual island's news pill holds, 34 pt high and `pill-w` wide
+// (as wide as what it says, at least the resting pill's 120 and at most
+// `max-w`), laid out along the line from its start: the mark (a turning
+// ring at work; for a result a tick, "!" or "…" on the tone's colour, or
+// the action's icon for information), the sentence and its detail, the
+// job's bar and count, the "+N" chip, and the one button 5 pt in from the
+// end. Too long, the detail gives way first (down to 48 pt), then the
+// sentence; both end in an ellipsis. Content narrower than 120 is centred.
+// The other way round in a right-to-left language. It says where it puts
+// the button and the chip, for the clicks they take.
+component NewsBody inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    in property <string> text;
+    in property <string> sub;
+    in property <string> button;
+    // The button is grey (Details, Change) rather than the accent.
+    in property <bool> quiet;
+    in property <int> extra;
+    in property <float> fraction: -1;
+    in property <string> count;
+    in property <length> max-w;
+    // The ring may turn: the pill is in sight.
+    in property <bool> live;
+    callback button-clicked();
+    callback chip-clicked();
+
+    // The mark's 18 pt box, 8 pt in from the start, and the sentence 8 pt
+    // after it.
+    property <length> text-x: 8px + 18px + 8px;
+    property <bool> has-sub: root.sub != "";
+    property <bool> has-bar: root.fraction >= 0;
+    property <bool> has-count: root.count != "";
+    property <bool> has-chip: root.extra > 0;
+    property <bool> has-button: root.button != "";
+    property <length> sub-gap: 6px;
+    property <length> bar-w: 56px;
+    // What follows the sentence and its detail, each with the gap before
+    // it, and the room left at the end.
+    property <length> tail-w: (root.has-bar ? 10px + root.bar-w : 0px)
+        + (root.has-count ? 8px + root.count-w : 0px)
+        + (root.has-chip ? 8px + root.chip-w : 0px)
+        + (root.has-button ? 8px + root.button-w + 5px : 14px);
+    property <length> natural-w: root.text-x + text-line.preferred-width
+        + (root.has-sub ? root.sub-gap + sub-line.preferred-width : 0px) + root.tail-w;
+    out property <length> pill-w: min(root.max-w, max(120px, root.natural-w));
+    // Where the content starts: centred while narrower than the pill.
+    property <length> lead: max(0px, (root.pill-w - root.natural-w) / 2);
+    // The room for the sentence and its detail.
+    property <length> room: root.pill-w - 2 * root.lead - root.text-x - root.tail-w;
+    property <length> text-w: max(0px, min(text-line.preferred-width,
+        root.room - (root.has-sub ? root.sub-gap + min(sub-line.preferred-width, 48px) : 0px)));
+    property <length> sub-w: root.has-sub
+        ? max(0px, min(sub-line.preferred-width, root.room - root.text-w - root.sub-gap)) : 0px;
+    // Left to right, from the pill's left edge.
+    property <length> sub-x: root.lead + root.text-x + root.text-w + root.sub-gap;
+    property <length> tail-x: root.lead + root.text-x + root.text-w
+        + (root.has-sub ? root.sub-gap + root.sub-w : 0px);
+    property <length> bar-x: root.tail-x + 10px;
+    property <length> bar-end: root.tail-x + (root.has-bar ? 10px + root.bar-w : 0px);
+    property <length> count-x: root.bar-end + 8px;
+    // The count keeps at least the room of "100%", so the pill and what
+    // follows don't move as it grows.
+    property <length> count-w: max(count-text.preferred-width, count-room.preferred-width);
+    property <length> count-end: root.bar-end + (root.has-count ? 8px + root.count-w : 0px);
+    property <length> ltr-button-x: root.pill-w - root.lead - 5px - root.button-w;
+    // After the count; but never under the button: a tail wider than the
+    // room ends 8 pt before it.
+    property <length> ltr-chip-x: root.has-button
+        ? min(root.count-end + 8px, root.ltr-button-x - 8px - root.chip-w)
+        : root.count-end + 8px;
+    out property <length> chip-w: root.has-chip ? max(20px, chip-text.preferred-width + 14px) : 0px;
+    out property <length> button-w: root.has-button ? button-text.preferred-width + 24px : 0px;
+    out property <length> chip-x: root.mirror(root.ltr-chip-x, root.chip-w);
+    out property <length> button-x: root.mirror(root.ltr-button-x, root.button-w);
+
+    // The x of something `w` wide at `x` from the pill's left, left to
+    // right: as far from the right in a right-to-left language.
+    pure function mirror(x: length, w: length) -> length {
+        Theme.rtl ? root.pill-w - x - w : x
+    }
+
+    width: root.pill-w;
+    height: 34px;
+
+    // The mark.
+    NewsMark {
+        x: root.mirror(root.lead + 8px, 18px);
+        y: 8px;
+        stage: root.stage;
+        tone: root.tone;
+        icon: root.icon;
+        live: root.live;
+    }
+
+    text-line := LineText {
+        x: root.mirror(root.lead + root.text-x, self.width);
+        y: 0px;
+        width: root.text-w;
+        height: parent.height;
+        text: root.text;
+        color: white;
+        font-size: 12.5px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    sub-line := LineText {
+        x: root.mirror(root.sub-x, self.width);
+        y: 0px;
+        width: root.sub-w;
+        height: parent.height;
+        visible: root.has-sub && self.width > 0;
+        text: root.sub;
+        color: #ffffff80;
+        font-size: 12.5px;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    // The job's bar: how much is done, filling from the start.
+    if root.has-bar: Rectangle {
+        x: root.mirror(root.bar-x, root.bar-w);
+        y: (parent.height - self.height) / 2;
+        width: root.bar-w;
+        height: 3px;
+        border-radius: 1.5px;
+        background: #ffffff26;
+
+        Rectangle {
+            width: parent.width * min(1, max(0, root.fraction));
+            x: Theme.rtl ? parent.width - self.width : 0px;
+            y: 0px;
+            height: parent.height;
+            border-radius: 1.5px;
+            background: #ff6a1a;
+        }
+    }
+
+    count-text := Text {
+        x: root.mirror(root.count-x, self.width);
+        y: 0px;
+        width: root.count-w;
+        height: parent.height;
+        visible: root.has-count;
+        text: root.count;
+        color: #ffffffb0;
+        font-size: 12px;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    // Only measures the room the count keeps.
+    count-room := Text {
+        visible: false;
+        text: "100%";
+        font-size: 12px;
+    }
+
+    // "+N": the other things going on. (`AccessibleRole.button` in full
+    // here: `button` alone is the button's label.)
+    Rectangle {
+        x: root.chip-x;
+        y: (parent.height - self.height) / 2;
+        width: root.chip-w;
+        height: 20px;
+        visible: root.has-chip;
+        border-radius: 10px;
+        background: chip-touch.has-hover ? #3a3a40 : #2c2c32;
+        accessible-role: AccessibleRole.button;
+        accessible-label: chip-text.text;
+        accessible-action-default => {
+            root.chip-clicked();
+        }
+
+        chip-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("+{n}" | "+{n}" % root.extra);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        chip-touch := TouchArea {
+            enabled: root.has-chip;
+            clicked => {
+                root.chip-clicked();
+            }
+        }
+    }
+
+    // The one button.
+    Rectangle {
+        x: root.button-x;
+        y: (parent.height - self.height) / 2;
+        width: root.button-w;
+        height: 26px;
+        visible: root.has-button;
+        border-radius: 13px;
+        background: root.quiet
+            ? (button-touch.has-hover ? #3a3a40 : #2c2c32)
+            : (button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : #ff6a1a);
+        animate background { duration: 140ms; }
+        accessible-role: AccessibleRole.button;
+        accessible-label: root.button;
+        accessible-action-default => {
+            root.button-clicked();
+        }
+
+        button-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.button;
+            color: white;
+            font-size: 12px;
+            font-weight: root.quiet ? 500 : 600;
+        }
+
+        button-touch := TouchArea {
+            enabled: root.has-button;
+            clicked => {
+                root.button-clicked();
+            }
+        }
+    }
+}
+
+// The news on the notch island's wings, over the whole collapsed island
+// (`notch-w` in its middle): the mark at the left end of the left wing (a
+// turning ring at work; for a result a tick, "!" or "…" on the tone's
+// colour, or the action's icon for information), and in the right wing,
+// from the notch out, what it says (at work the count in short, for a
+// result its sentence and what follows it, ending in an ellipsis when too
+// long), the "+N" chip and the one button. `wing-w` is how wide the wings
+// grow for it: the right wing's content and 6 pt each side of it, at least
+// `wing` and at most `most`; content narrower than that is centred in the
+// wing. The other way round in a right-to-left language. It says where it
+// puts the button and the chip, from the right wing's start (less than 0 in
+// the left wing), for the clicks they take.
+component WingNews inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    in property <string> text;
+    // A result's second part ("1 file ready to paste", the path copied),
+    // after the sentence on the same line.
+    in property <string> sub;
+    // The job's count in a few characters ("25%", "3/5").
+    in property <string> short;
+    in property <string> button;
+    // The button is grey (Details, Change) rather than the accent.
+    in property <bool> quiet;
+    in property <int> extra;
+    in property <length> notch-w;
+    // The plain wing's width, and the widest a wing grows.
+    in property <length> wing;
+    in property <length> most;
+    // The ring may turn: the wings are in sight.
+    in property <bool> live;
+    callback button-clicked();
+    callback chip-clicked();
+
+    property <length> pad: 6px;
+    property <length> gap: 6px;
+    property <string> line: root.stage == 1 ? root.short
+        : root.sub != "" ? root.text + " · " + root.sub : root.text;
+    property <bool> has-line: root.line != "";
+    // At work the count keeps at least the room of "100%", so the wings
+    // and what follows don't move as it grows.
+    property <length> line-natural: root.stage == 1
+        ? max(line-text.preferred-width, count-room.preferred-width) : line-text.preferred-width;
+    property <bool> has-chip: root.extra > 0;
+    property <bool> has-button: root.button != "";
+    property <length> chip-gap: root.has-line ? root.gap : 0px;
+    property <length> button-gap: root.has-line || root.has-chip ? root.gap : 0px;
+    // What follows the line, each with the gap before it.
+    property <length> tail-w: (root.has-chip ? root.chip-gap + root.chip-w : 0px)
+        + (root.has-button ? root.button-gap + root.button-w : 0px);
+    property <length> natural-w: 2 * root.pad + (root.has-line ? root.line-natural : 0px) + root.tail-w;
+    out property <length> wing-w: min(root.most, max(root.wing, root.natural-w));
+    // Where the content starts: centred while narrower than the wing.
+    property <length> lead: max(0px, (root.wing-w - root.natural-w) / 2);
+    property <length> line-w: root.has-line
+        ? max(0px, min(root.line-natural, root.wing-w - 2 * root.pad - root.tail-w)) : 0px;
+    // Left to right, from the right wing's start.
+    property <length> line-x: root.lead + root.pad;
+    property <length> ltr-chip-x: root.line-x + root.line-w + root.chip-gap;
+    property <length> ltr-button-x: root.line-x + root.line-w + (root.has-chip ? root.chip-gap + root.chip-w : 0px)
+        + root.button-gap;
+    out property <length> chip-w: root.has-chip ? max(20px, chip-text.preferred-width + 14px) : 0px;
+    out property <length> button-w: root.has-button ? button-text.preferred-width + 20px : 0px;
+    out property <length> chip-x: root.from-start(root.ltr-chip-x, root.chip-w);
+    out property <length> button-x: root.from-start(root.ltr-button-x, root.button-w);
+
+    // The x in this island of something `w` wide at `x` from the right
+    // wing's start, left to right: as far from the left wing's end, the
+    // other way, in a right-to-left language.
+    pure function place(x: length, w: length) -> length {
+        Theme.rtl ? (root.width - root.notch-w) / 2 - x - w : (root.width + root.notch-w) / 2 + x
+    }
+    // The same, from the right wing's start.
+    pure function from-start(x: length, w: length) -> length {
+        Theme.rtl ? -root.notch-w - x - w : x
+    }
+
+    // The mark, in the middle of a plain wing's room at the left end.
+    NewsMark {
+        x: Theme.rtl ? root.width - (root.wing + self.width) / 2 : (root.wing - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        stage: root.stage;
+        tone: root.tone;
+        icon: root.icon;
+        live: root.live;
+    }
+
+    line-text := LineText {
+        x: root.place(root.line-x, self.width);
+        y: 0px;
+        width: root.line-w;
+        height: parent.height;
+        visible: root.has-line && self.width > 0;
+        text: root.line;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: root.stage == 1 ? center : Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    // Only measures the room the count keeps.
+    count-room := Text {
+        visible: false;
+        text: "100%";
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    // "+N": the other things going on. (`AccessibleRole.button` in full
+    // here: `button` alone is the button's label.)
+    Rectangle {
+        x: root.place(root.ltr-chip-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: root.chip-w;
+        height: 20px;
+        visible: root.has-chip;
+        border-radius: 10px;
+        background: chip-touch.has-hover ? #3a3a40 : #2c2c32;
+        accessible-role: AccessibleRole.button;
+        accessible-label: chip-text.text;
+        accessible-action-default => {
+            root.chip-clicked();
+        }
+
+        chip-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("+{n}" | "+{n}" % root.extra);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        chip-touch := TouchArea {
+            enabled: root.has-chip;
+            clicked => {
+                root.chip-clicked();
+            }
+        }
+    }
+
+    // The one button.
+    Rectangle {
+        x: root.place(root.ltr-button-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: root.button-w;
+        height: 26px;
+        visible: root.has-button;
+        border-radius: 13px;
+        background: root.quiet
+            ? (button-touch.has-hover ? #3a3a40 : #2c2c32)
+            : (button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : #ff6a1a);
+        animate background { duration: 140ms; }
+        accessible-role: AccessibleRole.button;
+        accessible-label: root.button;
+        accessible-action-default => {
+            root.button-clicked();
+        }
+
+        button-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.button;
+            color: white;
+            font-size: 12px;
+            font-weight: root.quiet ? 500 : 600;
+        }
+
+        button-touch := TouchArea {
+            enabled: root.has-button;
+            clicked => {
+                root.button-clicked();
+            }
+        }
+    }
+}
+
+// Activity: today's jobs and results under a title, newest first (the
+// running jobs on top), one 48 pt row each: the mark, what it says, how
+// long ago, and the row's button at the end. The other way round in a
+// right-to-left language.
+component ActivityPanel inherits Rectangle {
+    in property <[ActivityRow]> rows;
+    // A row's button, by the row's place.
+    callback button-clicked(int);
+
+    property <length> pad: 16px;
+
+    // The x of something `w` wide at `x` from the left, left to right: as
+    // far from the right in a right-to-left language.
+    pure function mirror(x: length, w: length) -> length {
+        Theme.rtl ? root.width - x - w : x
+    }
+
+    LineText {
+        x: root.pad;
+        y: 16px;
+        width: root.width - 2 * root.pad;
+        height: 24px;
+        text: @tr("Today");
+        color: #ffffffb0;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    for row[i] in root.rows: Rectangle {
+        x: 0px;
+        y: 56px + i * 48px;
+        width: root.width;
+        height: 48px;
+
+        // Room the age and the button take at the end.
+        property <length> end-x: root.width - root.pad - (row.button != "" ? button.width + 10px : 0px);
+        property <length> text-x: root.pad + 18px + 10px;
+
+        Rectangle {
+            x: root.pad;
+            y: 0px;
+            width: root.width - 2 * root.pad;
+            height: 1px;
+            background: #ffffff14;
+        }
+
+        NewsMark {
+            x: root.mirror(root.pad, 18px);
+            y: (parent.height - self.height) / 2;
+            stage: row.stage;
+            tone: row.tone;
+            icon: row.icon;
+            live: true;
+        }
+
+        LineText {
+            x: root.mirror(parent.text-x, self.width);
+            y: 0px;
+            width: max(0px, parent.end-x - age.width - 10px - parent.text-x);
+            height: parent.height;
+            text: row.text;
+            color: white;
+            font-size: 12.5px;
+            font-weight: 500;
+            horizontal-alignment: Theme.rtl ? right : left;
+            vertical-alignment: center;
+        }
+
+        age := Text {
+            x: root.mirror(parent.end-x - self.width, self.width);
+            y: 0px;
+            width: self.preferred-width;
+            height: parent.height;
+            text: row.age;
+            color: #ffffff80;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+
+        button := PillButton {
+            x: root.mirror(root.width - root.pad - self.width, self.width);
+            y: (parent.height - self.height) / 2;
+            visible: row.button != "";
+            text: row.button;
+            primary: true;
+            clicked => {
+                root.button-clicked(i);
+            }
+        }
+    }
+}
+
+// What the virtual island's resting pill holds, 28 pt high and `pill-w`
+// wide (as wide as what it says, at least 120 and at most `max-w`): a mark,
+// a word and the Pocket's count in a chip, centred. The mark is the orange
+// dot, or a cup while Keep Awake runs (amber once it ends soon), whose time
+// left then takes the word's place. Paused, it is grey: two bars and
+// "Vento paused", with a Resume button 3 pt in from the end; it says where
+// it puts the button, for the clicks it takes. The other way round in a
+// right-to-left language.
+component RestBody inherits Rectangle {
+    in property <int> count;
+    // Keep Awake runs, with the time it has left (empty for no end), and
+    // ends soon.
+    in property <bool> awake;
+    in property <string> awake-text;
+    in property <bool> awake-soon;
+    in property <bool> paused;
+    in property <length> max-w;
+    callback button-clicked();
+
+    property <color> accent: #ff6a1a;
+    property <length> mark-w: root.paused || root.awake ? 14px : 8px;
+    property <length> gap: 6px;
+    property <bool> has-chip: root.count > 0 && !root.paused;
+    property <bool> has-button: root.paused;
+    property <length> chip-w: max(16px, chip-text.preferred-width + 10px);
+    // The mark, the word and the chip, each after a gap.
+    property <length> content-w: root.mark-w + root.gap + label.preferred-width
+        + (root.has-chip ? root.gap + root.chip-w : 0px);
+    // With 8 pt on each side; with a button, 10 pt before the content and
+    // the button 3 pt in from the end.
+    property <length> natural-w: root.has-button
+        ? 10px + root.content-w + 8px + root.button-w + 3px
+        : 8px + root.content-w + 8px;
+    out property <length> pill-w: min(root.max-w, max(120px, root.natural-w));
+    // Where the content starts: centred while narrower than the pill.
+    property <length> lead: max(0px, (root.pill-w - root.natural-w) / 2);
+    // The word gives way when the pill cannot grow any more.
+    property <length> label-w: max(0px, min(label.preferred-width,
+        root.pill-w - (root.natural-w - label.preferred-width)));
+    // Left to right, from the pill's left edge.
+    property <length> mark-x: root.lead + (root.has-button ? 10px : 8px);
+    property <length> label-x: root.mark-x + root.mark-w + root.gap;
+    property <length> chip-x: root.label-x + root.label-w + root.gap;
+    property <length> ltr-button-x: root.pill-w - root.lead - 3px - root.button-w;
+    out property <length> button-w: root.has-button ? button-text.preferred-width + 20px : 0px;
+    out property <length> button-x: root.mirror(root.ltr-button-x, root.button-w);
+
+    // The x of something `w` wide at `x` from the pill's left, left to
+    // right: as far from the right in a right-to-left language.
+    pure function mirror(x: length, w: length) -> length {
+        Theme.rtl ? root.pill-w - x - w : x
+    }
+
+    width: root.pill-w;
+
+    // The mark: two grey bars, the cup, or the dot.
+    Image {
+        x: root.mirror(root.mark-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: 14px;
+        height: 14px;
+        visible: root.paused || root.awake;
+        source: root.paused ? PanelIcons.pause : PanelIcons.awake;
+        colorize: root.paused ? #ffffff80 : root.awake-soon ? #ffb340 : root.accent;
+    }
+
+    Rectangle {
+        x: root.mirror(root.mark-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 8px;
+        visible: !root.paused && !root.awake;
+        border-radius: 4px;
+        background: root.accent;
+    }
+
+    label := LineText {
+        x: root.mirror(root.label-x, self.width);
+        y: 0px;
+        width: root.label-w;
+        height: parent.height;
+        // "Vento" alone is the app's name, not translated.
+        text: root.paused ? @tr("Vento paused")
+            : root.awake && root.awake-text != "" ? root.awake-text
+            : root.count > 0 ? @tr("Pocket") : "Vento";
+        color: root.paused ? #ffffff80 : white;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: Theme.rtl ? right : left;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        x: root.mirror(root.chip-x, self.width);
+        y: (parent.height - self.height) / 2;
+        width: root.chip-w;
+        height: 16px;
+        visible: root.has-chip;
+        border-radius: 8px;
+        background: #ffffff26;
+
+        chip-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.count;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+        }
+    }
+
+    // Resume. (`AccessibleRole.button` in full: the role, not a property.)
+    Rectangle {
+        x: root.button-x;
+        y: (parent.height - self.height) / 2;
+        width: root.button-w;
+        height: 22px;
+        visible: root.has-button;
+        border-radius: 11px;
+        background: button-touch.pressed ? #e55a10 : button-touch.has-hover ? #ff8a45 : root.accent;
+        animate background { duration: 140ms; }
+        accessible-role: AccessibleRole.button;
+        accessible-label: button-text.text;
+        accessible-action-default => {
+            root.button-clicked();
+        }
+
+        button-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("Resume");
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        button-touch := TouchArea {
+            enabled: root.has-button;
+            clicked => {
+                root.button-clicked();
+            }
+        }
+    }
+}
+
+// A ring on the 34 pt circle, 2 pt wide and 1 pt in from its edge: `share`
+// of a turn of it (all of it from 1 up, none at 0), clockwise from the top.
+// Drawn as two arcs, the first half and the rest, as an arc cannot go all
+// the way round.
+component CircleRing inherits Rectangle {
+    in property <float> share: 1;
+    in property <color> stroke;
+
+    property <angle> end: min(1, max(0, root.share)) * 360deg;
+    property <angle> half: min(root.end, 180deg);
+
+    width: 34px;
+    height: 34px;
+
+    if root.share > 0: ring := Path {
+        x: 0px;
+        y: 0px;
+        width: 34px;
+        height: 34px;
+        viewbox-width: 34;
+        viewbox-height: 34;
+        stroke: root.stroke;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: 17;
+            y: 2;
+        }
+
+        ArcTo {
+            x: 17 + 15 * Math.sin(root.half);
+            y: 17 - 15 * Math.cos(root.half);
+            radius-x: 15;
+            radius-y: 15;
+            sweep: true;
+        }
+
+        ArcTo {
+            x: 17 + 15 * Math.sin(root.end);
+            y: 17 - 15 * Math.cos(root.end);
+            radius-x: 15;
+            radius-y: 15;
+            sweep: true;
+        }
+    }
+}
+
+// What the virtual island's circle holds at rest, 34 pt round: the orange
+// dot (the Pocket's count is its `CircleBadge`, drawn over any shimmer).
+// While Keep Awake runs, the cup (amber once it ends soon) in a ring of the
+// time left, draining clockwise from the top; a full ring for no end.
+// Paused, a grey disc with two white bars. The glass under it is the
+// island's.
+component CircleBody inherits Rectangle {
+    in property <bool> awake;
+    in property <bool> awake-soon;
+    // How much of a timed Keep Awake is left, 1 down to 0; below 0 for none.
+    in property <float> awake-fraction: -1;
+    in property <bool> paused;
+
+    property <color> accent: #ff6a1a;
+
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: root.paused ? #3a3a3c : transparent;
+
+    // The dot.
+    if !root.paused && !root.awake: Rectangle {
+        x: 13px;
+        y: 13px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: root.accent;
+    }
+
+    // Keep Awake: the cup in the ring of the time left.
+    if root.awake && !root.paused: Image {
+        x: 9px;
+        y: 9px;
+        width: 16px;
+        height: 16px;
+        source: PanelIcons.awake;
+        colorize: root.awake-soon ? #ffb340 : root.accent;
+    }
+
+    if root.awake && !root.paused: CircleRing {
+        x: 0px;
+        y: 0px;
+        share: root.awake-fraction < 0 ? 1 : root.awake-fraction;
+        stroke: root.awake-soon ? #ffb340 : root.accent;
+    }
+
+    // Paused: two bars, 3 pt apart.
+    for i in (root.paused ? 2 : 0): Rectangle {
+        x: 12px + i * 6px;
+        y: 12px;
+        width: 3px;
+        height: 10px;
+        background: white;
+    }
+}
+
+// The round circle's count, over its body and any shimmer: an orange badge
+// centred on a point 5 pt in from the circle's lower right corner (lower
+// left in a right-to-left language), past its edge. As large as the circle.
+component CircleBadge inherits Rectangle {
+    // The badge's text ("" for none, "99+" above 99).
+    in property <string> badge;
+
+    property <color> accent: #ff6a1a;
+
+    width: 34px;
+    height: 34px;
+
+    if root.badge != "": Rectangle {
+        x: (Theme.rtl ? 5px : 29px) - self.width / 2;
+        y: 29px - self.height / 2;
+        width: max(16px, badge-text.preferred-width + 8px);
+        height: 16px;
+        border-radius: 8px;
+        background: root.accent;
+
+        badge-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: root.badge;
+            color: black;
+            font-size: 10px;
+            font-weight: 700;
+        }
+    }
+}
+
+// What the circle's news holds while it rests round, 34 pt round on the
+// news pill's black: at work, the job's ring on a faint track, clockwise
+// from the top (or an arc going round when it cannot say how far, only
+// while it can be seen) around its count in short; done, a green tick that
+// pops in; an error, a red ring around "!"; busy, an amber ring around "…";
+// information, the action's icon, or the orange dot without one. With
+// motion reduced the tick shows at its size, with no pop.
+component CircleNews inherits Rectangle {
+    // 1 at work, 2 a result.
+    in property <int> stage;
+    // 0 done, 1 info, 2 error, 3 busy.
+    in property <int> tone;
+    in property <image> icon;
+    in property <float> fraction: -1;
+    // The count in a few characters ("25%", "3/5").
+    in property <string> short;
+    // The arc may turn: the circle is in sight.
+    in property <bool> live;
+    // The circle rests round in sight, so a new tick pops in.
+    in property <bool> round;
+    // The board's id of the news shown, to pop the tick of each new one.
+    in property <int> id;
+    in property <bool> reduce-motion;
+
+    property <color> accent: #ff6a1a;
+    property <bool> done: root.stage == 2 && root.tone == 0;
+    // The tick pops in from 0.6 of its size, over 200 ms easing out.
+    property <bool> popping;
+    property <duration> pop-start;
+    property <float> pop-t: root.popping ? min(1, (animation-tick() - root.pop-start) / 200ms) : 1;
+    property <float> pop: 0.6 + 0.4 * (1 - (1 - root.pop-t) * (1 - root.pop-t));
+    function pop-in() {
+        if root.done && root.round && !root.reduce-motion {
+            root.pop-start = animation-tick();
+            root.popping = true;
+            pop-timer.restart();
+        }
+    }
+    changed done => {
+        root.pop-in();
+    }
+    changed id => {
+        root.pop-in();
+    }
+    pop-timer := Timer {
+        interval: 200ms;
+        running: root.popping;
+        triggered => {
+            root.popping = false;
+        }
+    }
+
+    width: 34px;
+    height: 34px;
+
+    // At work: the track, and the ring of how much is done.
+    if root.stage == 1: CircleRing {
+        x: 0px;
+        y: 0px;
+        stroke: #ffffff22;
+    }
+
+    if root.stage == 1 && root.fraction >= 0: CircleRing {
+        x: 0px;
+        y: 0px;
+        share: root.fraction;
+        stroke: root.accent;
+    }
+
+    // Or an arc going round, once a second, as the news mark's.
+    if root.stage == 1 && root.fraction < 0 && root.live: spinner := Path {
+        property <angle> turn: Math.mod(animation-tick() / 1ms, 1000) / 1000 * 360deg;
+        x: 0px;
+        y: 0px;
+        width: 34px;
+        height: 34px;
+        viewbox-width: 34;
+        viewbox-height: 34;
+        stroke: root.accent;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: 17 + 15 * Math.sin(spinner.turn);
+            y: 17 - 15 * Math.cos(spinner.turn);
+        }
+
+        ArcTo {
+            x: 17 + 15 * Math.sin(spinner.turn + 270deg);
+            y: 17 - 15 * Math.cos(spinner.turn + 270deg);
+            radius-x: 15;
+            radius-y: 15;
+            large-arc: true;
+            sweep: true;
+        }
+    }
+
+    if root.stage == 1: Text {
+        x: 0px;
+        y: 0px;
+        width: 34px;
+        height: 34px;
+        text: root.short;
+        color: white;
+        font-size: 9px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Done: the tick on a green disc.
+    if root.done: Rectangle {
+        property <length> d: 22px * root.pop;
+        x: (parent.width - self.d) / 2;
+        y: (parent.height - self.d) / 2;
+        width: self.d;
+        height: self.d;
+        border-radius: self.d / 2;
+        background: #30d158;
+
+        Image {
+            source: @image-url("icons/check.svg");
+            colorize: black;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 14px * root.pop;
+            height: 14px * root.pop;
+        }
+    }
+
+    // An error, red, or busy, amber: a ring around its mark.
+    if root.stage == 2 && (root.tone == 2 || root.tone == 3): CircleRing {
+        x: 0px;
+        y: 0px;
+        stroke: root.tone == 2 ? #ff5f57 : #ffb340;
+    }
+
+    if root.stage == 2 && (root.tone == 2 || root.tone == 3): Text {
+        x: 0px;
+        y: 0px;
+        width: 34px;
+        height: 34px;
+        text: root.tone == 2 ? "!" : "…";
+        color: root.tone == 2 ? #ff5f57 : #ffb340;
+        font-size: 14px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Information: the action's icon, or the orange dot without one.
+    if root.stage == 2 && root.tone == 1 && root.icon.width > 0: Image {
+        source: root.icon;
+        colorize: root.accent;
+        x: 9px;
+        y: 9px;
+        width: 16px;
+        height: 16px;
+    }
+
+    if root.stage == 2 && root.tone == 1 && root.icon.width == 0: Rectangle {
+        x: 13px;
+        y: 13px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: root.accent;
+    }
+}
+
+// The circle while something is dragged near it: a round drop target, 62 pt
+// across once swollen, near black, its edge 16 orange dashes pulsing
+// between 0.55 and 1 opaque every 1.2 s, and the Pocket's icon in the
+// middle. The edge is only made while it shows (`pulse`), so the pulse
+// ticks only then; `still`, it stays fully opaque and nothing ticks.
+component DropOrb inherits Rectangle {
+    in property <bool> pulse;
+    in property <bool> still;
+
+    property <color> accent: #ff6a1a;
+
+    border-radius: self.width / 2;
+    background: #000000e6;
+
+    if root.pulse: edge := Path {
+        property <float> phase: Math.mod(animation-tick() / 1ms, 1200) / 1200;
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        viewbox-width: 62;
+        viewbox-height: 62;
+        stroke: root.accent;
+        stroke-width: 2px;
+        opacity: root.still ? 1 : 0.775 + 0.225 * Math.cos(self.phase * 360deg);
+        // Sixteen arcs of 13.5° on a circle of 29 round the middle, one
+        // every 22.5° from the top.
+        commands: "M 27.59 2.2 A 29 29 0 0 1 34.41 2.2 M 38.87 3.09 A 29 29 0 0 1 45.17 5.7 M 48.95 8.23 A 29 29 0 0 1 53.77 13.05 M 56.3 16.83 A 29 29 0 0 1 58.91 23.13 M 59.8 27.59 A 29 29 0 0 1 59.8 34.41 M 58.91 38.87 A 29 29 0 0 1 56.3 45.17 M 53.77 48.95 A 29 29 0 0 1 48.95 53.77 M 45.17 56.3 A 29 29 0 0 1 38.87 58.91 M 34.41 59.8 A 29 29 0 0 1 27.59 59.8 M 23.13 58.91 A 29 29 0 0 1 16.83 56.3 M 13.05 53.77 A 29 29 0 0 1 8.23 48.95 M 5.7 45.17 A 29 29 0 0 1 3.09 38.87 M 2.2 34.41 A 29 29 0 0 1 2.2 27.59 M 3.09 23.13 A 29 29 0 0 1 5.7 16.83 M 8.23 13.05 A 29 29 0 0 1 13.05 8.23 M 16.83 5.7 A 29 29 0 0 1 23.13 3.09";
+    }
+
+    Image {
+        source: Icons.pocket;
+        colorize: root.accent;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 24px;
+        height: 24px;
+    }
+}
+
+// One shimmer moment on the resting virtual island, `w` by `h` over its
+// pill or its circle (`round`): each new `play` plays the `style` once over
+// 1.2 s, eased in and out, while the island is `live` for it (0 Off,
+// 1 Sweep, 2 Edge run, 3 Halo, 4 Sparkle, 5 Liquid). It stops at once when
+// it no longer is, and nothing ticks between moments. Sweep, Edge run and
+// Orbit stay within the shape; Halo grows out of it by up to `room`, and
+// Sparkle's stars sit on its rim. Liquid draws nothing here: the island is
+// drawn `stretch-w` wider and `stretch-h` taller, around its middle, while
+// its own size stays as it is.
+// On the notch island's wings (`wings`) the shape hangs from the screen's
+// top edge, its top corners square and its bottom ones round by 10, with
+// the notch, `gap` wide, in its middle: Sweep and Edge run are drawn over
+// the wings only, the notch staying black, and Edge run goes down one side,
+// along the bottom and up the other (the top is the screen's edge); Halo
+// grows out below and beside it, and Sparkle's stars sit on the wings'
+// bottom edge.
+component Shimmer inherits Rectangle {
+    in property <int> style;
+    in property <bool> round;
+    in property <length> w;
+    in property <length> h;
+    in property <int> play;
+    in property <bool> live;
+    in property <length> room: 6px;
+    in property <bool> wings;
+    in property <length> gap;
+    out property <length> stretch-w: root.liquid * 6px;
+    out property <length> stretch-h: root.liquid * -2px;
+
+    property <bool> playing;
+    property <duration> start;
+    property <bool> on: root.playing && root.live;
+    // How far the moment has played, 0 to 1 eased in and out; read only
+    // while it plays.
+    property <float> p: root.on ? min(1, (animation-tick() - root.start) / 1200ms) : 0;
+    property <float> t: root.p * root.p * (3 - 2 * root.p);
+    changed play => {
+        if root.live && root.style != 0 {
+            root.start = animation-tick();
+            root.playing = true;
+            end-timer.restart();
+        }
+    }
+    changed live => {
+        if !root.live {
+            root.playing = false;
+        }
+    }
+    end-timer := Timer {
+        interval: 1200ms;
+        running: root.playing;
+        triggered => {
+            root.playing = false;
+        }
+    }
+
+    // The shape's corner radius.
+    property <length> radius: root.round ? root.w / 2 : root.h / 2;
+    // The pill's outline 1 in from its edge, for Edge run (in points): a
+    // stadium of two straight runs and two half circles, measured from the
+    // top centre clockwise.
+    property <float> sw: root.w / 1px;
+    property <float> sh: root.h / 1px;
+    property <float> r: max(0, root.sh / 2 - 1);
+    property <float> run: max(0, root.sw - root.sh);
+    property <float> half: 3.14159265 * root.r;
+    property <float> perimeter: max(1, 2 * root.run + 2 * root.half);
+    // Liquid: 1 at its widest, then back to 0 with one small overshoot
+    // past it (about 0.18 the other way).
+    property <float> liquid: root.on && root.style == 5
+        ? (root.t < 0.45 ? Math.sin(root.t / 0.45 * 90deg)
+            : (1 - (root.t - 0.45) / 0.55) * (1 - (root.t - 0.45) / 0.55)
+                * Math.cos((root.t - 0.45) / 0.55 * 270deg))
+        : 0;
+    // Sparkle's spots on the rim: across the pill, alternately on its top
+    // and bottom edge; round the circle, clockwise from the top; along the
+    // two wings' bottom edge, as if they met under the notch.
+    property <[float]> spots: [0.2, 0.55, 0.85];
+    property <[angle]> turns: [30deg, 150deg, 270deg];
+    // Each wing's width.
+    property <length> wing-w: max(0px, (root.w - root.gap) / 2);
+    // The wings' outline 1 in from their edge, for Edge run (in points):
+    // down the left side from the top, round the bottom corner (radius 10),
+    // along the bottom and up the right side, measured from the top left.
+    property <float> wr: 10;
+    property <float> wing-side: max(0, root.sh - root.wr);
+    property <float> wing-quarter: 3.14159265 / 2 * (root.wr - 1);
+    property <float> wing-run: max(0, root.sw - 2 * root.wr);
+    property <float> wing-length: 2 * root.wing-side + 2 * root.wing-quarter + root.wing-run;
+
+    // The point `d` along the pill's outline.
+    pure function edge-x(d: float) -> float {
+        let s = Math.mod(Math.mod(d, root.perimeter) + root.perimeter, root.perimeter);
+        let a = root.run / 2;
+        let b = a + root.half;
+        let c = b + root.run;
+        let e = c + root.half;
+        s < a ? root.sw / 2 + s
+            : s < b ? root.sw - root.sh / 2 + root.r * Math.sin((s - a) / root.r * 1rad)
+            : s < c ? root.sw - root.sh / 2 - (s - b)
+            : s < e ? root.sh / 2 - root.r * Math.sin((s - c) / root.r * 1rad)
+            : root.sh / 2 + (s - e)
+    }
+    pure function edge-y(d: float) -> float {
+        let s = Math.mod(Math.mod(d, root.perimeter) + root.perimeter, root.perimeter);
+        let a = root.run / 2;
+        let b = a + root.half;
+        let c = b + root.run;
+        let e = c + root.half;
+        s < a ? root.sh / 2 - root.r
+            : s < b ? root.sh / 2 - root.r * Math.cos((s - a) / root.r * 1rad)
+            : s < c ? root.sh / 2 + root.r
+            : s < e ? root.sh / 2 + root.r * Math.cos((s - c) / root.r * 1rad)
+            : root.sh / 2 - root.r
+    }
+
+    // The point `d` along the wings' outline.
+    pure function wing-x(d: float) -> float {
+        let s = clamp(d, 0, root.wing-length);
+        let a = root.wing-side;
+        let b = a + root.wing-quarter;
+        let c = b + root.wing-run;
+        let e = c + root.wing-quarter;
+        let q = root.wr - 1;
+        s < a ? 1
+            : s < b ? root.wr - q * Math.cos((s - a) / q * 1rad)
+            : s < c ? root.wr + (s - b)
+            : s < e ? root.sw - root.wr + q * Math.sin((s - c) / q * 1rad)
+            : root.sw - 1
+    }
+    pure function wing-y(d: float) -> float {
+        let s = clamp(d, 0, root.wing-length);
+        let a = root.wing-side;
+        let b = a + root.wing-quarter;
+        let c = b + root.wing-run;
+        let e = c + root.wing-quarter;
+        let q = root.wr - 1;
+        s < a ? s
+            : s < b ? root.sh - root.wr + q * Math.sin((s - a) / q * 1rad)
+            : s < c ? root.sh - 1
+            : s < e ? root.sh - root.wr + q * Math.cos((s - c) / q * 1rad)
+            : max(0, root.sh - root.wr - (s - e))
+    }
+
+    width: root.w;
+    height: root.h;
+
+    // Halo: an orange outline growing out of the shape, from 1 pt to
+    // `room`, fading from 60 % to nothing. On the wings its top is above
+    // the screen's edge, out of sight.
+    if root.on && root.style == 3: Rectangle {
+        property <length> spread: 1px + (root.room - 1px) * root.t;
+        x: -self.spread;
+        y: -self.spread;
+        width: root.w + 2 * self.spread;
+        height: root.h + 2 * self.spread;
+        border-top-left-radius: root.wings ? 0px : root.radius + self.spread;
+        border-top-right-radius: self.border-top-left-radius;
+        border-bottom-left-radius: (root.wings ? 10px : root.radius) + self.spread;
+        border-bottom-right-radius: self.border-bottom-left-radius;
+        border-width: self.spread;
+        border-color: #ff6a1a;
+        opacity: 0.6 * (1 - root.t);
+    }
+
+    // Sweep: a band of light, 0.4 of the shape wide, crossing it from left
+    // to right, cut to the shape slice by slice.
+    if root.on && root.style == 1 && !root.wings: SweepBand {
+        x: 0px;
+        y: 0px;
+        w: root.w;
+        h: root.h;
+        band: root.w * 0.4;
+        left: -self.band + root.t * (root.w + self.band);
+    }
+
+    // Edge run on the pill: a bright segment 24 long running once round
+    // the outline, from the top centre clockwise, drawn through seven
+    // points 4 apart.
+    if root.on && root.style == 2 && !root.round && !root.wings: segment := Path {
+        property <float> tail: root.t * root.perimeter;
+        x: 0px;
+        y: 0px;
+        width: root.w;
+        height: root.h;
+        viewbox-width: root.sw;
+        viewbox-height: root.sh;
+        stroke: #ffffffb3;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: root.edge-x(segment.tail);
+            y: root.edge-y(segment.tail);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 4);
+            y: root.edge-y(segment.tail + 4);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 8);
+            y: root.edge-y(segment.tail + 8);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 12);
+            y: root.edge-y(segment.tail + 12);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 16);
+            y: root.edge-y(segment.tail + 16);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 20);
+            y: root.edge-y(segment.tail + 20);
+        }
+
+        LineTo {
+            x: root.edge-x(segment.tail + 24);
+            y: root.edge-y(segment.tail + 24);
+        }
+    }
+
+    // Orbit on the circle: a 50° arc of a ring, 2 pt wide at its edge,
+    // turning once round from the top clockwise.
+    if root.on && root.style == 2 && root.round: orbit := Path {
+        property <angle> turn: root.t * 360deg;
+        property <float> ring: max(0, root.sw / 2 - 1);
+        x: 0px;
+        y: 0px;
+        width: root.w;
+        height: root.h;
+        viewbox-width: root.sw;
+        viewbox-height: root.sh;
+        stroke: #ffffffb3;
+        stroke-width: 2px;
+
+        MoveTo {
+            x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn);
+            y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn);
+        }
+
+        ArcTo {
+            x: root.sw / 2 + orbit.ring * Math.sin(orbit.turn + 50deg);
+            y: root.sh / 2 - orbit.ring * Math.cos(orbit.turn + 50deg);
+            radius-x: orbit.ring;
+            radius-y: orbit.ring;
+            sweep: true;
+        }
+    }
+
+    // Sweep and Edge run on the wings: drawn twice, each cut to one wing,
+    // so the notch between them stays black.
+    for side in (root.on && root.wings && (root.style == 1 || root.style == 2) ? 2 : 0): Rectangle {
+        x: side == 0 ? 0px : root.w - root.wing-w;
+        y: 0px;
+        width: root.wing-w;
+        height: root.h;
+        clip: true;
+
+        // The band, cut to the shape's bottom corners slice by slice.
+        if root.style == 1: SweepBand {
+            x: -parent.x;
+            y: 0px;
+            w: root.w;
+            h: root.h;
+            square-top: true;
+            bottom-r: 10px;
+            band: root.w * 0.4;
+            left: -self.band + root.t * (root.w + self.band);
+        }
+
+        // A bright segment 24 long running once along the outline, coming
+        // in from the screen's edge on the left and going out on the right,
+        // drawn through seven points 4 apart.
+        if root.style == 2: wing-segment := Path {
+            property <float> tail: root.t * (root.wing-length + 24) - 24;
+            x: -parent.x;
+            y: 0px;
+            width: root.w;
+            height: root.h;
+            viewbox-width: root.sw;
+            viewbox-height: root.sh;
+            stroke: #ffffffb3;
+            stroke-width: 2px;
+
+            MoveTo {
+                x: root.wing-x(wing-segment.tail);
+                y: root.wing-y(wing-segment.tail);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 4);
+                y: root.wing-y(wing-segment.tail + 4);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 8);
+                y: root.wing-y(wing-segment.tail + 8);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 12);
+                y: root.wing-y(wing-segment.tail + 12);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 16);
+                y: root.wing-y(wing-segment.tail + 16);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 20);
+                y: root.wing-y(wing-segment.tail + 20);
+            }
+
+            LineTo {
+                x: root.wing-x(wing-segment.tail + 24);
+                y: root.wing-y(wing-segment.tail + 24);
+            }
+        }
+    }
+
+    // Sparkle: three white four-point stars, 6 pt, on the rim, each
+    // growing from nothing and back, 0.15 of the moment after the one
+    // before.
+    for i in (root.on && root.style == 4 ? 3 : 0): Path {
+        property <float> u: clamp((root.t - 0.15 * i) / 0.7, 0, 1);
+        property <length> size: 6px * Math.sin(self.u * 180deg);
+        // Along the two wings, the notch skipped.
+        property <length> along: 2 * root.wing-w * root.spots[i];
+        property <length> mid-x: root.wings ? (self.along < root.wing-w ? self.along : self.along + root.gap)
+            : root.round ? root.w / 2 + root.w / 2 * Math.sin(root.turns[i])
+            : root.w * root.spots[i];
+        property <length> mid-y: root.wings ? root.h
+            : root.round ? root.h / 2 - root.h / 2 * Math.cos(root.turns[i])
+            : Math.mod(i, 2) == 0 ? 0px : root.h;
+        x: self.mid-x - self.size / 2;
+        y: self.mid-y - self.size / 2;
+        width: self.size;
+        height: self.size;
+        viewbox-width: 6;
+        viewbox-height: 6;
+        commands: "M 3 0 L 3.8 2.2 L 6 3 L 3.8 3.8 L 3 6 L 2.2 3.8 L 0 3 L 2.2 2.2 Z";
+        fill: #ffffff;
+    }
+}
+
 export component PocketIsland inherits Window {
     default-font-family: Theme.font-family;
     no-frame: true;
@@ -2658,6 +4106,19 @@ export component PocketIsland inherits Window {
     // The island's screen has a notch: collapsed, it grows wings beside it.
     in property <bool> notch-style;
     in property <length> notch-w;
+    // The notch island draws the news on its wings now (with Show jobs in
+    // the island on, news up, and not open).
+    in property <bool> notch-news: false;
+    // How wide each wing is with the news, as drawn, for the clicks it
+    // takes (the plain wing's width without it).
+    out property <length> news-wing-w: root.wing-news-on ? wing-news.wing-w : root.wing;
+    // Where the wings' news puts its button and its "+N" chip, for the
+    // clicks they take: their width (0 for none) and x from the right
+    // wing's start (less than 0 in the left wing).
+    out property <length> wing-button-w: root.wing-news-on ? wing-news.button-w : 0px;
+    out property <length> wing-button-x: wing-news.button-x;
+    out property <length> wing-chip-w: root.wing-news-on ? wing-news.chip-w : 0px;
+    out property <length> wing-chip-x: wing-news.chip-x;
     // Height of the menu bar (or the notch, if taller).
     in property <length> top-h;
     // The island lives in the corner by the taskbar's clock (Windows): it
@@ -2669,6 +4130,51 @@ export component PocketIsland inherits Window {
     // The pointer rests on the collapsed island where it sits in a top bar
     // (GNOME): it lights up as the bar's own buttons do.
     in property <bool> bar-hover;
+    // The virtual island (no notch, any place on the top edge): it rests in
+    // sight as a pill, and opens when pushed against the top edge.
+    in property <bool> virtual-style;
+    // It rests as the lip over the front window's bar instead of the pill.
+    in property <bool> lip;
+    // Open, it has a grip in a strip on top, over its views: dragged, it
+    // moves the island along the top edge; double-clicked, it puts it back
+    // in the middle. The orb has none. `grip-h` is the strip's height
+    // (geometry::GRIP_H, set by the app).
+    in property <bool> grip;
+    in property <length> grip-h: 20px;
+    // How opaque its resting forms are, 0.1 to 1 (the settings' Glass).
+    in property <float> glass;
+    // The shimmer the resting island plays now and then: its style (0 Off,
+    // 1 Sweep, 2 Edge run, 3 Halo, 4 Sparkle, 5 Liquid), a number that goes
+    // up to play one moment, and whether motion is reduced.
+    in property <int> shimmer-style: 0;
+    in property <int> shimmer-id: 0;
+    in property <bool> reduce-motion: false;
+    // How far a push against the top edge has filled, 0 to 1.
+    in property <float> push-progress;
+    // The Pocket's count on the resting pill; 0 shows none.
+    in property <int> rest-count;
+    // The resting pill while Keep Awake runs: the time it has left (empty
+    // for no end), and whether it ends soon.
+    in property <bool> rest-awake;
+    in property <string> rest-awake-text;
+    in property <bool> rest-awake-soon;
+    // vento is paused: the resting pill is grey, with Resume.
+    in property <bool> rest-paused;
+    // The Circle shape of the virtual island: it rests as a disc, and the
+    // resting pill and the news pill rest round, stretching into a pill only
+    // to say something. `rest-awake-fraction` is how much of a timed Keep
+    // Awake is left (1 down to 0; below 0 for none), and `rest-badge` the
+    // Pocket's count for the disc ("" for none, "99+" above 99).
+    in property <bool> circle-style;
+    in property <bool> rest-round;
+    in property <float> rest-awake-fraction: -1;
+    in property <string> rest-badge;
+    // Where the resting pill lies, for the clicks its Resume takes: its
+    // width, and Resume's width (0 for none) and x from the pill's left.
+    // The round circle is 34 wide, with no Resume.
+    out property <length> rest-pill-w: root.circle-round ? 34px : rest-body.pill-w;
+    out property <length> rest-button-w: root.circle-round ? 0px : rest-body.button-w;
+    out property <length> rest-button-x: rest-body.button-x;
     // The Pocket view's groups, one per kind present, and their tiles.
     in property <[PocketGroup]> groups;
     in property <[PocketTile]> tiles;
@@ -2752,6 +4258,46 @@ export component PocketIsland inherits Window {
     in property <bool> card;
     in property <image> card-picture;
     in property <string> card-meta;
+    // On the circle, the shot of a card that just ended shrinks into the
+    // disc: its picture, and an id that starts the 800 ms shrink anew.
+    in property <image> shot-disc;
+    in property <int> shot-disc-id;
+    // The virtual island's news: what shows (0 none, 1 a
+    // job at work, 2 a result), how it reads (0 done, 1 info, 2 error,
+    // 3 busy), the action's icon (empty for the tone's own mark), the
+    // sentence and its detail, the one button's label (empty for none) and
+    // whether it is grey, how many other things are going on (the "+N"
+    // chip), how much of the job is done (0 to 1; below 0 when it cannot
+    // say) and its count ("25%", "3 of 5"). With nothing shown, the rest
+    // keeps the last news, to fade out with.
+    in property <int> news-stage;
+    in property <int> news-tone;
+    in property <image> news-icon;
+    in property <string> news-text;
+    in property <string> news-sub;
+    in property <string> news-button;
+    in property <bool> news-quiet;
+    in property <int> news-extra;
+    in property <float> news-fraction: -1;
+    in property <string> news-count;
+    // On the circle: the news rests as the round disc rather than stretched
+    // into a pill, and its count in a few characters ("25%", "3/5").
+    in property <bool> news-round;
+    in property <string> news-short;
+    // The board's id of the news shown, to tell a new error from the same
+    // one shown again.
+    in property <int> news-id;
+    // Activity is up over the view, with no bar: today's jobs and results.
+    in property <bool> activity;
+    in property <[ActivityRow]> activity-rows;
+    // Where the news pill lies, for the clicks it takes, as it is drawn: its
+    // width, and its button's and its "+N" chip's width (0 for none) and x
+    // from the pill's left. The round circle is 34 wide, with neither.
+    out property <length> news-pill-w: root.news-disc ? 34px : news-body.pill-w;
+    out property <length> news-button-w: root.news-disc ? 0px : news-body.button-w;
+    out property <length> news-button-x: news-body.button-x;
+    out property <length> news-chip-w: root.news-disc ? 0px : news-body.chip-w;
+    out property <length> news-chip-x: news-body.chip-x;
 
     // A tile, by its item's place in the Pocket: `moved` offsets are
     // measured from the press point.
@@ -2829,6 +4375,19 @@ export component PocketIsland inherits Window {
     callback card-copy-text();
     callback card-pocket();
     callback card-trash();
+    // The news pill's one button, and its "+N" chip.
+    callback news-button-clicked();
+    callback news-chip-clicked();
+    // The paused resting pill's Resume.
+    callback rest-button-clicked();
+    // A button on Activity's row, by the row's place.
+    callback activity-button-clicked(int);
+    // The grip is pressed, moved while pressed (the app reads the cursor
+    // itself: the window moves under it), let go, or double-clicked.
+    callback grip-pressed();
+    callback grip-moved();
+    callback grip-released();
+    callback grip-centre();
 
     width: root.panel-w;
     height: root.top-h + root.window-h;
@@ -2837,43 +4396,189 @@ export component PocketIsland inherits Window {
     property <length> wing: 44px;
     property <length> pad: 16px;
     property <length> bar-h: 44px;
+    // The strip the open virtual island keeps on top for its grip.
+    property <length> grip-top: root.grip ? root.grip-h : 0px;
 
-    property <length> collapsed-w: root.corner-style ? root.width : root.notch-style ? root.notch-w + 2 * root.wing : 120px;
-    property <length> collapsed-h: root.corner-style ? 0px : root.notch-style ? root.top-h : 28px;
-    property <length> collapsed-y: root.notch-style ? 0px : root.top-h + 4px;
-    // Where the top of an island hanging from the top edge goes.
-    property <length> top-y: root.expanded ? 0px : root.collapsed-y;
-    animate top-y { duration: 160ms; easing: ease-out; }
+    // The circle rests as the round disc, and its news too; otherwise each
+    // is stretched into a pill.
+    property <bool> circle-round: root.circle-style && root.rest-round;
+    property <bool> news-disc: root.circle-style && root.news-round;
+    // While something is dragged near it, the circle opens as the drop orb:
+    // the window is the orb's size, below `top-h`.
+    property <bool> orb-on: root.virtual-style && root.circle-style && root.drop-box && root.expanded;
+    // The virtual island at rest: the lip (or the circle's half-moon) hangs
+    // from the window's top edge (the bar's lower edge, or the screen's),
+    // the pill (or the circle) sits `top-h` below it, as wide as what it
+    // says.
+    property <length> collapsed-w: root.corner-style ? root.width : root.notch-style ? root.notch-w + 2 * root.wing
+        : root.virtual-style
+        ? (root.lip ? (root.circle-style ? 36px : 84px) : root.circle-round ? 34px : rest-body.pill-w)
+        : 120px;
+    property <length> collapsed-h: root.corner-style ? 0px : root.notch-style ? root.top-h
+        : root.virtual-style && root.lip ? (root.circle-style ? 18px : 6px)
+        : root.circle-round ? 34px : 28px;
+    property <length> collapsed-y: root.notch-style ? 0px : root.virtual-style ? (root.lip ? 0px : root.top-h)
+        : root.top-h + 4px;
+    // The virtual island resting: a change now is the pill and the lip
+    // turning into each other (or the island settling back), which eases
+    // over 250 ms, with no bounce.
+    property <bool> resting: root.virtual-style && !root.expanded;
+    // Where the top of an island hanging from the top edge goes; the open
+    // virtual island floats `top-h` below it.
+    property <length> top-y: root.expanded ? (root.virtual-style ? root.top-h : 0px) : root.collapsed-y;
+    animate top-y {
+        duration: root.resting ? 250ms : 160ms;
+        easing: root.resting ? ease : ease-out;
+    }
     property <length> pill-r: root.notch-style ? 0px : 14px;
+    // The resting virtual island shows news: the pill wakes from its
+    // resting form, wider and solid. When the news ends (or the island
+    // opens) it goes back to the resting form, and the last news stays on
+    // it as it fades.
+    property <bool> news-on: root.resting && root.news-stage != 0;
+    // The resting pill or circle, or the notch island's wings, may play a
+    // shimmer moment: never on the lip, under news, open, with the style
+    // Off or with motion reduced. A moment under way stops as soon as one
+    // of those comes.
+    property <bool> shimmer-on: ((root.virtual-style && root.resting && !root.lip && !root.news-on)
+        || (root.notch-style && !root.notch-news))
+        && !root.expanded && root.shimmer-style != 0 && !root.reduce-motion;
+    // The notch island shows the news on its wings, which widen for it
+    // around the notch over 180 ms (at once with motion reduced).
+    property <bool> wing-news-on: root.notch-style && root.notch-news && !root.expanded;
+    property <length> wing-drawn: root.news-wing-w;
+    animate wing-drawn {
+        duration: root.reduce-motion ? 0ms : 180ms;
+        easing: ease;
+    }
+    // What the pill shows: the news, or the last while it fades.
+    property <int> news-shown-stage: root.news-stage != 0 ? root.news-stage : root.news-last-stage;
+    property <int> news-last-stage;
+    changed news-stage => {
+        if root.news-stage != 0 {
+            root.news-last-stage = root.news-stage;
+        }
+    }
+    // An error shakes the pill (on the notch, the whole island) once, over
+    // 500 ms: three swings dying out; with motion reduced, not at all.
+    property <bool> news-error: (root.news-on || root.wing-news-on) && root.news-stage == 2 && root.news-tone == 2;
+    property <bool> shaking;
+    property <duration> shake-start;
+    property <float> shake-t: root.shaking ? min(1, (animation-tick() - root.shake-start) / 500ms) : 1;
+    property <length> shake-dx: root.shaking && !root.reduce-motion ? 6px * (1 - root.shake-t) * Math.sin(root.shake-t * 3 * 360deg) : 0px;
+    function shake() {
+        root.shake-start = animation-tick();
+        root.shaking = true;
+        shake-timer.restart();
+    }
+    // Once for each error: the same one shown again (as the island
+    // closes over it) does not shake.
+    property <int> shaken-id: -1;
+    function shake-new-error() {
+        if root.news-error && root.news-id != root.shaken-id {
+            root.shaken-id = root.news-id;
+            if !root.reduce-motion {
+                root.shake();
+            }
+        }
+    }
+    changed news-error => {
+        root.shake-new-error();
+    }
+    // Another error in its place shakes it again.
+    changed news-id => {
+        root.shake-new-error();
+    }
+    shake-timer := Timer {
+        interval: 500ms;
+        running: root.shaking;
+        triggered => {
+            root.shaking = false;
+        }
+    }
+    // The shot of a card that just ended shrinks into the circle, from 62
+    // to 34 over 800 ms easing out, fading out over the last 200 ms; with
+    // motion reduced it stays 62 across and fades out over the 800 ms.
+    property <bool> shot-shrinking;
+    property <duration> shot-start;
+    property <float> shot-t: root.shot-shrinking ? min(1, (animation-tick() - root.shot-start) / 800ms) : 1;
+    changed shot-disc-id => {
+        if root.virtual-style && root.circle-style {
+            root.shot-start = animation-tick();
+            root.shot-shrinking = true;
+            shot-timer.restart();
+        }
+    }
+    shot-timer := Timer {
+        interval: 800ms;
+        running: root.shot-shrinking;
+        triggered => {
+            root.shot-shrinking = false;
+        }
+    }
     property <bool> pocket-undo: root.undo-active && root.undo-kind == 0;
     property <bool> clip-undo: root.undo-active && root.undo-kind == 1;
     property <bool> shots-undo: root.undo-active && root.undo-kind == 3;
-    // While the card is up, no view is in sight.
-    property <bool> on-clip: root.view == 1 && !root.card;
+    // While the card or Activity is up, no view is in sight.
+    property <bool> covered: root.card || root.activity;
+    property <bool> on-clip: root.view == 1 && !root.covered;
     property <bool> on-list: root.view == 2;
-    property <bool> on-pocket: (root.view == 0 || root.view == 2) && !root.card;
-    property <bool> on-shots: root.view == 3 && !root.card;
+    property <bool> on-pocket: (root.view == 0 || root.view == 2) && !root.covered;
+    property <bool> on-shots: root.view == 3 && !root.covered;
     // The wings show an icon alone, no count.
     property <bool> icon-wing: root.clip-wing || root.shot-wing;
     // What "Drag" takes: every item, or the kind the list shows.
     property <int> drag-count: root.on-list && root.list-filter > 0 && root.list-filter < root.list-chips.length
         ? root.list-chips[root.list-filter].count : root.count;
 
-    island := Rectangle {
-        width: root.expanded ? root.width : root.collapsed-w;
-        height: root.expanded ? root.top-h + root.panel-h : root.collapsed-h;
-        x: (root.width - self.width) / 2;
-        // In the corner by the clock, its bottom stays on the window's.
-        y: root.corner-style ? root.height - self.height : root.top-y;
-        animate width { duration: 160ms; easing: ease-out; }
-        animate height { duration: 240ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+    // The island's size; a Liquid shimmer draws it stretched around its
+    // middle for a moment, this staying as it is.
+    property <length> island-w: root.expanded ? root.width : root.collapsed-w;
+    animate island-w {
+        duration: root.resting ? 250ms : 160ms;
+        easing: root.resting ? ease : ease-out;
+    }
+    property <length> island-h: root.expanded ? (root.virtual-style ? 0px : root.top-h) + root.panel-h : root.collapsed-h;
+    animate island-h {
+        duration: root.resting ? 250ms : 240ms;
+        easing: root.resting ? ease : cubic-bezier(0.22, 1, 0.36, 1);
+    }
 
-        background: root.bar-hover && !root.expanded ? #2b2b2b : #000000;
+    // The island. On the notch its wings widen for the news, it shakes
+    // with an error, and Liquid keeps its top on the screen's edge. Never
+    // wider than the window: opening while the wings still shrink would
+    // add their extra to the open width for a frame or two.
+    island := Rectangle {
+        visible: !root.orb-on;
+        width: min(root.width, root.island-w + 2 * (root.wing-drawn - root.wing) + shimmer.stretch-w);
+        height: root.island-h + shimmer.stretch-h;
+        x: (root.width - self.width) / 2 + (root.notch-style ? root.shake-dx : 0px);
+        // In the corner by the clock, its bottom stays on the window's.
+        y: root.corner-style ? root.height - self.height
+            : root.top-y - (root.notch-style ? 0px : shimmer.stretch-h / 2);
+
+        // The virtual island's resting forms are glass, as opaque as the
+        // settings say; the lip never less than 60 %, with an outline, so
+        // it stays in sight on a dark bar. Open, it is solid.
+        background: root.resting ? (root.lip ? #0a0a0c.with-alpha(max(root.glass, 0.6)) : #000000.with-alpha(root.glass))
+            : root.bar-hover && !root.expanded ? #2b2b2b : #000000;
         animate background { duration: 120ms; }
+        border-width: root.resting ? 1px : 0px;
+        border-color: root.lip ? #ffffff4d : #ffffff22;
         clip: true;
-        border-top-left-radius: root.corner-style ? 14px : root.expanded ? 0px : root.pill-r;
+        // The open virtual island floats, round on every corner; the lip is
+        // round only below, where it hangs, and the half-moon is a half
+        // disc. The circle is round at any height up to its own.
+        border-top-left-radius: root.corner-style ? 14px
+            : root.virtual-style
+            ? (root.expanded ? 22px : root.lip ? 0px : root.circle-style ? min(17px, self.height / 2) : 14px)
+            : root.expanded ? 0px : root.pill-r;
         border-top-right-radius: self.border-top-left-radius;
-        border-bottom-left-radius: root.corner-style ? 14px : root.expanded ? 22px : (root.notch-style ? 10px : 14px);
+        border-bottom-left-radius: root.corner-style ? 14px
+            : root.virtual-style
+            ? (root.expanded ? 22px : root.lip ? (root.circle-style ? 18px : 5px)
+                : root.circle-style ? min(17px, self.height / 2) : 14px)
+            : root.expanded ? 22px : (root.notch-style ? 10px : 14px);
         border-bottom-right-radius: self.border-bottom-left-radius;
 
         // Collapsed: the stack icon on the left, the item count on the right
@@ -2881,14 +4586,16 @@ export component PocketIsland inherits Window {
         // with an empty Pocket, the clipboard or the photo icon alone (that
         // of the view resting on the island opens);
         // while Undo is offered, an undo arrow and "Undo", and a click undoes.
-        if !root.expanded && !root.corner-style: Rectangle {
-            if root.undo-active: TouchArea {
+        // The news on the notch's wings takes their place.
+        if !root.expanded && !root.corner-style && !root.virtual-style: Rectangle {
+            if root.undo-active && !root.wing-news-on: TouchArea {
                 clicked => {
                     root.undo();
                 }
             }
 
             Image {
+                visible: !root.wing-news-on;
                 property <length> ltr-x: root.notch-style ? (root.wing - self.width) / 2
                     : root.icon-wing && !root.undo-active ? (parent.width - self.width) / 2 : 12px;
                 source: !root.undo-active
@@ -2901,7 +4608,7 @@ export component PocketIsland inherits Window {
                 y: (parent.height - self.height) / 2;
             }
 
-            if root.undo-active || !root.icon-wing: Text {
+            if (root.undo-active || !root.icon-wing) && !root.wing-news-on: Text {
                 text: root.undo-active ? @tr("Undo") : root.count;
                 color: root.undo-active ? root.accent : white;
                 font-size: root.undo-active ? 11px : 13px;
@@ -2914,17 +4621,69 @@ export component PocketIsland inherits Window {
             }
         }
 
+        // The news on the notch's wings, in the menu bar's height (also
+        // while the island is still shrinking to it).
+        wing-news := WingNews {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: root.top-h;
+            visible: root.wing-news-on;
+            stage: root.news-stage;
+            tone: root.news-tone;
+            icon: root.news-icon;
+            text: root.news-text;
+            sub: root.news-sub;
+            short: root.news-short;
+            button: root.news-button;
+            quiet: root.news-quiet;
+            extra: root.news-extra;
+            notch-w: root.notch-w;
+            wing: root.wing;
+            most: min(260px, max(root.wing, (root.width - root.notch-w) / 2));
+            live: root.wing-news-on;
+            button-clicked => {
+                root.news-button-clicked();
+            }
+            chip-clicked => {
+                root.news-chip-clicked();
+            }
+        }
+
+        // The virtual island's pill: an orange dot and "Pocket" with the
+        // count in a chip, or "Vento" alone with an empty Pocket; a cup and
+        // the time left while Keep Awake runs; grey with Resume while
+        // paused. The lip shows nothing. At rest, clicks pass through both
+        // to the window under them, except on Resume. The round circle
+        // shows its own body instead, over the island.
+        rest-body := RestBody {
+            x: (parent.width - self.width) / 2;
+            y: 0px;
+            height: parent.height;
+            visible: root.resting && !root.lip && !root.circle-round;
+            count: root.rest-count;
+            awake: root.rest-awake;
+            awake-text: root.rest-awake-text;
+            awake-soon: root.rest-awake-soon;
+            paused: root.rest-paused;
+            max-w: root.panel-w - 40px;
+            button-clicked => {
+                root.rest-button-clicked();
+            }
+        }
+
         // Expanded: fixed in window coordinates while the island grows around
-        // it, and as tall as the island below the menu bar, so the bottom bar
-        // moves with its edge as it grows or shrinks. In the corner by the
-        // clock it sits on the window's bottom edge, with the island's.
+        // it, and as tall as the island below the menu bar (and the grip's
+        // strip), so the bottom bar moves with its edge as it grows or
+        // shrinks. In the corner by the clock it sits on the window's bottom
+        // edge, with the island's.
         if root.expanded: Rectangle {
             x: (parent.width - root.width) / 2;
-            y: (root.corner-style ? root.height - root.panel-h : root.top-h) - parent.y;
+            y: (root.corner-style ? root.height - root.panel-h : root.top-h + root.grip-top) - parent.y;
             width: root.width;
             height: max(0px, parent.height - self.y);
 
-            property <length> view-h: max(0px, self.height - (root.drop-box || root.card ? 0px : root.bar-h));
+            property <length> view-h: max(0px, self.height - (root.drop-box || root.covered ? 0px : root.bar-h));
 
             // The Clipboard view, sliding and fading in from the start of the
             // line as the Pocket goes.
@@ -3200,11 +4959,23 @@ export component PocketIsland inherits Window {
                 }
             }
 
+            // Activity, over the whole panel; a card that comes up, over it.
+            if root.activity && !root.card: ActivityPanel {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.view-h;
+                rows: root.activity-rows;
+                button-clicked(i) => {
+                    root.activity-button-clicked(i);
+                }
+            }
+
             // Under every view: a tab for each view that is on (with two or
             // more), and at the end the shown view's controls: the Pocket's
             // look, "Drag" and Clear (or Undo), the Clipboard's Clear (or
             // Undo), or the Screenshots' Undo.
-            if !root.drop-box && !root.card: Rectangle {
+            if !root.drop-box && !root.covered: Rectangle {
                 y: parent.view-h;
                 width: parent.width;
                 height: root.bar-h;
@@ -3319,5 +5090,205 @@ export component PocketIsland inherits Window {
                 }
             }
         }
+
+        // The open virtual island's grip, centred in the strip on top, over
+        // the views.
+        if root.expanded && root.grip: Rectangle {
+            x: (parent.width - root.width) / 2;
+            y: root.top-h - parent.y;
+            width: root.width;
+            height: root.grip-h;
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 5px;
+                border-radius: 2.5px;
+                background: #ffffff.with-alpha(0.35);
+            }
+
+            TouchArea {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                mouse-cursor: self.pressed ? grabbing : grab;
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        root.grip-pressed();
+                    } else if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left)
+                        || e.kind == PointerEventKind.cancel {
+                        root.grip-released();
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.grip-moved();
+                    }
+                }
+                double-clicked => {
+                    root.grip-centre();
+                }
+            }
+        }
+    }
+
+    // The round circle's body, over the island's glass.
+    circle-body := CircleBody {
+        x: island.x + (island.width - self.width) / 2;
+        y: island.y + (island.height - self.height) / 2;
+        visible: root.resting && !root.lip && root.circle-round && !root.orb-on;
+        awake: root.rest-awake;
+        awake-soon: root.rest-awake-soon;
+        awake-fraction: root.rest-awake-fraction;
+        paused: root.rest-paused;
+    }
+
+    // The shimmer moments, over the resting pill or the circle, or the
+    // notch island's wings (unclipped, so Halo and Sparkle can reach past
+    // the edge, Halo by 6 pt where the window has the room above it, else
+    // 4; from the wings it grows only down and out).
+    shimmer := Shimmer {
+        x: island.x;
+        y: island.y;
+        w: island.width;
+        h: island.height;
+        style: root.shimmer-style;
+        round: root.circle-round;
+        play: root.shimmer-id;
+        live: root.shimmer-on;
+        room: root.notch-style || island.y >= 6px ? 6px : 4px;
+        wings: root.notch-style;
+        gap: root.notch-w;
+    }
+
+    // The circle's count, over the shimmer, past the circle's edge; hidden
+    // under the news, and with the cup or paused.
+    CircleBadge {
+        x: circle-body.x;
+        y: circle-body.y;
+        visible: circle-body.visible;
+        badge: root.news-on || root.rest-awake || root.rest-paused ? "" : root.rest-badge;
+    }
+
+    // The virtual island's news pill, over its resting form: solid black,
+    // 34 pt high with its top at the pill's. It wakes from the resting
+    // form's size with a spring (none with motion reduced) over 250 ms and
+    // goes back to it as it fades over 600 ms. Open, the island shows none.
+    // Its content keeps its own width as the pill grows and shrinks around
+    // it. At rest, clicks pass through it, except on its button and its
+    // chip. On the circle it rests round, 34 pt across, and stretches into
+    // the pill (and back) over 250 ms with no spring.
+    news := Rectangle {
+        width: root.news-on ? (root.news-disc ? 34px : news-body.pill-w) : root.collapsed-w;
+        height: root.news-on ? 34px : root.collapsed-h;
+        x: (root.width - self.width) / 2 + root.shake-dx;
+        y: root.news-on ? root.top-h : root.collapsed-y;
+        animate width, height, y {
+            duration: root.news-on ? 250ms : 600ms;
+            easing: root.news-on && !root.circle-style && !root.reduce-motion ? ease-out-back : ease;
+        }
+        opacity: root.news-on ? 1 : 0;
+        animate opacity {
+            duration: root.news-on ? 120ms : 600ms;
+            easing: ease;
+        }
+        visible: root.virtual-style && !root.expanded && !root.orb-on && self.opacity > 0;
+        background: #000000;
+        border-width: 1px;
+        border-color: #ffffff22;
+        border-radius: self.height / 2;
+        clip: true;
+
+        news-body := NewsBody {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            visible: !root.news-disc;
+            stage: root.news-shown-stage;
+            tone: root.news-tone;
+            icon: root.news-icon;
+            text: root.news-text;
+            sub: root.news-sub;
+            button: root.news-button;
+            quiet: root.news-quiet;
+            extra: root.news-extra;
+            fraction: root.news-fraction;
+            count: root.news-count;
+            max-w: root.panel-w - 40px;
+            live: news.visible && !root.news-disc;
+            button-clicked => {
+                root.news-button-clicked();
+            }
+            chip-clicked => {
+                root.news-chip-clicked();
+            }
+        }
+
+        CircleNews {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            visible: root.news-disc;
+            stage: root.news-shown-stage;
+            tone: root.news-tone;
+            icon: root.news-icon;
+            fraction: root.news-fraction;
+            short: root.news-short;
+            live: news.visible && root.news-disc;
+            round: root.news-disc && root.news-on;
+            id: root.news-id;
+            reduce-motion: root.reduce-motion;
+        }
+    }
+
+    // The shot shrinking into the circle, round, over everything.
+    if root.shot-shrinking: Rectangle {
+        property <length> d: root.reduce-motion ? 62px : 62px - 28px * (1 - (1 - root.shot-t) * (1 - root.shot-t));
+        x: (root.width - self.width) / 2;
+        y: root.collapsed-y;
+        width: self.d;
+        height: self.d;
+        border-radius: self.d / 2;
+        clip: true;
+        opacity: root.reduce-motion ? 1 - root.shot-t : root.shot-t < 0.75 ? 1 : (1 - root.shot-t) * 4;
+
+        Image {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            source: root.shot-disc;
+            image-fit: cover;
+        }
+    }
+
+    // While something is dragged near it, the circle swells into the drop
+    // orb over 200 ms, from 34 to the 62 that fill the window below
+    // `top-h`, in place of the island; it shrinks back unseen. With motion
+    // reduced it is at once 62 across, and its edge does not pulse.
+    DropOrb {
+        width: root.orb-on ? 62px : 34px;
+        height: self.width;
+        animate width { duration: root.reduce-motion ? 0ms : 200ms; easing: ease-out; }
+        x: (root.width - self.width) / 2;
+        y: root.top-h;
+        visible: root.orb-on;
+        pulse: root.orb-on;
+        still: root.reduce-motion;
+    }
+
+    // A push against the top edge over the resting virtual island: an
+    // orange line under it (or under its news) fills from the middle out,
+    // and the island opens when it is full. Nothing shows at 0.
+    if root.resting: Rectangle {
+        width: root.push-progress * 120px;
+        // Fills smoothly between the 100 ms samples.
+        animate width { duration: 100ms; easing: linear; }
+        height: 3px;
+        x: (root.width - self.width) / 2;
+        y: max(island.y + island.height, news.visible ? news.y + news.height : 0px) + 2px;
+        visible: root.push-progress > 0;
+        border-radius: 1.5px;
+        background: root.accent;
     }
 }

@@ -9,6 +9,7 @@
 mod error;
 #[cfg(windows)]
 pub mod install;
+pub mod island;
 pub mod net;
 #[cfg(target_os = "macos")]
 pub mod swap;

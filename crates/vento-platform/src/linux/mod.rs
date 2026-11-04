@@ -30,6 +30,7 @@ mod heif;
 mod icons;
 pub(crate) mod image_io;
 mod instance;
+mod motion;
 mod portal;
 pub(crate) mod screen_text;
 mod shell;
@@ -84,6 +85,10 @@ pub struct LinuxPlatform {
     awake: awake::Inhibitor,
     /// Runs when the Keep Awake cup is clicked.
     on_awake_indicator: RefCell<Option<instance::FrameHandler>>,
+    /// Whether this is a Wayland session, where vento's X11 windows cannot
+    /// place themselves on top without the extension and the virtual island
+    /// is not offered.
+    wayland: bool,
 }
 
 impl Default for LinuxPlatform {
@@ -106,6 +111,7 @@ impl LinuxPlatform {
             on_reopen: RefCell::new(None),
             awake: awake::Inhibitor::default(),
             on_awake_indicator: RefCell::new(None),
+            wayland: is_wayland(std::env::var("XDG_SESSION_TYPE").ok().as_deref()),
         }
     }
 
@@ -132,6 +138,36 @@ fn session_bus() -> Result<gio::DBusConnection, gio::glib::Error> {
     }
     let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     Ok(BUS.get_or_init(|| bus).clone())
+}
+
+/// Whether `XDG_SESSION_TYPE` (`session`) says Wayland, in any case.
+fn is_wayland(session: Option<&str>) -> bool {
+    session.is_some_and(|s| s.eq_ignore_ascii_case("wayland"))
+}
+
+/// Whether the virtual island works: on X11 vento places its own windows
+/// and reads the front window from `_NET_ACTIVE_WINDOW`. Not on Wayland,
+/// even with the extension: `_NET_ACTIVE_WINDOW` only sees XWayland
+/// windows, so the lip would miss most bars. The extension needs a method
+/// that gives the focused window's frame first.
+fn virtual_island_supported(wayland: bool) -> bool {
+    !wayland
+}
+
+/// `monitor`'s home: no notch, the top bar as its menu bar, and `slot`
+/// only if the room the extension keeps for the island lies on it.
+fn monitor_home(monitor: shell::Monitor, slot: Option<Rect>) -> IslandHome {
+    let slot = slot.filter(|s| {
+        let f = monitor.frame;
+        s.x >= f.x && s.x + s.w <= f.x + f.w && s.y >= f.y && s.y < f.y + f.h
+    });
+    IslandHome {
+        screen: monitor.frame,
+        notch: None,
+        menu_bar_h: (monitor.work.y - monitor.frame.y).max(0.0),
+        slot,
+        tray_corner: None,
+    }
 }
 
 /// How long [`Platform::write_clipboard`] waits for GNOME to see the copy.
@@ -254,8 +290,8 @@ impl Platform for LinuxPlatform {
         terminal::open(terminal, dir, on_error)
     }
 
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
-        portal::pick_folder(start)
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
+        done(portal::pick_folder(start))
     }
 
     /// The primary screen: GNOME screens have no notch, and the top bar
@@ -263,17 +299,52 @@ impl Platform for LinuxPlatform {
     /// extension keeps for it in the top bar, when that is on this screen.
     fn pocket_home(&self) -> Option<IslandHome> {
         let primary = *self.shell.monitors().first()?;
-        let slot = self.shell.island_slot().filter(|s| {
-            let f = primary.frame;
-            s.x >= f.x && s.x + s.w <= f.x + f.w && s.y >= f.y && s.y < f.y + f.h
-        });
-        Some(IslandHome {
-            screen: primary.frame,
-            notch: None,
-            menu_bar_h: (primary.work.y - primary.frame.y).max(0.0),
-            slot,
-            tray_corner: None,
+        Some(monitor_home(primary, self.shell.island_slot()))
+    }
+
+    /// One home per screen, the primary first. The room in the top bar
+    /// belongs to the screen that holds it.
+    fn island_homes(&self) -> Vec<IslandHome> {
+        let slot = self.shell.island_slot();
+        self.shell
+            .monitors()
+            .into_iter()
+            .map(|m| monitor_home(m, slot))
+            .collect()
+    }
+
+    /// The active X11 window, in logical pixels as the extension reports
+    /// the screens. On Wayland only X11 apps' windows are seen.
+    fn front_window_frame(&self) -> Option<Rect> {
+        let (frame, x11_width) = x11::front_window()?;
+        let scale = shell::scale_between(f64::from(x11_width), self.shell.screens_width());
+        Some(Rect {
+            x: frame.x / scale,
+            y: frame.y / scale,
+            w: frame.w / scale,
+            h: frame.h / scale,
         })
+    }
+
+    fn virtual_island_supported(&self) -> bool {
+        virtual_island_supported(self.wayland)
+    }
+
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    fn quiet_time(&self) -> bool {
+        motion::quiet_time()
+    }
+
+    /// Blocks for two short calls to the extension.
+    fn reserve_island_slot(&self, on: bool) {
+        self.shell.reserve_island(on);
+    }
+
+    fn island_slot_seen(&self) -> bool {
+        self.shell.island_slot_seen()
     }
 
     /// Override-redirect, which on X11 does all three: above everything,
@@ -306,7 +377,15 @@ impl Platform for LinuxPlatform {
         window: raw_window_handle::RawWindowHandle,
         rect: Option<Rect>,
     ) -> Result<(), PlatformError> {
-        x11::set_input_rect(window, rect)
+        x11::set_input_rects(window, rect.as_slice())
+    }
+
+    fn set_input_rects(
+        &self,
+        window: raw_window_handle::RawWindowHandle,
+        rects: &[Rect],
+    ) -> Result<(), PlatformError> {
+        x11::set_input_rects(window, rects)
     }
 
     fn file_icon(&self, path: &Path, px: u32) -> Option<RgbaImage> {
@@ -443,6 +522,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_island_slot_goes_only_to_the_screen_that_holds_it() {
+        let rect = |x, y, w, h| Rect { x, y, w, h };
+        let monitor = |x| shell::Monitor {
+            frame: rect(x, 0.0, 1000.0, 800.0),
+            work: rect(x, 30.0, 1000.0, 770.0),
+            scale: 1.0,
+        };
+        let slot = Some(rect(1400.0, 0.0, 100.0, 30.0));
+        let first = monitor_home(monitor(0.0), slot);
+        let second = monitor_home(monitor(1000.0), slot);
+        assert_eq!(first.slot, None);
+        assert_eq!(second.slot, slot);
+        assert_eq!(second.screen, rect(1000.0, 0.0, 1000.0, 800.0));
+        assert_eq!(second.menu_bar_h, 30.0);
+    }
+
+    #[test]
     fn a_path_is_its_own_file_reference() {
         let dir = tempfile::tempdir().unwrap();
         let p = LinuxPlatform::new();
@@ -451,6 +547,19 @@ mod tests {
             Some(dir.path().to_path_buf())
         );
         assert_eq!(p.resolve_file_reference(&dir.path().join("gone")), None);
+    }
+
+    #[test]
+    fn the_virtual_island_needs_x11() {
+        assert!(is_wayland(Some("wayland")));
+        assert!(is_wayland(Some("Wayland")));
+        assert!(is_wayland(Some("WAYLAND")));
+        assert!(!is_wayland(Some("x11")));
+        assert!(!is_wayland(Some("tty")));
+        assert!(!is_wayland(None));
+        assert!(virtual_island_supported(false));
+        // Not on Wayland yet, extension or not.
+        assert!(!virtual_island_supported(true));
     }
 
     #[test]

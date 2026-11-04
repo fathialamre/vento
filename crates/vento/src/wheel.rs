@@ -33,7 +33,7 @@ use vento_core::pdf::looks_like_pdf;
 use vento_core::ring::{Hover, RingEvent, RingTracker};
 use vento_core::settings::Settings;
 use vento_core::share::{ShareTarget, centre_text, ring_targets};
-use vento_core::trigger::{InputSample, TriggerEvent, TriggerMachine};
+use vento_core::trigger::{IDLE_POLL, InputSample, TriggerEvent, TriggerMachine};
 use vento_platform::{Platform, RgbaImage};
 
 /// Where the wheel window waits, out of sight, while it is pre-warmed.
@@ -437,6 +437,28 @@ fn has_folder_ring(settings: &Settings) -> bool {
 /// Receives every input sample and whether a drag (of any type) is under way.
 type SampleListener = Box<dyn Fn(&InputSample, bool)>;
 
+/// What a poll tick after the warm-up does with the input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Sampling {
+    /// Samples it for the trigger, and passes it to the sample listener.
+    Trigger,
+    /// Samples it for the sample listener only: paused, the virtual
+    /// island's pill still needs the pointer for its Resume.
+    ListenerOnly,
+    /// Samples nothing; the poll stops.
+    Off,
+}
+
+/// How the poll samples while `paused` or not, with the virtual island up
+/// or not.
+fn sampling(paused: bool, island_virtual: bool) -> Sampling {
+    match (paused, island_virtual) {
+        (false, _) => Sampling::Trigger,
+        (true, true) => Sampling::ListenerOnly,
+        (true, false) => Sampling::Off,
+    }
+}
+
 /// Shows the wheel under the cursor while files are dragged and Ctrl is
 /// pressed, and reports the action a file is dropped on.
 pub struct WheelController {
@@ -455,6 +477,9 @@ pub struct WheelController {
     machine: RefCell<TriggerMachine>,
     state: RefCell<State>,
     paused: Cell<bool>,
+    /// Whether the island is the virtual one (see
+    /// [`set_island_virtual`](Self::set_island_virtual)).
+    island_virtual: Cell<bool>,
     poll: Timer,
     grace: Timer,
     batch: Timer,
@@ -514,6 +539,7 @@ impl WheelController {
                 share_targets,
             }),
             paused: Cell::new(false),
+            island_virtual: Cell::new(false),
             poll: Timer::default(),
             grace: Timer::default(),
             batch: Timer::default(),
@@ -536,19 +562,18 @@ impl WheelController {
         });
     }
 
-    /// While paused, input is not sampled and the poll stops (once the
-    /// window is pre-warmed). An open wheel is dismissed. Unpausing starts
-    /// from a fresh trigger state, so nothing seen before the pause can open
-    /// the wheel.
+    /// While paused, the trigger is not fed and the poll stops (once the
+    /// window is pre-warmed), unless the virtual island is up: the poll then
+    /// samples at its idle pace for the sample listener only. An open wheel
+    /// is dismissed. Unpausing starts from a fresh trigger state, so nothing
+    /// seen before the pause can open the wheel.
     pub fn set_paused(&self, paused: bool) {
         self.paused.set(paused);
         if paused {
             if self.machine.borrow().is_open() {
                 self.dismiss();
             }
-            if self.warmed_up() {
-                self.poll.stop();
-            }
+            self.rearm();
         } else {
             self.reset_trigger();
             if !self.poll.running() {
@@ -567,9 +592,22 @@ impl WheelController {
 
     /// Hands every input sample to `f`, with whether a drag of any type is
     /// under way, on the poll tick that took it (also while the wheel is
-    /// open). Nothing is sampled, so nothing is passed on, while paused.
+    /// open). While paused, samples go on only with the virtual island up,
+    /// as no drag.
     pub fn set_sample_listener(&self, f: SampleListener) {
         *self.sample_listener.borrow_mut() = Some(f);
+    }
+
+    /// Whether the island is the virtual one now: its paused pill's Resume
+    /// is found by the samples, so the poll keeps sampling while paused.
+    pub fn set_island_virtual(&self, on: bool) {
+        self.island_virtual.set(on);
+        if on && self.paused.get() && self.warmed_up() && !self.poll.running() {
+            // Not running: this only sets the interval `restart` uses.
+            self.poll.set_interval(IDLE_POLL);
+            self.poll.restart();
+        }
+        // Off while paused, the next tick stops the poll.
     }
 
     fn reset_trigger(&self) {
@@ -702,13 +740,17 @@ impl WheelController {
     }
 
     /// After a tick: moves the poll timer to the interval the trigger asks
-    /// for now, if that changed, or stops it while paused.
+    /// for now (the idle one while paused), if that changed, or stops it
+    /// while paused without the virtual island.
     fn rearm(&self) {
-        if self.paused.get() && self.warmed_up() {
-            self.poll.stop();
-            return;
-        }
-        let interval = self.machine.borrow().poll_interval();
+        let interval = match sampling(self.paused.get(), self.island_virtual.get()) {
+            Sampling::Off if self.warmed_up() => {
+                self.poll.stop();
+                return;
+            }
+            Sampling::ListenerOnly => IDLE_POLL,
+            _ => self.machine.borrow().poll_interval(),
+        };
         if self.poll.interval() != interval {
             self.poll.set_interval(interval);
         }
@@ -743,27 +785,42 @@ impl WheelController {
                 self.check_folders(None);
             }
             t if t < WARM_HIDE_TICK => {}
-            _ if self.paused.get() => {}
-            _ => {
-                self.collect_folder_reports();
-                let sample = self.platform.sample_input();
-                let (event, dragging) = {
-                    let mut machine = self.machine.borrow_mut();
-                    let event = machine.feed(&sample);
-                    (event, machine.drag_in_progress())
-                };
-                self.handle(event, started);
-                // After the release (the grace period and the drop batch),
-                // the ring neither opens nor closes.
-                if dragging && self.machine.borrow().is_open() {
-                    self.ring_tick(started);
-                    #[cfg(windows)]
-                    self.close_without_files(sample.cursor, started);
-                }
-                if let Some(listener) = &*self.sample_listener.borrow() {
-                    listener(&sample, dragging);
-                }
-            }
+            _ => match sampling(self.paused.get(), self.island_virtual.get()) {
+                Sampling::Off => {}
+                Sampling::ListenerOnly => self.listen_paused(),
+                Sampling::Trigger => self.sample(started),
+            },
+        }
+    }
+
+    /// Paused with the virtual island up: the pointer goes to the sample
+    /// listener (the pill's Resume), never to the trigger.
+    fn listen_paused(&self) {
+        let sample = self.platform.sample_input();
+        if let Some(listener) = &*self.sample_listener.borrow() {
+            listener(&sample, false);
+        }
+    }
+
+    /// Feeds one sample to the trigger, then to the sample listener.
+    fn sample(&self, started: Instant) {
+        self.collect_folder_reports();
+        let sample = self.platform.sample_input();
+        let (event, dragging) = {
+            let mut machine = self.machine.borrow_mut();
+            let event = machine.feed(&sample);
+            (event, machine.drag_in_progress())
+        };
+        self.handle(event, started);
+        // After the release (the grace period and the drop batch),
+        // the ring neither opens nor closes.
+        if dragging && self.machine.borrow().is_open() {
+            self.ring_tick(started);
+            #[cfg(windows)]
+            self.close_without_files(sample.cursor, started);
+        }
+        if let Some(listener) = &*self.sample_listener.borrow() {
+            listener(&sample, dragging);
         }
     }
 
@@ -1426,6 +1483,18 @@ fn window_half(ring_extent: f32, label: Vec2) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paused_poll_samples_for_the_virtual_island_only() {
+        // Not paused: the trigger, whatever the island.
+        assert_eq!(sampling(false, false), Sampling::Trigger);
+        assert_eq!(sampling(false, true), Sampling::Trigger);
+        // Paused with the virtual island up: its Resume hears the pointer,
+        // the trigger does not.
+        assert_eq!(sampling(true, true), Sampling::ListenerOnly);
+        // Paused otherwise: the poll stops, as before.
+        assert_eq!(sampling(true, false), Sampling::Off);
+    }
 
     #[test]
     fn format_cell_label() {

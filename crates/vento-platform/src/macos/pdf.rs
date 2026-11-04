@@ -145,18 +145,13 @@ impl PdfRenderer {
 }
 
 /// Asks for PDF files with the open panel, several at once, starting in
-/// `start`. Main thread only.
-pub(crate) fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+/// `start`; `done` gets them when the panel closes. Main thread only.
+pub(crate) fn pick_pdfs(start: Option<&Path>, done: Box<dyn FnOnce(Vec<PathBuf>)>) {
     let Some(mtm) = MainThreadMarker::new() else {
         log::warn!("pick_pdfs called off the main thread; ignored");
-        return Vec::new();
+        return done(Vec::new());
     };
-    super::screens::activate_app(mtm);
-    let mut dialog = rfd::FileDialog::new().add_filter("PDF", &["pdf"]);
-    if let Some(start) = start {
-        dialog = dialog.set_directory(start);
-    }
-    dialog.pick_files().unwrap_or_default()
+    super::open_panel::open(mtm, super::open_panel::Ask::Pdfs, start, done);
 }
 
 fn write_pdf(sources: &[Source], pages: &[PageRef], dst: &Path) -> Result<(), PdfError> {

@@ -12,7 +12,8 @@ use vento_core::share::{
     ShareOutcome, ShareTarget, direct_target, existing, mixes_folders_and_files,
 };
 
-use super::{Executor, in_english};
+use super::{Executor, error_notice, in_english};
+use crate::notice::Notice;
 
 /// Whether `target` is Notes and `paths` hold a folder together with files,
 /// which Notes refuses. Reads the disk, so a refusal asks it once.
@@ -63,6 +64,22 @@ pub(super) fn outcome_toast(target: ShareTarget, outcome: &ShareOutcome) -> Opti
     }
 }
 
+/// The notice, if any, for a share that ended in `outcome`: the failure
+/// [`outcome_toast`] words.
+pub(super) fn outcome_notice(target: ShareTarget, outcome: &ShareOutcome) -> Option<Notice> {
+    outcome_toast(target, outcome).map(|text| error_notice(ActionId::Share, text))
+}
+
+/// The notice for `n` dropped items that were gone by the time Share ran.
+fn left_out_notice(n: usize) -> Notice {
+    Notice::info(left_out_text(n)).with_icon(ActionId::Share)
+}
+
+/// The notice for `target`'s service refusing the dropped items.
+fn refused_notice(target: ShareTarget, notes_mix: bool) -> Notice {
+    error_notice(ActionId::Share, refused_text(target, notes_mix))
+}
+
 impl Executor {
     /// Hands the dropped items that still exist to `target`, or, for a
     /// release on the Share cell itself (`None`), to AirDrop when the machine
@@ -89,7 +106,7 @@ impl Executor {
         // does not follow it.
         let tell_left_out = || {
             if missing > 0 {
-                self.toast.show(&left_out_text(missing), None, at);
+                self.toast.notify(left_out_notice(missing), at);
             }
         };
         if target == ShareTarget::More {
@@ -105,7 +122,7 @@ impl Executor {
                 target.key(),
                 in_english(|| refused_text(target, mix))
             );
-            self.toast.show(&refused_text(target, mix), None, at);
+            self.toast.notify(refused_notice(target, mix), at);
             return;
         }
         tell_left_out();
@@ -125,8 +142,8 @@ impl Executor {
                 let Some(executor) = this.upgrade() else {
                     return;
                 };
-                if let Some(text) = outcome_toast(target, &outcome) {
-                    executor.toast.show(&text, None, at);
+                if let Some(notice) = outcome_notice(target, &outcome) {
+                    executor.toast.notify(notice, at);
                 }
             }),
         );
@@ -232,5 +249,24 @@ mod tests {
                 "تعذّرت المشاركة عبر البريد: لا يقبل هذه العناصر"
             );
         });
+    }
+
+    #[test]
+    fn share_notices_are_errors_except_the_items_left_out() {
+        use vento_core::news::Tone;
+        assert!(outcome_notice(ShareTarget::Mail, &ShareOutcome::Sent).is_none());
+        assert!(outcome_notice(ShareTarget::Mail, &ShareOutcome::Cancelled).is_none());
+        let n = outcome_notice(
+            ShareTarget::Mail,
+            &ShareOutcome::Failed("no account".into()),
+        )
+        .unwrap();
+        assert_eq!((n.tone, n.icon), (Tone::Error, Some(ActionId::Share)));
+        assert_eq!(n.text, "Couldn't share with Mail: no account");
+        let n = refused_notice(ShareTarget::Mail, false);
+        assert_eq!((n.tone, n.icon), (Tone::Error, Some(ActionId::Share)));
+        let n = left_out_notice(2);
+        assert_eq!((n.tone, n.icon), (Tone::Info, Some(ActionId::Share)));
+        assert_eq!(n.text, "Left out 2 items that no longer exist");
     }
 }

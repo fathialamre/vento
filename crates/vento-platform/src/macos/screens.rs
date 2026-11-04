@@ -6,6 +6,13 @@ use objc2::rc::Retained;
 use objc2::runtime::NSObject;
 use objc2::{AllocAnyThread, MainThreadMarker, define_class, msg_send, sel};
 use objc2_app_kit::{NSApplication, NSApplicationDidChangeScreenParametersNotification, NSScreen};
+use objc2_core_foundation::{
+    CFArray, CFDictionary, CFNumber, CFRetained, CFString, CFType, CGRect,
+};
+use objc2_core_graphics::{
+    CGRectMakeWithDictionaryRepresentation, CGWindowListCopyWindowInfo, CGWindowListOption,
+    kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
+};
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSObjectProtocol};
 use vento_core::geometry::{Point, Rect};
 
@@ -189,7 +196,26 @@ pub(super) fn pocket_home() -> Option<IslandHome> {
         .iter()
         .find(|s| s.safeAreaInsets().top > 0.0)
         .or_else(|| all.firstObject())?;
+    Some(home_of(&screen, primary_height(mtm)))
+}
+
+/// Every screen's home, the primary one first, in the same coordinates as
+/// [`pocket_home`].
+pub(super) fn island_homes() -> Vec<IslandHome> {
+    let Some(mtm) = MainThreadMarker::new() else {
+        log::warn!("island_homes() called off the main thread; returning none");
+        return Vec::new();
+    };
     let primary_h = primary_height(mtm);
+    NSScreen::screens(mtm)
+        .iter()
+        .map(|s| home_of(&s, primary_h))
+        .collect()
+}
+
+/// `screen`'s notch and menu-bar height, in top-left-origin logical
+/// coordinates; `primary_h` is the primary screen's height.
+fn home_of(screen: &NSScreen, primary_h: f64) -> IslandHome {
     let flip = |r: objc2_foundation::NSRect| {
         flip_rect(
             primary_h,
@@ -211,13 +237,65 @@ pub(super) fn pocket_home() -> Option<IslandHome> {
         flip(screen.auxiliaryTopRightArea()),
         screen.safeAreaInsets().top,
     );
-    Some(IslandHome {
+    IslandHome {
         screen: screen_rect,
         notch,
         menu_bar_h,
         slot: None,
         tray_corner: None,
-    })
+    }
+}
+
+/// Whether a window at `layer`, of the process `pid`, is an app's normal
+/// window, not vento's (`ours`) nor the menu bar, the Dock, a panel or the
+/// desktop, which all sit at other layers.
+fn counts_as_front(layer: i64, pid: i64, ours: i64) -> bool {
+    layer == 0 && pid != ours
+}
+
+/// The frame of the frontmost normal window of another app, in top-left
+/// global points: `kCGWindowBounds` is already in those. Reads no window
+/// contents, so needs no Screen Recording permission. Any thread.
+pub(super) fn front_window_frame() -> Option<Rect> {
+    let options =
+        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements;
+    let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID)?;
+    // SAFETY: the window list is an array of dictionaries keyed by strings.
+    let list =
+        unsafe { CFRetained::cast_unchecked::<CFArray<CFDictionary<CFString, CFType>>>(list) };
+    // SAFETY: the keys are immutable constants of CoreGraphics.
+    let (layer_key, pid_key, alpha_key, bounds_key) = unsafe {
+        (
+            kCGWindowLayer,
+            kCGWindowOwnerPID,
+            kCGWindowAlpha,
+            kCGWindowBounds,
+        )
+    };
+    let ours = i64::from(std::process::id());
+    let frame = |window: &CFDictionary<CFString, CFType>| -> Option<Rect> {
+        let number = |key| window.get(key)?.downcast::<CFNumber>().ok();
+        let layer = number(layer_key)?.as_i64()?;
+        let pid = number(pid_key)?.as_i64()?;
+        // Some apps keep invisible windows on screen.
+        let alpha = number(alpha_key).and_then(|a| a.as_f64()).unwrap_or(1.0);
+        if !counts_as_front(layer, pid, ours) || alpha <= 0.0 {
+            return None;
+        }
+        let bounds = window.get(bounds_key)?.downcast::<CFDictionary>().ok()?;
+        let mut r = CGRect::default();
+        // SAFETY: `bounds` is the dictionary form of a rect; `r` is a live
+        // local.
+        let read = unsafe { CGRectMakeWithDictionaryRepresentation(Some(&bounds), &mut r) };
+        (read && r.size.width > 0.0 && r.size.height > 0.0).then_some(Rect {
+            x: r.origin.x,
+            y: r.origin.y,
+            w: r.size.width,
+            h: r.size.height,
+        })
+    };
+    // Front to back: the first window that counts is the front one.
+    list.iter().find_map(|w| frame(&w))
 }
 
 /// Bring the app to the front so a modal panel can take focus.
@@ -236,6 +314,21 @@ pub(super) fn activate_app(mtm: MainThreadMarker) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_other_apps_normal_windows_are_front_windows() {
+        assert!(counts_as_front(0, 501, 77));
+        assert!(!counts_as_front(0, 77, 77), "vento's own window");
+        assert!(!counts_as_front(25, 501, 77), "the menu bar or a panel");
+        assert!(!counts_as_front(-2147483623, 501, 77), "the desktop");
+    }
+
+    #[test]
+    fn the_front_window_has_a_size_when_there_is_one() {
+        if let Some(f) = front_window_frame() {
+            assert!(f.w > 0.0 && f.h > 0.0);
+        }
+    }
 
     #[test]
     fn primary_screen_stays_at_origin() {

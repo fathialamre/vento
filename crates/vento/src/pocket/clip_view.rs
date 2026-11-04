@@ -423,6 +423,11 @@ impl PocketController {
         if self.card.is_up() {
             return Panel::Card;
         }
+        if self.activity.get() {
+            return Panel::Activity {
+                rows: self.activity_rows.borrow().len(),
+            };
+        }
         match self.shown_view() {
             View::Clipboard => Panel::Clipboard,
             View::Screenshots => Panel::Screenshots,

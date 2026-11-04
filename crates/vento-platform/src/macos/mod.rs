@@ -31,7 +31,9 @@ mod image_io;
 mod info;
 mod input;
 mod menu;
+mod motion;
 mod notify;
+mod open_panel;
 mod overlay;
 mod patch;
 mod pdf;
@@ -123,6 +125,10 @@ impl Platform for MacPlatform {
         input::sample(&self.drag)
     }
 
+    fn cursor(&self) -> Option<(f64, f64)> {
+        input::cursor().map(|p| (p.x, p.y))
+    }
+
     fn drag_paths(&self) -> Vec<PathBuf> {
         input::drag_paths()
     }
@@ -184,21 +190,36 @@ impl Platform for MacPlatform {
         terminal::open(terminal, dir, on_error)
     }
 
-    fn pick_folder(&self, start: Option<&Path>) -> Option<PathBuf> {
+    fn pick_folder(&self, start: Option<&Path>, done: Box<dyn FnOnce(Option<PathBuf>)>) {
         let Some(mtm) = MainThreadMarker::new() else {
             log::warn!("pick_folder called off the main thread; ignored");
-            return None;
+            return done(None);
         };
-        screens::activate_app(mtm);
-        let mut dialog = rfd::FileDialog::new();
-        if let Some(start) = start {
-            dialog = dialog.set_directory(start);
-        }
-        dialog.pick_folder()
+        open_panel::open(mtm, open_panel::Ask::Folder, start, move |paths| {
+            done(paths.into_iter().next())
+        });
     }
 
     fn pocket_home(&self) -> Option<IslandHome> {
         screens::pocket_home()
+    }
+
+    fn island_homes(&self) -> Vec<IslandHome> {
+        screens::island_homes()
+    }
+
+    /// The first normal window, front to back, of another app: vento's own
+    /// windows and the menu bar, the Dock and panels sit at other layers.
+    fn front_window_frame(&self) -> Option<Rect> {
+        screens::front_window_frame()
+    }
+
+    fn reduce_motion(&self) -> bool {
+        motion::reduce_motion()
+    }
+
+    fn power_saving(&self) -> bool {
+        motion::power_saving()
     }
 
     fn make_overlay(

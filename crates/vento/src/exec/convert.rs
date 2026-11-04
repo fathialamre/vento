@@ -17,6 +17,21 @@ use vento_platform::{probe_image, write_image};
 use super::archive::{cancelled_text, copy_quarantine, failed_with_reason, show_progress};
 use super::{Executor, LastOp, action_error_text, in_english, only_name};
 use crate::archive_ui::Verb;
+use crate::notice::{Notice, next_job_id};
+
+/// The notice for a finished Convert job, `text` being what
+/// [`convert_toast_text`] said. Nothing made is a failure, unless the job
+/// was cancelled or every image already was in the format.
+pub(super) fn convert_done_notice(outcome: &ConvertOutcome, text: String) -> Notice {
+    let notice = if !outcome.made.is_empty() {
+        Notice::done(text)
+    } else if outcome.failed.is_empty() && (outcome.cancelled || outcome.already > 0) {
+        Notice::info(text)
+    } else {
+        Notice::error(text)
+    };
+    notice.with_icon(ActionId::Convert)
+}
 
 /// Toast text for a finished Convert job. Nothing made and nothing failed
 /// means the job was cancelled, every image already was in the format, or
@@ -125,15 +140,16 @@ impl ImageCodec for SystemCodec {
     }
 }
 
-/// The worker's half of Convert: has the progress window follow the job and
-/// runs it.
+/// The worker's half of Convert: has the island or the progress window
+/// follow the job (`job`) and runs it.
 fn convert_job(
     paths: &[PathBuf],
     format: ImageFormat,
     progress: &Arc<Progress>,
+    job: u64,
     at: Point,
 ) -> ConvertOutcome {
-    show_progress(progress, Verb::Converting, at);
+    show_progress(progress, Verb::Converting, job, at);
     convert_batch(paths, format, &SystemCodec, progress, &copy_quarantine())
 }
 
@@ -146,11 +162,13 @@ impl Executor {
         }
         let progress = Progress::new();
         let cancel = Some(Arc::clone(&progress));
+        let job = next_job_id();
         self.spawn_file_job(
             ActionId::Convert,
-            move || convert_job(&paths, format, &progress, at),
+            move || convert_job(&paths, format, &progress, job, at),
             move |executor, outcome| executor.convert_finished(outcome, at),
             cancel,
+            Some(job),
             at,
         );
     }
@@ -163,7 +181,7 @@ impl Executor {
                 in_english(|| error.to_string())
             );
         }
-        let text = convert_toast_text(&outcome);
+        let notice = convert_done_notice(&outcome, convert_toast_text(&outcome));
         info!("convert: {}", in_english(|| convert_toast_text(&outcome)));
         let Some(dest) = outcome
             .made
@@ -171,7 +189,7 @@ impl Executor {
             .and_then(|m| m.output.parent())
             .map(Path::to_path_buf)
         else {
-            self.toast.show(&text, None, at);
+            self.toast.notify(notice, at);
             return;
         };
         let record = CopyRecord {
@@ -182,7 +200,7 @@ impl Executor {
                 .map(|m| (m.source, m.output, m.fingerprint))
                 .collect(),
         };
-        self.record_undo(LastOp::Convert(record), text, at);
+        self.record_undo(LastOp::Convert(record), notice.text, at);
     }
 }
 
@@ -379,5 +397,27 @@ mod tests {
             o.not_images = 2;
             assert_eq!(convert_toast_text(&o), "تعذّر التحويل: لا توجد صور");
         });
+    }
+
+    #[test]
+    fn convert_notices_follow_how_the_job_ended() {
+        use vento_core::news::Tone;
+        let tone = |o: &ConvertOutcome| {
+            let n = convert_done_notice(o, convert_toast_text(o));
+            assert_eq!(n.icon, Some(ActionId::Convert));
+            assert!(n.button.is_none());
+            n.tone
+        };
+        assert_eq!(tone(&outcome(1, many(1))), Tone::Done);
+        let mut o = outcome(2, vec![]);
+        o.cancelled = true;
+        assert_eq!(tone(&o), Tone::Info);
+        let mut o = outcome(2, vec![]);
+        o.already = 2;
+        assert_eq!(tone(&o), Tone::Info);
+        let mut o = outcome(2, vec![]);
+        o.failed = vec![denied("/d/a.png")];
+        assert_eq!(tone(&o), Tone::Error);
+        assert_eq!(tone(&outcome(0, vec![])), Tone::Error);
     }
 }
