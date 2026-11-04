@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vento: a wheel of quick actions under your drag</title>
-<meta name="description" content="Start dragging a file, press Ctrl, and a small wheel of actions opens under the pointer. Free and open source for macOS.">
+<meta name="description" content="Start dragging a file, press Ctrl, and a small wheel of actions opens under the pointer. Free and open source for macOS, Windows and Linux.">
 <meta property="og:title" content="Vento">
 <meta property="og:description" content="A wheel of quick actions that opens right under the file you are dragging.">
 <meta property="og:image" content="assets/social-card.png">
@@ -16,13 +16,25 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="style.css">
+<script>
+// Pick the visitor's system before anything draws; the OS buttons change it.
+(() => {
+  let os = 'mac';
+  try { os = localStorage.getItem('vento-os') || ''; } catch (e) {}
+  if (!/^(mac|win|lin)$/.test(os)) {
+    const p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent).toLowerCase();
+    os = p.includes('win') ? 'win' : /linux|x11|cros/.test(p) && !/android/.test(navigator.userAgent.toLowerCase()) ? 'lin' : 'mac';
+  }
+  document.documentElement.dataset.os = os;
+})();
+</script>
 </head>
 <body>
 
 <header class="in">
   <nav class="k">
     <a class="brand" href="./"><img src="assets/icon.png" alt="">vento/</a>
-    <span class="links"><a href="#actions">actions</a><a class="wide" href="#island">island</a><a class="wide" href="#settings">settings</a><a href="#install">install</a><a class="wide" href="https://github.com/fathialamre/vento/blob/main/CHANGELOG.md">changelog</a><a href="https://github.com/fathialamre/vento">github ↗</a></span>
+    <span class="links"><a href="#actions">actions</a><a class="wide" href="#island">island</a><a class="wide" href="#virtual">virtual island</a><a class="wide" href="#settings">settings</a><a class="wide" href="#platforms">platforms</a><a href="#install">install</a><a class="wide" href="https://github.com/fathialamre/vento/blob/main/CHANGELOG.md">changelog</a><a href="https://github.com/fathialamre/vento">github ↗</a></span>
   </nav>
 
   <div class="hero">
@@ -34,12 +46,18 @@
     <h1 class="disp">Your drag just got a menu.</h1>
     <p class="lead">Start dragging a file, press Ctrl, and a small wheel opens under the pointer. Let go over an action. Let go anywhere else and the drop works as it always did.</p>
     <div class="cta">
-      <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download for Mac</span></a>
-      <span class="k req">macOS 13+ · Apple Silicon · free and open source</span>
+      <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download</span></a>
+      <span class="k req"><span class="only-mac">macOS 13+ · Apple Silicon</span><span class="only-win">Windows 10 and 11 · x64 and ARM64</span><span class="only-lin">GNOME on Wayland · Ubuntu</span> · free and open source</span>
     </div>
   </div>
 
-  <div class="scene big" data-scene="copy" role="img" aria-label="Dragging Quarterly Report.pdf in Finder, pressing Ctrl to open the Vento wheel, and releasing on Copy"></div>
+  <div class="os-pick" role="group" aria-label="Show Vento on">
+    <button type="button" data-os="mac"><i class="ti ti-brand-apple"></i>macOS</button>
+    <button type="button" data-os="win"><i class="ti ti-brand-windows"></i>Windows</button>
+    <button type="button" data-os="lin"><i class="ti ti-brand-ubuntu"></i>Linux</button>
+  </div>
+
+  <div class="scene big" data-scene="copy" role="img" aria-label="Dragging Quarterly Report.pdf in the file manager, pressing Ctrl to open the Vento wheel, and releasing on Copy"></div>
 </header>
 
 <main>
@@ -96,7 +114,7 @@
 <section id="island"><div class="in">
   <p class="eyebrow">// island</p>
   <h2 class="disp">What you copy and capture, one shortcut away.</h2>
-  <p class="lead">The island under the menu bar holds the Pocket, your clipboard history and your latest screenshots, a tab apart. The Vento icon beside it opens the Quick panel.</p>
+  <p class="lead">The island at the top of the screen holds the Pocket, your clipboard history and your latest screenshots, a tab apart. The Vento icon in the menu bar, the taskbar or the top bar opens the Quick panel.</p>
 
   <div class="row">
     <div class="txt"><span class="key sm">⌃⌥V</span><h3>Clipboard history</h3><p>Copy several things, paste them one by one. Click a copy to put it back exactly as it was, pin the ones you keep reaching for, and filter by text, links, pictures or files.</p></div>
@@ -109,7 +127,7 @@
   </div>
 
   <div class="row">
-    <div class="txt"><span class="key sm">keep awake</span><h3>Keep the Mac awake</h3><p>Click the Vento icon in the menu bar and pick how long: 15 minutes, a few hours, until a time you choose, or until you stop it. A small cup sits beside the icon while it runs, and you decide whether the screen may still turn off.</p></div>
+    <div class="txt"><span class="key sm">keep awake</span><h3>Keep the computer awake</h3><p>Click the Vento icon and pick how long: 15 minutes, a few hours, until a time you choose, or until you stop it. A small cup sits beside the icon while it runs, and you decide whether the screen may still turn off.</p></div>
     <div class="plate menu">
       <div class="mb"><i class="ti ti-coffee cup"></i><i class="ti ti-hexagons vi"></i><i class="ti ti-wifi"></i><i class="ti ti-battery-3"></i><span>Sun 9:41</span></div>
       <img src="assets/quick-awake.png" alt="Vento's Quick panel under the menu bar icon: Keep Awake is on for 47 more minutes, with times from 15 minutes to 2 hours, Until stopped, Until… and Stop" loading="lazy">
@@ -117,10 +135,45 @@
   </div>
 </div></section>
 
+<section id="virtual"><div class="in">
+  <p class="eyebrow">// virtual island</p>
+  <h2 class="disp">No notch? Vento brings its own island.</h2>
+  <p class="lead">On Windows and on Mac screens without a notch, the island sits on the top edge as a small glass pill. Clicks go straight through it to the window below. Push the pointer against the top edge and it opens.</p>
+
+  <div class="scene big" data-scene="virtual" role="img" aria-label="The virtual island resting as a glass pill over a browser, playing a shimmer, showing Compressing Photos with a Cancel button and then Compressed to Photos.zip with Show, opening when the pointer pushes against the top edge, turning into a circle and sliding left and right"></div>
+
+  <div class="row">
+    <div class="txt"><span class="key sm">news</span><h3>It tells you how a job is going</h3><p>Copy, move, zip, convert or rename, and the island wakes up: what is running and how far along it is, with Cancel. Then the result, with one button like Show or Undo, and it fades back to glass. On a Mac with a notch, the notch island does the same.</p></div>
+    <div class="plate pills">
+      <img src="assets/vi-rest.png" alt="Resting pill: Pocket with 3 items">
+      <img class="c" src="assets/vi-circle.png" alt="Resting circle with a badge of 3">
+      <img src="assets/vi-work.png" alt="Compressing Photos, 40%, with Cancel">
+      <img src="assets/vi-done.png" alt="Compressed to Photos.zip, with Show">
+      <img src="assets/vi-copied.png" alt="Copied Quarterly Report.pdf">
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="txt"><span class="key sm">settings › island</span><h3>Shape it, place it, tone it down</h3><p>Pick the Island or the Circle. Put it on the left, in the middle or on the right, or drag the open island's top bar anywhere along the edge, and let each screen keep its own place. Glass sets how see-through it rests. Choose one of five shimmers, or none, and how often it plays. Reduce motion in your system turns them off.</p></div>
+    <div class="plate"><div class="mac" style="max-width:640px"><div class="bar"><i></i><i></i><i></i><span>Vento Settings</span></div><img src="assets/island-settings.png" alt="Settings, Island page: Virtual island chosen, the Island and Circle shapes, Left, Centre and Right, A place for each screen, Glass at 55% with Ghost, Glass and Solid, five shimmers and Off, How often, Only while the Pocket holds items, and Follow Reduce motion" loading="lazy"></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><i class="ti ti-circle-dot"></i><b>Island or Circle</b><span>A short pill, or a small disc that only stretches to say something.</span></div>
+    <div class="card"><i class="ti ti-arrows-horizontal"></i><b>Left, Centre, Right</b><span>Or drag it to a spot of your own, one place per screen.</span></div>
+    <div class="card"><i class="ti ti-blur"></i><b>Glass</b><span>From Ghost to Solid, so it never covers what is under it.</span></div>
+    <div class="card"><i class="ti ti-sparkles"></i><b>Five shimmers</b><span>Sweep, Edge run, Halo, Sparkle and Liquid, rarely or often, or Off.</span></div>
+    <div class="card"><i class="ti ti-player-stop"></i><b>Cancel from the island</b><span>A long zip or convert shows its progress and stops with one click.</span></div>
+    <div class="card"><i class="ti ti-pointer-off"></i><b>Out of your way</b><span>The resting island takes no clicks, even over a tab bar.</span></div>
+    <div class="card"><i class="ti ti-coffee"></i><b>At a glance</b><span>Resting, it shows what the Pocket holds and how long Keep Awake has left.</span></div>
+    <div class="card"><i class="ti ti-device-laptop"></i><b>On the notch too</b><span>On a Mac with a notch, the island there shows jobs and shimmers on its wings.</span></div>
+  </div>
+</div></section>
+
 <section id="settings"><div class="in">
   <p class="eyebrow">// settings</p>
   <h2 class="disp">Make the wheel yours.</h2>
-  <p class="lead">Pick a theme, order the actions, choose your folders, set the shortcuts. One window, no account. Click a page to look around.</p>
+  <p class="lead">Pick a theme, order the actions, choose your folders, set the shortcuts, shape the island. One window, no account. Click a page to look around.</p>
   <div class="plate settings">
     <div class="mac" data-settings><div class="bar"><i></i><i></i><i></i><span>Vento Settings</span></div>
       <div class="pages">
@@ -129,21 +182,65 @@
       </div>
     </div>
   </div>
-  <div class="priv"><span><i class="ti ti-check"></i>no Accessibility</span><span><i class="ti ti-check"></i>no Input Monitoring</span><span><i class="ti ti-check"></i>no account</span><span><i class="ti ti-check"></i>open source</span></div>
+  <div class="priv"><span class="only-mac"><i class="ti ti-check"></i>no Accessibility</span><span class="only-mac"><i class="ti ti-check"></i>no Input Monitoring</span><span class="only-win"><i class="ti ti-check"></i>no administrator rights</span><span><i class="ti ti-check"></i>no account</span><span><i class="ti ti-check"></i>open source</span></div>
+</div></section>
+
+<section id="platforms"><div class="in">
+  <p class="eyebrow">// platforms</p>
+  <h2 class="disp">Mac, Windows and Linux.</h2>
+  <p class="lead">The same wheel, Pocket and island on all three, built from one code base. A few pieces are still on their way to Windows and Linux.</p>
+  <div class="oses">
+    <div><h3><i class="ti ti-brand-apple"></i>macOS</h3><p class="req">macOS 13+ · Apple Silicon</p><ul>
+      <li>The island by the notch, or the virtual island on screens without one</li>
+      <li>Every action, Copy from screen and Share included</li>
+      <li>Updates itself</li>
+      <li>On an Intel Mac, build it yourself</li>
+    </ul></div>
+    <div><h3><i class="ti ti-brand-windows"></i>Windows</h3><p class="req">Windows 10 and 11 · x64 and ARM64</p><ul>
+      <li>The virtual island on the top edge, or the island by the clock</li>
+      <li>Installs for you alone, no administrator rights</li>
+      <li>Updates itself</li>
+      <li class="not">Not yet: Copy from screen, Share, HEIC in Convert</li>
+    </ul></div>
+    <div><h3><i class="ti ti-brand-ubuntu"></i>Linux</h3><p class="req">GNOME on Wayland · Ubuntu</p><ul>
+      <li>The island in GNOME's top bar, beside the clock</li>
+      <li>A small GNOME Shell extension shows Vento your drags</li>
+      <li>Installs with one script</li>
+      <li class="not">Not yet: Copy from screen, the virtual island</li>
+    </ul></div>
+  </div>
 </div></section>
 
 <section id="install"><div class="in">
   <p class="eyebrow">// install</p>
+  <div class="only-mac">
   <h2 class="disp">First launch takes a minute, once.</h2>
   <p class="lead">Vento isn't signed by Apple yet, so macOS warns you the first time you open it. Here's the way past it.</p>
   <div class="steps">
-    <div><p class="k"><span class="key sm">1</span>&nbsp; Open Vento, then click Done</p><div class="plate"><img src="assets/gatekeeper-15-blocked.png" alt="macOS dialog saying Vento could not be verified"></div></div>
-    <div><p class="k"><span class="key sm">2</span>&nbsp; Privacy and Security → Open Anyway</p><div class="plate"><img src="assets/gatekeeper-15-open-anyway.png" alt="Privacy and Security settings: Vento was blocked, with an Open Anyway button"></div></div>
+    <div><p class="k"><span class="key sm">1</span>&nbsp; Open Vento, then click Done</p><div class="plate"><img src="assets/gatekeeper-15-blocked.png" alt="macOS dialog saying Vento could not be verified" loading="lazy"></div></div>
+    <div><p class="k"><span class="key sm">2</span>&nbsp; Privacy and Security → Open Anyway</p><div class="plate"><img src="assets/gatekeeper-15-open-anyway.png" alt="Privacy and Security settings: Vento was blocked, with an Open Anyway button" loading="lazy"></div></div>
   </div>
   <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">On macOS 13 or 14: Control-click Vento.app in Applications, choose Open, then Open again.</p>
+  </div>
+  <div class="only-win">
+  <h2 class="disp">One setup, no administrator.</h2>
+  <p class="lead">The setup installs Vento for you alone, on x64 and ARM64 PCs alike. Vento then sits in the taskbar's corner and keeps itself up to date.</p>
+  <p class="k" data-no-setup style="font-size:13px;color:var(--muted);margin:20px 0 0">The first Windows setup comes with the next release. Until then, <a href="https://github.com/fathialamre/vento/blob/main/BUILDING.md#windows">build it from source</a>.</p>
+  <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">If Windows says it protected your PC, click More info, then Run anyway.</p>
+  </div>
+  <div class="only-lin">
+  <h2 class="disp">One script, then log in again.</h2>
+  <p class="lead">Vento runs on GNOME on Wayland, with a small GNOME Shell extension that tells it about your drags. The install script puts both in place for your user and starts Vento at every login.</p>
+<pre class="term"><span class="c"># the packages it builds with</span>
+sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libxkbcommon-x11-0
+git clone https://github.com/fathialamre/vento.git && cd vento
+scripts/install-linux.sh
+<span class="c"># log out and back in once, so GNOME loads the extension</span></pre>
+  <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">Needs Rust and about 7 GB of memory for the release build. <code>scripts/install-linux.sh --uninstall</code> removes it all.</p>
+  </div>
   <div class="after">
-    <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download for Mac</span></a>
-    <span class="k req" style="font-size:13px;color:var(--muted)">On an Intel Mac? <a href="https://github.com/fathialamre/vento/blob/main/BUILDING.md">Build it yourself</a>.</span>
+    <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download</span></a>
+    <span class="k req" style="font-size:13px;color:var(--muted)"><span class="only-mac">On an Intel Mac? <a href="https://github.com/fathialamre/vento/blob/main/BUILDING.md">Build it yourself</a>.</span><span class="only-win only-lin"><a href="https://github.com/fathialamre/vento/blob/main/BUILDING.md">Building from source</a></span></span>
   </div>
 </div></section>
 </main>
@@ -166,6 +263,7 @@
     ['wheel', 'Wheel: layout and the actions, each with a switch'],
     ['move', 'Move: pinned and recent folders'],
     ['pocket', 'Pocket: shortcut and what happens after a drop'],
+    ['island', 'Island: virtual or classic, shape, place, glass and shimmer'],
     ['clipboard', 'Clipboard: history on or off and its shortcut'],
     ['screen', 'Copy from screen: its shortcut'],
     ['screenshots', 'Screenshots: the island tab, the card and the folder'],
@@ -194,18 +292,37 @@
 })();
 </script>
 <script>
-// Point the download buttons at the macOS zip of the latest release.
-fetch('https://api.github.com/repos/fathialamre/vento/releases/latest')
-  .then(r => r.ok ? r.json() : Promise.reject(r.status))
-  .then(rel => {
-    const zip = (rel.assets || []).find(a => /macos-arm64\.zip$/.test(a.name));
-    if (!zip) return;
+// The OS buttons switch every system-specific bit of the page; the download
+// buttons point at that system's file in the latest release, and on Linux,
+// or before a Windows setup is published, at the build instructions.
+(() => {
+  const root = document.documentElement;
+  const BUILD = 'https://github.com/fathialamre/vento/blob/main/BUILDING.md';
+  const files = { mac: /macos-arm64\.zip$/, win: /windows-setup\.exe$/, lin: /linux/ };
+  const label = { mac: 'Download for Mac', win: 'Download for Windows', lin: 'Install on Linux' };
+  let assets = [];
+  const update = () => {
+    const os = root.dataset.os;
+    const file = assets.find(a => files[os].test(a.name));
     document.querySelectorAll('[data-download]').forEach(a => {
-      a.href = zip.browser_download_url;
-      a.querySelector('span').textContent = zip.name;
+      a.href = file ? file.browser_download_url : os === 'mac' ? 'https://github.com/fathialamre/vento/releases/latest' : BUILD + (os === 'win' ? '#windows' : '#linux');
+      a.querySelector('span').textContent = file ? file.name : os === 'win' && !file ? 'Build for Windows' : label[os];
+      a.querySelector('i').className = 'ti ' + (file || os === 'mac' ? 'ti-download' : 'ti-code');
     });
-  })
-  .catch(() => {});
+    document.querySelectorAll('[data-no-setup]').forEach(p => { p.hidden = assets.some(a => files.win.test(a.name)); });
+    document.querySelectorAll('.os-pick button').forEach(b => b.setAttribute('aria-pressed', b.dataset.os === os));
+  };
+  document.querySelectorAll('.os-pick button').forEach(b => b.addEventListener('click', () => {
+    root.dataset.os = b.dataset.os;
+    try { localStorage.setItem('vento-os', b.dataset.os); } catch (e) {}
+    update();
+  }));
+  update();
+  fetch('https://api.github.com/repos/fathialamre/vento/releases/latest')
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(rel => { assets = rel.assets || []; update(); })
+    .catch(() => {});
+})();
 </script>
 </body>
 </html>

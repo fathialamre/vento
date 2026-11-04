@@ -1,9 +1,15 @@
-// Animated product scenes: a drawn Finder window, the Vento wheel and the island.
+// Animated product scenes: a drawn file manager window, the Vento wheel and the island.
 // Each [data-scene] element plays its phases in a loop while it is on screen.
+// Every scene carries the macOS, Windows and Linux chrome at once; the
+// page's data-os picks which one shows (.only-mac, .only-win, .only-lin).
 
 const FOLDER = '<svg viewBox="0 0 64 50"><path d="M3 7a4 4 0 0 1 4-4h15l5 5h30a4 4 0 0 1 4 4v31a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" fill="#7DC0FA"/><path d="M3 15a3 3 0 0 1 3-3h52a3 3 0 0 1 3 3v28a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" fill="#3E9BF2"/></svg>';
 const doc = (tag, color) => `<svg viewBox="0 0 44 54"><path d="M5 1.5h24l13 13V50a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 50V4A2.5 2.5 0 0 1 5 1.5z" fill="#fff" stroke="#D3D8E1"/><path d="M29 1.5V12a2.5 2.5 0 0 0 2.5 2.5H42" fill="#EEF1F6" stroke="#D3D8E1"/><text x="22" y="40" font-size="8" font-weight="700" text-anchor="middle" fill="${color}" font-family="Inter,sans-serif">${tag}</text></svg>`;
-const ICON = { folder: FOLDER, txt: doc('TXT', '#8A93A5'), zip: doc('ZIP', '#8A93A5'), pdf: doc('PDF', '#E5484D') };
+// Explorer's manila folder and GNOME's folder, shown in place of the Finder one.
+const FOLDER_WIN = '<svg viewBox="0 0 64 50"><path d="M3 6a3 3 0 0 1 3-3h17l5 5h30a3 3 0 0 1 3 3v33a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#E8A92E"/><path d="M3 14a3 3 0 0 1 3-3h52a3 3 0 0 1 3 3v30a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#FFC83D"/></svg>';
+const FOLDER_LIN = '<svg viewBox="0 0 64 50"><path d="M3 7a4 4 0 0 1 4-4h14l5 5h31a4 4 0 0 1 4 4v31a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" fill="#438DE6"/><path d="M3 16a3 3 0 0 1 3-3h52a3 3 0 0 1 3 3v27a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" fill="#62A0EA"/><path d="M3 16a3 3 0 0 1 3-3h52a3 3 0 0 1 3 3v2H3z" fill="#99C1F1"/></svg>';
+const folder = `<span class="only-mac">${FOLDER}</span><span class="only-win">${FOLDER_WIN}</span><span class="only-lin">${FOLDER_LIN}</span>`;
+const ICON = { folder, txt: doc('TXT', '#8A93A5'), zip: doc('ZIP', '#8A93A5'), pdf: doc('PDF', '#E5484D') };
 const CURSOR = '<svg width="22" height="30" viewBox="0 0 22 30"><path d="M2 2v21l5.6-5.2 3.7 8.6 3.8-1.6-3.7-8.5H19z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
 const HEX = '<svg viewBox="0 0 100 87"><polygon points="27,5 73,5 95,43.5 73,82 27,82 5,43.5"/></svg>';
 
@@ -25,7 +31,7 @@ const SCENES = {
   move: [{
     src: 5, path: ['Move', 'Projects'],
     ring: { at: 'Move', items: [['Photos', 'UR'], ['Projects', 'LR'], ['Clients', 'B']] },
-    hud: ['Move to Projects', '~/Desktop/vento-demo/Projects'],
+    hud: ['Move to Projects', '<span class="only-mac only-lin">~/Desktop/vento-demo/Projects</span><span class="only-win">C:\\Users\\you\\Desktop\\vento-demo\\Projects</span>'],
     toast: 'Moved 1 item to Projects', undo: true,
     drop: files => { files[5] = null; },
   }],
@@ -46,14 +52,21 @@ const itemX = i => 168 + i * 108;
 function build(el, phases) {
   const pocket = phases.some(p => p.island);
   el.innerHTML = `<div class="stage">
-    <div class="mbar"><span><i class="ti ti-brand-apple"></i><b>Finder</b>File&nbsp; Edit&nbsp; View&nbsp; Go</span><span><i class="ti ti-hexagons"></i><i class="ti ti-wifi"></i><i class="ti ti-battery-3"></i>Sun 9:41</span></div>
+    <div class="mbar only-mac"><span><i class="ti ti-brand-apple"></i><b>Finder</b>File&nbsp; Edit&nbsp; View&nbsp; Go</span><span><i class="ti ti-hexagons"></i><i class="ti ti-wifi"></i><i class="ti ti-battery-3"></i>Sun 9:41</span></div>
+    <div class="gbar only-lin"><span class="ws"><i></i><i></i><i></i></span><span class="clock">Sun 9:41</span><span class="tray"><i class="ti ti-hexagons"></i><i class="ti ti-wifi"></i><i class="ti ti-volume"></i><i class="ti ti-battery-3"></i></span></div>
+    <div class="taskbar only-win"><span class="apps"><i class="ti ti-layout-grid start"></i><i class="ti ti-search"></i><i class="ti ti-folder on"></i><i class="ti ti-world"></i><i class="ti ti-mail"></i></span><span class="tray"><i class="ti ti-chevron-up"></i><i class="ti ti-hexagons"></i><i class="ti ti-wifi"></i><i class="ti ti-volume"></i><span class="clock">9:41<br>11/4/2026</span></span></div>
     ${pocket ? `<div class="island"><div class="mini"><i class="ti ti-stack-2"></i><span>1</span></div><div class="full"><div class="chip"></div><span class="hint">Drag it out when<br>you get there</span><div class="badge"><i class="ti ti-hand-grab"></i><b>1</b></div></div></div>` : ''}
-    <div class="win"><div class="tb"><i class="d r"></i><i class="d y"></i><i class="d g"></i><span class="nav2"><i class="ti ti-chevron-left"></i><i class="ti ti-chevron-right"></i></span>vento-demo</div></div>
+    <div class="win">
+      <div class="tb only-mac"><i class="d r"></i><i class="d y"></i><i class="d g"></i><span class="nav2"><i class="ti ti-chevron-left"></i><i class="ti ti-chevron-right"></i></span>vento-demo</div>
+      <div class="tb wtb only-win"><span class="tab">${FOLDER_WIN}vento-demo<i class="ti ti-x"></i></span><i class="ti ti-plus add"></i><span class="caps"><i class="ti ti-minus"></i><i class="ti ti-square"></i><i class="ti ti-x"></i></span></div>
+      <div class="addr only-win"><i class="ti ti-arrow-left"></i><i class="ti ti-arrow-right"></i><i class="ti ti-arrow-up"></i><span class="path">${FOLDER_WIN}<i class="ti ti-chevron-right"></i>Desktop<i class="ti ti-chevron-right"></i>vento-demo</span><span class="find"><i class="ti ti-search"></i>Search vento-demo</span></div>
+      <div class="tb ltb only-lin"><span class="btn"><i class="ti ti-chevron-left"></i></span><span class="btn"><i class="ti ti-chevron-right"></i></span><span class="path"><i class="ti ti-home"></i>Desktop<b>/</b>vento-demo</span><span class="btn"><i class="ti ti-search"></i></span><span class="btn"><i class="ti ti-menu-2"></i></span><span class="close"><i class="ti ti-x"></i></span></div>
+    </div>
     <div class="items"></div>
     <div class="wheel"></div>
     <div class="ghost"></div>
     <div class="cur">${CURSOR}</div>
-    <div class="kc">control ⌃</div>
+    <div class="kc"><span class="only-mac">control ⌃</span><span class="only-win only-lin">Ctrl</span></div>
     <div class="hud"></div>
     <div class="toast"></div>
   </div>`;
@@ -97,7 +110,7 @@ function play(el) {
       ph.ring.items.forEach(([n, d], i) => {
         const x = ax + DIR[d][0], y = ay + DIR[d][1];
         pos[n] = [x, y];
-        html += `<div class="hex ring" data-n="${n}" style="--x:${x};--y:${y};--i:${i}">${HEX}${FOLDER}${n}</div>`;
+        html += `<div class="hex ring" data-n="${n}" style="--x:${x};--y:${y};--i:${i}">${HEX}${folder}${n}</div>`;
       });
     }
     $('.wheel').innerHTML = html;
@@ -122,7 +135,7 @@ function play(el) {
     $('.cl').textContent = '';
     if (ph.island) $('.chip').innerHTML = ICON[f[1]] + f[0];
     $('.toast').innerHTML = ph.toast ? `${ph.toast}${ph.undo ? '<b>Undo</b>' : ''}` : '';
-    if (ph.hud) $('.hud').innerHTML = `${FOLDER}<span><b>${ph.hud[0]}</b><br>${ph.hud[1]}</span>`;
+    if (ph.hud) $('.hud').innerHTML = `${folder}<span><b>${ph.hud[0]}</b><br>${ph.hud[1]}</span>`;
     set('');
     const src = st.querySelector(`.it[data-i="${ph.src}"]`);
     src.classList.add('src');
@@ -175,4 +188,61 @@ function play(el) {
   })();
 }
 
-document.querySelectorAll('[data-scene]').forEach(play);
+// The virtual island on a screen with no notch: it rests as a glass pill,
+// plays a shimmer, says what a job is doing, opens when the pointer pushes
+// against the top edge, and can rest as a circle or sit elsewhere along the
+// edge. The pills are renders of the real island (assets/vi-*.png).
+function playVirtual(el) {
+  el.innerHTML = `<div class="stage vstage">
+    <div class="vwin"><div class="vtabs"><span class="on"><i class="ti ti-world"></i>Trip notes</span><span><i class="ti ti-world"></i>Flights</span><span><i class="ti ti-world"></i>Hotels</span><span class="caps"><i class="ti ti-minus"></i><i class="ti ti-square"></i><i class="ti ti-x"></i></span></div>
+      <div class="vbody"><b></b><i></i><i></i><i class="s"></i><i></i><i class="s"></i></div></div>
+    <div class="taskbar"><span class="apps"><i class="ti ti-layout-grid start"></i><i class="ti ti-search"></i><i class="ti ti-folder"></i><i class="ti ti-world on"></i><i class="ti ti-mail"></i></span><span class="tray"><i class="ti ti-chevron-up"></i><i class="ti ti-hexagons"></i><i class="ti ti-wifi"></i><i class="ti ti-volume"></i><span class="clock">9:41<br>11/4/2026</span></span></div>
+    <div class="vis" style="--vx:480">
+      <img class="p rest" src="assets/vi-rest.png" alt="">
+      <img class="p circle" src="assets/vi-circle.png" alt="">
+      <img class="p work" src="assets/vi-work.png" alt="">
+      <img class="p done" src="assets/vi-done.png" alt="">
+      <span class="shine"></span><span class="push"></span>
+      <img class="open" src="assets/island-clipboard.png" alt="">
+    </div>
+    <div class="cur">${CURSOR}</div>
+    <div class="cap"></div>
+  </div>`;
+  const st = el.firstElementChild, vi = st.querySelector('.vis'), cap = st.querySelector('.cap');
+  new ResizeObserver(() => st.style.setProperty('--s', el.clientWidth / 960)).observe(el);
+  const move = ([x, y], t) => {
+    st.style.setProperty('--t', t + 'ms');
+    st.style.setProperty('--cx', x);
+    st.style.setProperty('--cy', y);
+  };
+  const show = (state, text) => { vi.dataset.v = state; cap.textContent = text || ''; cap.classList.toggle('on', !!text); };
+  const place = (x, t) => { vi.style.setProperty('--t', t + 'ms'); vi.style.setProperty('--vx', x); };
+
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { show('done', 'Says what each job is doing'); move([700, 420], 0); return; }
+
+  const visible = () => new Promise(resolve => {
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); resolve(); } });
+    io.observe(el);
+  });
+  (async () => {
+    for (;;) {
+      await visible();
+      place(480, 0); move([700, 420], 0);
+      show('rest', 'Rests as glass, out of your way'); await sleep(1600);
+      show('rest shimmer', 'Now and then, a shimmer'); await sleep(2200);
+      show('work', 'Tells you what a job is doing'); await sleep(2400);
+      show('done', 'Then the result, with one button'); await sleep(2600);
+      show('rest', 'Push against the top edge'); move([500, 120], 900); await sleep(1000);
+      move([500, 2], 500); await sleep(500);
+      show('rest pushing', 'Push against the top edge'); await sleep(900);
+      show('opened', 'and it opens'); move([640, 330], 900); await sleep(2900);
+      show('rest', 'Island or Circle'); await sleep(900);
+      show('circle', 'Island or Circle'); await sleep(1800);
+      show('rest', 'Left, Centre, Right, or drag it anywhere'); place(170, 900); await sleep(1700);
+      place(720, 1100); await sleep(1900);
+      place(480, 900); await sleep(1200);
+    }
+  })();
+}
+
+document.querySelectorAll('[data-scene]').forEach(el => el.dataset.scene === 'virtual' ? playVirtual(el) : play(el));
