@@ -180,7 +180,122 @@ footer a:hover { color: var(--ink); }
 .stage.done .island .full { opacity: 1; }
 .stage.parked .island { width: 180px; height: 24px; opacity: 1; }
 
+
+/* One page for three systems: html[data-os] shows only its own bits. */
+html[data-os="mac"] :is(.only-win, .only-lin):not(.only-mac),
+html[data-os="win"] :is(.only-mac, .only-lin):not(.only-win),
+html[data-os="lin"] :is(.only-mac, .only-win):not(.only-lin) { display: none !important; }
+
+.os-pick { display: inline-flex; gap: 6px; padding: 5px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.os-pick button { display: inline-flex; align-items: center; gap: 7px; font: 500 13px 'JetBrains Mono', monospace; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 7px 13px; cursor: pointer; transition: color .15s, background .15s; }
+.os-pick button i { font-size: 16px; }
+.os-pick button:hover { color: var(--ink); }
+.os-pick button[aria-pressed="true"] { background: #fff; color: var(--ink); border-color: #D9DFE8; border-bottom-width: 3px; }
+.os-pick button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+/* Windows: a taskbar, an Explorer window, and the key and notices above the bar. */
+.taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; z-index: 6; background: #1C2233e6; backdrop-filter: blur(16px); border-top: 1px solid #ffffff1a; display: flex; justify-content: center; align-items: center; color: #ffffffd9; }
+.taskbar .apps { display: flex; gap: 6px; }
+.taskbar .apps i { width: 36px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 20px; border-radius: 6px; position: relative; }
+.taskbar .apps .start { color: #60B8FF; }
+.taskbar .apps .on { background: #ffffff14; }
+.taskbar .apps .on::after { content: ''; position: absolute; bottom: 2px; width: 14px; height: 3px; border-radius: 2px; background: #60B8FF; }
+.taskbar .tray { position: absolute; right: 12px; display: flex; gap: 12px; align-items: center; font-size: 15px; }
+.taskbar .clock { font-size: 11px; line-height: 1.3; text-align: right; }
+.wtb { height: 40px; padding: 0 0 0 8px; background: #EEF1F6; border-radius: 14px 14px 0 0; border: 0; gap: 4px; font-weight: 500; font-size: 12.5px; }
+.wtb .tab { align-self: flex-end; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #fff; border-radius: 8px 8px 0 0; min-width: 190px; }
+.wtb .tab svg { height: 16px; }
+.wtb .tab .ti-x { margin-left: auto; font-size: 13px; color: #8A93A5; }
+.wtb .add { color: #5B6478; font-size: 15px; margin-left: 6px; }
+.wtb .caps, .vtabs .caps { margin-left: auto; display: flex; height: 100%; }
+.wtb .caps i, .vtabs .caps i { width: 46px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #2B2F38; }
+.addr { height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid #EEF0F4; color: #5B6478; font-size: 16px; }
+.addr .path { flex: 1; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; background: #F6F8FB; border-radius: 6px; font-size: 12.5px; color: #2B2F38; }
+.addr .path svg { height: 15px; }
+.addr .path i { font-size: 12px; color: #8A93A5; }
+.addr .find { width: 180px; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: #F6F8FB; border-radius: 6px; font-size: 12px; color: #8A93A5; }
+.addr .find i { font-size: 14px; }
+html[data-os="win"] .win { border-radius: 10px; top: 48px; height: 478px; }
+html[data-os="win"] .stage.sel .it.src { background: #CCE4F7; outline: 1px solid #99C9EF; border-radius: 4px; }
+html[data-os="win"] .stage.sel .it.src .lb { background: none; color: #2B2F38; }
+html[data-os="win"] .ghost .lb { background: #0067C0; border-radius: 3px; }
+html[data-os="win"] :is(.kc, .hud, .toast) { bottom: 66px; }
+html[data-os="win"] .island { top: 4px; }
+
+/* GNOME: a black top bar with the island's room beside the clock, and a Files window. */
+.gbar { position: absolute; left: 0; right: 0; top: 0; height: 28px; background: #000; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 12.5px; font-weight: 600; }
+.gbar .ws { display: flex; gap: 5px; align-items: center; }
+.gbar .ws i { width: 7px; height: 7px; border-radius: 4px; background: #ffffff80; }
+.gbar .ws i:first-child { width: 26px; background: #fff; }
+.gbar .clock { position: absolute; left: 50%; transform: translateX(-50%); }
+.gbar .tray { display: flex; gap: 12px; font-size: 15px; }
+.ltb { height: 48px; padding: 0 8px; gap: 6px; background: #EBEBED; border-radius: 14px 14px 0 0; border: 0; color: #2E3436; }
+.ltb .btn { width: 34px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 7px; font-size: 16px; }
+.ltb .btn:first-child { background: #00000010; }
+.ltb .path { flex: 1; margin: 0 8px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff; border-radius: 7px; font-size: 13px; font-weight: 600; }
+.ltb .path b { color: #B0B4BC; font-weight: 400; }
+.ltb .close { width: 24px; height: 24px; margin: 0 6px; border-radius: 50%; background: #00000014; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+html[data-os="lin"] .stage { background: radial-gradient(60% 70% at 85% 100%, #E95420aa, transparent 70%), radial-gradient(60% 60% at 0% 0%, #5E2750, transparent 70%), linear-gradient(160deg, #3B1E3D, #1A1022 70%); }
+html[data-os="lin"] .stage.sel .it.src .lb { background: #3584E4; border-radius: 6px; }
+html[data-os="lin"] .ghost .lb { background: #3584E4; }
+html[data-os="lin"] .island { top: 2px; left: calc(50% + 80px); }
+html[data-os="win"] .stage:not(.vstage) { background: radial-gradient(60% 70% at 50% 110%, #3E8BFFaa, transparent 70%), radial-gradient(50% 60% at 100% 0%, #2B4E9E, transparent 70%), linear-gradient(170deg, #1B2D5C, #0D1630 70%); }
+
+/* The virtual island scene: a browser window under the island, a taskbar below. */
+.vstage { background: radial-gradient(60% 70% at 20% 110%, #FF6A1A88, transparent 70%), radial-gradient(60% 60% at 100% 0%, #6D5BD0, transparent 70%), linear-gradient(160deg, #2A2F6B, #111A2E 70%); }
+.vwin { position: absolute; left: 0; right: 0; top: 0; bottom: 44px; background: #fff; }
+.vtabs { height: 40px; background: #E8EBF1; display: flex; align-items: flex-end; gap: 2px; padding: 0 0 0 10px; font-size: 12px; color: #3A3F4A; }
+.vtabs > span:not(.caps) { height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 14px; width: 170px; border-radius: 8px 8px 0 0; }
+.vtabs .on { background: #fff; font-weight: 500; }
+.vtabs .caps { align-self: stretch; }
+.vbody { padding: 54px 160px; display: flex; flex-direction: column; gap: 14px; }
+.vbody b { display: block; width: 320px; height: 22px; border-radius: 6px; background: #111A2E; margin-bottom: 12px; }
+.vbody i { display: block; height: 10px; border-radius: 5px; background: #E4E8EF; }
+.vbody i.s { width: 60%; margin-bottom: 14px; }
+.vis { position: absolute; top: 3px; left: calc(var(--vx) * 1px); width: 0; z-index: 8; transition: left var(--t, 0ms) cubic-bezier(.5, 0, .2, 1); }
+.vis .p { position: absolute; top: 0; height: 32px; width: auto; transform: translateX(-50%) scale(.85); transform-origin: 50% 0; opacity: 0; transition: opacity .35s, transform .45s cubic-bezier(.3, 1.4, .5, 1); }
+.vis .p.circle { height: 42px; }
+.vis .p.work, .vis .p.done { height: 38px; }
+.vis[data-v~="rest"] .rest, .vis[data-v~="circle"] .circle { opacity: .6; transform: translateX(-50%); }
+.vis[data-v~="work"] .work, .vis[data-v~="done"] .done { opacity: 1; transform: translateX(-50%); }
+.vis .shine { position: absolute; top: 0; left: -62px; width: 124px; height: 32px; border-radius: 16px; overflow: hidden; opacity: 0; pointer-events: none; }
+.vis .shine::after { content: ''; position: absolute; top: 0; bottom: 0; width: 26px; left: -40px; background: linear-gradient(90deg, transparent, #ffffffaa, transparent); transform: skewX(-20deg); }
+.vis[data-v~="shimmer"] .shine { opacity: 1; }
+.vis[data-v~="shimmer"] .shine::after { animation: sweep 1.3s .3s ease-in-out; }
+@keyframes sweep { to { left: 150px; } }
+.vis .push { position: absolute; top: 28px; left: -50px; width: 100px; height: 3px; border-radius: 2px; background: #FF6A1A; transform: scaleX(0); transition: transform .8s linear, opacity .2s; opacity: 0; }
+.vis[data-v~="pushing"] .push { opacity: 1; transform: scaleX(1); }
+.vis[data-v~="pushing"] .rest { opacity: 1; }
+.vis .open { position: absolute; top: -3px; left: -230px; width: 460px; height: auto; border-radius: 0 0 22px 22px; box-shadow: 0 30px 60px -20px #000a; transform: scaleY(.1) scaleX(.3); transform-origin: 50% 0; opacity: 0; transition: transform .45s cubic-bezier(.3, 1.2, .5, 1), opacity .25s; }
+.vis[data-v~="opened"] .open { opacity: 1; transform: none; }
+.vstage .cap { position: absolute; left: 50%; bottom: 64px; transform: translate(-50%, 10px); opacity: 0; z-index: 9; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; background: #111A2Ee6; border: 1px solid #ffffff2e; border-bottom-width: 4px; border-radius: 10px; padding: 8px 14px; white-space: nowrap; transition: all .3s; }
+.vstage .cap.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* The real pills, side by side on a wallpaper. */
+.plate.pills { display: flex; flex-wrap: wrap; gap: 18px 22px; align-items: center; justify-content: center; padding: 48px 32px; background: radial-gradient(90% 80% at 15% 0%, #FFB36B, transparent 60%), linear-gradient(135deg, #FF7A2E 0%, #D9346B 50%, #5B3FB8 100%); }
+.plate.pills img { width: auto; height: 38px; border-radius: 0; box-shadow: none; filter: drop-shadow(0 10px 18px #0005); }
+.plate.pills img.c { height: 42px; }
+
+.oses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 56px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.oses > div { background: #fff; padding: 28px 26px; }
+.oses h3 { display: flex; align-items: center; gap: 10px; font-family: Unbounded, sans-serif; font-weight: 500; font-size: 19px; letter-spacing: -0.02em; margin: 0 0 6px; }
+.oses h3 i { font-size: 22px; color: var(--deep); }
+.oses .req { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--deep); margin: 0 0 16px; }
+.oses ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--muted); }
+.oses li { padding: 7px 0 7px 24px; position: relative; border-top: 1px solid var(--line); }
+.oses li::before { content: '\ea5e'; font-family: tabler-icons; position: absolute; left: 0; color: #1F9D57; }
+.oses li.not::before { content: '\eb55'; color: #B4BCCB; }
+
+.term { margin-top: 28px; background: #111A2E; color: #E4E8EF; border-radius: 14px; padding: 22px 24px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.8; overflow-x: auto; white-space: pre; }
+.term .c { color: #8A93A5; }
+.steps.one { grid-template-columns: 1fr; }
+
 @media (max-width: 820px) {
+  .oses { grid-template-columns: 1fr; }
+  .os-pick button { padding: 6px 9px; font-size: 12px; }
+  .plate.pills { padding: 28px 16px; gap: 12px; }
+  .plate.pills img { height: 28px; }
+  .plate.pills img.c { height: 32px; }
   .row, .row.flip, .steps { grid-template-columns: 1fr; gap: 28px; }
   .row.flip .txt { order: 0; }
   .row { margin-top: 72px; }
