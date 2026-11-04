@@ -89,7 +89,7 @@ pub type AboutUpdateView = UpdateView;
 /// About's update row for `state`, in the interface language. `running` is
 /// the version of this copy and `now` the time in Unix seconds, which
 /// "Checked today" is measured against.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub fn about_update_view(state: &UpdateState, running: Version, now: i64) -> AboutUpdateView {
     about_update_view_in(state, running, now, &TimeZone::system())
 }
@@ -339,7 +339,7 @@ pub struct ShotsLink {
 }
 
 /// What About's update row and link do.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub struct AboutUpdateActions {
     /// Update, or Restart once the update is ready.
     pub update: Box<dyn Fn()>,
@@ -506,7 +506,7 @@ impl SettingsWindowController {
 
     /// Turns About's update row and automatic check on, and has their
     /// buttons call `actions`.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     pub fn set_on_update(&self, actions: AboutUpdateActions) {
         *self.on_update.borrow_mut() = Some(actions);
         if let Some(window) = self.existing() {
@@ -516,7 +516,7 @@ impl SettingsWindowController {
 
     /// Shows `view` on About's update row: now when the window exists, and
     /// on every window made after.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     pub fn set_update(&self, view: AboutUpdateView) {
         *self.update.borrow_mut() = view;
         if let Some(window) = self.existing() {

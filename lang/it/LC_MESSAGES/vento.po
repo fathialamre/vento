@@ -261,7 +261,7 @@ msgstr "Non può contenere {char} su macOS"
 msgid "Can't end with a dot or space"
 msgstr "Non può finire con un punto o uno spazio"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "Impossibile sostituire Vento in {folder}"
 
@@ -621,7 +621,7 @@ msgstr "Impossibile rinominare {name}: {reason}. Questi elementi non sono stati 
 msgid "Couldn't rename: {reason}"
 msgstr "Impossibile rinominare: {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "Impossibile sostituire Vento"
 
@@ -897,7 +897,7 @@ msgstr "Fantasma"
 msgid "GitHub answered {code}"
 msgstr "GitHub ha risposto {code}"
 
-#: crates/vento/src/updater/mod.rs:178
+#: crates/vento/src/updater/mod.rs:212
 msgid "GitHub's answer couldn't be read"
 msgstr "Impossibile leggere la risposta di GitHub"
 
@@ -1000,6 +1000,10 @@ msgstr "Info: elementi non trovati"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "Dentro una cartella anch'essa da rinominare"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "Installa Vento con il suo programma di installazione per aggiornarlo"
 
 #: crates/vento/src/settings_window/mod.rs:212
 msgid "Island"
@@ -1169,7 +1173,7 @@ msgstr "Altro…"
 msgid "Move"
 msgstr "Sposta"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "Sposta Vento in Applicazioni per aggiornarlo"
 
@@ -1245,7 +1249,7 @@ msgstr "Nuova estensione"
 msgid "New time"
 msgstr "Nuovo orario"
 
-#: crates/vento/src/main.rs:1163
+#: crates/vento/src/main.rs:1179
 msgid "New: try the Virtual island in Settings › Island"
 msgstr "Novità: prova l’isola virtuale in Impostazioni › Isola"
 
@@ -1381,7 +1385,7 @@ msgstr "Apri Impostazioni"
 msgid "Open With"
 msgstr "Apri con"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "Apri cronologia appunti"
 
@@ -1389,11 +1393,11 @@ msgstr "Apri cronologia appunti"
 msgid "Open in browser"
 msgstr "Apri nel browser"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "Apri screenshot"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "Apri file impostazioni"
 
@@ -1469,7 +1473,7 @@ msgstr "Percorso copiato"
 msgid "Pause"
 msgstr "Pausa"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "Metti in pausa Vento"
 
@@ -1591,7 +1595,7 @@ msgstr "Azioni rapide sotto il file che trascini"
 msgid "Quit"
 msgstr "Esci"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "Esci da Vento"
 
@@ -1817,7 +1821,7 @@ msgstr "Impostazioni"
 msgid "Settings file"
 msgstr "File impostazioni"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "Impostazioni…"
 
@@ -2007,7 +2011,7 @@ msgstr "Archiviate su questo computer senza crittografia. Le copie che i gestori
 msgid "Sweep"
 msgstr "Passata"
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1142
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Riattiva Registrazione schermo per Copia dallo schermo"
 
@@ -2051,11 +2055,11 @@ msgstr "La cronologia appunti usa questa scorciatoia"
 msgid "The Pocket uses this shortcut"
 msgstr "La Tasca usa questa scorciatoia"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "Impossibile aprire il download"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "The download didn't match its checksum"
 msgstr "Il download non corrisponde al checksum"
 
@@ -2067,7 +2071,7 @@ msgstr "L’isola ricorda la sua posizione su ogni schermo"
 msgid "The list and the numbers follow it"
 msgstr "L'elenco e i numeri lo seguono"
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "The new version didn't start."
 msgstr "La nuova versione non si è avviata."
 
@@ -2090,6 +2094,10 @@ msgstr "Il riquadro avvia"
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
 msgstr "L'indirizzo di aggiornamento non è sicuro"
+
+#: crates/vento/src/updater/mod.rs:80
+msgid "The update couldn't be installed."
+msgstr "Impossibile installare l'aggiornamento."
 
 #: crates/vento/ui/settings_pages.slint:624
 msgid "Theme"
@@ -2267,7 +2275,7 @@ msgstr "Vento nel suo insieme"
 msgid "Vento can't read this folder."
 msgstr "Vento non riesce a leggere questa cartella."
 
-#: crates/vento/src/updater/mod.rs:71
+#: crates/vento/src/updater/mod.rs:79
 msgid "Vento didn't quit"
 msgstr "Vento non si è chiuso"
 
@@ -2785,7 +2793,7 @@ msgstr[1] "{name} + altri {n}"
 msgid "{name} is locked"
 msgstr "{name} è bloccato"
 
-#: crates/vento/src/main.rs:1201
+#: crates/vento/src/main.rs:1224
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Scorciatoia {name} non disponibile: {reason}"
 

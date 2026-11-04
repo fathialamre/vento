@@ -67,14 +67,23 @@ To publish a release:
    with the same version and keys. Release notes and the What's new window come
    from them.
 2. Tag the release (`vX.Y.Z`) and push the tag.
-3. Build the zip, then create the release from the tag, with the changelog
-   section as its notes:
+3. Build the Windows setup on a Windows PC (see [Windows](#windows)) and copy
+   `target\release-setup\vento-X.Y.Z-windows-setup.exe` and its
+   `SHA256SUMS.txt` to `target/release-setup/` on the Mac.
+4. Build the zip, put both checksum lists in one `SHA256SUMS.txt` (the updater
+   on each system looks for its own file's line), then create the release
+   from the tag, with the changelog section as its notes:
 
 ```sh
 scripts/release-macos.sh
+cat target/release-zip/SHA256SUMS.txt target/release-setup/SHA256SUMS.txt >target/SHA256SUMS.txt
 gh release create vX.Y.Z --verify-tag --notes-file <(scripts/release-notes.sh X.Y.Z) \
-  target/release-zip/vento-X.Y.Z-macos-arm64.zip target/release-zip/SHA256SUMS.txt
+  target/release-zip/vento-X.Y.Z-macos-arm64.zip \
+  target/release-setup/vento-X.Y.Z-windows-setup.exe target/SHA256SUMS.txt
 ```
+
+A release without the setup, or without its line in `SHA256SUMS.txt`, offers
+Windows no update; the same goes for the Mac and its zip.
 
 `scripts/release-notes.sh X.Y.Z` prints that version's section of `CHANGELOG.md`
 and fails if there is none. Do not mark the release as a draft or prerelease:
@@ -141,9 +150,46 @@ Not there yet on Linux: Copy from screen.
 
 ## Windows
 
-`vento-core` builds and passes its tests on Windows. What is missing is a
-`Platform` implementation in `vento-platform` (mouse and key state, the dragged
-files, overlay windows for the wheel, the Pocket's drop target, clipboard,
-terminals, the folder picker, the Trash) and the app's windows; until then
-`stub.rs` stands in. If you want to help, `vento-platform/src/lib.rs` lists
-everything a new system needs.
+Vento runs on Windows 10 and 11, on x64 and ARM64 PCs. Building needs the
+Visual Studio Build Tools with the C++ tools (and the Windows SDK, which brings
+`rc.exe` for the app's icon); on an ARM64 PC, add the x64 tools as well to
+build for x64. `cargo run -p vento` starts a debug build, with a console window
+for its log; release builds have none.
+
+To build the installer (one setup for x64 and ARM64 PCs, which installs for
+the current user without administrator rights):
+
+```powershell
+rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+winget install JRSoftware.InnoSetup
+cargo install cargo-about --locked --features cli
+.\scripts\release-windows.ps1
+```
+
+On an ARM64 PC, install cargo-about with `--target x86_64-pc-windows-msvc`:
+its `ring` dependency needs clang to build for ARM64. The setup lands in
+`target\release-setup\vento-<version>-windows-setup.exe`. It is signed with
+Azure Trusted Signing when `VENTO_SIGN_DLIB` (the `Azure.CodeSigning.Dlib.dll`
+from the `Microsoft.Trusted.Signing.Client` package) and `VENTO_SIGN_METADATA`
+(its `metadata.json`) are set and you are signed in with `az login`; see the
+top of the script. The script also writes the setup's line for the release's
+`SHA256SUMS.txt` to `target\release-setup\SHA256SUMS.txt`.
+
+An installed Vento updates itself with the setup: it downloads the release's
+setup, checks it against `SHA256SUMS.txt` and quits; a copy of the old
+`vento.exe` then runs the setup silently, keeping the folder and the tasks
+chosen at the first install, and starts the new version. If the setup fails
+or the new version does not start, the old `vento.exe` is put back. A Vento
+that was not installed by the setup (a `cargo run` build, say) finds updates
+but asks to be installed with the setup to take them. To try it against a
+local test release, set `VENTO_UPDATE_API` to
+the address of a latest-release JSON (plain `http` is allowed for
+`127.0.0.1` and `localhost`).
+
+A Vento started from inside a packaged (MSIX) app, such as a terminal in a
+Store app, has its `%APPDATA%` redirected into that app's package, where other
+apps cannot see the Pocket's files. Start it from Explorer, the Start menu or
+a plain terminal to try it.
+
+Not there yet on Windows: Copy from screen, PDF pages, Share, and HEIC in
+Convert.

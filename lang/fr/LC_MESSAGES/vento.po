@@ -261,7 +261,7 @@ msgstr "Ne peut pas contenir {char} sous macOS"
 msgid "Can't end with a dot or space"
 msgstr "Ne peut pas finir par un point ou une espace"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "Impossible de remplacer Vento dans {folder}"
 
@@ -621,7 +621,7 @@ msgstr "Impossible de renommer {name} : {reason}. Ces éléments n’ont pas pu 
 msgid "Couldn't rename: {reason}"
 msgstr "Impossible de renommer : {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "Impossible de remplacer Vento"
 
@@ -897,7 +897,7 @@ msgstr "Fantôme"
 msgid "GitHub answered {code}"
 msgstr "GitHub a répondu {code}"
 
-#: crates/vento/src/updater/mod.rs:178
+#: crates/vento/src/updater/mod.rs:212
 msgid "GitHub's answer couldn't be read"
 msgstr "Réponse de GitHub illisible"
 
@@ -1000,6 +1000,10 @@ msgstr "Infos : éléments introuvables"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "Dans un dossier également renommé"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "Installez Vento avec son programme d’installation pour le mettre à jour"
 
 #: crates/vento/src/settings_window/mod.rs:212
 msgid "Island"
@@ -1169,7 +1173,7 @@ msgstr "Plus…"
 msgid "Move"
 msgstr "Déplacer"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "Déplacez Vento dans Applications pour le mettre à jour"
 
@@ -1245,7 +1249,7 @@ msgstr "Nouvelle extension"
 msgid "New time"
 msgstr "Nouvelle durée"
 
-#: crates/vento/src/main.rs:1163
+#: crates/vento/src/main.rs:1179
 msgid "New: try the Virtual island in Settings › Island"
 msgstr "Nouveau : essayez l’îlot virtuel dans Réglages › Îlot"
 
@@ -1381,7 +1385,7 @@ msgstr "Ouvrir les Réglages"
 msgid "Open With"
 msgstr "Ouvrir avec"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "Ouvrir l’historique du presse-papiers"
 
@@ -1389,11 +1393,11 @@ msgstr "Ouvrir l’historique du presse-papiers"
 msgid "Open in browser"
 msgstr "Ouvrir dans le navigateur"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "Ouvrir les captures d’écran"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "Ouvrir le fichier de réglages"
 
@@ -1469,7 +1473,7 @@ msgstr "Chemin copié"
 msgid "Pause"
 msgstr "Pause"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "Mettre Vento en pause"
 
@@ -1591,7 +1595,7 @@ msgstr "Des actions rapides sous le fichier que vous faites glisser"
 msgid "Quit"
 msgstr "Quitter"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "Quitter Vento"
 
@@ -1817,7 +1821,7 @@ msgstr "Réglages"
 msgid "Settings file"
 msgstr "Fichier de réglages"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "Réglages…"
 
@@ -2007,7 +2011,7 @@ msgstr "Stocké sur cet ordinateur sans chiffrement. Les copies que les gestionn
 msgid "Sweep"
 msgstr "Balayage"
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1142
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Réactivez l’enregistrement de l’écran pour Copier depuis l’écran"
 
@@ -2051,11 +2055,11 @@ msgstr "Le presse-papiers utilise ce raccourci"
 msgid "The Pocket uses this shortcut"
 msgstr "La Poche utilise ce raccourci"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "Impossible d’ouvrir le téléchargement"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "The download didn't match its checksum"
 msgstr "Le téléchargement ne correspond pas à sa somme de contrôle"
 
@@ -2067,7 +2071,7 @@ msgstr "L’îlot retient sa place sur chaque écran"
 msgid "The list and the numbers follow it"
 msgstr "La liste et les numéros le suivent"
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "The new version didn't start."
 msgstr "La nouvelle version n’a pas démarré."
 
@@ -2090,6 +2094,10 @@ msgstr "La tuile démarre"
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
 msgstr "L’adresse de mise à jour n’est pas sécurisée"
+
+#: crates/vento/src/updater/mod.rs:80
+msgid "The update couldn't be installed."
+msgstr "Impossible d’installer la mise à jour."
 
 #: crates/vento/ui/settings_pages.slint:624
 msgid "Theme"
@@ -2267,7 +2275,7 @@ msgstr "Vento dans son ensemble"
 msgid "Vento can't read this folder."
 msgstr "Vento ne peut pas lire ce dossier."
 
-#: crates/vento/src/updater/mod.rs:71
+#: crates/vento/src/updater/mod.rs:79
 msgid "Vento didn't quit"
 msgstr "Vento ne s’est pas fermé"
 
@@ -2785,7 +2793,7 @@ msgstr[1] "{name} + {n} autres"
 msgid "{name} is locked"
 msgstr "{name} est verrouillé"
 
-#: crates/vento/src/main.rs:1201
+#: crates/vento/src/main.rs:1224
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Raccourci {name} indisponible : {reason}"
 

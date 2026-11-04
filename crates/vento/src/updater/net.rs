@@ -128,12 +128,30 @@ fn map_err(e: ureq::Error) -> NetError {
     }
 }
 
+/// The settings every request starts from: on Windows, Windows' own TLS
+/// and certificate store.
+fn config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
+    let builder = ureq::Agent::config_builder();
+    #[cfg(windows)]
+    let builder = {
+        use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+
+        builder.tls_config(
+            TlsConfig::builder()
+                .provider(TlsProvider::NativeTls)
+                .root_certs(RootCerts::PlatformVerifier)
+                .build(),
+        )
+    };
+    builder
+}
+
 /// Asks `url` for the latest release and returns the JSON body.
 pub fn fetch_latest(url: &str) -> Result<String, NetError> {
     if !allowed(url) {
         return Err(NetError::Insecure);
     }
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    let agent: ureq::Agent = config()
         .timeout_global(Some(TIMEOUT))
         .https_only(url_is_https(url))
         .build()
@@ -198,7 +216,7 @@ fn fetch_to(
     // No short global timeout here: it would cut off a slow but healthy
     // download. The connection and the response headers get 15 s; the body
     // gets `body_timeout` in all.
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    let agent: ureq::Agent = config()
         .timeout_connect(Some(TIMEOUT))
         .timeout_recv_response(Some(TIMEOUT))
         .timeout_recv_body(Some(body_timeout))

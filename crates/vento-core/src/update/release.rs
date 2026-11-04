@@ -53,6 +53,8 @@ pub struct Update {
 pub enum AssetPlatform {
     /// macOS on Apple silicon.
     MacArm64,
+    /// Windows, x64 and ARM64 alike: the setup installs the build that fits.
+    WindowsSetup,
 }
 
 impl AssetPlatform {
@@ -60,6 +62,7 @@ impl AssetPlatform {
     pub fn suffix(self) -> &'static str {
         match self {
             Self::MacArm64 => "macos-arm64.zip",
+            Self::WindowsSetup => "windows-setup.exe",
         }
     }
 }
@@ -252,6 +255,31 @@ mod tests {
     }
 
     #[test]
+    fn windows_takes_the_setup_and_the_mac_the_zip() {
+        let json = JSON.replace(
+            r#"{"name":"SHA256SUMS.txt""#,
+            r#"{"name":"vento-0.3.0-windows-setup.exe","browser_download_url":"https://e/w","size":20},
+               {"name":"SHA256SUMS.txt""#,
+        );
+        let r = parse_latest(&json).unwrap();
+        let w = r
+            .update_for(v("0.2.0"), AssetPlatform::WindowsSetup)
+            .unwrap();
+        assert_eq!(w.archive.name, "vento-0.3.0-windows-setup.exe");
+        assert_eq!(w.archive.url, "https://e/w");
+        assert_eq!(w.sums.url, "https://e/s");
+        let m = r.update_for(v("0.2.0"), AssetPlatform::MacArm64).unwrap();
+        assert_eq!(m.archive.url, "https://e/z");
+        // A release with only the Mac's archive has nothing for Windows.
+        let mac_only = parse_latest(JSON).unwrap();
+        assert!(
+            mac_only
+                .update_for(v("0.2.0"), AssetPlatform::WindowsSetup)
+                .is_none()
+        );
+    }
+
+    #[test]
     fn missing_sums_is_no_update() {
         let json = JSON.replace("SHA256SUMS.txt", "other.txt");
         let r = parse_latest(&json).unwrap();
@@ -289,6 +317,10 @@ mod tests {
         assert_eq!(
             asset_name(v("0.3.0"), AssetPlatform::MacArm64),
             "vento-0.3.0-macos-arm64.zip"
+        );
+        assert_eq!(
+            asset_name(v("0.3.0"), AssetPlatform::WindowsSetup),
+            "vento-0.3.0-windows-setup.exe"
         );
     }
 

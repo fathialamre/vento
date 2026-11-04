@@ -261,7 +261,7 @@ msgstr "macOS'ta {char} içeremez"
 msgid "Can't end with a dot or space"
 msgstr "Nokta veya boşlukla bitemez"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "{folder} klasöründeki Vento değiştirilemiyor"
 
@@ -621,7 +621,7 @@ msgstr "{name} yeniden adlandırılamadı: {reason}. Şu öğeler geri alınamad
 msgid "Couldn't rename: {reason}"
 msgstr "Yeniden adlandırılamadı: {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "Vento değiştirilemedi"
 
@@ -897,7 +897,7 @@ msgstr "Hayalet"
 msgid "GitHub answered {code}"
 msgstr "GitHub yanıtı: {code}"
 
-#: crates/vento/src/updater/mod.rs:178
+#: crates/vento/src/updater/mod.rs:212
 msgid "GitHub's answer couldn't be read"
 msgstr "GitHub'ın yanıtı okunamadı"
 
@@ -1000,6 +1000,10 @@ msgstr "Bilgi: öğeler bulunamadı"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "Aynı zamanda yeniden adlandırılan bir klasörün içinde"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "Güncellemek için Vento'yu kurulum programıyla yükleyin"
 
 #: crates/vento/src/settings_window/mod.rs:212
 msgid "Island"
@@ -1169,7 +1173,7 @@ msgstr "Diğer…"
 msgid "Move"
 msgstr "Taşı"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "Güncellemek için Vento'yu Uygulamalar klasörüne taşıyın"
 
@@ -1245,7 +1249,7 @@ msgstr "Yeni uzantı"
 msgid "New time"
 msgstr "Yeni süre"
 
-#: crates/vento/src/main.rs:1163
+#: crates/vento/src/main.rs:1179
 msgid "New: try the Virtual island in Settings › Island"
 msgstr "Yeni: Sanal adayı Ayarlar › Ada bölümünde deneyin"
 
@@ -1381,7 +1385,7 @@ msgstr "Ayarlar'ı aç"
 msgid "Open With"
 msgstr "Birlikte Aç"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "Pano geçmişini aç"
 
@@ -1389,11 +1393,11 @@ msgstr "Pano geçmişini aç"
 msgid "Open in browser"
 msgstr "Tarayıcıda aç"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "Ekran görüntülerini aç"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "Ayarlar dosyasını aç"
 
@@ -1469,7 +1473,7 @@ msgstr "Yol kopyalandı"
 msgid "Pause"
 msgstr "Duraklat"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "Vento'yu duraklat"
 
@@ -1591,7 +1595,7 @@ msgstr "Sürüklediğiniz dosyanın altında hızlı eylemler"
 msgid "Quit"
 msgstr "Çık"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "Vento'dan çık"
 
@@ -1817,7 +1821,7 @@ msgstr "Ayarlar"
 msgid "Settings file"
 msgstr "Ayarlar dosyası"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "Ayarlar…"
 
@@ -2007,7 +2011,7 @@ msgstr "Bu bilgisayarda şifrelenmeden saklanır. Parola yöneticilerinin özel 
 msgid "Sweep"
 msgstr "Süpürme"
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1142
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ekrandan kopyala için Ekran Kaydı'nı yeniden açın"
 
@@ -2051,11 +2055,11 @@ msgstr "Pano bu kısayolu kullanıyor"
 msgid "The Pocket uses this shortcut"
 msgstr "Cep bu kısayolu kullanıyor"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "İndirilen dosya açılamadı"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "The download didn't match its checksum"
 msgstr "İndirilen dosya sağlama toplamıyla eşleşmedi"
 
@@ -2067,7 +2071,7 @@ msgstr "Ada her ekrandaki yerini hatırlar"
 msgid "The list and the numbers follow it"
 msgstr "Liste ve numaralar bu sırayı izler"
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "The new version didn't start."
 msgstr "Yeni sürüm başlamadı."
 
@@ -2090,6 +2094,10 @@ msgstr "Kutucuğun başlattığı"
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
 msgstr "Güncelleme adresi güvenli değil"
+
+#: crates/vento/src/updater/mod.rs:80
+msgid "The update couldn't be installed."
+msgstr "Güncelleme yüklenemedi."
 
 #: crates/vento/ui/settings_pages.slint:624
 msgid "Theme"
@@ -2267,7 +2275,7 @@ msgstr "Vento'nun tamamı"
 msgid "Vento can't read this folder."
 msgstr "Vento bu klasörü okuyamıyor."
 
-#: crates/vento/src/updater/mod.rs:71
+#: crates/vento/src/updater/mod.rs:79
 msgid "Vento didn't quit"
 msgstr "Vento kapanmadı"
 
@@ -2785,7 +2793,7 @@ msgstr[1] "{name} + {n} tane daha"
 msgid "{name} is locked"
 msgstr "{name} kilitli"
 
-#: crates/vento/src/main.rs:1201
+#: crates/vento/src/main.rs:1224
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "{name} kısayolu kullanılamıyor: {reason}"
 

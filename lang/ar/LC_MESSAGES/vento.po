@@ -265,7 +265,7 @@ msgstr "لا يمكن أن يحتوي على {char} في macOS"
 msgid "Can't end with a dot or space"
 msgstr "لا يمكن أن ينتهي بنقطة أو مسافة"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "تعذّر استبدال Vento في {folder}"
 
@@ -649,7 +649,7 @@ msgstr "تعذّرت إعادة تسمية {name}: {reason}. تعذّرت إعا
 msgid "Couldn't rename: {reason}"
 msgstr "تعذّرت إعادة التسمية: {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "تعذّر استبدال Vento"
 
@@ -941,7 +941,7 @@ msgstr "شبح"
 msgid "GitHub answered {code}"
 msgstr "ردّ GitHub بالرمز {code}"
 
-#: crates/vento/src/updater/mod.rs:178
+#: crates/vento/src/updater/mod.rs:212
 msgid "GitHub's answer couldn't be read"
 msgstr "تعذّرت قراءة ردّ GitHub"
 
@@ -1044,6 +1044,10 @@ msgstr "المعلومات: العناصر غير موجودة"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "داخل مجلد تتم إعادة تسميته أيضاً"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "ثبّت Vento ببرنامج الإعداد الخاص به لتحديثه"
 
 #: crates/vento/src/settings_window/mod.rs:212
 msgid "Island"
@@ -1221,7 +1225,7 @@ msgstr "المزيد…"
 msgid "Move"
 msgstr "نقل"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "انقل Vento إلى مجلد التطبيقات لتحديثه"
 
@@ -1313,7 +1317,7 @@ msgstr "الامتداد الجديد"
 msgid "New time"
 msgstr "وقت جديد"
 
-#: crates/vento/src/main.rs:1163
+#: crates/vento/src/main.rs:1179
 msgid "New: try the Virtual island in Settings › Island"
 msgstr "جديد: جرّب الجزيرة الافتراضية من الإعدادات ‹ الجزيرة"
 
@@ -1449,7 +1453,7 @@ msgstr "فتح الإعدادات"
 msgid "Open With"
 msgstr "فتح باستخدام"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "فتح سجل الحافظة"
 
@@ -1457,11 +1461,11 @@ msgstr "فتح سجل الحافظة"
 msgid "Open in browser"
 msgstr "فتح في المتصفح"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "فتح لقطات الشاشة"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "فتح ملف الإعدادات"
 
@@ -1545,7 +1549,7 @@ msgstr "تم نسخ المسار"
 msgid "Pause"
 msgstr "إيقاف مؤقت"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "إيقاف Vento مؤقتاً"
 
@@ -1671,7 +1675,7 @@ msgstr "إجراءات سريعة تحت الملف الذي تسحبه"
 msgid "Quit"
 msgstr "إنهاء"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "إنهاء Vento"
 
@@ -1933,7 +1937,7 @@ msgstr "الإعدادات"
 msgid "Settings file"
 msgstr "ملف الإعدادات"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "الإعدادات…"
 
@@ -2127,7 +2131,7 @@ msgstr "يُخزَّن على هذا الحاسوب دون تشفير. تُتج�
 msgid "Sweep"
 msgstr "مسحة"
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1142
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "فعّل إذن تسجيل الشاشة من جديد للنسخ من الشاشة"
 
@@ -2171,11 +2175,11 @@ msgstr "الحافظة تستخدم هذا الاختصار"
 msgid "The Pocket uses this shortcut"
 msgstr "الجيب يستخدم هذا الاختصار"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "تعذّر فتح التنزيل"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "The download didn't match its checksum"
 msgstr "التنزيل لا يطابق مجموعه الاختباري"
 
@@ -2187,7 +2191,7 @@ msgstr "الجزيرة تتذكر مكانها على كل شاشة"
 msgid "The list and the numbers follow it"
 msgstr "تتبعه القائمة والأرقام"
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "The new version didn't start."
 msgstr "لم يبدأ تشغيل الإصدار الجديد."
 
@@ -2210,6 +2214,10 @@ msgstr "ما يبدؤه المربع"
 #: crates/vento/src/updater/net.rs:78
 msgid "The update address isn't secure"
 msgstr "عنوان التحديث غير آمن"
+
+#: crates/vento/src/updater/mod.rs:80
+msgid "The update couldn't be installed."
+msgstr "تعذّر تثبيت التحديث."
 
 #: crates/vento/ui/settings_pages.slint:624
 msgid "Theme"
@@ -2387,7 +2395,7 @@ msgstr "‏Vento كله"
 msgid "Vento can't read this folder."
 msgstr "لا يستطيع Vento قراءة هذا المجلد."
 
-#: crates/vento/src/updater/mod.rs:71
+#: crates/vento/src/updater/mod.rs:79
 msgid "Vento didn't quit"
 msgstr "لم يُغلَق Vento"
 
@@ -2917,7 +2925,7 @@ msgstr[5] "‏{name} + {n} ملف آخر"
 msgid "{name} is locked"
 msgstr "‏{name} محمي بكلمة سر"
 
-#: crates/vento/src/main.rs:1201
+#: crates/vento/src/main.rs:1224
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "اختصار {name} غير متاح: {reason}"
 
