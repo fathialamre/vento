@@ -50,9 +50,33 @@ ditto target/release/vento.dSYM "$out/$name.dSYM"
 
 (cd "$out" && ditto -c -k --norsrc --noextattr --noacl --keepParent "$name" "$zip")
 
+# The disk image people download: the same files, a link to Applications to
+# drag the app onto, and the app icon on the volume. The updater keeps using
+# the zip.
+dmg="$name-macos-arm64.dmg"
+dmgstage="$out/dmg"
+rm -rf "$dmgstage" "$out/$dmg"
+mkdir -p "$dmgstage"
+ditto "$stage" "$dmgstage"
+ln -s /Applications "$dmgstage/Applications"
+cp crates/vento/assets/vento.icns "$dmgstage/.VolumeIcon.icns"
+# The volume's custom-icon flag only sticks when set on the mounted volume,
+# so the image is made writable first and compressed after.
+rw="$out/$name-rw.dmg"
+rm -f "$rw"
+hdiutil create -quiet -volname "Vento $version" -srcfolder "$dmgstage" -fs HFS+ -format UDRW "$rw"
+mount=$(mktemp -d)
+hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$mount" "$rw"
+SetFile -a C "$mount"
+hdiutil detach -quiet "$mount"
+rmdir "$mount"
+hdiutil convert -quiet "$rw" -format UDZO -imagekey zlib-level=9 -o "$out/$dmg"
+rm -rf "$dmgstage" "$rw"
+
 # Checksums the in-app updater verifies the download against; published next
-# to the zip.
-(cd "$out" && shasum -a 256 "$zip" >SHA256SUMS.txt)
+# to the zip and the disk image.
+(cd "$out" && shasum -a 256 "$zip" "$dmg" >SHA256SUMS.txt)
 
 echo "$out/$zip"
+echo "$out/$dmg"
 echo "$out/SHA256SUMS.txt"

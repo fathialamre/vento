@@ -18,7 +18,7 @@ always did.
 ## Download
 
 **[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)**
-(`vento-…-macos-arm64.zip`)
+(`vento-…-macos-arm64.dmg`, or the `.zip` with the same files)
 
 Vento is in **early beta**. If something breaks or feels off, please
 [open an issue](https://github.com/fathialamre/vento/issues).
@@ -38,7 +38,7 @@ On an Intel Mac, [build it yourself](BUILDING.md).
 
 On macOS, Vento checks for new versions and updates itself (see
 [Privacy and network](#privacy-and-network)). Versions before 0.3.0 cannot do
-this yet, so if you have one, update it by hand once: download the latest zip
+this yet, so if you have one, update it by hand once: download the latest disk image
 and replace `Vento.app` as in [Install](#install-and-first-launch) below.
 
 > **This is the macOS version.** Support for Linux and Windows is in progress:
@@ -47,8 +47,9 @@ and replace `Vento.app` as in [Install](#install-and-first-launch) below.
 
 ## Install and first launch
 
-1. Open the zip you downloaded. You get a `vento-…` folder with `Vento.app` in it.
-2. Drag `Vento.app` into your **Applications** folder.
+1. Open the `.dmg` you downloaded. A window opens with `Vento.app` and a link to
+   **Applications** (from the zip you get a `vento-…` folder with `Vento.app` in it).
+2. Drag `Vento.app` onto **Applications**.
 3. Open it.
 
 Vento is not notarized by Apple yet, so the first time you open it macOS stops it
