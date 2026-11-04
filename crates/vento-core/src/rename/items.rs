@@ -173,6 +173,8 @@ mod tests {
         fs::create_dir(&d).unwrap();
         let missing = tmp.path().join("nope");
         let a = file(tmp.path(), "a.txt", 3, 0);
+        // Only the Unix block below adds to it.
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut paths = vec![missing, a];
         #[cfg(unix)]
         {
