@@ -123,10 +123,10 @@ fn icon_frame(
 /// Keeps the menu-bar icon alive.
 pub struct TrayHandle {
     /// The flame; the update dot is drawn on it, never on the Keep Awake cup.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     icon: TrayIcon,
     /// Whether the flame now carries the update dot.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     dot: Cell<bool>,
     /// Sets the menu's text and direction again from the current language.
     retext: Box<dyn Fn()>,
@@ -151,6 +151,23 @@ impl TrayHandle {
         let icon = Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("tray icon has a valid size");
         if let Err(e) = self.icon.set_icon_templated(Some(icon)) {
             warn!("cannot change the menu-bar icon: {e}");
+        }
+    }
+
+    /// Shows the mark with an update dot, or the plain mark. Setting the
+    /// state it already has does nothing.
+    #[cfg(windows)]
+    pub fn set_dot(&self, on: bool) {
+        if self.dot.replace(on) == on {
+            return;
+        }
+        let icon = if on {
+            taskbar_icon_with_dot(MARK_PNG)
+        } else {
+            taskbar_icon(MARK_PNG)
+        };
+        if let Err(e) = self.icon.set_icon(Some(icon)) {
+            warn!("cannot change the tray icon: {e}");
         }
     }
 }
@@ -197,6 +214,29 @@ const MARK_PNG: &[u8] = include_bytes!("../assets/tray-mark-32.png");
 /// If `mark` is not an RGBA8 PNG.
 #[cfg(windows)]
 fn taskbar_icon(mark: &[u8]) -> Icon {
+    let (rgba, width, height) = taskbar_rgba(mark);
+    Icon::from_rgba(rgba, width, height).expect("the mark has a valid size")
+}
+
+/// The mark with the update dot: an accent disc in its top right corner,
+/// cut out of the mark by a clear ring so it reads in either ink.
+///
+/// # Panics
+/// If `mark` is not a 32x32 RGBA8 PNG.
+#[cfg(windows)]
+fn taskbar_icon_with_dot(mark: &[u8]) -> Icon {
+    const ACCENT: [u8; 4] = [0xff, 0x6a, 0x1a, 0xff];
+    let (mut rgba, width, height) = taskbar_rgba(mark);
+    assert_eq!((width, height), (32, 32), "the mark is 32x32");
+    let (centre, radius) = ((26, 6), 5);
+    draw_disc(&mut rgba, 32, centre, radius + 2, [0, 0, 0, 0]);
+    draw_disc(&mut rgba, 32, centre, radius, ACCENT);
+    Icon::from_rgba(rgba, width, height).expect("the mark has a valid size")
+}
+
+/// The pixels, width and height of [`taskbar_icon`].
+#[cfg(windows)]
+fn taskbar_rgba(mark: &[u8]) -> (Vec<u8>, u32, u32) {
     let mut reader = png::Decoder::new(std::io::Cursor::new(mark))
         .read_info()
         .expect("the bundled mark is a PNG");
@@ -222,7 +262,7 @@ fn taskbar_icon(mark: &[u8]) -> Icon {
     for pixel in rgba.as_chunks_mut::<4>().0 {
         pixel[..3].fill(ink);
     }
-    Icon::from_rgba(rgba, info.width, info.height).expect("the mark has a valid size")
+    (rgba, info.width, info.height)
 }
 
 /// A 44x44 RGBA image of the bundled 36x36 `mark` (the flame or the cup)
@@ -277,16 +317,24 @@ const DOT_CENTRE: (i32, i32) = (37, 7);
 fn with_dot(mut rgba: Vec<u8>) -> Vec<u8> {
     let size = ICON_SIZE as usize;
     assert_eq!(rgba.len(), size * size * 4, "the icon is 44x44 RGBA");
-    let (cx, cy) = DOT_CENTRE;
-    for y in (cy - DOT_RADIUS)..=(cy + DOT_RADIUS) {
-        for x in (cx - DOT_RADIUS)..=(cx + DOT_RADIUS) {
-            if (x - cx).pow(2) + (y - cy).pow(2) <= DOT_RADIUS.pow(2) {
+    draw_disc(&mut rgba, size, DOT_CENTRE, DOT_RADIUS, [0, 0, 0, 255]);
+    rgba
+}
+
+/// Paints the pixels of the square RGBA image `rgba` (`size` wide) within
+/// `radius` of `centre` with `colour`; the part outside the image is left
+/// out.
+fn draw_disc(rgba: &mut [u8], size: usize, centre: (i32, i32), radius: i32, colour: [u8; 4]) {
+    let (cx, cy) = centre;
+    let side = i32::try_from(size).unwrap_or(i32::MAX);
+    for y in (cy - radius).max(0)..=(cy + radius).min(side - 1) {
+        for x in (cx - radius).max(0)..=(cx + radius).min(side - 1) {
+            if (x - cx).pow(2) + (y - cy).pow(2) <= radius.pow(2) {
                 let at = (y as usize * size + x as usize) * 4;
-                rgba[at..at + 4].copy_from_slice(&[0, 0, 0, 255]);
+                rgba[at..at + 4].copy_from_slice(&colour);
             }
         }
     }
-    rgba
 }
 
 /// What the tray needs to act on clicks.
@@ -619,7 +667,7 @@ pub fn install_tray(deps: TrayDeps) -> TrayHandle {
     };
     TrayHandle {
         icon: tray,
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         dot: Cell::new(false),
         retext: Box::new(retext),
     }
@@ -700,6 +748,26 @@ mod tests {
 
     fn screen(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, w, h }
+    }
+
+    #[test]
+    fn a_disc_at_the_edge_is_clipped_to_the_image() {
+        let mut rgba = vec![0u8; 8 * 8 * 4];
+        draw_disc(&mut rgba, 8, (7, 0), 3, [1, 2, 3, 4]);
+        let at = |x: usize, y: usize| rgba[(y * 8 + x) * 4..(y * 8 + x) * 4 + 4].to_vec();
+        assert_eq!(at(7, 0), [1, 2, 3, 4]);
+        assert_eq!(at(4, 0), [1, 2, 3, 4]);
+        assert_eq!(at(7, 3), [1, 2, 3, 4]);
+        assert_eq!(at(4, 3), [0, 0, 0, 0], "outside the radius");
+        assert_eq!(at(0, 7), [0, 0, 0, 0]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_mark_takes_the_dot() {
+        // Decodes and draws without panicking, in either ink.
+        let _ = taskbar_icon_with_dot(MARK_PNG);
+        let _ = taskbar_icon(MARK_PNG);
     }
 
     #[test]

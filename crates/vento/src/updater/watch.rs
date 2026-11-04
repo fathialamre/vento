@@ -4,6 +4,10 @@
 //! "started" marker and, when none comes, puts the old copy back and starts
 //! that instead, so a broken download never leaves the user without Vento.
 //! It creates no windows and no event loop.
+//!
+//! On Windows the old binary is a copy of `vento.exe` in the data folder,
+//! and the watcher first runs the release's setup, which replaces the
+//! installed `vento.exe`.
 
 use std::cell::RefCell;
 use std::fs;
@@ -11,11 +15,16 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(target_os = "macos")]
+use std::time::Instant;
 
 use vento_core::update::state::{FailedUpdate, UpdateFile};
 use vento_core::update::version::Version;
 
+#[cfg(windows)]
+use super::install;
+#[cfg(target_os = "macos")]
 use super::swap;
 
 /// The flag that makes `vento` run as the watcher.
@@ -43,32 +52,46 @@ pub const NOT_QUIT_REASON: &str = "Vento didn't quit";
 /// The failure reason when the new copy wrote no marker in time.
 pub const NOT_STARTED_REASON: &str = "The new version didn't start.";
 
+/// The failure reason when the setup failed (Windows).
+pub const NOT_INSTALLED_REASON: &str = "The update couldn't be installed.";
+
 /// What the watcher is told on its command line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WatchArgs {
     /// The old copy, which must be gone before the new one starts.
     pub old_pid: u32,
-    /// Where the new copy now is (the app's usual place).
+    /// Where the new copy now is (the app's usual place): the bundle on the
+    /// Mac, the installed `vento.exe` on Windows.
     pub bundle: PathBuf,
-    /// Where the old copy waits ([`swap::old_path`]).
+    /// Where the old copy waits (`swap::old_path`, `install::old_path`).
     pub old: PathBuf,
     /// Vento's data folder, for the marker and `update.json`.
     pub data_dir: PathBuf,
     /// The version being installed, which the marker must name.
     pub version: Version,
+    /// The setup to run before the new copy starts (Windows); `None` when
+    /// the new copy is already in place.
+    pub installer: Option<PathBuf>,
 }
 
 /// The arguments that start the watcher for `args` (after the program
-/// name): `--update-watch <pid> <bundle> <old> <data_dir> <version>`.
+/// name): `--update-watch <pid> <bundle> <old> <data_dir> <version>`, then
+/// `<installer>` when there is one.
 pub fn to_args(args: &WatchArgs) -> Vec<String> {
-    vec![
+    let mut line = vec![
         FLAG.to_string(),
         args.old_pid.to_string(),
         args.bundle.to_string_lossy().into_owned(),
         args.old.to_string_lossy().into_owned(),
         args.data_dir.to_string_lossy().into_owned(),
         args.version.to_string(),
-    ]
+    ];
+    line.extend(
+        args.installer
+            .as_ref()
+            .map(|setup| setup.to_string_lossy().into_owned()),
+    );
+    line
 }
 
 /// What a command line asks `vento` to be.
@@ -105,8 +128,12 @@ pub fn parse_args(args: &[String]) -> Option<WatchArgs> {
         [_, first, rest @ ..] if first == FLAG => rest,
         _ => return None,
     };
-    let [pid, bundle, old, data_dir, version] = rest else {
-        return None;
+    let (pid, bundle, old, data_dir, version, installer) = match rest {
+        [pid, bundle, old, data_dir, version] => (pid, bundle, old, data_dir, version, None),
+        [pid, bundle, old, data_dir, version, setup] => {
+            (pid, bundle, old, data_dir, version, Some(setup))
+        }
+        _ => return None,
     };
     let old_pid: u32 = pid.parse().ok()?;
     if old_pid <= 1 {
@@ -118,6 +145,7 @@ pub fn parse_args(args: &[String]) -> Option<WatchArgs> {
         old: PathBuf::from(old),
         data_dir: PathBuf::from(data_dir),
         version: Version::parse(version)?,
+        installer: installer.map(PathBuf::from),
     })
 }
 
@@ -139,13 +167,23 @@ pub fn read_marker(data_dir: &Path) -> Option<Version> {
 }
 
 /// The executable inside the bundle `app`.
+#[cfg(target_os = "macos")]
 fn binary(app: &Path) -> PathBuf {
     app.join("Contents/MacOS/vento")
+}
+
+/// The executable: on Windows the copy is the `vento.exe` itself.
+#[cfg(windows)]
+fn binary(app: &Path) -> PathBuf {
+    app.to_path_buf()
 }
 
 /// Starts a program with arguments, detached: its pid, or `None` when it
 /// could not be started.
 pub type Spawn = Box<dyn FnMut(&Path, &[&str]) -> Option<u32>>;
+
+/// Runs a setup and waits for it; `Err` says why it failed.
+pub type Install = Box<dyn FnMut(&Path) -> Result<(), String>>;
 
 /// The effects the watcher has on the system, injected so the order can be
 /// tested.
@@ -160,6 +198,8 @@ pub struct WatchDeps {
     pub marker_says: Box<dyn FnMut() -> Option<Version>>,
     /// Kills the process.
     pub kill: Box<dyn FnMut(u32)>,
+    /// Runs the setup and waits for it; `Err` says why it failed.
+    pub install: Install,
     /// Puts the old copy back at the bundle path.
     pub restore: Box<dyn FnMut() -> io::Result<()>>,
     /// Remembers the failed update for the old copy's banner.
@@ -183,9 +223,10 @@ pub enum WatchOutcome {
 /// 1. Wait for the old copy to be gone. If it is still running after
 ///    [`QUIT_WAIT`] it is killed (it already agreed to quit, and two copies
 ///    must never run at once), and the update is rolled back.
-/// 2. Start the new copy with `--after-update` and look for its marker every
+/// 2. With an installer, run it; when it fails, roll back.
+/// 3. Start the new copy with `--after-update` and look for its marker every
 ///    [`POLL`] for [`START_WAIT`].
-/// 3. No marker: kill the new copy, put the old one back, record why and
+/// 4. No marker: kill the new copy, put the old one back, record why and
 ///    start the old one.
 ///
 /// When a killed copy is still running after [`KILL_WAIT`], the old copy is
@@ -196,6 +237,12 @@ pub fn watch_with(args: &WatchArgs, mut deps: WatchDeps) -> WatchOutcome {
         (deps.kill)(args.old_pid);
         let gone = (deps.wait_gone)(args.old_pid, KILL_WAIT);
         return roll_back(args, &mut deps, NOT_QUIT_REASON, gone);
+    }
+    if let Some(setup) = &args.installer
+        && let Err(e) = (deps.install)(setup)
+    {
+        log::warn!("the setup failed: {e}");
+        return roll_back(args, &mut deps, NOT_INSTALLED_REASON, true);
     }
     let Some(pid) = (deps.spawn)(&binary(&args.bundle), &[AFTER_UPDATE]) else {
         return roll_back(args, &mut deps, NOT_STARTED_REASON, true);
@@ -270,15 +317,19 @@ pub fn run(args: WatchArgs) -> ExitCode {
             let data_dir = data_dir.clone();
             move || read_marker(&data_dir)
         }),
-        kill: Box::new(|pid| {
-            if let Ok(pid) = i32::try_from(pid) {
-                // SAFETY: kill only sends a signal to the process `pid`.
-                unsafe {
-                    libc::kill(pid, libc::SIGKILL);
-                }
-            }
+        kill: Box::new(kill),
+        // The Mac's watcher is never given a setup.
+        #[cfg(target_os = "macos")]
+        install: Box::new(|_| Err("no setup on the Mac".into())),
+        #[cfg(windows)]
+        install: Box::new({
+            let log = super::setup_log(&data_dir);
+            move |setup| install::run_setup(setup, &log)
         }),
+        #[cfg(target_os = "macos")]
         restore: Box::new(move || swap::restore(&bundle, &old)),
+        #[cfg(windows)]
+        restore: Box::new(move || install::restore(&bundle, &old)),
         record_failure: Box::new(move |failed| {
             record_failure(&data_dir, failed, crate::running_version());
         }),
@@ -315,7 +366,35 @@ fn record_failure(data_dir: &Path, failed: FailedUpdate, watcher: Option<Version
     }
 }
 
+/// Kills the process `pid` at once.
+#[cfg(target_os = "macos")]
+fn kill(pid: u32) {
+    if let Ok(pid) = i32::try_from(pid) {
+        // SAFETY: kill only sends a signal to the process `pid`.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+}
+
+/// Kills the process `pid` at once.
+#[cfg(windows)]
+fn kill(pid: u32) {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+
+    // SAFETY: the handle is checked, used for this one call and closed.
+    unsafe {
+        let process = OpenProcess(PROCESS_TERMINATE, 0, pid);
+        if !process.is_null() {
+            TerminateProcess(process, 1);
+            CloseHandle(process);
+        }
+    }
+}
+
 /// Polls every 100 ms until `pid` is gone or `timeout` has passed.
+#[cfg(target_os = "macos")]
 fn wait_gone(children: &RefCell<Vec<Child>>, pid: u32, timeout: Duration) -> bool {
     let Ok(raw) = i32::try_from(pid) else {
         return true;
@@ -341,19 +420,65 @@ fn wait_gone(children: &RefCell<Vec<Child>>, pid: u32, timeout: Duration) -> boo
     }
 }
 
-/// Starts `program` in its own process group, with no terminal and no
-/// stdio tied to the watcher.
-fn spawn(children: &RefCell<Vec<Child>>, program: &Path, args: &[&str]) -> Option<u32> {
-    use std::os::unix::process::CommandExt;
+/// Waits until `pid` is gone or `timeout` has passed. A process that cannot
+/// be opened is gone. Windows keeps no zombies, so `children` need no reaping.
+#[cfg(windows)]
+fn wait_gone(_children: &RefCell<Vec<Child>>, pid: u32, timeout: Duration) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    };
 
-    match Command::new(program)
+    let millis = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
+    // SAFETY: the handle is checked, waited on and closed.
+    unsafe {
+        let process = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+        if process.is_null() {
+            return true;
+        }
+        let gone = WaitForSingleObject(process, millis) == WAIT_OBJECT_0;
+        CloseHandle(process);
+        gone
+    }
+}
+
+/// `program` with `args`, to be started apart from this process: in a
+/// process group of its own, with no console and no stdio tied to it, so
+/// it outlives the copy that starts it.
+#[cfg(windows)]
+pub fn detached<S: AsRef<std::ffi::OsStr>>(program: &Path, args: &[S]) -> Command {
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
+
+    let mut command = Command::new(program);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-    {
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    command
+}
+
+/// Starts `program` in its own process group, with no terminal and no
+/// stdio tied to the watcher.
+fn spawn(children: &RefCell<Vec<Child>>, program: &Path, args: &[&str]) -> Option<u32> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        use std::os::unix::process::CommandExt;
+
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0);
+        command
+    };
+    #[cfg(windows)]
+    let mut command = detached(program, args);
+    match command.spawn() {
         Ok(child) => {
             let pid = child.id();
             children.borrow_mut().push(child);
@@ -372,13 +497,38 @@ mod tests {
 
     use super::*;
 
+    #[cfg(target_os = "macos")]
+    const BUNDLE: &str = "/Applications/Vento.app";
+    #[cfg(target_os = "macos")]
+    const OLD: &str = "/Applications/Vento.app.old";
+    #[cfg(target_os = "macos")]
+    const DATA: &str = "/Users/me/Library/Application Support/Vento";
+
+    #[cfg(windows)]
+    const BUNDLE: &str = r"C:\Users\me\AppData\Local\Programs\Vento\vento.exe";
+    #[cfg(windows)]
+    const OLD: &str = r"C:\Users\me\AppData\Roaming\vento\data\vento-old.exe";
+    #[cfg(windows)]
+    const DATA: &str = r"C:\Users\me\AppData\Roaming\vento\data";
+
+    const SETUP: &str = "vento-0.3.0-windows-setup.exe";
+
     fn args() -> WatchArgs {
         WatchArgs {
             old_pid: 41,
-            bundle: PathBuf::from("/Applications/Vento.app"),
-            old: PathBuf::from("/Applications/Vento.app.old"),
-            data_dir: PathBuf::from("/Users/me/Library/Application Support/Vento"),
+            bundle: PathBuf::from(BUNDLE),
+            old: PathBuf::from(OLD),
+            data_dir: PathBuf::from(DATA),
             version: Version::parse("0.3.0").unwrap(),
+            installer: None,
+        }
+    }
+
+    /// The arguments of a Windows update, which runs the setup first.
+    fn with_setup() -> WatchArgs {
+        WatchArgs {
+            installer: Some(PathBuf::from(SETUP)),
+            ..args()
         }
     }
 
@@ -400,6 +550,8 @@ mod tests {
         spawn_works: bool,
         /// Whether a killed copy is gone in time.
         kill_works: bool,
+        /// Whether the setup works.
+        install_works: bool,
     }
 
     /// Fake effects that record each call into the returned log, and the
@@ -446,6 +598,18 @@ mod tests {
                 let log = log.clone();
                 move |pid| log.borrow_mut().push(format!("kill {pid}"))
             }),
+            install: Box::new({
+                let log = log.clone();
+                move |setup| {
+                    log.borrow_mut()
+                        .push(format!("install {}", setup.display()));
+                    if script.install_works {
+                        Ok(())
+                    } else {
+                        Err("exit code 1".into())
+                    }
+                }
+            }),
             restore: Box::new({
                 let log = log.clone();
                 move || {
@@ -468,8 +632,28 @@ mod tests {
         (deps, log, failures)
     }
 
+    #[cfg(target_os = "macos")]
     const NEW: &str = "spawn /Applications/Vento.app/Contents/MacOS/vento --after-update";
+    #[cfg(target_os = "macos")]
     const OLD_BACK: &str = "spawn /Applications/Vento.app/Contents/MacOS/vento ";
+    #[cfg(target_os = "macos")]
+    const OLD_WHERE_IT_IS: &str = "spawn /Applications/Vento.app.old/Contents/MacOS/vento ";
+
+    #[cfg(windows)]
+    const NEW: &str = r"spawn C:\Users\me\AppData\Local\Programs\Vento\vento.exe --after-update";
+    #[cfg(windows)]
+    const OLD_BACK: &str = r"spawn C:\Users\me\AppData\Local\Programs\Vento\vento.exe ";
+    #[cfg(windows)]
+    const OLD_WHERE_IT_IS: &str = r"spawn C:\Users\me\AppData\Roaming\vento\data\vento-old.exe ";
+
+    /// A run where everything works.
+    const WORKS: Script = Script {
+        old_quits: true,
+        marker_after: Some(0),
+        spawn_works: true,
+        kill_works: true,
+        install_works: true,
+    };
 
     #[test]
     fn args_round_trip() {
@@ -565,6 +749,7 @@ mod tests {
             marker_after: Some(119),
             spawn_works: true,
             kill_works: true,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::Started);
         assert_eq!(*log.borrow(), ["wait_gone 41 10s", NEW]);
@@ -578,6 +763,7 @@ mod tests {
             marker_after: Some(120),
             spawn_works: true,
             kill_works: true,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::Started);
     }
@@ -589,6 +775,7 @@ mod tests {
             marker_after: None,
             spawn_works: true,
             kill_works: true,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -619,6 +806,7 @@ mod tests {
             marker_after: None,
             spawn_works: true,
             kill_works: true,
+            install_works: true,
         });
         deps.marker_says = Box::new(|| Version::parse("0.2.0"));
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
@@ -632,6 +820,7 @@ mod tests {
             marker_after: Some(0),
             spawn_works: false,
             kill_works: true,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -654,6 +843,7 @@ mod tests {
             marker_after: Some(0),
             spawn_works: true,
             kill_works: true,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -677,6 +867,7 @@ mod tests {
             marker_after: Some(0),
             spawn_works: true,
             kill_works: false,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -699,6 +890,7 @@ mod tests {
             marker_after: None,
             spawn_works: true,
             kill_works: false,
+            install_works: true,
         });
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
         assert_eq!(
@@ -722,12 +914,77 @@ mod tests {
             marker_after: None,
             spawn_works: true,
             kill_works: true,
+            install_works: true,
         });
         deps.restore = Box::new(|| Err(io::Error::other("busy")));
         assert_eq!(watch_with(&args(), deps), WatchOutcome::RolledBack);
+        assert_eq!(log.borrow().last().unwrap(), OLD_WHERE_IT_IS);
+    }
+
+    #[test]
+    fn args_with_a_setup_round_trip() {
+        let a = with_setup();
+        let line = to_args(&a);
+        assert_eq!(line.last().map(String::as_str), Some(SETUP));
+        assert_eq!(parse_args(&line), Some(a.clone()));
+        let mut argv = vec!["vento".to_string()];
+        argv.extend(line);
+        assert_eq!(dispatch(&argv), Dispatch::Watch(a));
+        argv.push("extra".into());
+        assert_eq!(dispatch(&argv), Dispatch::Malformed);
+    }
+
+    #[test]
+    fn the_setup_runs_once_the_old_copy_is_gone_and_before_the_new_starts() {
+        let (deps, log, failures) = fake(WORKS);
+        assert_eq!(watch_with(&with_setup(), deps), WatchOutcome::Started);
         assert_eq!(
-            log.borrow().last().unwrap(),
-            "spawn /Applications/Vento.app.old/Contents/MacOS/vento "
+            *log.borrow(),
+            ["wait_gone 41 10s", &format!("install {SETUP}"), NEW]
         );
+        assert!(failures.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_failed_setup_puts_the_old_copy_back_and_starts_it() {
+        let (deps, log, failures) = fake(Script {
+            install_works: false,
+            ..WORKS
+        });
+        assert_eq!(watch_with(&with_setup(), deps), WatchOutcome::RolledBack);
+        assert_eq!(
+            *log.borrow(),
+            [
+                "wait_gone 41 10s",
+                &format!("install {SETUP}"),
+                "restore",
+                "record_failure",
+                OLD_BACK,
+            ]
+        );
+        assert_eq!(failures.borrow()[0].reason, NOT_INSTALLED_REASON);
+    }
+
+    #[test]
+    fn no_setup_runs_while_the_old_copy_is_still_there() {
+        let (deps, log, failures) = fake(Script {
+            old_quits: false,
+            ..WORKS
+        });
+        assert_eq!(watch_with(&with_setup(), deps), WatchOutcome::RolledBack);
+        assert!(!log.borrow().iter().any(|l| l.starts_with("install")));
+        assert_eq!(failures.borrow()[0].reason, NOT_QUIT_REASON);
+    }
+
+    #[test]
+    fn a_new_copy_that_does_not_start_after_the_setup_rolls_back() {
+        let (deps, log, failures) = fake(Script {
+            marker_after: None,
+            ..WORKS
+        });
+        assert_eq!(watch_with(&with_setup(), deps), WatchOutcome::RolledBack);
+        assert_eq!(log.borrow().last().unwrap(), OLD_BACK);
+        assert!(log.borrow().contains(&"restore".to_string()));
+        assert_eq!(failures.borrow()[0].reason, NOT_STARTED_REASON);
     }
 }

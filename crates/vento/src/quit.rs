@@ -51,8 +51,8 @@ fn quit_with(
 /// window agreed, `swap` moves the new copy in and starts the watcher: an
 /// `Err` is handed to `on_fail` and vento keeps running; `Ok` shuts the
 /// executor down and quits, so the watcher can start the new copy.
-// Only the macOS update controller calls it.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// Only the macOS and Windows update controllers call it.
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub fn quit_for_update(
     exec: &Rc<Executor>,
     pdf: &Rc<PdfController>,
@@ -78,7 +78,7 @@ pub fn quit_for_update(
 
 /// The decision behind [`quit_for_update`]: the question as in
 /// [`quit_with`], then `swap`, then `finish` only when the swap worked.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 fn quit_for_update_with(
     edited: usize,
     ask_all: impl FnOnce(Box<dyn FnOnce(bool)>),

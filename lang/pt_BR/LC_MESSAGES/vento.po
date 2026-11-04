@@ -173,7 +173,7 @@ msgstr "Nos meus cortes"
 msgid "Audio"
 msgstr "Áudio"
 
-#: crates/vento/src/settings_window/mod.rs:1798
+#: crates/vento/src/settings_window/mod.rs:1806
 msgid "Automatic (system language)"
 msgstr "Automático (idioma do sistema)"
 
@@ -237,7 +237,7 @@ msgstr "Ocupado — ainda trabalhando"
 msgid "By kind"
 msgstr "Por tipo"
 
-#: crates/vento/src/settings_window/mod.rs:1977
+#: crates/vento/src/settings_window/mod.rs:1985
 msgid "By the clock"
 msgstr "Junto ao relógio"
 
@@ -261,7 +261,7 @@ msgstr "Não pode conter {char} no macOS"
 msgid "Can't end with a dot or space"
 msgstr "Não pode terminar com ponto ou espaço"
 
-#: crates/vento/src/updater/swap.rs:36
+#: crates/vento/src/updater/error.rs:37
 msgid "Can't replace Vento in {folder}"
 msgstr "Não é possível substituir o Vento em {folder}"
 
@@ -381,7 +381,7 @@ msgstr "Clique no ícone do Vento e depois no bloco Manter acordado para ativar 
 msgid "Clipboard"
 msgstr "Área de transferência"
 
-#: crates/vento/src/welcome_window/mod.rs:792
+#: crates/vento/src/welcome_window/mod.rs:800
 msgid "Clipboard history"
 msgstr "Histórico de cópias"
 
@@ -491,7 +491,7 @@ msgstr "Copiar da tela precisa de Gravação de Tela"
 msgid "Copy from screen shortcut"
 msgstr "Atalho de Copiar da tela"
 
-#: crates/vento/src/settings_window/mod.rs:1783
+#: crates/vento/src/settings_window/mod.rs:1791
 msgid "Copy from screen uses this shortcut"
 msgstr "Copiar da tela usa este atalho"
 
@@ -621,11 +621,11 @@ msgstr "Não foi possível renomear {name}: {reason}. Não foi possível restaur
 msgid "Couldn't rename: {reason}"
 msgstr "Não foi possível renomear: {reason}"
 
-#: crates/vento/src/updater/swap.rs:40
+#: crates/vento/src/updater/error.rs:41
 msgid "Couldn't replace Vento"
 msgstr "Não foi possível substituir o Vento"
 
-#: crates/vento/src/settings_window/mod.rs:1764
+#: crates/vento/src/settings_window/mod.rs:1772
 msgid "Couldn't save settings: {error}"
 msgstr "Não foi possível salvar os ajustes: {error}"
 
@@ -713,7 +713,7 @@ msgstr "Concluído"
 msgid "Downloading {v}…"
 msgstr "Baixando {v}…"
 
-#: crates/vento/src/welcome_window/mod.rs:784
+#: crates/vento/src/welcome_window/mod.rs:792
 msgid "Drag a file, press {key}"
 msgstr "Arraste um arquivo e pressione {key}"
 
@@ -897,7 +897,7 @@ msgstr "Fantasma"
 msgid "GitHub answered {code}"
 msgstr "O GitHub respondeu {code}"
 
-#: crates/vento/src/updater/mod.rs:178
+#: crates/vento/src/updater/mod.rs:212
 msgid "GitHub's answer couldn't be read"
 msgstr "Não foi possível ler a resposta do GitHub"
 
@@ -977,7 +977,7 @@ msgstr "Imagens"
 msgid "Improved"
 msgstr "Melhorado"
 
-#: crates/vento/src/settings_window/mod.rs:1979
+#: crates/vento/src/settings_window/mod.rs:1987
 msgid "In the top bar"
 msgstr "Na barra superior"
 
@@ -1000,6 +1000,10 @@ msgstr "Info: itens não encontrados"
 #: crates/vento-core/src/rename/labels.rs:105
 msgid "Inside a folder that's also being renamed"
 msgstr "Dentro de uma pasta que também será renomeada"
+
+#: crates/vento/src/updater/error.rs:35
+msgid "Install Vento with its setup to update it"
+msgstr "Instale o Vento com o instalador dele para atualizá-lo"
 
 #: crates/vento/src/settings_window/mod.rs:212
 msgid "Island"
@@ -1169,7 +1173,7 @@ msgstr "Mais…"
 msgid "Move"
 msgstr "Mover"
 
-#: crates/vento/src/updater/swap.rs:33
+#: crates/vento/src/updater/error.rs:32
 msgid "Move Vento to Applications to update it"
 msgstr "Mova o Vento para Aplicativos para atualizá-lo"
 
@@ -1245,7 +1249,7 @@ msgstr "Nova extensão"
 msgid "New time"
 msgstr "Nova duração"
 
-#: crates/vento/src/main.rs:1163
+#: crates/vento/src/main.rs:1179
 msgid "New: try the Virtual island in Settings › Island"
 msgstr "Novo: experimente a ilha virtual em Ajustes › Ilha"
 
@@ -1313,11 +1317,11 @@ msgstr "Nada selecionado"
 msgid "Nothing to convert: already {format}"
 msgstr "Nada para converter: já está em {format}"
 
-#: crates/vento/src/exec.rs:960
+#: crates/vento/src/exec.rs:971
 msgid "Nothing to copy"
 msgstr "Nada para copiar"
 
-#: crates/vento/src/exec.rs:925
+#: crates/vento/src/exec.rs:936
 msgid "Nothing to move"
 msgstr "Nada para mover"
 
@@ -1381,7 +1385,7 @@ msgstr "Abrir Ajustes"
 msgid "Open With"
 msgstr "Abrir com"
 
-#: crates/vento/src/tray.rs:345
+#: crates/vento/src/tray.rs:393
 msgid "Open clipboard history"
 msgstr "Abrir histórico de cópias"
 
@@ -1389,11 +1393,11 @@ msgstr "Abrir histórico de cópias"
 msgid "Open in browser"
 msgstr "Abrir no navegador"
 
-#: crates/vento/src/tray.rs:351
+#: crates/vento/src/tray.rs:399
 msgid "Open screenshots"
 msgstr "Abrir capturas de tela"
 
-#: crates/vento/src/tray.rs:367
+#: crates/vento/src/tray.rs:415
 msgid "Open settings file"
 msgstr "Abrir arquivo de ajustes"
 
@@ -1469,7 +1473,7 @@ msgstr "Caminho copiado"
 msgid "Pause"
 msgstr "Pausar"
 
-#: crates/vento/src/tray.rs:365
+#: crates/vento/src/tray.rs:413
 msgid "Pause Vento"
 msgstr "Pausar o Vento"
 
@@ -1525,7 +1529,7 @@ msgstr "Marcar cortes"
 msgid "Plain"
 msgstr "Simples"
 
-#: crates/vento/src/settings_window/mod.rs:1981
+#: crates/vento/src/settings_window/mod.rs:1989
 msgid "Plain pill"
 msgstr "Pílula simples"
 
@@ -1591,7 +1595,7 @@ msgstr "Ações rápidas sob o arquivo que você está arrastando"
 msgid "Quit"
 msgstr "Sair"
 
-#: crates/vento/src/tray.rs:368
+#: crates/vento/src/tray.rs:416
 msgid "Quit Vento"
 msgstr "Sair do Vento"
 
@@ -1817,7 +1821,7 @@ msgstr "Ajustes"
 msgid "Settings file"
 msgstr "Arquivo de ajustes"
 
-#: crates/vento/src/tray.rs:366
+#: crates/vento/src/tray.rs:414
 msgid "Settings…"
 msgstr "Ajustes…"
 
@@ -1995,11 +1999,11 @@ msgstr "Desativar Manter acordado"
 msgid "Stop the computer from going to sleep for a while"
 msgstr "Impeça o computador de entrar em repouso por um tempo"
 
-#: crates/vento/src/welcome_window/mod.rs:711
+#: crates/vento/src/welcome_window/mod.rs:719
 msgid "Stored on this Mac without encryption. Copies that password managers mark as private are skipped."
 msgstr "Armazenado neste Mac sem criptografia. Cópias que gerenciadores de senhas marcam como privadas são ignoradas."
 
-#: crates/vento/src/welcome_window/mod.rs:715
+#: crates/vento/src/welcome_window/mod.rs:723
 msgid "Stored on this computer without encryption. Copies that password managers mark as private are skipped."
 msgstr "Armazenado neste computador sem criptografia. Cópias que gerenciadores de senhas marcam como privadas são ignoradas."
 
@@ -2007,7 +2011,7 @@ msgstr "Armazenado neste computador sem criptografia. Cópias que gerenciadores 
 msgid "Sweep"
 msgstr "Varredura"
 
-#: crates/vento/src/main.rs:1126
+#: crates/vento/src/main.rs:1142
 msgid "Switch Screen Recording on again for Copy from screen"
 msgstr "Ative de novo a Gravação de Tela para Copiar da tela"
 
@@ -2043,19 +2047,19 @@ msgstr "Terminal"
 msgid "Text"
 msgstr "Texto"
 
-#: crates/vento/src/settings_window/mod.rs:1782
+#: crates/vento/src/settings_window/mod.rs:1790
 msgid "The Clipboard uses this shortcut"
 msgstr "O histórico de cópias usa este atalho"
 
-#: crates/vento/src/settings_window/mod.rs:1781
+#: crates/vento/src/settings_window/mod.rs:1789
 msgid "The Pocket uses this shortcut"
 msgstr "O Bolso usa este atalho"
 
-#: crates/vento/src/updater/swap.rs:39
+#: crates/vento/src/updater/error.rs:40
 msgid "The download couldn't be opened"
 msgstr "Não foi possível abrir o download"
 
-#: crates/vento/src/updater/mod.rs:177
+#: crates/vento/src/updater/mod.rs:211
 msgid "The download didn't match its checksum"
 msgstr "O download não confere com a soma de verificação"
 
@@ -2067,7 +2071,7 @@ msgstr "A ilha lembra o seu lugar em cada tela"
 msgid "The list and the numbers follow it"
 msgstr "A lista e os números seguem esta ordem"
 
-#: crates/vento/src/updater/mod.rs:70
+#: crates/vento/src/updater/mod.rs:78
 msgid "The new version didn't start."
 msgstr "A nova versão não iniciou."
 
@@ -2091,11 +2095,15 @@ msgstr "O bloco inicia"
 msgid "The update address isn't secure"
 msgstr "O endereço de atualização não é seguro"
 
+#: crates/vento/src/updater/mod.rs:80
+msgid "The update couldn't be installed."
+msgstr "Não foi possível instalar a atualização."
+
 #: crates/vento/ui/settings_pages.slint:624
 msgid "Theme"
 msgstr "Tema"
 
-#: crates/vento/src/settings_window/mod.rs:1780
+#: crates/vento/src/settings_window/mod.rs:1788
 msgid "This shortcut can't be used"
 msgstr "Este atalho não pode ser usado"
 
@@ -2203,7 +2211,7 @@ msgstr "Desafixar"
 msgid "Unpin {}"
 msgstr "Desafixar {}"
 
-#: crates/vento/src/settings_window/mod.rs:1386
+#: crates/vento/src/settings_window/mod.rs:1394
 msgid "Until stopped"
 msgstr "Até desativar"
 
@@ -2235,7 +2243,7 @@ msgstr "Atualizado da versão {v}"
 msgid "Updates"
 msgstr "Atualizações"
 
-#: crates/vento/src/settings_window/mod.rs:1778
+#: crates/vento/src/settings_window/mod.rs:1786
 msgid "Use a modifier with a letter or digit"
 msgstr "Use uma tecla modificadora com uma letra ou um dígito"
 
@@ -2267,7 +2275,7 @@ msgstr "O Vento como um todo"
 msgid "Vento can't read this folder."
 msgstr "O Vento não consegue ler esta pasta."
 
-#: crates/vento/src/updater/mod.rs:71
+#: crates/vento/src/updater/mod.rs:79
 msgid "Vento didn't quit"
 msgstr "O Vento não foi encerrado"
 
@@ -2455,11 +2463,11 @@ msgstr "Seu Mac segue os ajustes de energia de sempre"
 msgid "Your computer follows its usual energy settings"
 msgstr "Seu computador segue os ajustes de energia de sempre"
 
-#: crates/vento/src/settings_window/mod.rs:1756
+#: crates/vento/src/settings_window/mod.rs:1764
 msgid "Your settings file can't be read ({error}); changing a setting here will replace it"
 msgstr "Não é possível ler seu arquivo de ajustes ({error}); mudar um ajuste aqui vai substituí-lo"
 
-#: crates/vento/src/settings_window/mod.rs:1740
+#: crates/vento/src/settings_window/mod.rs:1748
 msgid "Your settings file has an error on line {line}: {message}; changing a setting here will replace it"
 msgstr "Seu arquivo de ajustes tem um erro na linha {line}: {message}; mudar um ajuste aqui vai substituí-lo"
 
@@ -2515,7 +2523,7 @@ msgstr "não foi possível iniciar"
 msgid "cannot start copying: {reason}"
 msgstr "não foi possível começar a copiar: {reason}"
 
-#: crates/vento/src/exec.rs:1132
+#: crates/vento/src/exec.rs:1143
 msgid "cannot start: {reason}"
 msgstr "não foi possível iniciar: {reason}"
 
@@ -2547,7 +2555,7 @@ msgstr "vazio"
 msgid "i/o error: {reason}"
 msgstr "erro de E/S: {reason}"
 
-#: crates/vento/src/exec.rs:1115
+#: crates/vento/src/exec.rs:1126
 msgid "internal error"
 msgstr "erro interno"
 
@@ -2595,7 +2603,7 @@ msgstr "minúsculas"
 msgid "macOS saves a screenshot about 5 seconds late while its floating thumbnail is on. To get the card at once, turn off Show Floating Thumbnail in the Screenshot app (⇧⌘5) → Options."
 msgstr "O macOS salva a captura de tela uns 5 segundos depois enquanto a miniatura flutuante está ativada. Para ver o cartão na hora, desative Mostrar Miniatura Flutuante no app Captura de Tela (⇧⌘5) → Opções."
 
-#: crates/vento/src/settings_window/mod.rs:1779
+#: crates/vento/src/settings_window/mod.rs:1787
 msgid "macOS uses this shortcut"
 msgstr "O macOS usa este atalho"
 
@@ -2763,7 +2771,7 @@ msgstr "{h} h {m} min"
 msgid "{items} · {changes}"
 msgstr "{items} · {changes}"
 
-#: crates/vento/src/settings_window/mod.rs:1771
+#: crates/vento/src/settings_window/mod.rs:1779
 msgid "{ms} ms"
 msgstr "{ms} ms"
 
@@ -2785,7 +2793,7 @@ msgstr[1] "{name} + {n} outros"
 msgid "{name} is locked"
 msgstr "{name} está bloqueado"
 
-#: crates/vento/src/main.rs:1201
+#: crates/vento/src/main.rs:1224
 msgid "{name} shortcut unavailable: {reason}"
 msgstr "Atalho de {name} indisponível: {reason}"
 
@@ -2897,7 +2905,7 @@ msgid_plural "{n} problems"
 msgstr[0] "{n} problema"
 msgstr[1] "{n} problemas"
 
-#: crates/vento/src/settings_window/mod.rs:2009
+#: crates/vento/src/settings_window/mod.rs:2017
 msgid "{n} s"
 msgstr "{n} s"
 
