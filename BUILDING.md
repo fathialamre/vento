@@ -148,7 +148,21 @@ Global shortcuts go through the desktop portal, which only knows apps by their
 (`cargo run -p vento`), Vento belongs to that terminal's app, and GNOME may file
 its shortcuts under that app's name.
 
-Not there yet on Linux: Copy from screen.
+To build the Ubuntu package (`target/debian/vento_<version>-1_<arch>.deb`, for
+this machine's architecture), install `cargo-deb` and `cargo-about`
+(`cargo install cargo-deb --locked`, `cargo install cargo-about --locked
+--features cli`), then run
+
+```sh
+scripts/release-linux.sh
+```
+
+A package built on one Ubuntu needs that Ubuntu's C library or a later one, so
+the published packages are built on 24.04 by the `Release (Ubuntu)` workflow, for
+x64 and ARM64. A version tag attaches them to its release; started by hand, the
+workflow keeps them as the run's artifacts.
+
+Not there yet on Linux: PDF pages, Share, and updating itself.
 
 ## Windows
 
