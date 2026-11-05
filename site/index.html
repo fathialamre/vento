@@ -47,7 +47,7 @@
     <p class="lead">Start dragging a file, press Ctrl, and a small wheel opens under the pointer. Let go over an action. Let go anywhere else and the drop works as it always did.</p>
     <div class="cta">
       <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download</span></a>
-      <span class="k req"><span class="only-mac">macOS 13+ · Apple Silicon</span><span class="only-win">Windows 10 and 11 · x64 and ARM64</span><span class="only-lin">GNOME on Wayland · Ubuntu</span> · free and open source</span>
+      <span class="k req"><span class="only-mac">macOS 13+ · Apple Silicon</span><span class="only-win">Windows 10 and 11 · x64 and ARM64</span><span class="only-lin">GNOME on Wayland · Ubuntu 24.04+</span> · free and open source</span>
     </div>
   </div>
 
@@ -202,11 +202,11 @@
       <li>Updates itself</li>
       <li class="not">Not yet: Copy from screen, Share, HEIC in Convert</li>
     </ul></div>
-    <div><h3><i class="ti ti-brand-ubuntu"></i>Linux</h3><p class="req">GNOME on Wayland · Ubuntu</p><ul>
-      <li>The island in GNOME's top bar, beside the clock</li>
+    <div><h3><i class="ti ti-brand-ubuntu"></i>Linux</h3><p class="req">GNOME on Wayland · Ubuntu 24.04+ · x64 and ARM64</p><ul>
+      <li>The virtual island on the top edge, or the island beside the clock</li>
       <li>A small GNOME Shell extension shows Vento your drags</li>
-      <li>Installs with one script</li>
-      <li class="not">Not yet: Copy from screen, the virtual island</li>
+      <li>Installs as an Ubuntu package</li>
+      <li class="not">Not yet: PDF, Share, updating itself</li>
     </ul></div>
   </div>
 </div></section>
@@ -229,14 +229,22 @@
   <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">If Windows says it protected your PC, click More info, then Run anyway.</p>
   </div>
   <div class="only-lin">
-  <h2 class="disp">One script, then log in again.</h2>
-  <p class="lead">Vento runs on GNOME on Wayland, with a small GNOME Shell extension that tells it about your drags. The install script puts both in place for your user and starts Vento at every login.</p>
+  <h2 class="disp">One package, then log in again.</h2>
+  <p class="lead">Vento runs on GNOME on Wayland, with a small GNOME Shell extension that tells it about your drags. The package puts both in place, turns the extension on and starts Vento at every login.</p>
+  <div data-deb hidden>
+<pre class="term"><span class="c"># in the folder you downloaded it to</span>
+sudo apt install ./<span data-deb-name>vento_amd64.deb</span>
+<span class="c"># log out and back in once, so GNOME loads the extension</span></pre>
+  <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">Ubuntu 24.04 or later, with GNOME 46 to 50. <code>sudo apt remove vento</code> removes it.</p>
+  </div>
+  <div data-no-deb>
 <pre class="term"><span class="c"># the packages it builds with</span>
 sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libxkbcommon-x11-0
 git clone https://github.com/fathialamre/vento.git && cd vento
 scripts/install-linux.sh
 <span class="c"># log out and back in once, so GNOME loads the extension</span></pre>
   <p class="k" style="font-size:13px;color:var(--muted);margin:20px 0 0">Needs Rust and about 7 GB of memory for the release build. <code>scripts/install-linux.sh --uninstall</code> removes it all.</p>
+  </div>
   </div>
   <div class="after">
     <a class="dl" data-download href="https://github.com/fathialamre/vento/releases/latest"><i class="ti ti-download"></i><span>Download</span></a>
@@ -294,13 +302,17 @@ scripts/install-linux.sh
 <script>
 // The OS buttons switch every system-specific bit of the page; the download
 // buttons point at that system's file in the latest release (the Mac's disk
-// image, or its zip in releases before it), and at the build instructions
-// while a release has no file for that system.
+// image, or its zip in releases before it; on Linux the Ubuntu package for
+// this processor), and at the build instructions while a release has no file
+// for that system.
 (() => {
   const root = document.documentElement;
   const BUILD = 'https://github.com/fathialamre/vento/blob/main/BUILDING.md';
-  const files = { mac: [/macos-arm64\.dmg$/, /macos-arm64\.zip$/], win: [/windows-setup\.exe$/], lin: [/linux.*\.(deb|AppImage)$/] };
-  const find = os => files[os].map(re => assets.find(a => re.test(a.name))).find(Boolean);
+  // Linux browsers say aarch64 in the platform; Chromium also tells it below.
+  let arm = /aarch64|arm/.test((navigator.platform || navigator.userAgent).toLowerCase());
+  const deb = () => new RegExp('^vento_.*_' + (arm ? 'arm64' : 'amd64') + '\\.deb$');
+  const files = { mac: [/macos-arm64\.dmg$/, /macos-arm64\.zip$/], win: [/windows-setup\.exe$/], lin: [deb] };
+  const find = os => files[os].map(re => (typeof re === 'function' ? re() : re)).map(re => assets.find(a => re.test(a.name))).find(Boolean);
   const label = { mac: 'Download for Mac', win: 'Download for Windows', lin: 'Install on Linux' };
   let assets = [];
   const update = () => {
@@ -312,6 +324,10 @@ scripts/install-linux.sh
       a.querySelector('i').className = 'ti ' + (file || os === 'mac' ? 'ti-download' : 'ti-code');
     });
     document.querySelectorAll('[data-no-setup]').forEach(p => { p.hidden = !!find('win'); });
+    const pkg = find('lin');
+    document.querySelectorAll('[data-deb]').forEach(d => { d.hidden = !pkg; });
+    document.querySelectorAll('[data-no-deb]').forEach(d => { d.hidden = !!pkg; });
+    if (pkg) document.querySelectorAll('[data-deb-name]').forEach(s => { s.textContent = pkg.name; });
     document.querySelectorAll('.os-pick button').forEach(b => b.setAttribute('aria-pressed', b.dataset.os === os));
   };
   document.querySelectorAll('.os-pick button').forEach(b => b.addEventListener('click', () => {
@@ -320,6 +336,10 @@ scripts/install-linux.sh
     update();
   }));
   update();
+  if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues)
+    navigator.userAgentData.getHighEntropyValues(['architecture'])
+      .then(v => { if (v.architecture) { arm = v.architecture === 'arm'; update(); } })
+      .catch(() => {});
   fetch('https://api.github.com/repos/fathialamre/vento/releases/latest')
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(rel => { assets = rel.assets || []; update(); })
