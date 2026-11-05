@@ -7,6 +7,13 @@
 
 <p align="center">A wheel of quick actions that opens right under the file you are dragging.</p>
 
+<p align="center">
+  <a href="https://fathialamre.github.io/vento/">Website</a> ·
+  <a href="https://github.com/fathialamre/vento/releases/latest">Download</a> ·
+  <a href="CHANGELOG.md">What's new</a> ·
+  <a href="https://github.com/fathialamre/vento/issues">Report an issue</a>
+</p>
+
 ![Dragging a PDF in Finder, pressing Ctrl to open the Vento wheel, releasing on Copy, then pasting the file into another folder](.github/assets/hero.gif)
 
 Start dragging a file, press **Ctrl**, and a small wheel opens under the pointer.
@@ -15,37 +22,43 @@ turn an image into JPEG, PNG, HEIC, WebP and other formats, park it in the
 Pocket for later, and more. Let go anywhere else and the drop works as it
 always did.
 
-## Download
+Vento runs on macOS, Windows and Linux (GNOME). It is free and open source.
 
-**[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)**
-(`vento-…-macos-arm64.dmg`, or the `.zip` with the same files)
+**Contents:** [Download](#download) · [Install](#install-and-first-launch) ·
+[First drag](#your-first-drag) · [Actions](#the-actions) · [The island](#the-island) ·
+[Clipboard](#clipboard) · [Screenshots](#screenshots) · [Copy from screen](#copy-from-screen) ·
+[Quick panel and Settings](#the-quick-panel-and-settings) · [Languages](#languages) ·
+[Privacy](#privacy-and-network) · [Uninstall](#uninstall) · [For developers](#for-developers)
+
+## Download
 
 Vento is in **early beta**. If something breaks or feels off, please
 [open an issue](https://github.com/fathialamre/vento/issues).
 
-Needs macOS 13 or later on an Apple Silicon Mac (M1 or newer). Vento asks for no
-special permissions: no Accessibility, no Input Monitoring. Only
-[Copy from screen](#copy-from-screen) asks for Screen Recording, the first time
-you use it, and [Screenshots](#screenshots), if you turn it on, may ask to see
-the folder your screenshots are saved in.
+| System | Get it | Needs |
+|---|---|---|
+| **macOS** | **[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)** (`vento-…-macos-arm64.dmg`, or the `.zip` with the same files) | macOS 13 or later on Apple Silicon (M1 or newer). On an Intel Mac, [build it yourself](BUILDING.md). |
+| **Windows** | The setup comes with the next release. Until then, [build it yourself](BUILDING.md#windows). | Windows 10 or 11, on an x64 or ARM64 PC. |
+| **Linux** | Install from source with one script, see [Linux](#linux). | GNOME on Wayland (tried on Ubuntu 26.04). |
 
-Vento is free and open source, but not signed or notarized by Apple yet, so
-macOS warns you the first time you open it. [Getting past that](#install-and-first-launch)
-takes a minute, once. You can also read the code, or
-[build it yourself](BUILDING.md).
+Not there yet:
 
-On an Intel Mac, [build it yourself](BUILDING.md).
+- **Windows:** Copy from screen, Share, and HEIC in Convert.
+- **Linux:** Copy from screen, Share, the virtual island, and updating itself.
 
-On macOS, Vento checks for new versions and updates itself (see
-[Privacy and network](#privacy-and-network)). Versions before 0.3.0 cannot do
+On macOS, Vento asks for no special permissions: no Accessibility, no Input
+Monitoring. Only [Copy from screen](#copy-from-screen) asks for Screen
+Recording, the first time you use it, and [Screenshots](#screenshots), if you
+turn it on, may ask to see the folder your screenshots are saved in.
+
+On macOS and Windows, Vento checks for new versions and updates itself (see
+[Privacy and network](#privacy-and-network)). Mac versions before 0.3.0 cannot do
 this yet, so if you have one, update it by hand once: download the latest disk image
 and replace `Vento.app` as in [Install](#install-and-first-launch) below.
 
-> **This is the macOS version.** Support for Linux and Windows is in progress:
-> the core already builds and is tested on both, and the parts that talk to the
-> system (drag detection, the wheel window, the Pocket) are being written for each.
-
 ## Install and first launch
+
+### macOS
 
 1. Open the `.dmg` you downloaded. A window opens with `Vento.app` and a link to
    **Applications** (from the zip you get a `vento-…` folder with `Vento.app` in it).
@@ -86,8 +99,6 @@ xattr -dr com.apple.quarantine /Applications/Vento.app
 It removes the "downloaded from the internet" mark from Vento only.
 </details>
 
-Vento opens a short setup the first time: pick a language and a look, try the wheel on a sample file, and choose what it shows.
-
 Vento lives in the menu bar, not in the Dock. Look for this icon at the top of
 your screen: <img src=".github/assets/menu-bar.png" alt="Vento menu bar icon" height="22">
 
@@ -97,9 +108,42 @@ it on for Vento (macOS may also show its own prompt). After you switch it on,
 macOS may ask you to reopen Vento. After each Vento update, switch it on again; if the switch does nothing,
 remove Vento with the minus button and add it again.
 
+### Windows
+
+Run `vento-…-windows-setup.exe`. It installs Vento for you alone, with no
+administrator rights, in `%LOCALAPPDATA%\Programs\Vento`, and starts it when you
+sign in unless you untick that. One setup works on x64 and ARM64 PCs. Vento sits
+in the notification area by the clock. If Windows says it protected your PC,
+click **More info**, then **Run anyway**.
+
+Until the first setup is published, [build it yourself](BUILDING.md#windows).
+
+### Linux
+
+Vento runs on GNOME on Wayland. A small GNOME Shell extension, installed with
+it, tells Vento about the pointer, your drags and the clipboard, which Wayland
+hides from apps. The install script builds Vento and puts the app, its
+launcher, the extension and a start at login in place for your user:
+
+```sh
+sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libxkbcommon-x11-0
+git clone https://github.com/fathialamre/vento.git
+cd vento
+scripts/install-linux.sh
+```
+
+It needs [Rust](https://rustup.rs) and about 7 GB of memory for the release
+build. Log out and back in once so GNOME loads the extension. The first launch
+asks you to allow Vento's global shortcuts. To update, pull the code and run the
+script again. More in [BUILDING.md](BUILDING.md#linux).
+
+### The first launch
+
+Vento opens a short setup the first time: pick a language and a look, try the wheel on a sample file, and choose what it shows.
+
 ## Your first drag
 
-1. In Finder, **start dragging** a file or folder.
+1. In Finder, Explorer or Files, **start dragging** a file or folder.
 2. **While you are still dragging, press Ctrl.** The order matters: press Ctrl
    after the drag has started, not before.
    Or, without the keyboard, **shake the pointer** quickly back and forth, in
@@ -107,9 +151,10 @@ remove Vento with the minus button and add it again.
 3. The wheel opens under the pointer. Move onto an action and let go.
 
 Let go outside the wheel and the file drops wherever the pointer is, as usual.
-Esc closes the wheel, where macOS lets Vento read the key without extra permission.
+Esc closes the wheel, where the system lets Vento read the key without extra permission.
 
-You can change the key from Ctrl to Option, Shift or Command in the settings.
+You can change the key from Ctrl in the settings: to Option, Shift or Command on
+a Mac, Alt, Shift or Win on Windows, and Alt, Shift or Super on Linux.
 
 A shake counts when the pointer comes back along the way it just moved four
 times within about half a second, each swing at least 40 points. Small wiggles
@@ -127,13 +172,13 @@ order.
 ### Pocket
 
 A shelf for things you are carrying between places. Drop a file on **Pocket** and
-it waits in a small island at the top of the screen, by the notch. Later, drag it
+it waits in the [island](#the-island) at the top of the screen. Later, drag it
 from the island into any folder or app.
 
 ![Releasing a file on Pocket, the island appearing at the top of the screen, then dragging the file from the island into the Clients folder](.github/assets/pocket.gif)
 
 Other ways to add to the Pocket: drop onto the island, or press **⌃⌥P**
-(Control-Option-P). Click items to select several and
+(Control-Option-P; Ctrl+Alt+P on Windows and Linux). Click items to select several and
 drag them together, or use **Drag all** at the bottom right. The x on an item
 removes it and **Clear** empties the Pocket; both can be undone. Removing an item
 never deletes your file.
@@ -156,8 +201,8 @@ in **Settings → Pocket**.
 
 ### Copy
 
-Puts the file on the clipboard, as if you had pressed ⌘C in Finder. Paste it
-anywhere with ⌘V.
+Puts the file on the clipboard, as if you had pressed ⌘C in Finder (Ctrl+C in
+Explorer or Files). Paste it anywhere with ⌘V (Ctrl+V).
 
 ### Move
 
@@ -316,12 +361,65 @@ the three biggest things inside it.
 
 <img src=".github/assets/info.png" alt="Info window for the Photos folder: 15.7 MB, 5 files, with the three biggest files listed" width="346">
 
+## The island
+
+The island at the top of the screen holds the Pocket, your clipboard history and
+your screenshots, a tab each. Where it sits depends on the screen:
+
+- **A Mac with a notch:** it grows wings beside the notch.
+- **Other Mac screens and Windows:** the [virtual island](#the-virtual-island)
+  on the top edge, or, chosen in **Settings → Island**, the plain pill under the
+  menu bar on a Mac or the island by the taskbar's clock on Windows.
+- **Linux:** in GNOME's top bar, beside the clock, in a room the extension keeps for it.
+
+<p>
+  <img src="site/assets/vi-rest.png" alt="The resting virtual island: Pocket, 3 items" height="28">
+  <img src="site/assets/vi-work.png" alt="The island at work: Compressing Photos, 40%, Cancel" height="30">
+  <img src="site/assets/vi-done.png" alt="The island with a result: Compressed to Photos.zip, Show" height="30">
+</p>
+
+### The island shows your jobs
+
+Copy, move, zip, convert or rename, and the island wakes up: it says what is
+running and how far along it is, with **Cancel**. Then it shows the result with
+one button, such as **Show** or **Undo**, and goes back to rest. On a Mac with a
+notch the notch island does the same on its wings; switch this off in
+**Settings → Island**.
+
+### The virtual island
+
+On a screen without a notch, the virtual island rests as a small glass pill on
+the top edge (under the menu bar on a Mac). It never takes a click, so it can
+sit over a window's tab bar. **Push the pointer against the top edge** under it
+and it opens. Resting, it shows how many items the Pocket holds and how long
+Keep Awake has left; while Vento is paused it turns grey, with **Resume**.
+
+New installs start with the virtual island where it is offered; switch between
+it and the other island in **Settings → Island**, which also holds:
+
+- **Shape:** the **Island**, a short pill, or the **Circle**, a small disc that
+  stretches into a pill only to say something.
+- **Place:** **Left**, **Centre** or **Right**, or drag the open island's top
+  bar anywhere along the edge (double-click it to put the island back in the
+  middle). **A place for each screen** lets every screen keep its own.
+- **Glass:** how solid it is while resting, from 10% to 100%, with **Ghost**,
+  **Glass** and **Solid** presets.
+- **Shimmer:** a small moment of light now and then: **Sweep**, **Edge run**,
+  **Halo**, **Sparkle**, **Liquid**, or **Off**; how often (**Rarely**,
+  **Sometimes** or **Often**), and whether only while the Pocket holds items.
+- **Follow Reduce motion:** when the system asks for less motion, no shimmer, no
+  shake and plain fades.
+
+<img src="site/assets/island-settings.png" alt="Settings, Island page: Virtual island, the Island and Circle shapes, Left, Centre and Right, A place for each screen, Glass at 55%, the five shimmers and Off, How often, and Follow Reduce motion" width="480">
+
+On Linux the virtual island is not offered yet: the island stays in the top bar.
+
 ## Clipboard
 
 Vento remembers what you copy, so you can copy several things in one place and
 paste them one by one somewhere else. Open the island and switch to the
 **Clipboard** with the tabs at its bottom left, or press **⌃⌥V**
-(Control-Option-V). Copying never opens the island by itself.
+(Control-Option-V; Ctrl+Alt+V on Windows and Linux). Copying never opens the island by itself.
 
 - **Click a copy** to put it back on the clipboard exactly as it was, formatting
   included (spreadsheet cells paste as cells), then press ⌘V anywhere.
@@ -339,14 +437,15 @@ paste them one by one somewhere else. Open the island and switch to the
   paused.
 
 The history stays after you quit or restart. It is stored **unencrypted** in
-`~/Library/Application Support/vento`; see [SETTINGS.md](SETTINGS.md). Switch it
+Vento's data folder (`~/Library/Application Support/vento` on a Mac); see
+[SETTINGS.md](SETTINGS.md). Switch it
 off, or change its shortcut, on the **Clipboard** page of the Settings window.
 
 ## Screenshots
 
 Off by default; turn it on in **Settings → Screenshots**. Vento reads the folder
-the Screenshot app saves to (**⇧⌘5 → Options**), or on Linux the Screenshots folder
-in your Pictures folder (created if missing). A **card** then drops down from the
+the Screenshot app saves to (**⇧⌘5 → Options**), or on Windows and Linux the
+Screenshots folder in your Pictures folder (created if missing). A **card** then drops down from the
 island for each new screenshot: drag the picture anywhere, or **Copy**, **Copy text** (the text found in it; macOS 14+, or
 Tesseract on Linux), **Pocket**, **Move to Trash** (**Undo** for about 5 seconds).
 It closes after 2 to 8 seconds, not while the pointer is on it. <!-- screenshot: card -->
@@ -364,7 +463,7 @@ file about 5 seconds late; turn off **Show Floating Thumbnail** for an instant c
 ## Copy from screen
 
 Copy the text from anything on your screen, even a picture, a video or an app
-that won't let you select it. Press **⌃⌥T** (Control-Option-T), or choose
+that won't let you select it. macOS only for now. Press **⌃⌥T** (Control-Option-T), or choose
 **Copy from screen** in the menu bar menu. The screen dims. Drag a rectangle over
 the text and let go: the text inside it is on your clipboard, ready to paste with
 ⌘V. Esc, a right click, or a click without dragging cancels.
@@ -379,7 +478,8 @@ screen** page of the Settings window.
 
 ## The Quick panel and Settings
 
-**Click** the Vento icon in the menu bar to open the Quick panel. It tells you
+**Click** the Vento icon in the menu bar (on Windows, in the notification area;
+on Linux, in the top bar) to open the Quick panel. It tells you
 whether Vento is on or paused, with a button to pause or resume it, and puts the
 things you reach for most one click away:
 
@@ -387,7 +487,7 @@ things you reach for most one click away:
   a Mac that cannot do that.
 - **Clipboard** opens the island on your clipboard history.
 - **Pocket** opens the island on the Pocket and says how many items it holds.
-- **Keep Awake** keeps your Mac awake, and its screen on unless you choose
+- **Keep Awake** keeps your computer awake, and its screen on unless you choose
   otherwise on the Keep Awake page of Settings. Click the tile to start or
   stop it, or pick how long below it: from 15 minutes up to 8 hours, until a time you
   choose, or until you stop it. The Keep Awake page of Settings picks those
@@ -409,15 +509,16 @@ it stays closed until you open it again.
 
 | Page | What it holds |
 |---|---|
-| General | The **Language** (English or العربية, or follow the system), the key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
+| General | The **Language** (one of the [eight](#languages), or follow the system), the key that opens the wheel, shaking to open it, your terminal app, how paths are copied, **Appearance** (follow the system, or always light or dark), and the **Theme** of the Quick panel and this window: Vento, GitHub, Catppuccin, Rosé Pine, Tokyo Night, Gruvbox or Nord. |
 | Wheel | Honeycomb or petals layout; which actions show and in what order. |
 | Move | Pinned and recent folders for the Move ring, and how long to hold. |
 | Pocket | The Pocket shortcut, what happens after you drag items out, and which look it opens on: By kind or List. |
+| Island | The [virtual island](#the-virtual-island) or the other island, and the virtual island's shape, place, glass and shimmer; on a notch, whether it shows jobs. |
 | Clipboard | Clipboard history on or off, its shortcut, and clearing it. |
 | Copy from screen | Its shortcut. |
 | Screenshots | Screenshots in the island on or off, the card on or off, and how long the card stays. |
 | Keep Awake | The times the Quick panel offers, what a click on the tile starts, and whether the screen may turn off while Keep Awake runs. |
-| About | The version, and on macOS the update status with **Check now** and a switch for the daily check; what's new in this version; a button that opens the settings file, and one that shows the licenses. |
+| About | The version, and on macOS and Windows the update status with **Check now** and a switch for the daily check; what's new in this version; a button that opens the settings file, and one that shows the licenses. |
 
 The wheel, the Pocket and the notices that offer Undo keep their dark look
 whichever Appearance or Theme you choose.
@@ -439,7 +540,7 @@ In Arabic the whole interface is mirrored to read right to left. The windows, th
 menu and the next notice change as soon as you pick a language, with no restart.
 
 The language is English until you pick another in **Settings → General →
-Language**. The first choice there, **Automatic (system language)**, follows your Mac's preferred languages (on Linux,
+Language**. The first choice there, **Automatic (system language)**, follows your system's preferred languages (on Linux,
 the `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG` variables) and falls back to
 English; each language is listed under its own name. Or set
 `language` in `settings.toml` (see [SETTINGS.md](SETTINGS.md)). To add another
@@ -447,22 +548,26 @@ language, see [lang/README.md](lang/README.md).
 
 ## Privacy and network
 
-On macOS, Vento makes one request a day to GitHub to look for a new version,
+On macOS and Windows, Vento makes one request a day to GitHub to look for a new version,
 and nothing else: it sends no data about you or your files, and has no
 analytics. When a newer version exists, Vento downloads it only after you click
 **Update** in the Quick panel or in **Settings → About**, and checks the
 download against the checksums published with the release before it replaces
-itself. Everything else, including Copy from screen, runs on your Mac.
+itself. Everything else, including Copy from screen, runs on your computer.
 
 Turn the daily check off with **Settings → About → Check for updates
-automatically**. **Check now** still works when you ask for it. The update check
-is on macOS only for now.
+automatically**. **Check now** still works when you ask for it. There is no
+update check on Linux, where you update by running the install script again.
 
 ## Uninstall
 
-Right-click the menu bar icon, choose **Quit Vento**, and move `Vento.app` from
-Applications to the Trash. To remove its settings, Pocket and clipboard history
-too, delete the folder `~/Library/Application Support/vento`.
+- **macOS:** right-click the menu bar icon, choose **Quit Vento**, and move
+  `Vento.app` from Applications to the Trash. To remove its settings, Pocket and
+  clipboard history too, delete the folder `~/Library/Application Support/vento`.
+- **Windows:** uninstall Vento from **Settings → Apps → Installed apps**. Your
+  settings and Pocket stay in `%APPDATA%\vento`; delete that folder to remove them.
+- **Linux:** run `scripts/install-linux.sh --uninstall`. It keeps your settings
+  and data in `~/.config/vento` and `~/.local/share/vento`.
 
 ## For developers
 
@@ -477,7 +582,7 @@ cargo run -p vento --release
 
 [rustup](https://rustup.rs) installs the right Rust version on the first build.
 [BUILDING.md](BUILDING.md) explains how the code is laid out, how to build the
-app bundle and the release zip, and the checks to run before sending a change.
+app and the release files for each system, and the checks to run before sending a change.
 Help with Linux and Windows support is especially welcome.
 
 ## More
