@@ -1,6 +1,6 @@
 [package]
 name = "vento"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "A wheel of actions under the cursor for the files you drag"
 license = "GPL-3.0-only"
