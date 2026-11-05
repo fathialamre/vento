@@ -24,7 +24,7 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 9;
+pub(super) const API_VERSION: u32 = 10;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -363,6 +363,69 @@ pub(super) fn show_awake_indicator(shown: bool) {
     if let Err(e) = call(&bus, "ShowAwakeIndicator", Some(&(shown,).to_variant())) {
         log::warn!("cannot show the Keep Awake cup: {e}");
     }
+}
+
+/// The API version of the extension GNOME runs, or `None` when it is not
+/// running.
+pub(super) fn extension_version(bus: &gio::DBusConnection) -> Option<u32> {
+    call(bus, "Version", None)
+        .ok()?
+        .try_child_value(0)?
+        .get::<u32>()
+}
+
+/// Asks the extension to grab `shortcuts` (id, accelerator as GTK writes
+/// it) in place of the ones vento grabbed before, for GNOME before 48, which
+/// has no GlobalShortcuts portal. Answers the ids it could not grab.
+pub(super) fn grab_shortcuts(
+    bus: &gio::DBusConnection,
+    shortcuts: &[(String, String)],
+) -> Result<Vec<String>, glib::Error> {
+    let reply = call(
+        bus,
+        "GrabShortcuts",
+        Some(&(shortcuts.to_vec(),).to_variant()),
+    )?;
+    let (failed,): (Vec<String>,) = reply.get().unwrap_or_default();
+    Ok(failed)
+}
+
+/// Calls `on_press` with the id of each grabbed shortcut the extension sees
+/// pressed, on the thread whose context is the thread default now.
+pub(super) fn on_shortcut_pressed(
+    bus: &gio::DBusConnection,
+    on_press: impl Fn(&str) + 'static,
+) -> gio::SignalSubscription {
+    bus.subscribe_to_signal(
+        Some(BUS_NAME),
+        Some(INTERFACE),
+        Some("ShortcutPressed"),
+        Some(OBJECT_PATH),
+        None,
+        gio::DBusSignalFlags::NONE,
+        move |signal| {
+            if let Some(id) = signal.parameters.try_child_value(0)
+                && let Some(id) = id.str()
+            {
+                on_press(id);
+            }
+        },
+    )
+}
+
+/// Calls `on_appeared` each time the extension comes onto the bus (also at
+/// once if it is there already): GNOME turns extensions off while the
+/// screen is locked, and what they grabbed goes with them. For as long as
+/// vento runs.
+pub(super) fn on_extension_appeared(bus: &gio::DBusConnection, on_appeared: impl Fn() + 'static) {
+    // Dropping the id does not stop the watch.
+    let _ = gio::bus_watch_name_on_connection(
+        bus,
+        BUS_NAME,
+        gio::BusNameWatcherFlags::NONE,
+        move |_, _, _| on_appeared(),
+        |_, _| {},
+    );
 }
 
 /// `#rrggbbaa`, as Cogl writes a colour, or `#rrggbb` (opaque).

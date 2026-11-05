@@ -10,6 +10,9 @@
 //! whole list, once the changes made together have all come in.
 //!
 //! The portal answers with signals, so a thread of its own runs a glib loop.
+//!
+//! GNOME before 48 has no GlobalShortcuts portal: there vento's GNOME Shell
+//! extension grabs the shortcuts instead, with no dialog to allow them.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, VecDeque};
@@ -77,6 +80,24 @@ fn trigger(spec: &str) -> Option<String> {
     Some(parts.join("+"))
 }
 
+/// `spec` (`"ctrl+alt+p"`) as GTK writes an accelerator (`"<Control><Alt>p"`),
+/// which is what the extension grabs.
+fn accelerator(spec: &str) -> Option<String> {
+    let (m, key) = parse_shortcut(spec)?;
+    let mut out: String = [
+        (m.ctrl, "<Control>"),
+        (m.alt, "<Alt>"),
+        (m.shift, "<Shift>"),
+        (m.meta, "<Super>"),
+    ]
+    .into_iter()
+    .filter(|(on, _)| *on)
+    .map(|(_, name)| name)
+    .collect();
+    out.push(key);
+    Some(out)
+}
+
 /// A shortcut vento wants bound, on the shortcuts thread.
 struct Wanted {
     spec: String,
@@ -104,6 +125,11 @@ thread_local! {
     /// answers), so one bind waits for the last to be answered.
     static QUEUE: RefCell<VecDeque<Job>> = RefCell::new(VecDeque::new());
     static BUSY: Cell<bool> = const { Cell::new(false) };
+    /// Whether the portal has GlobalShortcuts, once asked.
+    static HAS_PORTAL: Cell<Option<bool>> = const { Cell::new(None) };
+    /// Without the portal: listens for the extension's presses, for as long
+    /// as the thread runs.
+    static EXTENSION: RefCell<Option<gio::SignalSubscription>> = const { RefCell::new(None) };
 }
 
 /// Runs `job` once the jobs before it are over.
@@ -210,6 +236,12 @@ fn pressed(session: &str, shortcut_id: &str) {
     if SESSION.with(|s| s.borrow().as_deref() != Some(session)) {
         return;
     }
+    press(shortcut_id);
+}
+
+/// Calls the action of the wanted shortcut `shortcut_id`. Runs on the
+/// shortcuts thread.
+fn press(shortcut_id: &str) {
     WANTED.with(|wanted| {
         if let Some(w) = wanted.borrow().values().find(|w| w.spec == shortcut_id) {
             (w.on_press)();
@@ -263,6 +295,68 @@ fn schedule_rebind() {
     timer.attach(Some(context()));
 }
 
+/// Whether the portal has GlobalShortcuts (GNOME 48 on), asked once. Runs
+/// on the shortcuts thread.
+fn has_portal(bus: &gio::DBusConnection) -> bool {
+    if let Some(known) = HAS_PORTAL.get() {
+        return known;
+    }
+    let found = bus
+        .call_sync(
+            Some(PORTAL),
+            PORTAL_PATH,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            Some(&(GLOBAL_SHORTCUTS, "version").to_variant()),
+            None,
+            gio::DBusCallFlags::NONE,
+            5000,
+            gio::Cancellable::NONE,
+        )
+        .is_ok();
+    if !found {
+        log::info!("no GlobalShortcuts portal: the GNOME Shell extension grabs the shortcuts");
+    }
+    HAS_PORTAL.set(Some(found));
+    found
+}
+
+/// Has the extension grab every wanted shortcut in place of the ones it
+/// grabbed before. Runs on the shortcuts thread.
+fn grab_in_extension(bus: &gio::DBusConnection) {
+    let shortcuts: Vec<(String, String)> = WANTED.with(|wanted| {
+        wanted
+            .borrow()
+            .values()
+            .filter_map(|w| Some((w.spec.clone(), accelerator(&w.spec)?)))
+            .collect()
+    });
+    match super::shell::grab_shortcuts(bus, &shortcuts) {
+        Ok(failed) if failed.is_empty() => {
+            let specs: Vec<&str> = shortcuts.iter().map(|(spec, _)| spec.as_str()).collect();
+            log::info!("shortcuts grabbed: {}", specs.join(", "));
+        }
+        Ok(failed) => log::warn!("shortcuts {} not grabbed (taken?)", failed.join(", ")),
+        Err(e) => log::warn!("the GNOME Shell extension cannot grab the shortcuts: {e}"),
+    }
+}
+
+/// Without the portal: starts listening to the extension the first time,
+/// which grabs once it is on the bus (and again each time it comes back);
+/// later, grabs at once. Runs on the shortcuts thread.
+fn rebind_in_extension(bus: &gio::DBusConnection) {
+    if EXTENSION.with(|e| e.borrow().is_some()) {
+        return grab_in_extension(bus);
+    }
+    let presses = super::shell::on_shortcut_pressed(bus, press);
+    EXTENSION.with(|e| *e.borrow_mut() = Some(presses));
+    super::shell::on_extension_appeared(bus, || {
+        if let Ok(bus) = super::session_bus() {
+            grab_in_extension(&bus);
+        }
+    });
+}
+
 /// Closes the current session and binds every wanted shortcut in a new one,
 /// then calls `done`. Runs on the shortcuts thread, as a queued job.
 fn rebind(done: Done) {
@@ -273,6 +367,10 @@ fn rebind(done: Done) {
             return done();
         }
     };
+    if !has_portal(&bus) {
+        rebind_in_extension(&bus);
+        return done();
+    }
     listen(&bus);
     if let Some(old) = SESSION.with(|s| s.borrow_mut().take()) {
         close_session(&bus, &old);
@@ -429,6 +527,23 @@ mod tests {
         assert_eq!(trigger("shift+meta+7").as_deref(), Some("SHIFT+LOGO+7"));
         assert_eq!(trigger("alt+ctrl+V").as_deref(), Some("CTRL+ALT+v"));
         assert_eq!(trigger("p"), None, "a bare key is no shortcut");
+    }
+
+    #[test]
+    fn specs_become_gtk_accelerators() {
+        assert_eq!(
+            accelerator("ctrl+alt+p").as_deref(),
+            Some("<Control><Alt>p")
+        );
+        assert_eq!(
+            accelerator("shift+meta+7").as_deref(),
+            Some("<Shift><Super>7")
+        );
+        assert_eq!(
+            accelerator("alt+ctrl+V").as_deref(),
+            Some("<Control><Alt>v")
+        );
+        assert_eq!(accelerator("p"), None, "a bare key is no shortcut");
     }
 
     #[test]

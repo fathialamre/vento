@@ -26,6 +26,7 @@ mod catcher;
 mod clip_owner;
 mod clipboard;
 mod drag_out;
+mod extension;
 mod heif;
 mod icons;
 pub(crate) mod image_io;
@@ -174,7 +175,9 @@ fn monitor_home(monitor: shell::Monitor, slot: Option<Rect>) -> IslandHome {
 const CLIP_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl Platform for LinuxPlatform {
-    fn prepare_app(&self) {}
+    fn prepare_app(&self) {
+        extension::set_up();
+    }
 
     fn sample_input(&self) -> InputSample {
         if terminate::asked() {

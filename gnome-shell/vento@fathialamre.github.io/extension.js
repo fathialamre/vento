@@ -2,8 +2,8 @@
 //
 // On Wayland an app cannot see the global pointer, drags in other apps or
 // the clipboard without focus. This extension can, and answers Vento over
-// the session bus as org.vento.Shell1. Vento polls it; nothing here sends
-// signals, so every change is a counter Vento compares.
+// the session bus as org.vento.Shell1. Vento polls it, so every change is a
+// counter Vento compares; the one signal is ShortcutPressed.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
@@ -21,7 +21,7 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 9;
+const API_VERSION = 10;
 
 // Vento's StatusNotifierItem Id, by which its tray icon is found.
 const TRAY_ID = 'vento';
@@ -157,6 +157,18 @@ const IFACE = `
     <method name="FocusedWindow">
       <arg type="(biiiiu)" direction="out" name="window"/>
     </method>
+    <!-- For GNOME before 48, which has no GlobalShortcuts portal: grabs
+         each (id, accelerator as GTK writes it, "<Control><Alt>p") for as
+         long as the caller stays on the bus, in place of the ones it
+         grabbed before, and answers the ids that could not be grabbed.
+         Each press emits ShortcutPressed -->
+    <method name="GrabShortcuts">
+      <arg type="a(ss)" direction="in" name="shortcuts"/>
+      <arg type="as" direction="out" name="failed"/>
+    </method>
+    <signal name="ShortcutPressed">
+      <arg type="s" name="id"/>
+    </signal>
   </interface>
 </node>`;
 
@@ -320,7 +332,12 @@ function selectArea(done) {
         edge.set_size(w + 2, h + 2);
     };
     show(0, 0, 0, 0);
-    overlay.set_cursor_type(Clutter.CursorType.CROSSHAIR);
+    // GNOME 48 gave actors their own cursor; before, the display had one.
+    const ownCursor = typeof overlay.set_cursor_type === 'function';
+    if (ownCursor)
+        overlay.set_cursor_type(Clutter.CursorType.CROSSHAIR);
+    else
+        global.display.set_cursor(Meta.Cursor.CROSSHAIR);
     Main.uiGroup.add_child(overlay);
     const grab = Main.pushModal(overlay);
     overlay.grab_key_focus();
@@ -335,6 +352,8 @@ function selectArea(done) {
     };
     const finish = (result) => {
         Main.popModal(grab);
+        if (!ownCursor)
+            global.display.set_cursor(Meta.Cursor.DEFAULT);
         overlay.destroy();
         // Answer once a frame without the dimming is on the screen, so a
         // capture right after sees what is under it.
@@ -384,6 +403,9 @@ class Service {
         this._awake = null;
         this._awakeWatch = 0;
         this._selecting = false;
+        // Grabbed shortcuts' ids, by their binding action.
+        this._shortcuts = new Map();
+        this._shortcutsWatch = 0;
     }
 
     Version() {
@@ -566,6 +588,47 @@ class Service {
             console.warn(`Vento: no startup sequence for token ${token}`);
     }
 
+    GrabShortcutsAsync([shortcuts], invocation) {
+        this.ungrabShortcuts();
+        const failed = [];
+        for (const [id, accelerator] of shortcuts) {
+            const action = global.display.grab_accelerator(accelerator,
+                Meta.KeyBindingFlags.NONE);
+            if (action === Meta.KeyBindingAction.NONE) {
+                failed.push(id);
+                continue;
+            }
+            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action),
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW);
+            this._shortcuts.set(action, id);
+        }
+        if (this._shortcuts.size > 0) {
+            this._shortcutsWatch = Gio.bus_watch_name(Gio.BusType.SESSION,
+                invocation.get_sender(), Gio.BusNameWatcherFlags.NONE, null,
+                () => this.ungrabShortcuts());
+        }
+        invocation.return_value(new GLib.Variant('(as)', [failed]));
+    }
+
+    /** The id of the grabbed shortcut whose binding action is `action`. */
+    shortcutFor(action) {
+        return this._shortcuts.get(action);
+    }
+
+    /** Lets go of the grabbed shortcuts. */
+    ungrabShortcuts() {
+        if (this._shortcutsWatch) {
+            Gio.bus_unwatch_name(this._shortcutsWatch);
+            this._shortcutsWatch = 0;
+        }
+        for (const action of this._shortcuts.keys()) {
+            global.display.ungrab_accelerator(action);
+            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action),
+                Shell.ActionMode.NONE);
+        }
+        this._shortcuts.clear();
+    }
+
     ShowMenuAsync([entries], invocation) {
         // Opened on the press, the menu would take its release as a choice.
         const started = GLib.get_monotonic_time();
@@ -712,6 +775,13 @@ export default class VentoExtension extends Extension {
             this);
         global.display.connectObject(
             'workareas-changed', () => service.monitorsChanged(),
+            'accelerator-activated', (_display, action) => {
+                const id = service.shortcutFor(action);
+                if (id !== undefined) {
+                    this._dbus.emit_signal('ShortcutPressed',
+                        new GLib.Variant('(s)', [id]));
+                }
+            },
             this);
         global.stage.connectObject(
             'captured-event', (_stage, event) => trayIconPressed(event),
@@ -726,6 +796,7 @@ export default class VentoExtension extends Extension {
         global.stage.disconnectObject(this);
         this._service.release();
         this._service.hideAwake();
+        this._service.ungrabShortcuts();
         Gio.bus_unown_name(this._nameId);
         this._dbus.unexport();
         this._dbus = null;

@@ -2,6 +2,7 @@
 name = "vento"
 version = "0.3.0"
 edition = "2024"
+description = "A wheel of actions under the cursor for the files you drag"
 license = "GPL-3.0-only"
 rust-version = "1.93"
 build = "build.rs"
@@ -74,3 +75,35 @@ ureq = "3"
 # The update watcher asks whether a pid is still running and kills a copy
 # that does not start.
 libc = "0.2"
+
+# The Ubuntu package (`cargo deb -p vento`), built on the oldest Ubuntu it
+# supports (24.04) so its glibc and libraries are there on every later one.
+# `$auto` adds the shared libraries the binary links; the rest are run time
+# needs: libxkbcommon-x11 (loaded by winit), GNOME Shell for the extension,
+# gnome-session-inhibit for Keep Awake, and Tesseract and libheif's codecs
+# for Copy from screen and HEIC, which work without them.
+[package.metadata.deb]
+name = "vento"
+maintainer = "Fathi Alamre <fathialamre90@gmail.com>"
+copyright = "Fathi Alamre"
+section = "utils"
+priority = "optional"
+extended-description = """\
+Drag files and hold a key to open a wheel of actions under the cursor: move, \
+copy, convert, archive, open a terminal and more. Vento also keeps a Pocket \
+for files and text, a clipboard history and Keep Awake. Runs on GNOME \
+46 to 50 through its own GNOME Shell extension, which it turns on itself; \
+log out and back in once after installing."""
+depends = "$auto, libxkbcommon-x11-0, gnome-shell (>= 46), gnome-session-bin"
+recommends = "tesseract-ocr, tesseract-ocr-ara, tesseract-ocr-eng, libheif-plugin-libde265, libheif-plugin-x265"
+assets = [
+    ["target/release/vento", "usr/bin/", "755"],
+    ["assets/io.github.fathialamre.Vento.desktop", "usr/share/applications/", "644"],
+    # Started at login for every user, who can turn it off among the startup apps.
+    ["assets/io.github.fathialamre.Vento.desktop", "etc/xdg/autostart/", "644"],
+    ["assets/vento.svg", "usr/share/icons/hicolor/scalable/apps/io.github.fathialamre.Vento.svg", "644"],
+    ["../../gnome-shell/vento@fathialamre.github.io/*", "usr/share/gnome-shell/extensions/vento@fathialamre.github.io/", "644"],
+    ["../../LICENSE", "usr/share/doc/vento/", "644"],
+    # Made by scripts/release-linux.sh.
+    ["../../target/deb-notices/*", "usr/share/doc/vento/", "644"],
+]

@@ -1,0 +1,71 @@
+name: Release (Ubuntu)
+
+# Builds the Ubuntu packages on Ubuntu 24.04, the oldest Ubuntu Vento
+# supports, so they run there and on every later one. A version tag puts
+# them on that version's release (a draft one if it does not exist yet);
+# run by hand, they are only kept as the run's artifacts.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deb:
+    name: deb (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      # Same version as rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-about
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev
+      - run: scripts/release-linux.sh
+      # Installing it here proves its dependencies resolve on 24.04.
+      - name: Install the package
+        run: |
+          sudo apt-get install -y ./target/debian/vento_*.deb
+          dpkg -L vento
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vento-${{ matrix.arch }}
+          path: target/debian/vento_*.deb
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: deb
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" vento_*.deb --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" vento_*.deb --draft --title "Vento ${TAG#v}" --repo "$GITHUB_REPOSITORY"
+          fi

@@ -877,6 +877,10 @@ msgstr "Format"
 msgid "GB"
 msgstr "Go"
 
+#: crates/vento-platform/src/linux/extension.rs:136
+msgid "GNOME loads Vento's extension when you log in. Until then Vento cannot see your drags."
+msgstr "GNOME charge l’extension de Vento à l’ouverture de session. D’ici là, Vento ne voit pas vos glissements."
+
 #: crates/vento/ui/settings_pages.slint:2261
 msgid "GPL-3.0-only. Wheel icons are from Tabler Icons 3.49.0, MIT-licensed."
 msgstr "GPL-3.0-only. Les icônes de la roue proviennent de Tabler Icons 3.49.0, sous licence MIT."
@@ -1120,6 +1124,10 @@ msgstr "Liquide"
 #: crates/vento/ui/settings_pages.slint:1117
 msgid "List"
 msgstr "Liste"
+
+#: crates/vento-platform/src/linux/extension.rs:135
+msgid "Log out once to finish setting up Vento"
+msgstr "Fermez la session une fois pour terminer la configuration de Vento"
 
 #: crates/vento/ui/pdf.slint:1240
 msgid "Lossless"
@@ -2159,6 +2167,10 @@ msgstr "Essayez-moi.txt"
 msgid "Turn images into another format"
 msgstr "Convertissez des images dans un autre format"
 
+#: crates/vento-platform/src/linux/extension.rs:141
+msgid "Turn on GNOME extensions for Vento"
+msgstr "Activez les extensions GNOME pour Vento"
+
 #: crates/vento/ui/settings_window.slint:345
 msgid "Turn on Show screenshots in the island."
 msgstr "Activez Afficher les captures dans l’îlot."
@@ -2318,6 +2330,10 @@ msgstr "Vento est passé par là."
 #: crates/vento/src/panel/mod.rs:125
 msgid "Vento will be back in a second"
 msgstr "Vento revient dans un instant"
+
+#: crates/vento-platform/src/linux/extension.rs:142
+msgid "Vento works through its GNOME Shell extension, and extensions are turned off. Turn them on in the Extensions app."
+msgstr "Vento fonctionne grâce à son extension GNOME Shell, et les extensions sont désactivées. Activez-les dans l’app Extensions."
 
 #: crates/vento/src/main.rs:653
 msgid "Vento {version} is out"
