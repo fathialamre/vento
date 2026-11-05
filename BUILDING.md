@@ -115,7 +115,7 @@ windows, so Vento comes in two parts:
 Building needs a few development packages:
 
 ```sh
-sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev
+sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libpoppler-glib-dev
 ```
 
 and running needs `libxkbcommon-x11-0` (`sudo apt install libxkbcommon-x11-0`).
@@ -162,7 +162,7 @@ the published packages are built on 24.04 by the `Release (Ubuntu)` workflow, fo
 x64 and ARM64. A version tag attaches them to its release; started by hand, the
 workflow keeps them as the run's artifacts.
 
-Not there yet on Linux: PDF pages, Share, and updating itself.
+Not there yet on Linux: Share, and updating itself.
 
 ## Windows
 

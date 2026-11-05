@@ -122,11 +122,17 @@ pub(crate) fn screen_text_languages() -> Vec<String> {
 }
 
 /// Message of the PDF stubs.
-#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux", windows),
+    allow(dead_code)
+)]
 const NO_PDF: &str = "not supported";
 
 /// The PDF backend where there is none: every call fails.
-#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux", windows),
+    allow(dead_code)
+)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SystemPdf;
 
@@ -156,7 +162,10 @@ impl PdfBackend for SystemPdf {
 }
 
 /// The page renderer where there is none: it never opens.
-#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux", windows),
+    allow(dead_code)
+)]
 #[derive(Debug)]
 pub struct PdfRenderer {
     /// Not `Send`, like the macOS renderer, so code that builds here builds
@@ -164,7 +173,10 @@ pub struct PdfRenderer {
     _not_send: PhantomData<*const ()>,
 }
 
-#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux", windows),
+    allow(dead_code)
+)]
 impl PdfRenderer {
     /// Always fails: nothing here reads PDFs.
     pub fn new(_sources: &[Arc<[u8]>]) -> Result<PdfRenderer, PdfError> {
@@ -188,7 +200,10 @@ impl PdfRenderer {
 }
 
 /// No open panel for PDFs here.
-#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux", windows),
+    allow(dead_code)
+)]
 pub(crate) fn pick_pdfs(_start: Option<&Path>) -> Vec<PathBuf> {
     Vec::new()
 }

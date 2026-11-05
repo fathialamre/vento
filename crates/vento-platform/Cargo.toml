@@ -154,6 +154,16 @@ libwebp-sys = "0.14"
 # Vento uses, so it builds on Ubuntu 24.04 (CI) and runs on newer libheif.
 libheif-rs = { version = "3", default-features = false, features = ["v1_17"] }
 resvg = { version = "0.48", default-features = false }
+# Reads and draws the PDF action's pages through the system poppler-glib
+# (GPL-2.0-or-later; `libpoppler-glib-dev` to build), with cairo; lopdf
+# writes them, as on Windows (`pdf_write.rs`). 0.82's API reads PDFs from
+# memory; Ubuntu 24.04 has poppler 24.02.
+poppler-rs = { version = "0.26", features = ["v0_82"] }
+cairo-rs = { version = "0.22", default-features = false }
+lopdf = { version = "0.47", default-features = false }
+# PDF pages exported as PNG keep their resolution. Already in the tree
+# through `image`.
+png = "0.18"
 # Already in the app through winit; our own connection for vento's windows.
 x11rb = { version = "0.13", features = ["shape"] }
 # Hears SIGTERM (GNOME ending the session), SIGINT and SIGHUP on a thread,

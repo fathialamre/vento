@@ -35,7 +35,7 @@ msgstr[1] ""
 msgid "+{n} more"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:287
+#: crates/vento-platform/src/lib.rs:289
 msgid ", "
 msgstr ""
 
@@ -83,7 +83,7 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
-#: crates/vento/ui/pdf.slint:645
+#: crates/vento-platform/src/linux/portal.rs:70
 msgid "Add PDF"
 msgstr ""
 
@@ -151,7 +151,7 @@ msgstr ""
 msgid "Appearance"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:107
+#: crates/vento-core/src/actions.rs:108
 msgid "Archive"
 msgstr ""
 
@@ -425,7 +425,7 @@ msgstr ""
 msgid "Continue"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:109
+#: crates/vento-core/src/actions.rs:110
 msgid "Convert"
 msgstr ""
 
@@ -469,7 +469,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:103
 msgid "Copy"
 msgstr ""
 
@@ -493,7 +493,7 @@ msgstr ""
 msgid "Copy from screen uses this shortcut"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:105
 msgid "Copy path"
 msgstr ""
 
@@ -509,7 +509,7 @@ msgstr ""
 msgid "Copy the text from any part of the screen"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:106
+#: crates/vento-core/src/actions.rs:107
 msgid "Copy to"
 msgstr ""
 
@@ -983,7 +983,7 @@ msgstr ""
 msgid "In the top bar"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:108
+#: crates/vento-core/src/actions.rs:109
 msgid "Info"
 msgstr ""
 
@@ -1175,7 +1175,7 @@ msgstr ""
 msgid "More…"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:104
 msgid "Move"
 msgstr ""
 
@@ -1453,7 +1453,7 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:110
+#: crates/vento-core/src/actions.rs:111
 msgid "PDF"
 msgstr ""
 
@@ -1539,7 +1539,7 @@ msgstr ""
 msgid "Plain pill"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:102
 msgid "Pocket"
 msgstr ""
 
@@ -1649,7 +1649,7 @@ msgid_plural "Removing {n} copies…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/vento-core/src/actions.rs:112
+#: crates/vento-core/src/actions.rs:113
 msgid "Rename"
 msgstr ""
 
@@ -1847,7 +1847,7 @@ msgstr ""
 msgid "Shape"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:111
+#: crates/vento-core/src/actions.rs:112
 msgid "Share"
 msgstr ""
 
@@ -2045,7 +2045,7 @@ msgstr ""
 msgid "Template"
 msgstr ""
 
-#: crates/vento-core/src/actions.rs:105
+#: crates/vento-core/src/actions.rs:106
 msgid "Terminal"
 msgstr ""
 
@@ -2497,7 +2497,7 @@ msgstr ""
 msgid "already exists"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:276
+#: crates/vento-platform/src/lib.rs:278
 msgid "another share is still open"
 msgstr ""
 
@@ -2541,11 +2541,11 @@ msgstr ""
 msgid "cannot start: {reason}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:253
+#: crates/vento-platform/src/lib.rs:255
 msgid "clipboard rejected the files"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:251
 msgid "clipboard rejected the text"
 msgstr ""
 
@@ -2553,7 +2553,7 @@ msgstr ""
 msgid "copy could not be verified; source left untouched"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:301
+#: crates/vento-platform/src/lib.rs:303
 msgid "could not run {program}: {reason}"
 msgstr ""
 
@@ -2629,11 +2629,11 @@ msgstr ""
 msgid "name"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:286
+#: crates/vento-platform/src/lib.rs:288
 msgid "no app opened {names}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:346
+#: crates/vento-platform/src/lib.rs:348
 msgid "no folder to open"
 msgstr ""
 
@@ -2653,7 +2653,7 @@ msgstr ""
 msgid "no images"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:341
+#: crates/vento-platform/src/lib.rs:343
 msgid "no terminal is installed"
 msgstr ""
 
@@ -2741,11 +2741,11 @@ msgstr ""
 msgid "{app} (default)"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:294
+#: crates/vento-platform/src/lib.rs:296
 msgid "{app} is no longer there"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:334
+#: crates/vento-platform/src/lib.rs:336
 msgid "{app} is not installed"
 msgstr ""
 
@@ -2959,15 +2959,15 @@ msgstr ""
 msgid "{pages} · edited"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:313
 msgid "{program} exited with code {code}"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:315
+#: crates/vento-platform/src/lib.rs:317
 msgid "{program} was stopped by a signal"
 msgstr ""
 
-#: crates/vento-platform/src/lib.rs:326
+#: crates/vento-platform/src/lib.rs:328
 msgid "{program}: {reason}"
 msgstr ""
 

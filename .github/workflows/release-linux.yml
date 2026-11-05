@@ -36,7 +36,7 @@ jobs:
         with:
           tool: cargo-deb,cargo-about
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libpoppler-glib-dev
       - run: scripts/release-linux.sh
       # Installing it here proves its dependencies resolve on 24.04.
       - name: Install the package
