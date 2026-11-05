@@ -2512,7 +2512,7 @@ mod tests {
 
     #[test]
     fn top_bar_room_is_notch_style_where_the_virtual_island_is_offered() {
-        // GNOME on X11 with the extension: the virtual island is offered,
+        // GNOME with the extension: the virtual island is offered,
         // and the other island in the top bar room is notch-style, so the
         // page shows its jobs and shimmer rows under the Island menu.
         let slot = IslandHome {

@@ -24,7 +24,7 @@ const OBJECT_PATH: &str = "/org/vento/Shell1";
 const INTERFACE: &str = "org.vento.Shell1";
 
 /// The extension API this build speaks.
-const API_VERSION: u32 = 8;
+const API_VERSION: u32 = 9;
 
 /// How long a call may take before its answer is given up.
 const CALL_TIMEOUT_MS: i32 = 250;
@@ -74,6 +74,14 @@ pub(super) struct Monitor {
     pub scale: f64,
 }
 
+/// The window with the focus: its frame without the shadow, in logical
+/// global coordinates, and the process it belongs to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct FocusedWindow {
+    pub frame: Rect,
+    pub pid: u32,
+}
+
 /// `State()`'s `(iiuubbbuu)`, in [`ShellState`]'s field order.
 type StateWire = (i32, i32, u32, u32, bool, bool, bool, u32, u32);
 
@@ -106,6 +114,27 @@ fn parse_slot(reply: &glib::Variant) -> Option<Rect> {
         w: f64::from(w),
         h: f64::from(h),
     })
+}
+
+/// `FocusedWindow()`'s `(biiiiu)`: the focused window, unless the desktop,
+/// a panel or nothing has the focus.
+fn parse_focused(reply: &glib::Variant) -> Option<FocusedWindow> {
+    let (focused, x, y, w, h, pid): (bool, i32, i32, i32, i32, u32) =
+        reply.try_child_value(0)?.get()?;
+    (focused && w > 0 && h > 0).then(|| FocusedWindow {
+        frame: Rect {
+            x: f64::from(x),
+            y: f64::from(y),
+            w: f64::from(w),
+            h: f64::from(h),
+        },
+        pid,
+    })
+}
+
+/// The frame of `focused` unless it is a window of process `ours`.
+pub(super) fn others_frame(focused: Option<FocusedWindow>, ours: u32) -> Option<Rect> {
+    focused.filter(|w| w.pid != ours).map(|w| w.frame)
 }
 
 fn parse_monitors(reply: &glib::Variant) -> Option<Vec<Monitor>> {
@@ -415,6 +444,13 @@ struct Latest {
     /// Whether the room was given back ([`Shell::reserve_island`] with
     /// false): asked for again with the monitors unless so.
     island_released: bool,
+    /// The focused window, as last read.
+    focused: Option<FocusedWindow>,
+    /// Whether [`Shell::focused_window`] was called since the last read.
+    focused_wanted: bool,
+    /// Whether the extension has `FocusedWindow()`, once known: an older
+    /// one has not.
+    has_focused: Option<bool>,
 }
 
 fn call(
@@ -471,6 +507,9 @@ fn refresh(bus: &gio::DBusConnection, latest: &Mutex<Latest>, reported_missing: 
                 *reported_missing = true;
             }
             l.state = kept;
+            if kept.is_none() {
+                l.focused = None;
+            }
             return;
         }
     };
@@ -494,8 +533,25 @@ fn refresh(bus: &gio::DBusConnection, latest: &Mutex<Latest>, reported_missing: 
             .ok()
             .and_then(|r| parse_slot(&r))
     });
+    // Asked with the monitors too, so a newly loaded extension is found to
+    // have it or not.
+    let wanted = std::mem::take(&mut latest.lock().unwrap().focused_wanted);
+    let focused = (stale || wanted).then(|| call(bus, "FocusedWindow", None));
     let mut l = latest.lock().unwrap();
     l.state = state;
+    match focused {
+        Some(Ok(reply)) => {
+            l.has_focused = Some(true);
+            l.focused = parse_focused(&reply);
+        }
+        Some(Err(e)) if e.matches(gio::DBusError::UnknownMethod) => {
+            l.has_focused = Some(false);
+            l.focused = None;
+        }
+        // A missed call keeps the last frame.
+        Some(Err(e)) => log::debug!("FocusedWindow call failed: {e}"),
+        None => {}
+    }
     if let (Some(m), Some(s)) = (monitors, state) {
         l.monitors = Some(m);
         l.monitors_serial = Some(s.monitors_serial);
@@ -572,6 +628,25 @@ impl Shell {
             .monitors
             .clone()
             .unwrap_or_default()
+    }
+
+    /// The focused window as last read, and asks the worker to read it
+    /// again with the next state.
+    pub fn focused_window(&self) -> Option<FocusedWindow> {
+        let mut l = self.latest.lock().unwrap();
+        l.focused_wanted = true;
+        let focused = l.focused;
+        drop(l);
+        if let Some(wake) = &self.wake {
+            let _ = wake.send(());
+        }
+        focused
+    }
+
+    /// Whether the extension tells the focused window; false with an
+    /// older one, and until it has answered.
+    pub fn has_focused_window(&self) -> bool {
+        self.latest.lock().unwrap().has_focused == Some(true)
     }
 
     /// The room the extension keeps for the Pocket island in the top bar.
@@ -885,6 +960,31 @@ mod tests {
         );
         assert_eq!(parse_area(&reply(false, (0, 0, 0, 0))), None);
         assert_eq!(parse_area(&reply(true, (5, 5, 0, 9))), None);
+    }
+
+    #[test]
+    fn the_focused_window_is_read_unless_none_counts() {
+        let reply = |focused: bool, w: i32, pid: u32| {
+            glib::Variant::tuple_from_iter([(focused, 40, 32, w, 600, pid).to_variant()])
+        };
+        let window = parse_focused(&reply(true, 800, 77));
+        assert_eq!(
+            window,
+            Some(FocusedWindow {
+                frame: Rect {
+                    x: 40.0,
+                    y: 32.0,
+                    w: 800.0,
+                    h: 600.0
+                },
+                pid: 77
+            })
+        );
+        assert_eq!(parse_focused(&reply(false, 0, 0)), None, "the desktop");
+        assert_eq!(parse_focused(&reply(true, 0, 77)), None, "no size");
+        assert_eq!(others_frame(window, 99), window.map(|w| w.frame));
+        assert_eq!(others_frame(window, 77), None, "one of vento's own");
+        assert_eq!(others_frame(None, 99), None);
     }
 
     #[test]

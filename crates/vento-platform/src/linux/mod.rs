@@ -86,8 +86,8 @@ pub struct LinuxPlatform {
     /// Runs when the Keep Awake cup is clicked.
     on_awake_indicator: RefCell<Option<instance::FrameHandler>>,
     /// Whether this is a Wayland session, where vento's X11 windows cannot
-    /// place themselves on top without the extension and the virtual island
-    /// is not offered.
+    /// place themselves on top without the extension and the focused window
+    /// comes from it.
     wayland: bool,
 }
 
@@ -146,12 +146,12 @@ fn is_wayland(session: Option<&str>) -> bool {
 }
 
 /// Whether the virtual island works: on X11 vento places its own windows
-/// and reads the front window from `_NET_ACTIVE_WINDOW`. Not on Wayland,
-/// even with the extension: `_NET_ACTIVE_WINDOW` only sees XWayland
-/// windows, so the lip would miss most bars. The extension needs a method
-/// that gives the focused window's frame first.
-fn virtual_island_supported(wayland: bool) -> bool {
-    !wayland
+/// and reads the front window from `_NET_ACTIVE_WINDOW`. On Wayland that
+/// only sees XWayland windows, so the extension must tell the focused
+/// window (`has_focused`); an older one cannot, and the lip would miss
+/// most bars.
+fn virtual_island_supported(wayland: bool, has_focused: bool) -> bool {
+    !wayland || has_focused
 }
 
 /// `monitor`'s home: no notch, the top bar as its menu bar, and `slot`
@@ -313,9 +313,13 @@ impl Platform for LinuxPlatform {
             .collect()
     }
 
-    /// The active X11 window, in logical pixels as the extension reports
-    /// the screens. On Wayland only X11 apps' windows are seen.
+    /// On Wayland the focused window as the extension last told it, read
+    /// again by its worker. On X11 the active X11 window, in logical pixels
+    /// as the extension reports the screens.
     fn front_window_frame(&self) -> Option<Rect> {
+        if self.wayland {
+            return shell::others_frame(self.shell.focused_window(), std::process::id());
+        }
         let (frame, x11_width) = x11::front_window()?;
         let scale = shell::scale_between(f64::from(x11_width), self.shell.screens_width());
         Some(Rect {
@@ -327,7 +331,7 @@ impl Platform for LinuxPlatform {
     }
 
     fn virtual_island_supported(&self) -> bool {
-        virtual_island_supported(self.wayland)
+        virtual_island_supported(self.wayland, self.shell.has_focused_window())
     }
 
     fn reduce_motion(&self) -> bool {
@@ -550,16 +554,18 @@ mod tests {
     }
 
     #[test]
-    fn the_virtual_island_needs_x11() {
+    fn the_virtual_island_needs_x11_or_the_focused_window() {
         assert!(is_wayland(Some("wayland")));
         assert!(is_wayland(Some("Wayland")));
         assert!(is_wayland(Some("WAYLAND")));
         assert!(!is_wayland(Some("x11")));
         assert!(!is_wayland(Some("tty")));
         assert!(!is_wayland(None));
-        assert!(virtual_island_supported(false));
-        // Not on Wayland yet, extension or not.
-        assert!(!virtual_island_supported(true));
+        assert!(virtual_island_supported(false, false));
+        assert!(virtual_island_supported(false, true));
+        assert!(virtual_island_supported(true, true));
+        // An older extension tells no focused window.
+        assert!(!virtual_island_supported(true, false));
     }
 
     #[test]

@@ -21,7 +21,7 @@ const BUS_NAME = 'org.vento.Shell1';
 const OBJECT_PATH = '/org/vento/Shell1';
 
 // Raised when the interface changes in a way Vento must know about.
-const API_VERSION = 8;
+const API_VERSION = 9;
 
 // Vento's StatusNotifierItem Id, by which its tray icon is found.
 const TRAY_ID = 'vento';
@@ -59,6 +59,9 @@ const BUTTONS = 0x1f << 8;
 const MENU_PRESS_WAIT_MS = 3000;
 
 const FILE_TYPES = ['text/uri-list', 'x-special/gnome-copied-files'];
+
+// Focused windows that are not an app's own: the desktop and panels.
+const SHELL_WINDOW_TYPES = [Meta.WindowType.DESKTOP, Meta.WindowType.DOCK];
 
 const IFACE = `
 <node>
@@ -146,6 +149,13 @@ const IFACE = `
     </method>
     <method name="EndStartup">
       <arg type="s" direction="in" name="token"/>
+    </method>
+    <!-- The focused window's frame without its shadow, in logical global
+         coordinates as Monitors gives the screens, and its process id;
+         false when no app's window has the focus (the desktop, a dock, the
+         Overview, none) -->
+    <method name="FocusedWindow">
+      <arg type="(biiiiu)" direction="out" name="window"/>
     </method>
   </interface>
 </node>`;
@@ -533,6 +543,17 @@ class Service {
         } finally {
             menu.destroy();
         }
+    }
+
+    FocusedWindow() {
+        const window = global.display.get_focus_window();
+        // The desktop icons' window stays out of Alt+Tab too.
+        if (!window || Main.overview.visible ||
+            SHELL_WINDOW_TYPES.includes(window.get_window_type()) ||
+            window.is_skip_taskbar())
+            return [false, 0, 0, 0, 0, 0];
+        const r = window.get_frame_rect();
+        return [true, r.x, r.y, r.width, r.height, Math.max(0, window.get_pid())];
     }
 
     EndStartup(token) {

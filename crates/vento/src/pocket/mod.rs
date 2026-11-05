@@ -3775,8 +3775,8 @@ mod tests {
 
     #[test]
     fn unsupported_ignores_screen_key() {
-        // Where the platform can't place the virtual island (Wayland), the
-        // island stays in the primary's slot.
+        // Where the platform can't place the virtual island (Wayland with
+        // an older extension), the island stays in the primary's slot.
         let homes = two_homes();
         assert_eq!(
             home_for(
