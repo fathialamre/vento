@@ -8,6 +8,19 @@
 <p align="center">A wheel of quick actions that opens right under the file you are dragging.</p>
 
 <p align="center">
+  <a href="https://github.com/fathialamre/vento/releases/latest"><img src="https://img.shields.io/github/v/release/fathialamre/vento?label=release&color=FF6A1A" alt="Latest release"></a>
+  <a href="https://github.com/fathialamre/vento/releases"><img src="https://img.shields.io/github/downloads/fathialamre/vento/total?color=FF6A1A" alt="Downloads"></a>
+  <a href="https://github.com/fathialamre/vento/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/fathialamre/vento/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/fathialamre/vento?color=blue" alt="License: GPL-3.0"></a>
+  <br>
+  <img src="https://img.shields.io/badge/macOS-13%2B-111A2E?logo=apple&logoColor=white" alt="macOS 13+">
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-111A2E" alt="Windows 10 and 11">
+  <img src="https://img.shields.io/badge/Linux-GNOME-111A2E?logo=linux&logoColor=white" alt="Linux with GNOME">
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-Slint-111A2E?logo=rust&logoColor=white" alt="Written in Rust with Slint"></a>
+  <a href="https://github.com/fathialamre/vento/stargazers"><img src="https://img.shields.io/github/stars/fathialamre/vento?style=flat&color=FF6A1A" alt="GitHub stars"></a>
+</p>
+
+<p align="center">
   <a href="https://fathialamre.github.io/vento/">Website</a> ·
   <a href="https://github.com/fathialamre/vento/releases/latest">Download</a> ·
   <a href="CHANGELOG.md">What's new</a> ·
