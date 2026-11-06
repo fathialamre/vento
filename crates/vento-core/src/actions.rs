@@ -6,8 +6,9 @@ use crate::i18n::tr;
 /// services some actions need.
 const ON_MACOS: bool = cfg!(target_os = "macos");
 
-/// Whether this build is for Windows, whose PDF engine the PDF action uses.
-const ON_WINDOWS: bool = cfg!(windows);
+/// Whether this build has a PDF engine for the PDF action: PDFKit on macOS,
+/// Windows.Data.Pdf on Windows, poppler on Linux.
+const HAS_PDF_ENGINE: bool = cfg!(any(target_os = "macos", target_os = "linux", windows));
 
 /// An action that can be placed on the wheel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,12 +58,12 @@ impl ActionId {
     ];
 
     /// Whether this platform can run the action. PDF pages need the system's
-    /// PDF engine, which macOS and Windows have, and sharing needs its
+    /// PDF engine, which macOS, Windows and Linux have, and sharing needs its
     /// sharing services, which only macOS has so far; the other platforms
     /// never offer those actions.
     pub fn available(self) -> bool {
         match self {
-            ActionId::Pdf => ON_MACOS || ON_WINDOWS,
+            ActionId::Pdf => HAS_PDF_ENGINE,
             ActionId::Share => ON_MACOS,
             _ => true,
         }
@@ -226,7 +227,7 @@ mod tests {
     fn platform_actions() {
         assert_eq!(
             ActionId::Pdf.available(),
-            cfg!(any(target_os = "macos", windows))
+            cfg!(any(target_os = "macos", target_os = "linux", windows))
         );
         assert_eq!(ActionId::Share.available(), cfg!(target_os = "macos"));
         assert!(

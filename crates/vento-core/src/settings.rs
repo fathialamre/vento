@@ -2360,8 +2360,8 @@ mod tests {
         let (_hidden_dir, hidden_p) =
             write_temp("actions = [\"copy\"]\nhidden_actions = [\"pdf\", \"share\"]\n");
         let hidden = Settings::load(&hidden_p);
-        // PDF where macOS or Windows reads PDFs, Share on macOS only.
-        let pdf = cfg!(any(target_os = "macos", windows));
+        // PDF where macOS, Windows or Linux reads PDFs, Share on macOS only.
+        let pdf = cfg!(any(target_os = "macos", target_os = "linux", windows));
         let share = cfg!(target_os = "macos");
         let offered = |list: &[ActionId]| {
             list.iter()
@@ -2391,7 +2391,10 @@ mod tests {
     fn not_yet_placed_actions_are_only_available_ones() {
         let rows = Settings::default().action_rows();
         let has_pdf = rows.iter().any(|(a, _)| *a == ActionId::Pdf);
-        assert_eq!(has_pdf, cfg!(any(target_os = "macos", windows)));
+        assert_eq!(
+            has_pdf,
+            cfg!(any(target_os = "macos", target_os = "linux", windows))
+        );
         assert!(rows.iter().all(|(a, _)| a.available()));
     }
 

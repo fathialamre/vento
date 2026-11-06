@@ -37,7 +37,7 @@ msgstr[1] "+{n}"
 msgid "+{n} more"
 msgstr "+{n} más"
 
-#: crates/vento-platform/src/lib.rs:287
+#: crates/vento-platform/src/lib.rs:289
 msgid ", "
 msgstr ", "
 
@@ -85,7 +85,7 @@ msgstr "Acciones"
 msgid "Add"
 msgstr "Añadir"
 
-#: crates/vento/ui/pdf.slint:645
+#: crates/vento-platform/src/linux/portal.rs:70
 msgid "Add PDF"
 msgstr "Añadir PDF"
 
@@ -153,7 +153,7 @@ msgstr "Un elemento sale del Bolsillo en cuanto lo sueltas en algún sitio"
 msgid "Appearance"
 msgstr "Apariencia"
 
-#: crates/vento-core/src/actions.rs:107
+#: crates/vento-core/src/actions.rs:108
 msgid "Archive"
 msgstr "Comprimir"
 
@@ -427,7 +427,7 @@ msgstr "Contiene"
 msgid "Continue"
 msgstr "Continuar"
 
-#: crates/vento-core/src/actions.rs:109
+#: crates/vento-core/src/actions.rs:110
 msgid "Convert"
 msgstr "Convertir"
 
@@ -471,7 +471,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} elemento copiado a {dest}"
 msgstr[1] "{n} elementos copiados a {dest}"
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:103
 msgid "Copy"
 msgstr "Copiar"
 
@@ -495,7 +495,7 @@ msgstr "Atajo de Copiar de la pantalla"
 msgid "Copy from screen uses this shortcut"
 msgstr "Copiar de la pantalla usa este atajo"
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:105
 msgid "Copy path"
 msgstr "Copiar ruta"
 
@@ -511,7 +511,7 @@ msgstr "Copiar texto"
 msgid "Copy the text from any part of the screen"
 msgstr "Copia el texto de cualquier parte de la pantalla"
 
-#: crates/vento-core/src/actions.rs:106
+#: crates/vento-core/src/actions.rs:107
 msgid "Copy to"
 msgstr "Copiar a"
 
@@ -985,7 +985,7 @@ msgstr "Mejorado"
 msgid "In the top bar"
 msgstr "En la barra superior"
 
-#: crates/vento-core/src/actions.rs:108
+#: crates/vento-core/src/actions.rs:109
 msgid "Info"
 msgstr "Info"
 
@@ -1177,7 +1177,7 @@ msgstr "Más: {}"
 msgid "More…"
 msgstr "Más…"
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:104
 msgid "Move"
 msgstr "Mover"
 
@@ -1455,7 +1455,7 @@ msgstr "Orden"
 msgid "Other"
 msgstr "Otros"
 
-#: crates/vento-core/src/actions.rs:110
+#: crates/vento-core/src/actions.rs:111
 msgid "PDF"
 msgstr "PDF"
 
@@ -1541,7 +1541,7 @@ msgstr "Normal"
 msgid "Plain pill"
 msgstr "Píldora simple"
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:102
 msgid "Pocket"
 msgstr "Bolsillo"
 
@@ -1651,7 +1651,7 @@ msgid_plural "Removing {n} copies…"
 msgstr[0] "Eliminando {n} copia…"
 msgstr[1] "Eliminando {n} copias…"
 
-#: crates/vento-core/src/actions.rs:112
+#: crates/vento-core/src/actions.rs:113
 msgid "Rename"
 msgstr "Renombrar"
 
@@ -1849,7 +1849,7 @@ msgstr "Agitar para abrir"
 msgid "Shape"
 msgstr "Forma"
 
-#: crates/vento-core/src/actions.rs:111
+#: crates/vento-core/src/actions.rs:112
 msgid "Share"
 msgstr "Compartir"
 
@@ -2047,7 +2047,7 @@ msgstr "Haz una captura con la tecla de captura de tu sistema."
 msgid "Template"
 msgstr "Plantilla"
 
-#: crates/vento-core/src/actions.rs:105
+#: crates/vento-core/src/actions.rs:106
 msgid "Terminal"
 msgstr "Terminal"
 
@@ -2499,7 +2499,7 @@ msgstr "después"
 msgid "already exists"
 msgstr "ya existe"
 
-#: crates/vento-platform/src/lib.rs:276
+#: crates/vento-platform/src/lib.rs:278
 msgid "another share is still open"
 msgstr "otro envío sigue abierto"
 
@@ -2543,11 +2543,11 @@ msgstr "no se puede empezar a copiar: {reason}"
 msgid "cannot start: {reason}"
 msgstr "no se puede iniciar: {reason}"
 
-#: crates/vento-platform/src/lib.rs:253
+#: crates/vento-platform/src/lib.rs:255
 msgid "clipboard rejected the files"
 msgstr "el portapapeles rechazó los archivos"
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:251
 msgid "clipboard rejected the text"
 msgstr "el portapapeles rechazó el texto"
 
@@ -2555,7 +2555,7 @@ msgstr "el portapapeles rechazó el texto"
 msgid "copy could not be verified; source left untouched"
 msgstr "no se pudo verificar la copia; el original no se tocó"
 
-#: crates/vento-platform/src/lib.rs:301
+#: crates/vento-platform/src/lib.rs:303
 msgid "could not run {program}: {reason}"
 msgstr "no se pudo ejecutar {program}: {reason}"
 
@@ -2631,11 +2631,11 @@ msgstr "movido a {copy}, pero el original no se pudo quitar del todo: {reason}"
 msgid "name"
 msgstr "nombre"
 
-#: crates/vento-platform/src/lib.rs:286
+#: crates/vento-platform/src/lib.rs:288
 msgid "no app opened {names}"
 msgstr "ninguna app abrió {names}"
 
-#: crates/vento-platform/src/lib.rs:346
+#: crates/vento-platform/src/lib.rs:348
 msgid "no folder to open"
 msgstr "no hay carpeta que abrir"
 
@@ -2655,7 +2655,7 @@ msgstr "no hay ningún nombre temporal libre"
 msgid "no images"
 msgstr "no hay imágenes"
 
-#: crates/vento-platform/src/lib.rs:341
+#: crates/vento-platform/src/lib.rs:343
 msgid "no terminal is installed"
 msgstr "no hay ningún terminal instalado"
 
@@ -2743,11 +2743,11 @@ msgstr "contraseña incorrecta"
 msgid "{app} (default)"
 msgstr "{app} (predeterminada)"
 
-#: crates/vento-platform/src/lib.rs:294
+#: crates/vento-platform/src/lib.rs:296
 msgid "{app} is no longer there"
 msgstr "{app} ya no está"
 
-#: crates/vento-platform/src/lib.rs:334
+#: crates/vento-platform/src/lib.rs:336
 msgid "{app} is not installed"
 msgstr "{app} no está instalada"
 
@@ -2961,15 +2961,15 @@ msgstr "{n} min"
 msgid "{pages} · edited"
 msgstr "{pages} · editado"
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:313
 msgid "{program} exited with code {code}"
 msgstr "{program} terminó con el código {code}"
 
-#: crates/vento-platform/src/lib.rs:315
+#: crates/vento-platform/src/lib.rs:317
 msgid "{program} was stopped by a signal"
 msgstr "{program} se detuvo por una señal"
 
-#: crates/vento-platform/src/lib.rs:326
+#: crates/vento-platform/src/lib.rs:328
 msgid "{program}: {reason}"
 msgstr "{program}: {reason}"
 

@@ -262,7 +262,7 @@ become white when you pick JPEG or BMP. Vento never overwrites a file (you get
 
 ### PDF *(off at first)*
 
-Works on PDF files, on macOS and Windows. Drag one or more PDFs and let go
+Works on PDF files, on macOS, Windows and Linux. Drag one or more PDFs and let go
 on **PDF**: a window opens that shows every page. The cell is dimmed when
 nothing you are dragging is a PDF.
 
@@ -271,7 +271,7 @@ or use **Add**), delete pages, drag pages into a new order and rotate them. The
 files are listed in a sidebar (**Files** hides or shows it); click one to select
 its pages. Nothing is written until you ask:
 
-- **Save as new PDF** (⌘S, or Ctrl+S on Windows) writes the pages as they now stand.
+- **Save as new PDF** (⌘S, or Ctrl+S on Windows and Linux) writes the pages as they now stand.
 - **Extract** writes only the pages you selected.
 - **Split** cuts the file into several: every page, every N pages, or at the
   places you click between pages.
@@ -284,7 +284,7 @@ folder of files (`report split`, `report images`). Vento never overwrites a file
 (you get `report (edited).pdf`, then `report (edited) (2).pdf`). Closing a
 window with changes, or quitting Vento, asks whether to save them. The window's
 footer says what was written, with **Show in Finder** (**Show in Explorer** on
-Windows) and **Undo**; **Undo**
+Windows, **Show in Files** on Linux) and **Undo**; **Undo**
 there, on the notice once the window has closed, or from the menu bar icon,
 moves what was written to the Trash. A PDF that is locked with a password is
 skipped.

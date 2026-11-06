@@ -4,14 +4,12 @@
 //! Every call that waits on it runs on a worker thread, never the main one.
 
 use std::fs;
-use std::io::Cursor;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::Arc;
 
-use image::codecs::jpeg::{JpegEncoder, PixelDensity};
-use image::{ImageEncoder, RgbImage, RgbaImage as Pixels, imageops};
-use vento_core::pdf::{ImageKind, ImageOptions, PageRef, PdfBackend, PdfError, Source};
+use image::{RgbImage, RgbaImage as Pixels, imageops};
+use vento_core::pdf::{ImageOptions, PageRef, PdfBackend, PdfError, Source};
 use windows::Data::Pdf::{PdfDocument, PdfPage, PdfPageRenderOptions};
 use windows::Graphics::Imaging::BitmapEncoder;
 use windows::Storage::Streams::{DataReader, DataWriter, InMemoryRandomAccessStream};
@@ -19,14 +17,7 @@ use windows::UI::Color;
 use windows::core::HRESULT;
 
 use crate::RgbaImage;
-
-/// The most pixels a page is drawn with (1 GiB of RGBA), as on the Mac: an
-/// A0 page at 300 DPI fits; a larger page fails rather than ask for many
-/// gigabytes.
-const MAX_PIXELS: usize = 1 << 28;
-
-/// The quality JPEG pages are written at, as Convert writes JPEGs.
-const JPEG_QUALITY: u8 = 90;
+use crate::pdf_image::MAX_PIXELS;
 
 /// What loading a PDF that needs a password fails with:
 /// `HRESULT_FROM_WIN32(ERROR_WRONG_PASSWORD)`.
@@ -67,13 +58,7 @@ impl PdfBackend for SystemPdf {
             let [r, g, b, _] = drawn.get_pixel(x, y).0;
             image::Rgb([r, g, b])
         });
-        let encode_failed =
-            |e: &dyn std::fmt::Display| PdfError::Backend(format!("couldn't write the image: {e}"));
-        let bytes = match opts.kind {
-            ImageKind::Png => png_with_dpi(&rgb, opts.dpi).map_err(|e| encode_failed(&e))?,
-            ImageKind::Jpeg => jpeg_with_dpi(&rgb, opts.dpi).map_err(|e| encode_failed(&e))?,
-        };
-        fs::write(dst, bytes)?;
+        fs::write(dst, crate::pdf_image::encode(&rgb, opts)?)?;
         Ok(())
     }
 }
@@ -260,39 +245,6 @@ fn draw(page: &PdfPage, turns: u8, scale: Scale) -> Option<Pixels> {
         3 => imageops::rotate270(&drawn),
         _ => drawn,
     })
-}
-
-/// `image` as a PNG that records `dpi`.
-fn png_with_dpi(image: &RgbImage, dpi: u32) -> Result<Vec<u8>, png::EncodingError> {
-    let mut out = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut out, image.width(), image.height());
-        encoder.set_color(png::ColorType::Rgb);
-        encoder.set_depth(png::BitDepth::Eight);
-        let per_metre = (f64::from(dpi) / 0.0254).round() as u32;
-        encoder.set_pixel_dims(Some(png::PixelDimensions {
-            xppu: per_metre,
-            yppu: per_metre,
-            unit: png::Unit::Meter,
-        }));
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(image.as_raw())?;
-    }
-    Ok(out)
-}
-
-/// `image` as a JPEG that records `dpi`.
-fn jpeg_with_dpi(image: &RgbImage, dpi: u32) -> Result<Vec<u8>, image::ImageError> {
-    let mut out = Cursor::new(Vec::new());
-    let mut encoder = JpegEncoder::new_with_quality(&mut out, JPEG_QUALITY);
-    encoder.set_pixel_density(PixelDensity::dpi(u16::try_from(dpi).unwrap_or(u16::MAX)));
-    encoder.write_image(
-        image.as_raw(),
-        image.width(),
-        image.height(),
-        image::ExtendedColorType::Rgb8,
-    )?;
-    Ok(out.into_inner())
 }
 
 #[cfg(test)]

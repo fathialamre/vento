@@ -41,7 +41,7 @@ msgstr[5] "+{n}"
 msgid "+{n} more"
 msgstr "+{n} أخرى"
 
-#: crates/vento-platform/src/lib.rs:287
+#: crates/vento-platform/src/lib.rs:289
 msgid ", "
 msgstr "، "
 
@@ -89,7 +89,7 @@ msgstr "الإجراءات"
 msgid "Add"
 msgstr "إضافة"
 
-#: crates/vento/ui/pdf.slint:645
+#: crates/vento-platform/src/linux/portal.rs:70
 msgid "Add PDF"
 msgstr "إضافة PDF"
 
@@ -157,7 +157,7 @@ msgstr "يخرج العنصر من الجيب بعد أن تُسقطه في مك
 msgid "Appearance"
 msgstr "المظهر"
 
-#: crates/vento-core/src/actions.rs:107
+#: crates/vento-core/src/actions.rs:108
 msgid "Archive"
 msgstr "أرشفة"
 
@@ -435,7 +435,7 @@ msgstr "يحتوي"
 msgid "Continue"
 msgstr "متابعة"
 
-#: crates/vento-core/src/actions.rs:109
+#: crates/vento-core/src/actions.rs:110
 msgid "Convert"
 msgstr "تحويل"
 
@@ -487,7 +487,7 @@ msgstr[3] "تم نسخ {n} عناصر إلى {dest}"
 msgstr[4] "تم نسخ {n} عنصراً إلى {dest}"
 msgstr[5] "تم نسخ {n} عنصر إلى {dest}"
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:103
 msgid "Copy"
 msgstr "نسخ"
 
@@ -511,7 +511,7 @@ msgstr "اختصار النسخ من الشاشة"
 msgid "Copy from screen uses this shortcut"
 msgstr "النسخ من الشاشة يستخدم هذا الاختصار"
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:105
 msgid "Copy path"
 msgstr "نسخ المسار"
 
@@ -527,7 +527,7 @@ msgstr "نسخ النص"
 msgid "Copy the text from any part of the screen"
 msgstr "انسخ النص من أي جزء من الشاشة"
 
-#: crates/vento-core/src/actions.rs:106
+#: crates/vento-core/src/actions.rs:107
 msgid "Copy to"
 msgstr "نسخ إلى"
 
@@ -1029,7 +1029,7 @@ msgstr "تحسينات"
 msgid "In the top bar"
 msgstr "في الشريط العلوي"
 
-#: crates/vento-core/src/actions.rs:108
+#: crates/vento-core/src/actions.rs:109
 msgid "Info"
 msgstr "معلومات"
 
@@ -1229,7 +1229,7 @@ msgstr "أكثر: {}"
 msgid "More…"
 msgstr "المزيد…"
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:104
 msgid "Move"
 msgstr "نقل"
 
@@ -1527,7 +1527,7 @@ msgstr "الترتيب"
 msgid "Other"
 msgstr "أخرى"
 
-#: crates/vento-core/src/actions.rs:110
+#: crates/vento-core/src/actions.rs:111
 msgid "PDF"
 msgstr "‏PDF"
 
@@ -1617,7 +1617,7 @@ msgstr "عادي"
 msgid "Plain pill"
 msgstr "كبسولة بسيطة"
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:102
 msgid "Pocket"
 msgstr "الجيب"
 
@@ -1739,7 +1739,7 @@ msgstr[3] "جارٍ إزالة {n} نسخ…"
 msgstr[4] "جارٍ إزالة {n} نسخة…"
 msgstr[5] "جارٍ إزالة {n} نسخة…"
 
-#: crates/vento-core/src/actions.rs:112
+#: crates/vento-core/src/actions.rs:113
 msgid "Rename"
 msgstr "إعادة تسمية"
 
@@ -1965,7 +1965,7 @@ msgstr "الهز للفتح"
 msgid "Shape"
 msgstr "الشكل"
 
-#: crates/vento-core/src/actions.rs:111
+#: crates/vento-core/src/actions.rs:112
 msgid "Share"
 msgstr "مشاركة"
 
@@ -2167,7 +2167,7 @@ msgstr "التقط لقطة شاشة بمفتاح لقطة الشاشة في ن�
 msgid "Template"
 msgstr "قالب"
 
-#: crates/vento-core/src/actions.rs:105
+#: crates/vento-core/src/actions.rs:106
 msgid "Terminal"
 msgstr "الطرفية"
 
@@ -2619,7 +2619,7 @@ msgstr "بعد"
 msgid "already exists"
 msgstr "موجود مسبقاً"
 
-#: crates/vento-platform/src/lib.rs:276
+#: crates/vento-platform/src/lib.rs:278
 msgid "another share is still open"
 msgstr "هناك مشاركة أخرى مفتوحة"
 
@@ -2663,11 +2663,11 @@ msgstr "تعذّر بدء النسخ: {reason}"
 msgid "cannot start: {reason}"
 msgstr "تعذّر البدء: {reason}"
 
-#: crates/vento-platform/src/lib.rs:253
+#: crates/vento-platform/src/lib.rs:255
 msgid "clipboard rejected the files"
 msgstr "رفضت الحافظة الملفات"
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:251
 msgid "clipboard rejected the text"
 msgstr "رفضت الحافظة النص"
 
@@ -2675,7 +2675,7 @@ msgstr "رفضت الحافظة النص"
 msgid "copy could not be verified; source left untouched"
 msgstr "تعذّر التحقق من النسخة؛ لم يُلمس الأصل"
 
-#: crates/vento-platform/src/lib.rs:301
+#: crates/vento-platform/src/lib.rs:303
 msgid "could not run {program}: {reason}"
 msgstr "تعذّر تشغيل {program}: {reason}"
 
@@ -2759,11 +2759,11 @@ msgstr "نُقل إلى {copy}، لكن تعذّرت إزالة الأصل با�
 msgid "name"
 msgstr "الاسم"
 
-#: crates/vento-platform/src/lib.rs:286
+#: crates/vento-platform/src/lib.rs:288
 msgid "no app opened {names}"
 msgstr "لا يوجد تطبيق يفتح {names}"
 
-#: crates/vento-platform/src/lib.rs:346
+#: crates/vento-platform/src/lib.rs:348
 msgid "no folder to open"
 msgstr "لا يوجد مجلد لفتحه"
 
@@ -2783,7 +2783,7 @@ msgstr "لا يوجد اسم مؤقت متاح"
 msgid "no images"
 msgstr "لا توجد صور"
 
-#: crates/vento-platform/src/lib.rs:341
+#: crates/vento-platform/src/lib.rs:343
 msgid "no terminal is installed"
 msgstr "لا توجد طرفية مثبّتة"
 
@@ -2871,11 +2871,11 @@ msgstr "كلمة السر خاطئة"
 msgid "{app} (default)"
 msgstr "‏{app} (افتراضي)"
 
-#: crates/vento-platform/src/lib.rs:294
+#: crates/vento-platform/src/lib.rs:296
 msgid "{app} is no longer there"
 msgstr "‏{app} لم يعد موجوداً"
 
-#: crates/vento-platform/src/lib.rs:334
+#: crates/vento-platform/src/lib.rs:336
 msgid "{app} is not installed"
 msgstr "‏{app} غير مثبّت"
 
@@ -3173,15 +3173,15 @@ msgstr "{n} د"
 msgid "{pages} · edited"
 msgstr "‏{pages} · معدّل"
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:313
 msgid "{program} exited with code {code}"
 msgstr "‏{program} انتهى برمز الخروج {code}"
 
-#: crates/vento-platform/src/lib.rs:315
+#: crates/vento-platform/src/lib.rs:317
 msgid "{program} was stopped by a signal"
 msgstr "‏{program} أوقفته إشارة"
 
-#: crates/vento-platform/src/lib.rs:326
+#: crates/vento-platform/src/lib.rs:328
 msgid "{program}: {reason}"
 msgstr "‏{program}: {reason}"
 
