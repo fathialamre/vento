@@ -37,7 +37,7 @@ msgstr[1] "+{n}"
 msgid "+{n} more"
 msgstr "+{n} daha"
 
-#: crates/vento-platform/src/lib.rs:287
+#: crates/vento-platform/src/lib.rs:289
 msgid ", "
 msgstr ", "
 
@@ -85,7 +85,7 @@ msgstr "Eylemler"
 msgid "Add"
 msgstr "Ekle"
 
-#: crates/vento/ui/pdf.slint:645
+#: crates/vento-platform/src/linux/portal.rs:70
 msgid "Add PDF"
 msgstr "PDF ekle"
 
@@ -153,7 +153,7 @@ msgstr "Bir öğe, bir yere bıraktığınızda Cep'ten çıkar"
 msgid "Appearance"
 msgstr "Görünüm"
 
-#: crates/vento-core/src/actions.rs:107
+#: crates/vento-core/src/actions.rs:108
 msgid "Archive"
 msgstr "Arşivle"
 
@@ -427,7 +427,7 @@ msgstr "İçerik"
 msgid "Continue"
 msgstr "Devam"
 
-#: crates/vento-core/src/actions.rs:109
+#: crates/vento-core/src/actions.rs:110
 msgid "Convert"
 msgstr "Dönüştür"
 
@@ -471,7 +471,7 @@ msgid_plural "Copied {n} items to {dest}"
 msgstr[0] "{n} öğe {dest} konumuna kopyalandı"
 msgstr[1] "{n} öğe {dest} konumuna kopyalandı"
 
-#: crates/vento-core/src/actions.rs:102
+#: crates/vento-core/src/actions.rs:103
 msgid "Copy"
 msgstr "Kopyala"
 
@@ -495,7 +495,7 @@ msgstr "Ekrandan kopyala kısayolu"
 msgid "Copy from screen uses this shortcut"
 msgstr "Ekrandan kopyala bu kısayolu kullanıyor"
 
-#: crates/vento-core/src/actions.rs:104
+#: crates/vento-core/src/actions.rs:105
 msgid "Copy path"
 msgstr "Yolu kopyala"
 
@@ -511,7 +511,7 @@ msgstr "Metni kopyala"
 msgid "Copy the text from any part of the screen"
 msgstr "Ekranın herhangi bir yerindeki metni kopyalayın"
 
-#: crates/vento-core/src/actions.rs:106
+#: crates/vento-core/src/actions.rs:107
 msgid "Copy to"
 msgstr "Şuraya kopyala"
 
@@ -985,7 +985,7 @@ msgstr "İyileştirildi"
 msgid "In the top bar"
 msgstr "Üst çubukta"
 
-#: crates/vento-core/src/actions.rs:108
+#: crates/vento-core/src/actions.rs:109
 msgid "Info"
 msgstr "Bilgi"
 
@@ -1177,7 +1177,7 @@ msgstr "Artır: {}"
 msgid "More…"
 msgstr "Diğer…"
 
-#: crates/vento-core/src/actions.rs:103
+#: crates/vento-core/src/actions.rs:104
 msgid "Move"
 msgstr "Taşı"
 
@@ -1455,7 +1455,7 @@ msgstr "Sıralama"
 msgid "Other"
 msgstr "Diğer"
 
-#: crates/vento-core/src/actions.rs:110
+#: crates/vento-core/src/actions.rs:111
 msgid "PDF"
 msgstr "PDF"
 
@@ -1541,7 +1541,7 @@ msgstr "Düz"
 msgid "Plain pill"
 msgstr "Sade kapsül"
 
-#: crates/vento-core/src/actions.rs:101
+#: crates/vento-core/src/actions.rs:102
 msgid "Pocket"
 msgstr "Cep"
 
@@ -1651,7 +1651,7 @@ msgid_plural "Removing {n} copies…"
 msgstr[0] "{n} kopya kaldırılıyor…"
 msgstr[1] "{n} kopya kaldırılıyor…"
 
-#: crates/vento-core/src/actions.rs:112
+#: crates/vento-core/src/actions.rs:113
 msgid "Rename"
 msgstr "Yeniden adlandır"
 
@@ -1849,7 +1849,7 @@ msgstr "Sallayarak aç"
 msgid "Shape"
 msgstr "Şekil"
 
-#: crates/vento-core/src/actions.rs:111
+#: crates/vento-core/src/actions.rs:112
 msgid "Share"
 msgstr "Paylaş"
 
@@ -2047,7 +2047,7 @@ msgstr "Sisteminizin ekran görüntüsü tuşuyla ekran görüntüsü alın."
 msgid "Template"
 msgstr "Şablon"
 
-#: crates/vento-core/src/actions.rs:105
+#: crates/vento-core/src/actions.rs:106
 msgid "Terminal"
 msgstr "Terminal"
 
@@ -2499,7 +2499,7 @@ msgstr "sonra"
 msgid "already exists"
 msgstr "zaten var"
 
-#: crates/vento-platform/src/lib.rs:276
+#: crates/vento-platform/src/lib.rs:278
 msgid "another share is still open"
 msgstr "başka bir paylaşım hâlâ açık"
 
@@ -2543,11 +2543,11 @@ msgstr "kopyalama başlatılamıyor: {reason}"
 msgid "cannot start: {reason}"
 msgstr "başlatılamıyor: {reason}"
 
-#: crates/vento-platform/src/lib.rs:253
+#: crates/vento-platform/src/lib.rs:255
 msgid "clipboard rejected the files"
 msgstr "pano dosyaları kabul etmedi"
 
-#: crates/vento-platform/src/lib.rs:249
+#: crates/vento-platform/src/lib.rs:251
 msgid "clipboard rejected the text"
 msgstr "pano metni kabul etmedi"
 
@@ -2555,7 +2555,7 @@ msgstr "pano metni kabul etmedi"
 msgid "copy could not be verified; source left untouched"
 msgstr "kopya doğrulanamadı; kaynağa dokunulmadı"
 
-#: crates/vento-platform/src/lib.rs:301
+#: crates/vento-platform/src/lib.rs:303
 msgid "could not run {program}: {reason}"
 msgstr "{program} çalıştırılamadı: {reason}"
 
@@ -2631,11 +2631,11 @@ msgstr "{copy} konumuna taşındı, ancak orijinal tamamen kaldırılamadı: {re
 msgid "name"
 msgstr "ad"
 
-#: crates/vento-platform/src/lib.rs:286
+#: crates/vento-platform/src/lib.rs:288
 msgid "no app opened {names}"
 msgstr "{names} hiçbir uygulamayla açılmadı"
 
-#: crates/vento-platform/src/lib.rs:346
+#: crates/vento-platform/src/lib.rs:348
 msgid "no folder to open"
 msgstr "açılacak klasör yok"
 
@@ -2655,7 +2655,7 @@ msgstr "boş geçici ad yok"
 msgid "no images"
 msgstr "görüntü yok"
 
-#: crates/vento-platform/src/lib.rs:341
+#: crates/vento-platform/src/lib.rs:343
 msgid "no terminal is installed"
 msgstr "yüklü terminal yok"
 
@@ -2743,11 +2743,11 @@ msgstr "yanlış parola"
 msgid "{app} (default)"
 msgstr "{app} (varsayılan)"
 
-#: crates/vento-platform/src/lib.rs:294
+#: crates/vento-platform/src/lib.rs:296
 msgid "{app} is no longer there"
 msgstr "{app} artık yok"
 
-#: crates/vento-platform/src/lib.rs:334
+#: crates/vento-platform/src/lib.rs:336
 msgid "{app} is not installed"
 msgstr "{app} yüklü değil"
 
@@ -2961,15 +2961,15 @@ msgstr "{n} dk"
 msgid "{pages} · edited"
 msgstr "{pages} · düzenlendi"
 
-#: crates/vento-platform/src/lib.rs:311
+#: crates/vento-platform/src/lib.rs:313
 msgid "{program} exited with code {code}"
 msgstr "{program} {code} koduyla çıktı"
 
-#: crates/vento-platform/src/lib.rs:315
+#: crates/vento-platform/src/lib.rs:317
 msgid "{program} was stopped by a signal"
 msgstr "{program} bir sinyalle durduruldu"
 
-#: crates/vento-platform/src/lib.rs:326
+#: crates/vento-platform/src/lib.rs:328
 msgid "{program}: {reason}"
 msgstr "{program}: {reason}"
 

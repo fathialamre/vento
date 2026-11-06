@@ -1,7 +1,7 @@
 //! Linux [`Platform`] for GNOME.
 //!
-//! The desktop's own services (Trash, apps, terminals, the folder picker)
-//! go through gio. The pointer, drags, screens and focus come from Vento's
+//! The desktop's own services (Trash, apps, terminals, the file pickers)
+//! go through gio, and PDF pages through poppler. The pointer, drags, screens and focus come from Vento's
 //! GNOME Shell extension (see `shell`); without it Vento sees no input.
 //! The clipboard is read through the extension and written as the owner
 //! of the X11 `CLIPBOARD`; vento's windows are X11 ones under XWayland.
@@ -32,6 +32,7 @@ mod icons;
 pub(crate) mod image_io;
 mod instance;
 mod motion;
+mod pdf;
 mod portal;
 pub(crate) mod screen_text;
 mod shell;
@@ -44,6 +45,12 @@ mod x11;
 
 pub use drag_out::{DragEnd, start_file_drag};
 pub use instance::claim_instance;
+pub use pdf::{PdfRenderer, SystemPdf};
+
+/// The portal's file picker for PDFs, starting in `start`.
+pub(crate) fn pick_pdfs(start: Option<&Path>) -> Vec<PathBuf> {
+    portal::pick_pdfs(start)
+}
 
 /// Where the top bar shows the tray icon whose StatusNotifierItem id is
 /// `id`, in logical global coordinates; `None` when it shows none. Blocks

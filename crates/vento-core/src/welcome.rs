@@ -297,13 +297,11 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn unavailable_actions_are_left_out() {
-        // PDF is offered on Windows too; Share only on macOS.
-        assert_eq!(
-            Preset::Designer.actions().contains(&ActionId::Pdf),
-            cfg!(windows)
-        );
+        // PDF is offered on Windows and Linux too; Share only on macOS.
+        let pdf = cfg!(any(target_os = "linux", windows));
+        assert_eq!(Preset::Designer.actions().contains(&ActionId::Pdf), pdf);
         assert!(!Preset::Designer.actions().contains(&ActionId::Share));
-        let everything = if cfg!(windows) { 11 } else { 10 };
+        let everything = if pdf { 11 } else { 10 };
         assert_eq!(Preset::Everything.actions().len(), everything);
     }
 

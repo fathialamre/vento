@@ -12,6 +12,15 @@ applies everywhere. An entry may end with where to find it, as a sentence
 such as `Settings → About.` The Arabic text is in `CHANGELOG.ar.md`, with the
 same versions and the same keys.
 
+## [0.3.1] - 2026-11-05
+
+### Summary
+Vento comes to Ubuntu 24.04 and later (GNOME 46 to 50) as a package for x64 and ARM64, and PDF pages work on Linux.
+
+### Added
+- Pocket: On Linux, the virtual island on the top edge works on GNOME on Wayland too. Settings → Island.
+- PDF Pages: PDF pages work on Linux too: merge files, reorder, rotate or delete pages, save, extract or split them, or turn them into images. Settings → Wheel.
+
 ## [0.3.0] - 2026-11-04
 
 ### Summary

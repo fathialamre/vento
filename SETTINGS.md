@@ -54,7 +54,8 @@ shake_to_open = true
 # "terminal", "copy_to", "archive", "info", "convert", "pdf", "share" and
 # "rename". A file that already lists `actions` must add "pocket", "copy_to",
 # "archive", "info", "convert", "pdf", "share" or "rename" to show it. "pdf"
-# and "share" are macOS only, and are ignored elsewhere.
+# works on macOS, Windows and Linux; "share" is macOS only, and is ignored
+# elsewhere.
 actions = ["pocket", "copy", "move", "copy_path", "terminal"]
 
 # Actions turned off in the Settings window
@@ -232,7 +233,7 @@ keep_awake_start = 0
 keep_awake_screen_off = false
 
 # PDF window, Images: the format last picked, "png" or "jpeg" (JPEG is
-# drawn on white); any other value means "png". macOS only for now
+# drawn on white); any other value means "png"
 pdf_image_format = "png"
 
 # PDF window, Images: the quality last picked, in dots per inch: 300

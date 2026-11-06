@@ -16,7 +16,9 @@ use vento_core::share::{ShareOutcome, ShareTarget};
 use vento_core::trigger::InputSample;
 
 mod motion;
-#[cfg(windows)]
+#[cfg(any(target_os = "linux", windows))]
+mod pdf_image;
+#[cfg(any(target_os = "linux", windows))]
 mod pdf_write;
 mod screenshot_dir;
 mod stub;
@@ -32,15 +34,15 @@ mod webp;
 pub use macos::{MacPlatform, MacScreenText, set_ns_menu_direction};
 #[cfg(target_os = "macos")]
 pub use macos::{PdfRenderer, SystemPdf};
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub use stub::{PdfRenderer, SystemPdf};
 
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{
-    APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, bind_global_shortcut, claim_instance,
-    end_startup, start_file_drag, tray_icon_frame,
+    APP_ID, DragEnd, GlobalShortcut, LinuxPlatform, PdfRenderer, SystemPdf, bind_global_shortcut,
+    claim_instance, end_startup, start_file_drag, tray_icon_frame,
 };
 
 #[cfg(windows)]
@@ -1029,11 +1031,15 @@ pub fn pick_pdfs(start: Option<&Path>, done: Box<dyn FnOnce(Vec<PathBuf>)>) {
     {
         macos::pick_pdfs(start, done)
     }
+    #[cfg(target_os = "linux")]
+    {
+        done(linux::pick_pdfs(start))
+    }
     #[cfg(windows)]
     {
         done(windows::pick_pdfs(start))
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         done(stub::pick_pdfs(start))
     }
