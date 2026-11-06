@@ -57,7 +57,7 @@ Vento is in **early beta**. If something breaks or feels off, please
 Not there yet:
 
 - **Windows:** Copy from screen, Share, and HEIC in Convert.
-- **Linux:** Copy from screen, Share, the virtual island, and updating itself.
+- **Linux:** Share, and updating itself.
 
 On macOS, Vento asks for no special permissions: no Accessibility, no Input
 Monitoring. Only [Copy from screen](#copy-from-screen) asks for Screen
@@ -391,10 +391,10 @@ The island at the top of the screen holds the Pocket, your clipboard history and
 your screenshots, a tab each. Where it sits depends on the screen:
 
 - **A Mac with a notch:** it grows wings beside the notch.
-- **Other Mac screens and Windows:** the [virtual island](#the-virtual-island)
+- **Other Mac screens, Windows and Linux:** the [virtual island](#the-virtual-island)
   on the top edge, or, chosen in **Settings → Island**, the plain pill under the
-  menu bar on a Mac or the island by the taskbar's clock on Windows.
-- **Linux:** in GNOME's top bar, beside the clock, in a room the extension keeps for it.
+  menu bar on a Mac, the island by the taskbar's clock on Windows, or the island
+  beside the clock in GNOME's top bar, in a room the extension keeps for it.
 
 <p>
   <img src="site/assets/vi-rest.png" alt="The resting virtual island: Pocket, 3 items" height="28">
@@ -435,8 +435,6 @@ it and the other island in **Settings → Island**, which also holds:
   shake and plain fades.
 
 <img src="site/assets/island-settings.png" alt="Settings, Island page: Virtual island, the Island and Circle shapes, Left, Centre and Right, A place for each screen, Glass at 55%, the five shimmers and Off, How often, and Follow Reduce motion" width="480">
-
-On Linux the virtual island is not offered yet: the island stays in the top bar.
 
 ## Clipboard
 
@@ -487,7 +485,8 @@ file about 5 seconds late; turn off **Show Floating Thumbnail** for an instant c
 ## Copy from screen
 
 Copy the text from anything on your screen, even a picture, a video or an app
-that won't let you select it. macOS only for now. Press **⌃⌥T** (Control-Option-T), or choose
+that won't let you select it, on macOS and Linux. Press **⌃⌥T** (Control-Option-T;
+**Ctrl+Alt+O** on Linux, where Ctrl+Alt+T opens a terminal), or choose
 **Copy from screen** in the menu bar menu. The screen dims. Drag a rectangle over
 the text and let go: the text inside it is on your clipboard, ready to paste with
 ⌘V. Esc, a right click, or a click without dragging cancels.
@@ -497,7 +496,9 @@ a recent macOS; older versions may read only some languages. It needs macOS 14 o
 later, and asks for **Screen Recording** the first time you use it (see
 [install](#install-and-first-launch) for what to do after an update). macOS 15
 and later may ask you from time to time to confirm that Vento can keep recording
-the screen; that is normal. Change the shortcut on the **Copy from
+the screen; that is normal. On Linux, the Vento extension dims the screen and
+Tesseract reads the text, also on your computer; the Ubuntu package brings it
+with English and Arabic. Change the shortcut on the **Copy from
 screen** page of the Settings window.
 
 ## The Quick panel and Settings
