@@ -52,7 +52,7 @@ Vento is in **early beta**. If something breaks or feels off, please
 |---|---|---|
 | **macOS** | **[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)** (`vento-…-macos-arm64.dmg`, or the `.zip` with the same files) | macOS 13 or later on Apple Silicon (M1 or newer). On an Intel Mac, [build it yourself](BUILDING.md). |
 | **Windows** | The setup comes with the next release. Until then, [build it yourself](BUILDING.md#windows). | Windows 10 or 11, on an x64 or ARM64 PC. |
-| **Linux** | Install from source with one script, see [Linux](#linux). | GNOME on Wayland (tried on Ubuntu 26.04). |
+| **Linux** | **[Download the latest Vento](https://github.com/fathialamre/vento/releases/latest)** (`vento_…_amd64.deb`, or `_arm64.deb` on an ARM64 PC), or install from source, see [Linux](#linux). | Ubuntu 24.04 or later, with GNOME 46 to 50 on Wayland. |
 
 Not there yet:
 
@@ -135,20 +135,31 @@ Until the first setup is published, [build it yourself](BUILDING.md#windows).
 
 Vento runs on GNOME on Wayland. A small GNOME Shell extension, installed with
 it, tells Vento about the pointer, your drags and the clipboard, which Wayland
-hides from apps. The install script builds Vento and puts the app, its
-launcher, the extension and a start at login in place for your user:
+hides from apps. On Ubuntu 24.04 or later, install the package from the
+[latest release](https://github.com/fathialamre/vento/releases/latest), in the
+folder you downloaded it to:
 
 ```sh
-sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libxkbcommon-x11-0
+sudo apt install ./vento_*_amd64.deb   # ./vento_*_arm64.deb on an ARM64 PC
+```
+
+It puts the app and the extension in place, turns the extension on and starts
+Vento at every login. Log out and back in once so GNOME loads the extension.
+The first launch asks you to allow Vento's global shortcuts.
+
+On another system with GNOME, build it from source. The install script puts the
+app, its launcher, the extension and a start at login in place for your user:
+
+```sh
+sudo apt install build-essential libfontconfig1-dev libxkbcommon-dev libglib2.0-dev libheif-dev libpoppler-glib-dev libxkbcommon-x11-0
 git clone https://github.com/fathialamre/vento.git
 cd vento
 scripts/install-linux.sh
 ```
 
 It needs [Rust](https://rustup.rs) and about 7 GB of memory for the release
-build. Log out and back in once so GNOME loads the extension. The first launch
-asks you to allow Vento's global shortcuts. To update, pull the code and run the
-script again. More in [BUILDING.md](BUILDING.md#linux).
+build. Log out and back in once so GNOME loads the extension. To update, pull
+the code and run the script again. More in [BUILDING.md](BUILDING.md#linux).
 
 ### The first launch
 
@@ -570,7 +581,8 @@ itself. Everything else, including Copy from screen, runs on your computer.
 
 Turn the daily check off with **Settings → About → Check for updates
 automatically**. **Check now** still works when you ask for it. There is no
-update check on Linux, where you update by running the install script again.
+update check on Linux, where you update by installing the newer package, or by
+running the install script again.
 
 ## Uninstall
 
@@ -579,8 +591,9 @@ update check on Linux, where you update by running the install script again.
   clipboard history too, delete the folder `~/Library/Application Support/vento`.
 - **Windows:** uninstall Vento from **Settings → Apps → Installed apps**. Your
   settings and Pocket stay in `%APPDATA%\vento`; delete that folder to remove them.
-- **Linux:** run `scripts/install-linux.sh --uninstall`. It keeps your settings
-  and data in `~/.config/vento` and `~/.local/share/vento`.
+- **Linux:** run `sudo apt remove vento` if you installed the package, or
+  `scripts/install-linux.sh --uninstall` if you built it. Both keep your
+  settings and data in `~/.config/vento` and `~/.local/share/vento`.
 
 ## For developers
 
